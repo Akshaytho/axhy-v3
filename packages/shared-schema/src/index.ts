@@ -8,3 +8,6 @@
  */
 
 export const PACKAGE_NAME = '@axhy/shared-schema' as const;
+
+export * from './zod/auth.js';
+export * from './zod/me.js';

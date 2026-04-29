@@ -1,12 +1,14 @@
 /**
  * apps/backend
  *
- * Axhy backend service. Fastify HTTP layer + Prisma + state-machine spine.
- * Multi-tenant via server-side `companyId` injection.
+ * Axhy backend service entrypoint. Boots Fastify with all routes wired.
  *
  * @derives(ADR-0004)
  */
 
-const PORT = Number(process.env.PORT ?? 4000);
+import { startServer } from './server.js';
 
-console.log(`[axhy-backend] scaffold; port ${PORT}; real server lands during build phase 1`);
+startServer().catch((err) => {
+  console.error('[axhy-backend] fatal startup error:', err);
+  process.exit(1);
+});
