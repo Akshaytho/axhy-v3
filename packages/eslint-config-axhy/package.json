@@ -1,0 +1,23 @@
+{
+  "name": "@axhy/eslint-config-axhy",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "scripts": {
+    "build": "echo 'no build step for eslint config'",
+    "lint": "echo 'lint placeholder'",
+    "typecheck": "echo 'no typecheck'",
+    "test": "echo 'test placeholder'",
+    "clean": "rm -rf .turbo"
+  },
+  "peerDependencies": {
+    "eslint": ">=9"
+  },
+  "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.10.0",
+    "@typescript-eslint/parser": "^8.10.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-unused-imports": "^4.1.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./",
+    "jsx": "react-native",
+    "lib": ["ES2022"],
+    "noEmit": true
+  },
+  "include": ["app/**/*", "src/**/*", "*.ts", "*.tsx"],
+  "exclude": ["node_modules", "dist", ".expo"]
+}

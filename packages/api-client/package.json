@@ -1,0 +1,23 @@
+{
+  "name": "@axhy/api-client",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "echo 'lint placeholder'",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'test placeholder'",
+    "generate": "echo 'will run orval against backend OpenAPI spec'",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo src/generated"
+  },
+  "dependencies": {
+    "@axhy/shared-schema": "workspace:*",
+    "@tanstack/react-query": "^5.59.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

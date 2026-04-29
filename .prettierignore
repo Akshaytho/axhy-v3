@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+.expo/
+coverage/
+*.tsbuildinfo
+pnpm-lock.yaml
+packages/api-client/src/generated/
+packages/shared-schema/src/generated/
