@@ -1,16 +1,41 @@
-// @axhy/eslint-config-axhy
-// @derives(ADR-0019)
-//
-// Shared ESLint config + custom rules for Axhy v3.
-// Custom rule implementations land during evidence sprint Day 7.
+/**
+ * @axhy/eslint-config-axhy
+ *
+ * Shared ESLint config + custom rules for Axhy v3.
+ * Custom rules live under `./rules/`. Built-in rules wired in line.
+ *
+ * @derives(ADR-0019)
+ */
 
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import importPlugin from 'eslint-plugin-import';
 import unusedImports from 'eslint-plugin-unused-imports';
 
+import requireDerives from './rules/require-derives.js';
+
+export const axhyPlugin = {
+  rules: {
+    'require-derives': requireDerives,
+  },
+};
+
+const baseRules = {
+  // V2-treadmill prevention — covered by built-ins
+  '@typescript-eslint/no-explicit-any': 'error',
+  '@typescript-eslint/no-unused-vars': 'off',
+  'unused-imports/no-unused-imports': 'error',
+  'no-warning-comments': ['error', { terms: ['todo', 'fixme', 'xxx'], location: 'anywhere' }],
+  // Architectural discipline — Axhy custom rules
+  'axhy/require-derives': 'error',
+  // Module hygiene
+  'import/no-cycle': ['error', { maxDepth: 10 }],
+  'import/order': ['warn', { 'newlines-between': 'always' }],
+};
+
 export default [
   {
+    files: ['**/*.{ts,tsx,js,jsx}'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -22,15 +47,19 @@ export default [
       '@typescript-eslint': tsPlugin,
       import: importPlugin,
       'unused-imports': unusedImports,
+      axhy: axhyPlugin,
     },
+    rules: baseRules,
+  },
+  {
+    files: ['**/*.test.ts', '**/*.spec.ts', 'tests/**/*'],
     rules: {
-      // hard rules — V2-treadmill prevention
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unused-vars': 'off',
-      'unused-imports/no-unused-imports': 'error',
-      'no-warning-comments': ['error', { terms: ['todo', 'fixme', 'xxx'], location: 'anywhere' }],
-      'import/no-cycle': ['error', { maxDepth: 10 }],
-      'import/order': ['warn', { 'newlines-between': 'always' }],
+      'axhy/require-derives': 'off',
+      'no-warning-comments': 'off',
     },
+  },
+  {
+    // Generated and dist code is exempt
+    ignores: ['**/dist/**', '**/.next/**', '**/generated/**', '**/*.d.ts', '**/node_modules/**'],
   },
 ];

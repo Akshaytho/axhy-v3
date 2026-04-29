@@ -8,3 +8,6 @@
  */
 
 export const PACKAGE_NAME = '@axhy/state-machines' as const;
+
+export { workerMachine } from './worker.js';
+export type { WorkerStateValue, WorkerEvent, WorkerContext, WorkerMachine } from './worker.js';

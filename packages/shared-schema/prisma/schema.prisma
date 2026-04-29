@@ -1,0 +1,90 @@
+// packages/shared-schema/prisma/schema.prisma
+//
+// Axhy v3 Prisma schema — single source of truth for the database.
+//
+// @derives(ADR-0003) — Single source of truth for schema
+// @derives(ADR-0004) — Postgres on Railway
+//
+// Day 2 scope: Company, User, Membership. Validates the architecture end-to-end.
+// Worker, Site, Visit, etc. follow during build phase 1.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["axhy"]
+}
+
+// ============================================================================
+// Company — the tenant
+// ============================================================================
+
+model Company {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  /// @personal owner contact phone (E.164)
+  ownerPhone  String   @db.VarChar(16)
+  /// @personal owner contact name
+  ownerName   String
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships Membership[]
+  users       User[]
+
+  @@schema("axhy")
+}
+
+// ============================================================================
+// User — a person; one phone, multiple memberships across companies
+// ============================================================================
+
+model User {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// @personal phone is the primary login; E.164 format
+  phone       String   @unique @db.VarChar(16)
+  /// @personal full legal name as on documents
+  name        String?
+  /// @personal preferred locale (en, hi, te)
+  locale      String   @default("en") @db.VarChar(8)
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships Membership[]
+  Company     Company?     @relation(fields: [companyId], references: [id])
+  // companyId on User is the "primary" company for direct-login UX;
+  // memberships table is the authoritative cross-company link
+  companyId   String?      @db.Uuid
+
+  @@index([companyId])
+  @@schema("axhy")
+}
+
+// ============================================================================
+// Membership — links a User to a Company with a role
+// ============================================================================
+
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  userId    String   @db.Uuid
+  role      String
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId, role])
+  @@index([companyId])
+  @@index([userId])
+  @@schema("axhy")
+}

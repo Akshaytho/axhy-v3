@@ -14,3 +14,7 @@ One runbook per operational concern. Format: trigger, diagnostic steps, fix step
 - `msg91-otp-delivery-degraded.md`
 - `dpdp-data-deletion-request.md`
 - `super-admin-emergency-tenant-suspend.md`
+
+## Live runbooks
+
+- [`runaway-claude-agents.md`](./runaway-claude-agents.md) — When Anthropic / Claude bill spikes unexpectedly. Walks through routines, orphan sessions, Railway cron, Console usage. Companion script: `scripts/stop-all-claude-routines.mjs`.
