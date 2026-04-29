@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# Auto-rebuild knowledge graph after every commit so it stays fresh.
+# Skips if no DATABASE_URL set (e.g. fresh clone, CI without DB credentials).
+#
+# @derives(ADR-0002)
+
+if [ -z "$DATABASE_URL" ] && [ -z "$DATABASE_PUBLIC_URL" ] && [ -z "$AXHY_DB_URL" ]; then
+  echo "[post-commit] No DATABASE_URL set; skipping graph rebuild. Run \`pnpm --filter @axhy/knowledge-graph graph:build\` manually."
+  exit 0
+fi
+
+# Run in background — don't block the commit terminal
+(
+  pnpm --filter @axhy/knowledge-graph graph:build > /tmp/axhy-graph-build.log 2>&1 &
+)
+echo "[post-commit] Graph rebuild dispatched in background (log: /tmp/axhy-graph-build.log)"

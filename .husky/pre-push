@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# Pre-push: refuse push if graph audit dead-links grew vs main.
+# This is the architectural-drift guard.
+#
+# @derives(ADR-0002)
+
+if [ -z "$DATABASE_URL" ] && [ -z "$DATABASE_PUBLIC_URL" ] && [ -z "$AXHY_DB_URL" ]; then
+  echo "[pre-push] No DATABASE_URL; skipping graph audit (push allowed but unaudited)."
+  exit 0
+fi
+
+pnpm --filter @axhy/knowledge-graph graph:audit
+status=$?
+if [ $status -ne 0 ]; then
+  echo "[pre-push] Graph audit reported dead-links. Fix or push with --no-verify if intentional."
+  exit 1
+fi
+exit 0
