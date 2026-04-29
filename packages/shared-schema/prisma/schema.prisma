@@ -5,8 +5,9 @@
 // @derives(ADR-0003) — Single source of truth for schema
 // @derives(ADR-0004) — Postgres on Railway
 //
-// Day 2 scope: Company, User, Membership. Validates the architecture end-to-end.
-// Worker, Site, Visit, etc. follow during build phase 1.
+// Day 3 scope: Company, User, Membership + Site, Worker, Visit, LeaveRequest.
+// Remaining entities (AssignmentConfig, Device, AuditEvent, etc.) follow during
+// build phase 1.
 
 generator client {
   provider        = "prisma-client-js"
@@ -20,56 +21,56 @@ datasource db {
 }
 
 // ============================================================================
-// Company — the tenant
+// Tenant
 // ============================================================================
 
 model Company {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String
-  slug        String   @unique
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  slug       String   @unique
   /// @personal owner contact phone (E.164)
-  ownerPhone  String   @db.VarChar(16)
+  ownerPhone String   @db.VarChar(16)
   /// @personal owner contact name
-  ownerName   String
-  status      String   @default("ACTIVE")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  ownerName  String
+  status     String   @default("ACTIVE")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   memberships Membership[]
   users       User[]
+  sites       Site[]
+  workers     Worker[]
+  visits      Visit[]
+  leaves      LeaveRequest[]
 
   @@schema("axhy")
 }
 
 // ============================================================================
-// User — a person; one phone, multiple memberships across companies
+// Identity (cross-company)
 // ============================================================================
 
 model User {
-  id          String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(uuid()) @db.Uuid
   /// @personal phone is the primary login; E.164 format
-  phone       String   @unique @db.VarChar(16)
-  /// @personal full legal name as on documents
-  name        String?
-  /// @personal preferred locale (en, hi, te)
-  locale      String   @default("en") @db.VarChar(8)
-  status      String   @default("ACTIVE")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  phone     String   @unique @db.VarChar(16)
+  /// @personal full legal name
+  name      String?
+  /// @personal preferred locale
+  locale    String   @default("en") @db.VarChar(8)
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   memberships Membership[]
   Company     Company?     @relation(fields: [companyId], references: [id])
-  // companyId on User is the "primary" company for direct-login UX;
-  // memberships table is the authoritative cross-company link
   companyId   String?      @db.Uuid
+
+  workerProfile Worker?
 
   @@index([companyId])
   @@schema("axhy")
 }
-
-// ============================================================================
-// Membership — links a User to a Company with a role
-// ============================================================================
 
 model Membership {
   id        String   @id @default(uuid()) @db.Uuid
@@ -86,5 +87,125 @@ model Membership {
   @@unique([companyId, userId, role])
   @@index([companyId])
   @@index([userId])
+  @@schema("axhy")
+}
+
+// ============================================================================
+// Operational
+// ============================================================================
+
+model Site {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  name      String
+  /// @personal optional site address
+  address   String?
+  /// nullable if site is not yet geocoded
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  /// 14-state SiteState machine (placeholder string until state-machines wires it)
+  state     String   @default("DRAFT")
+  /// per-site weekly day-pattern override (default = 6-day week)
+  workdays  String   @default("MTWTFS") @db.VarChar(7)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  visits  Visit[]
+
+  @@index([companyId])
+  @@index([companyId, state])
+  @@schema("axhy")
+}
+
+model Worker {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  /// optional User link — workers may exist before they get phone access
+  userId    String?  @unique @db.Uuid
+  /// @personal worker name as displayed
+  name      String
+  /// @personal worker phone (E.164)
+  phone     String   @db.VarChar(16)
+  /// @personal optional worker bank for salary
+  bankIfsc  String?  @db.VarChar(16)
+  /// @personal optional worker bank account
+  bankAcct  String?
+  /// 15-state WorkerState machine (see @axhy/state-machines)
+  state     String   @default("INVITED")
+  /// monthly salary in paise (₹1 = 100 paise)
+  baseSalaryPaise Int @default(0)
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+  visits  Visit[]
+  leaves  LeaveRequest[]
+
+  @@unique([companyId, phone])
+  @@index([companyId])
+  @@index([companyId, state])
+  @@schema("axhy")
+}
+
+model Visit {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @db.Uuid
+  workerId      String   @db.Uuid
+  siteId        String   @db.Uuid
+  /// 12-state VisitState v1.1 machine
+  state         String   @default("SCHEDULED")
+  scheduledFor  DateTime
+  startedAt     DateTime?
+  completedAt   DateTime?
+  /// 0-16; soft cap on photo count per master plan §G
+  photosBefore  Int      @default(0)
+  photosAfter   Int      @default(0)
+  /// optional voice note ref (S3/R2 key); voice file deleted within 24h after STT
+  voiceKey      String?
+  /// AI verification text (1-2KB, stored after AI verification surface fires)
+  verificationText String?
+  /// AI verification model used (per ADR-0023)
+  verificationModel String?
+  /// flagged-for-supervisor-review bit
+  flagged       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  worker  Worker  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, scheduledFor])
+  @@index([companyId, state])
+  @@index([workerId, scheduledFor])
+  @@index([siteId, scheduledFor])
+  @@index([companyId, flagged], map: "visit_flagged_idx")
+  @@schema("axhy")
+}
+
+model LeaveRequest {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @db.Uuid
+  workerId    String   @db.Uuid
+  fromDate    DateTime @db.Date
+  toDate      DateTime @db.Date
+  reason      String
+  /// 12-state LeaveRequestState machine (placeholder)
+  state       String   @default("REQUESTED")
+  decidedBy   String?  @db.Uuid
+  decidedAt   DateTime?
+  /// @personal optional supervisor note
+  decisionNote String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  worker  Worker  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, state])
+  @@index([workerId])
+  @@index([companyId, fromDate])
   @@schema("axhy")
 }

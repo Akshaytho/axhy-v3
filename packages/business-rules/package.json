@@ -9,13 +9,15 @@
     "build": "tsc -b",
     "lint": "echo 'lint placeholder'",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'test placeholder'",
+    "test": "vitest run",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@axhy/shared-schema": "workspace:*"
+    "@axhy/shared-schema": "workspace:*",
+    "@axhy/state-machines": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
   }
 }

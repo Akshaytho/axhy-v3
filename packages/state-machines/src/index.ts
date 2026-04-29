@@ -11,3 +11,6 @@ export const PACKAGE_NAME = '@axhy/state-machines' as const;
 
 export { workerMachine } from './worker.js';
 export type { WorkerStateValue, WorkerEvent, WorkerContext, WorkerMachine } from './worker.js';
+
+export { visitMachine, BILLABLE_VISIT_STATES } from './visit.js';
+export type { VisitStateValue, VisitEvent, VisitContext, VisitMachine } from './visit.js';
