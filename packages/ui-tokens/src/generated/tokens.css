@@ -1,0 +1,39 @@
+/* AUTO-GENERATED from @axhy/ui-tokens — do not edit by hand. */
+
+:root {
+  /* brand */
+  --gold: #D4AF37;
+  --gold-dim: #A88928;
+  --gold-hi: #F0CB52;
+
+  /* surface */
+  --black: #000000;
+  --gray-1: #0A0A0A;
+  --gray-2: #141414;
+  --gray-3: #1F1F1F;
+  --surface-sunken: #050505;
+
+  /* text — primary uses solid white; dim/mute use alpha-on-black */
+  --text: #FFFFFF;
+  --text-dim: rgba(255, 255, 255, 0.62);
+  --text-mute: rgba(255, 255, 255, 0.42);
+
+  /* borders — alpha-on-black to ride any background shade */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  /* semantic */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --info: #3B82F6;
+
+  /* type */
+  --display: var(--font-body, 'Inter'), system-ui, -apple-system, sans-serif;
+  --body: var(--font-body, 'Inter'), system-ui, -apple-system, sans-serif;
+  --mono: var(--font-mono, 'JetBrains Mono'), ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* misc */
+  --max: 1120px;
+  --gutter: 24px;
+}

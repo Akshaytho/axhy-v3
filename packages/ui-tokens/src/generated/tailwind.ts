@@ -1,0 +1,52 @@
+/* AUTO-GENERATED from @axhy/ui-tokens — do not edit by hand. */
+
+export const tailwindTheme = {
+  colors: {
+    gold: '#D4AF37',
+    'gold-dim': '#A88928',
+    'gold-hi': '#F0CB52',
+    black: '#000000',
+    'gray-1': '#0A0A0A',
+    'gray-2': '#141414',
+    'gray-3': '#1F1F1F',
+    'surface-sunken': '#050505',
+    text: '#FFFFFF',
+    'text-secondary': '#A0A0A0',
+    'text-muted': '#606060',
+    'border-subtle': '#1A1A1A',
+    'border-strong': '#2A2A2A',
+    success: '#10B981',
+    warning: '#F59E0B',
+    danger: '#EF4444',
+    info: '#3B82F6',
+  },
+  fontFamily: {
+    body: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+    mono: ['JetBrains Mono', 'ui-monospace', 'SF Mono', 'Menlo', 'monospace'],
+  },
+  fontWeight: {
+    body: 700,
+    headline: 800,
+  },
+  spacing: {
+    '0': 0,
+    '1': 4,
+    '2': 8,
+    '3': 12,
+    '4': 16,
+    '5': 20,
+    '6': 24,
+    '8': 32,
+    '10': 40,
+    '12': 48,
+    '16': 64,
+  },
+  borderRadius: {
+    none: 0,
+    sm: 4,
+    md: 8,
+    lg: 12,
+    xl: 16,
+    full: 9999,
+  },
+} as const;

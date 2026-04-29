@@ -11,17 +11,25 @@ type Props = {
   label: string;
   prefill?: string;
   size?: 'lg' | 'md';
+  variant?: 'primary' | 'secondary';
   className?: string;
 };
 
-export function WhatsAppButton({ label, prefill, size = 'lg', className }: Props) {
+export function WhatsAppButton({
+  label,
+  prefill,
+  size = 'lg',
+  variant = 'primary',
+  className,
+}: Props) {
   const url = prefill
     ? `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(prefill)}`
     : `https://wa.me/${WA_NUMBER}`;
   const sizeClass = size === 'lg' ? 'btn-lg' : '';
+  const variantClass = variant === 'secondary' ? 'btn-secondary' : 'btn-primary';
   return (
     <a
-      className={['btn', 'btn-primary', sizeClass, className].filter(Boolean).join(' ')}
+      className={['btn', variantClass, sizeClass, className].filter(Boolean).join(' ')}
       href={url}
       target="_blank"
       rel="noopener noreferrer"

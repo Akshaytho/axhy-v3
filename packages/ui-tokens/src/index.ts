@@ -18,6 +18,8 @@ export const tokens = {
       base: '#000000',
       raised: '#0A0A0A',
       sunken: '#050505',
+      gray2: '#141414',
+      gray3: '#1F1F1F',
     },
     text: {
       primary: '#FFFFFF',
@@ -35,6 +37,20 @@ export const tokens = {
       subtle: '#1A1A1A',
       strong: '#2A2A2A',
     },
+  },
+  /**
+   * Web surface uses alpha-on-black grays (panel-locked 2026-04-30: glassy
+   * premium feel, single ramp that auto-adjusts on background shifts).
+   * Native surface keeps solid hex from `color.text` / `color.border` for
+   * OLED battery + sun-readability.
+   *
+   * Generator emits these as `rgba(255,255,255,<alpha>)` in tokens.css.
+   */
+  alphaOnBlack: {
+    textDim: 0.62,
+    textMute: 0.42,
+    borderSubtle: 0.08,
+    borderStrong: 0.14,
   },
   font: {
     body: 'Inter',
