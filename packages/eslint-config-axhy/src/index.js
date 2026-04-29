@@ -60,6 +60,15 @@ export default [
   },
   {
     // Generated and dist code is exempt
-    ignores: ['**/dist/**', '**/.next/**', '**/generated/**', '**/*.d.ts', '**/node_modules/**'],
+    ignores: [
+      '**/dist/**',
+      '**/.next/**',
+      '**/generated/**',
+      '**/*.d.ts',
+      '**/node_modules/**',
+      // The lint-rules fixture intentionally violates rules to prove they fire.
+      // Run `pnpm exec eslint --no-warn-ignored <fixture>` manually for validation.
+      'packages/eslint-config-axhy/test/lint-rules.fixture.ts',
+    ],
   },
 ];
