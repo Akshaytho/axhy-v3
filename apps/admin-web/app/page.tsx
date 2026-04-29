@@ -20,6 +20,8 @@
  * @derives(master-plan §G iteration #2 — re-locked)
  */
 
+import Link from 'next/link';
+
 import { Nav } from './_components/Nav';
 import { Footer } from './_components/Footer';
 import { WhatsAppButton } from './_components/WhatsAppButton';
@@ -47,9 +49,9 @@ export default function HomePage() {
                 </p>
                 <div className="hero-cta">
                   <WhatsAppButton label="Talk to founder on WhatsApp" />
-                  <a className="btn btn-secondary btn-lg" href="/pricing">
+                  <Link className="btn btn-secondary btn-lg" href="/pricing">
                     See pricing
-                  </a>
+                  </Link>
                 </div>
               </div>
               <VoiceCard />
