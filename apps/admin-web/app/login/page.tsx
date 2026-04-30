@@ -65,7 +65,7 @@ export default function LoginPage() {
       return () => clearTimeout(t);
     }
     if (step === 'success') {
-      const t = setTimeout(() => router.push('/'), 1400);
+      const t = setTimeout(() => router.push('/owner'), 1400);
       return () => clearTimeout(t);
     }
   }, [step, router]);
