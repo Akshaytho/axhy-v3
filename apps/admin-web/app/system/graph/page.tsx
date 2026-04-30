@@ -38,6 +38,7 @@ type Snapshot = {
   counts: { nodes: number; edges: number; chunks: number };
 };
 
+const DEFAULT_COLOR = '#606060'; // text-muted
 const KIND_COLORS: Record<string, string> = {
   ENTITY: '#D4AF37', // gold — Prisma models
   STATE_MACHINE: '#F0CB52', // gold-hi — XState machines
@@ -45,11 +46,10 @@ const KIND_COLORS: Record<string, string> = {
   FILE: '#A0A0A0', // text-secondary — generic files
   PACKAGE: '#10B981', // success — workspace packages
   ROUTE: '#F59E0B', // warning — Fastify routes
-  DEFAULT: '#606060', // text-muted
 };
 
 function colorFor(kind: string): string {
-  return KIND_COLORS[kind] ?? KIND_COLORS.DEFAULT;
+  return KIND_COLORS[kind] ?? DEFAULT_COLOR;
 }
 
 /** @derives(ADR-0021) */
