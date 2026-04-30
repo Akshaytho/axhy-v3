@@ -11,10 +11,12 @@
     "./zod": "./src/zod/index.ts"
   },
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "tsc -b",
     "lint": "echo 'lint placeholder'",
     "typecheck": "tsc --noEmit",
     "test": "echo 'test placeholder'",
+    "generate": "prisma generate",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {

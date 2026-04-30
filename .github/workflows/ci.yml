@@ -44,6 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @axhy/shared-schema generate
       - run: pnpm typecheck
 
   test:
@@ -56,6 +57,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @axhy/shared-schema generate
       - run: pnpm test
 
   test-integration:
@@ -82,6 +84,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @axhy/shared-schema generate
+      - run: pnpm --filter @axhy/shared-schema exec prisma db push --accept-data-loss
       - run: pnpm test:integration
 
   graph-build:
