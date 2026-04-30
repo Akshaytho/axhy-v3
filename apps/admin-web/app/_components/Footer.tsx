@@ -1,14 +1,19 @@
 /**
  * Site footer — pixel-matches Claude Design index.html.
  *
+ * Phone number from validated env config (no fallback — fails at boot if
+ * NEXT_PUBLIC_AXHY_WHATSAPP is missing, per Iteration 4 quality rule).
+ *
  * @derives(ADR-0005)
  */
 
 import Link from 'next/link';
 
+import { env } from '../../lib/env';
+
 import { Logo } from './Logo';
 
-const WA_NUMBER = process.env.NEXT_PUBLIC_AXHY_WHATSAPP ?? '919999999999';
+const WA_NUMBER = env.NEXT_PUBLIC_AXHY_WHATSAPP;
 
 export function Footer() {
   return (

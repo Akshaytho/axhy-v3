@@ -28,10 +28,11 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { env } from '../../lib/env';
 import { Logo } from '../_components/Logo';
 import { WhatsAppButton } from '../_components/WhatsAppButton';
 
-const API_URL = process.env.NEXT_PUBLIC_AXHY_API_URL ?? 'http://localhost:8080';
+const API_URL = env.NEXT_PUBLIC_AXHY_API_URL;
 
 type Step = 'phone' | 'code' | 'success';
 

@@ -1,11 +1,14 @@
 /**
  * WhatsApp CTA button — primary brand action per master plan iteration #2.
- * Phone number from NEXT_PUBLIC_AXHY_WHATSAPP env (E.164 without +).
+ * Phone number from validated env config (no fallback — fails at boot if
+ * NEXT_PUBLIC_AXHY_WHATSAPP is missing, per Iteration 4 quality rule).
  *
  * @derives(ADR-0005)
  */
 
-const WA_NUMBER = process.env.NEXT_PUBLIC_AXHY_WHATSAPP ?? '919999999999';
+import { env } from '../../lib/env';
+
+const WA_NUMBER = env.NEXT_PUBLIC_AXHY_WHATSAPP;
 
 type Props = {
   label: string;
