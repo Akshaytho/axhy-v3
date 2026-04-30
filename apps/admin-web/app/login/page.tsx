@@ -89,7 +89,7 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/auth/otp/request`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ phoneE164: '+' + digits }),
+        body: JSON.stringify({ phone: '+' + digits }),
       });
       if (res.status === 429) {
         setPhoneError('Too many attempts. Try again in a few minutes.');
@@ -120,7 +120,7 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/auth/otp/verify`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ phoneE164: '+' + digits, code: otp }),
+        body: JSON.stringify({ phone: '+' + digits, code: otp }),
       });
       if (!res.ok) {
         setOtpError('Incorrect code. Try again.');
@@ -143,7 +143,7 @@ export default function LoginPage() {
       await fetch(`${API_URL}/auth/otp/request`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ phoneE164: '+' + digits }),
+        body: JSON.stringify({ phone: '+' + digits }),
       });
     } catch {
       /* swallow — UX shows the timer either way */
