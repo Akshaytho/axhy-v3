@@ -1,6 +1,6 @@
 /**
  * ChatTab — supervisor preview Chat tab.
- * Active chat list, open-thread view, decision-card demo flow.
+ * Landing: greeting + last AI message + 2 actions. Chat list hidden behind drill-down.
  *
  * @derives(master-plan §G)
  */
@@ -10,6 +10,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 import {
   TODAYS_CHATS,
+  SUPERVISOR,
   type Chat,
   type ChatMessage,
   type Decision,
@@ -24,90 +25,89 @@ type DemoPhase = 'idle' | 'note' | 'operational' | 'personnel' | 'employment';
 /** @derives(master-plan §G) */
 type DemoState = { phase: DemoPhase; countdown?: number; confirmInput?: string };
 
-// ── constants ──────────────────────────────────────────────────────────────
+// ── helpers ────────────────────────────────────────────────────────────────
 
 /** @derives(master-plan §G) */
-const DEMO = [
-  { tier: 'NOTE', summary: 'Block C complaint at Phoenix logged', consequence: undefined },
-  {
-    tier: 'OPERATIONAL',
-    summary: 'Move Vinod from Phoenix to Apollo',
-    consequence: 'Apollo +1 worker, Phoenix at 2/3.',
-  },
-  {
-    tier: 'PERSONNEL',
-    summary: "Approve Sarita's leave for tomorrow",
-    consequence: "She'll lose ₹500 from this week's pay.",
-  },
-  {
-    tier: 'EMPLOYMENT',
-    summary: 'Terminate Ravi — 3rd no-call no-show',
-    consequence: 'Final pay settled this week.',
-  },
-] as const;
+function getGreetingCopy(t: TimeOfDay): { greet: string; sub: string } {
+  const n = SUPERVISOR.name;
+  const count = TODAYS_CHATS.length;
+  if (t === '7am')
+    return {
+      greet: `Good morning, ${n}.`,
+      sub: "Today's context loaded at 3:30 AM. Ready when you are.",
+    };
+  if (t === '11am')
+    return {
+      greet: 'Mid-morning check-in.',
+      sub: `Day in progress. ${count} chats running. Tap to continue or start new.`,
+    };
+  if (t === '3pm')
+    return { greet: `Afternoon, ${n}.`, sub: 'Phoenix flagged this morning. Want to handle?' };
+  return {
+    greet: 'Wrapping up?',
+    sub: 'Day done. Wrap up your chats and the AI will fold today into your context.',
+  };
+}
 
-/** Honest-AI showcase message appended to chat_morning. @derives(master-plan §G) */
-const HONEST_MSG: ChatMessage = {
-  id: 'honest_ai',
-  role: 'ai',
-  text: "I don't see today's attendance for Block A yet. Log it when you check, and I'll update Apollo's count automatically.",
-  language: 'en',
-  timestamp: '09:20',
-};
+/** @derives(master-plan §G) */
+function getLastAiMessage(): string {
+  const active = TODAYS_CHATS.filter((c) => c.state === 'active');
+  const first = active[0];
+  if (!first) return 'No messages yet today. Tap below to start.';
+  const latest = active.reduce<Chat>((b, c) => (c.startedAt > b.startedAt ? c : b), first);
+  const aiMsgs = latest.messages.filter((m) => m.role === 'ai');
+  const last = aiMsgs[aiMsgs.length - 1];
+  if (!last) return 'No messages yet today. Tap below to start.';
+  const t = last.text;
+  return t.length > 120 ? t.slice(0, 117) + '...' : t;
+}
 
 // ── icons ──────────────────────────────────────────────────────────────────
 
 /** @derives(master-plan §G) */
-function DotsIcon(): JSX.Element {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <circle cx="8" cy="3" r="1.5" />
-      <circle cx="8" cy="8" r="1.5" />
-      <circle cx="8" cy="13" r="1.5" />
-    </svg>
-  );
-}
+const DotsIcon = (): JSX.Element => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <circle cx="8" cy="3" r="1.5" />
+    <circle cx="8" cy="8" r="1.5" />
+    <circle cx="8" cy="13" r="1.5" />
+  </svg>
+);
 
 /** @derives(master-plan §G) */
-function SendIcon(): JSX.Element {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
-    </svg>
-  );
-}
+const SendIcon = (): JSX.Element => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
+  </svg>
+);
 
 // ── HistoricalDecisionCard ─────────────────────────────────────────────────
 
-/** Shows a decision that is already applied (in-thread, read-only). @derives(master-plan §G) */
-function HistoricalDecisionCard({ d }: { d: Decision }): JSX.Element {
-  return (
-    <div className="sup-decision-card">
-      <div className="sup-decision-card-tier">{d.tier}</div>
-      <div className="sup-decision-card-title">{d.summary}</div>
-      {d.consequence && <div className="sup-decision-card-cons">{d.consequence}</div>}
-      <div className="sup-decision-card-actions">
-        <span style={{ opacity: 0.55, fontSize: '0.75rem' }}>Already applied at {d.createdAt}</span>
-      </div>
+/** @derives(master-plan §G) */
+const HistoricalDecisionCard = ({ d }: { d: Decision }): JSX.Element => (
+  <div className="sup-decision-card">
+    <div className="sup-decision-card-tier">{d.tier}</div>
+    <div className="sup-decision-card-title">{d.summary}</div>
+    {d.consequence && <div className="sup-decision-card-cons">{d.consequence}</div>}
+    <div className="sup-decision-card-actions">
+      <span style={{ opacity: 0.55, fontSize: '0.75rem' }}>Already applied at {d.createdAt}</span>
     </div>
-  );
-}
+  </div>
+);
 
 // ── ThreadView ─────────────────────────────────────────────────────────────
 
 /** @derives(master-plan §G) */
 function ThreadView({ chat, onBack }: { chat: Chat; onBack: () => void }): JSX.Element {
-  const msgs = chat.id === 'chat_morning' ? [...chat.messages, HONEST_MSG] : chat.messages;
   return (
     <div className="sup-thread">
-      <div className="sup-screen-header">
+      <div className="sup-sheet-head">
         <button className="sup-secondary" onClick={onBack} style={{ marginRight: '0.5rem' }}>
-          ← Back to chats
+          ← Back
         </button>
-        <span className="sup-h2">{chat.title}</span>
+        <span className="sup-sheet-title">{chat.title}</span>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '1rem' }}>
-        {msgs.map((msg) => (
+        {chat.messages.map((msg: ChatMessage) => (
           <div key={msg.id}>
             <div className={`sup-msg ${msg.role === 'ai' ? 'sup-msg-ai' : 'sup-msg-sup'}`}>
               {msg.text}
@@ -141,7 +141,6 @@ function ChatRowPopover({
 }): JSX.Element {
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [holding, setHolding] = useState(false);
-
   const startHold = () => {
     setHolding(true);
     holdRef.current = setTimeout(() => {
@@ -154,7 +153,6 @@ function ChatRowPopover({
     if (holdRef.current) clearTimeout(holdRef.current);
     setHolding(false);
   };
-
   return (
     <div
       style={{
@@ -202,8 +200,101 @@ function ChatRowPopover({
         onTouchStart={startHold}
         onTouchEnd={cancelHold}
       >
-        {holding ? 'Hold to delete…' : 'Delete'}
+        {holding ? 'Hold to delete...' : 'Delete'}
       </button>
+    </div>
+  );
+}
+
+// ── PastChatsSheet ─────────────────────────────────────────────────────────
+
+/** @derives(master-plan §G) */
+function PastChatsSheet({
+  chats,
+  onClose,
+  onWrap,
+  onDelete,
+}: {
+  chats: Chat[];
+  onClose: () => void;
+  onWrap: (id: string) => void;
+  onDelete: (id: string) => void;
+}): JSX.Element {
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [popoverId, setPopoverId] = useState<string | null>(null);
+  const activeChats = chats.filter((c) => c.state === 'active');
+  const openChat = threadId ? (chats.find((c) => c.id === threadId) ?? null) : null;
+
+  if (openChat) {
+    return (
+      <div className="sup-sheet">
+        <ThreadView chat={openChat} onBack={() => setThreadId(null)} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="sup-sheet">
+      <div className="sup-sheet-head">
+        <button className="sup-secondary" onClick={onClose} style={{ marginRight: '0.5rem' }}>
+          ← Close
+        </button>
+        <span className="sup-sheet-title">Today's chats</span>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {activeChats.map((chat) => {
+          const raw = chat.messages.find((m) => m.role === 'supervisor')?.text ?? '';
+          const preview = raw.length > 60 ? raw.slice(0, 57) + '...' : raw;
+          return (
+            <div key={chat.id} className="sup-chat-row" style={{ position: 'relative' }}>
+              <div
+                style={{ flex: 1, cursor: 'pointer' }}
+                onClick={() => {
+                  setPopoverId(null);
+                  setThreadId(chat.id);
+                }}
+              >
+                <div className="sup-chat-row-title">{chat.title}</div>
+                {preview ? <div className="sup-chat-row-preview">{preview}</div> : null}
+                <div className="sup-chat-row-meta">{chat.startedAt}</div>
+              </div>
+              <button
+                className="sup-chat-dots"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPopoverId((p) => (p === chat.id ? null : chat.id));
+                }}
+                aria-label="Chat options"
+              >
+                <DotsIcon />
+              </button>
+              {popoverId === chat.id && (
+                <ChatRowPopover
+                  onWrap={() => onWrap(chat.id)}
+                  onDelete={() => onDelete(chat.id)}
+                  onClose={() => setPopoverId(null)}
+                />
+              )}
+            </div>
+          );
+        })}
+        {activeChats.length === 0 && (
+          <div style={{ padding: '1.5rem 1rem', opacity: 0.5, fontSize: '0.85rem' }}>
+            No active chats today.
+          </div>
+        )}
+        <div className="sup-yesterday-section">
+          <div className="sup-yesterday-label">YESTERDAY</div>
+          <div className="sup-yesterday-row">Site walks · 6:42 AM</div>
+          <div className="sup-yesterday-row">Mukesh follow-up · 4:18 PM</div>
+        </div>
+      </div>
+      {popoverId && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 10 }}
+          onClick={() => setPopoverId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -223,89 +314,99 @@ function DemoOverlay({
   onInput: (v: string) => void;
 }): JSX.Element | null {
   if (state.phase === 'idle') return null;
-
-  const phaseIdx: Record<DemoPhase, number> = {
-    idle: -1,
-    note: 0,
-    operational: 1,
-    personnel: 2,
-    employment: 3,
-  };
-  const step = DEMO[phaseIdx[state.phase]];
-  if (!step) return null;
-
   if (state.phase === 'note') {
     const pct = ((state.countdown ?? 5) / 5) * 100;
     return (
-      <div className="sup-undo">
-        <div className="sup-decision-card" style={{ marginBottom: '0.5rem' }}>
-          <div className="sup-decision-card-tier">{step.tier}</div>
-          <div className="sup-decision-card-title">{step.summary}</div>
-        </div>
-        <div className="sup-undo-text">Auto-stored · undo in {state.countdown ?? 5}s</div>
+      <div className="sup-undo" style={{ position: 'relative', overflow: 'hidden' }}>
+        <span>Block C complaint at Phoenix logged</span>
         <button className="sup-undo-btn" onClick={onCancel}>
           Undo
         </button>
-        <div className="sup-undo-timer" style={{ width: `${pct}%` }} />
+        <span className="sup-undo-timer">{state.countdown ?? 5}s</span>
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            height: '2px',
+            background: 'var(--sup-gold,#FACC15)',
+            width: `${pct}%`,
+            transition: 'width 0.9s linear',
+          }}
+        />
       </div>
     );
   }
-
   if (state.phase === 'operational') {
     return (
-      <div className="sup-decision-card">
-        <div className="sup-decision-card-tier">{step.tier}</div>
-        <div className="sup-decision-card-title">{step.summary}</div>
-        {step.consequence && <div className="sup-decision-card-cons">{step.consequence}</div>}
-        <div className="sup-decision-card-actions">
-          <button className="sup-decision-confirm" onClick={onConfirm}>
-            Confirm
-          </button>
-          <button className="sup-decision-cancel" onClick={onCancel}>
-            Cancel
-          </button>
+      <div className="sup-consequence-overlay">
+        <div className="sup-decision-card">
+          <div className="sup-decision-card-tier">OPERATIONAL</div>
+          <div className="sup-decision-card-title">Move Vinod from Phoenix to Apollo</div>
+          <div className="sup-decision-card-cons">Apollo +1 worker. Phoenix at 2/3.</div>
+          <div className="sup-decision-card-actions">
+            <button className="sup-decision-confirm" onClick={onConfirm}>
+              Confirm
+            </button>
+            <button className="sup-decision-cancel" onClick={onCancel}>
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     );
   }
-
-  // PERSONNEL and EMPLOYMENT both use consequence overlay
-  const ready = state.phase === 'employment' && state.confirmInput === 'fire ravi';
+  if (state.phase === 'personnel') {
+    return (
+      <div className="sup-consequence-overlay">
+        <div className="sup-consequence-card">
+          <div className="sup-consequence-tier">PERSONNEL</div>
+          <div className="sup-consequence-title">Approve Sarita's leave for tomorrow</div>
+          <div className="sup-consequence-fact">She'll lose ₹500 from this week's pay.</div>
+          <div className="sup-consequence-actions">
+            <button className="sup-primary" onClick={onConfirm}>
+              Confirm
+            </button>
+            <button className="sup-secondary" onClick={onCancel}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // employment
+  const val = state.confirmInput ?? '';
+  const ready = val.toLowerCase() === 'fire ravi';
   return (
     <div className="sup-consequence-overlay">
       <div className="sup-consequence-card">
-        <div className="sup-consequence-tier">{step.tier}</div>
-        <div className="sup-consequence-title">{step.summary}</div>
-        {step.consequence && <div className="sup-consequence-fact">{step.consequence}</div>}
-        {state.phase === 'employment' && (
-          <>
-            <div style={{ marginBottom: '0.5rem', fontSize: '0.8rem', opacity: 0.7 }}>
-              Type <code style={{ fontFamily: 'monospace' }}>fire ravi</code> to confirm
-            </div>
-            <input
-              className="sup-input"
-              type="text"
-              value={state.confirmInput ?? ''}
-              onChange={(e) => onInput(e.target.value)}
-              placeholder="fire ravi"
-              style={{ marginBottom: '0.5rem' }}
-            />
-          </>
-        )}
+        <div className="sup-consequence-tier">EMPLOYMENT</div>
+        <div className="sup-consequence-title">Mark Ravi as terminated</div>
+        <div className="sup-consequence-fact">
+          Worker history retained. Pay stops today. HR notified.
+        </div>
+        <input
+          className="sup-ack-input"
+          type="text"
+          value={val}
+          onChange={(e) => onInput(e.target.value)}
+          placeholder="Type 'fire ravi' to confirm"
+          style={{ marginBottom: '0.5rem' }}
+        />
+        <div className="sup-ack-hint">
+          Type <strong>fire ravi</strong> to enable confirm.
+        </div>
         <div className="sup-consequence-actions">
           <button
-            className="sup-decision-confirm"
+            className="sup-primary"
             onClick={onConfirm}
-            disabled={state.phase === 'employment' && !ready}
-            style={
-              state.phase === 'employment'
-                ? { opacity: ready ? 1 : 0.4, cursor: ready ? 'pointer' : 'not-allowed' }
-                : undefined
-            }
+            disabled={!ready}
+            style={{ opacity: ready ? 1 : 0.4, cursor: ready ? 'pointer' : 'not-allowed' }}
           >
             Confirm
           </button>
-          <button className="sup-decision-cancel" onClick={onCancel}>
+          <button className="sup-secondary" onClick={onCancel}>
             Cancel
           </button>
         </div>
@@ -317,27 +418,33 @@ function DemoOverlay({
 // ── ChatTab (main export) ──────────────────────────────────────────────────
 
 /**
- * Chat tab for the supervisor preview app.
+ * Chat tab — ONE QUESTION ONE BIG ANSWER landing.
+ * Greeting hero + last AI message card + drill-down + 2 bottom actions.
  *
  * @derives(master-plan §G)
  */
 export function ChatTab({ timeOfDay }: { timeOfDay: TimeOfDay }): JSX.Element {
-  void timeOfDay; // consumed by parent for conditional tab rendering
-
   const [chats, setChats] = useState<Chat[]>(TODAYS_CHATS);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [popoverId, setPopoverId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [demo, setDemo] = useState<DemoState>({ phase: 'idle' });
+  const [newChatToast, setNewChatToast] = useState(false);
 
   const idleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimers = useCallback(() => {
     if (idleRef.current) clearTimeout(idleRef.current);
     if (tickRef.current) clearInterval(tickRef.current);
   }, []);
 
-  useEffect(() => () => clearTimers(), [clearTimers]);
+  useEffect(
+    () => () => {
+      clearTimers();
+      if (toastRef.current) clearTimeout(toastRef.current);
+    },
+    [clearTimers],
+  );
 
   /** @derives(master-plan §G) */
   const startDemo = useCallback(() => {
@@ -350,9 +457,7 @@ export function ChatTab({ timeOfDay }: { timeOfDay: TimeOfDay }): JSX.Element {
         clearInterval(tickRef.current!);
         setDemo({ phase: 'operational' });
         idleRef.current = setTimeout(() => setDemo({ phase: 'personnel' }), 6000);
-      } else {
-        setDemo({ phase: 'note', countdown: n });
-      }
+      } else setDemo({ phase: 'note', countdown: n });
     }, 1000);
   }, [clearTimers]);
 
@@ -398,83 +503,81 @@ export function ChatTab({ timeOfDay }: { timeOfDay: TimeOfDay }): JSX.Element {
     [],
   );
 
-  const activeChats = chats.filter((c) => c.state === 'active');
-  const openChat = openId ? (chats.find((c) => c.id === openId) ?? null) : null;
+  /** @derives(master-plan §G) */
+  const handleNewChat = useCallback(() => {
+    setNewChatToast(true);
+    if (toastRef.current) clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(() => setNewChatToast(false), 2000);
+  }, []);
 
-  if (openChat) {
-    return <ThreadView chat={openChat} onBack={() => setOpenId(null)} />;
-  }
+  const { greet, sub } = getGreetingCopy(timeOfDay);
+  const lastAiText = getLastAiMessage();
+  const chatCount = chats.filter((c) => c.state !== 'deleted').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-      {/* Banner */}
-      <div className="sup-chat-banner">
-        <span>Today&apos;s context loaded · 3:30 AM IST</span>
-        <span className="sup-chat-cap">2 of 3</span>
+      {/* 1. Greeting hero */}
+      <div className="sup-chat-hero">
+        <div className="sup-chat-greet">{greet}</div>
+        <div className="sup-chat-sub">{sub}</div>
       </div>
 
-      {/* Demo trigger */}
-      <div style={{ padding: '0.5rem 1rem 0' }}>
-        <button className="sup-secondary" onClick={startDemo} style={{ fontSize: '0.75rem' }}>
-          Show decision-tier demo
+      {/* 2. Big-card — last AI message */}
+      <div className="sup-chat-bigcard">
+        <div className="sup-chat-bigcard-from">FROM AI · LAST MESSAGE</div>
+        <div className="sup-chat-bigcard-text">{lastAiText}</div>
+      </div>
+
+      {/* 3. Drill-down row */}
+      <button
+        className="sup-drill"
+        onClick={() => setSheetOpen(true)}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+        }}
+      >
+        <span>{chatCount} chats today</span>
+        <span style={{ opacity: 0.55, fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+          Tap to see all
+        </span>
+        <span className="sup-drill-chev" style={{ marginLeft: 'auto' }}>
+          ›
+        </span>
+      </button>
+
+      <div style={{ flex: 1 }} />
+
+      {/* 4. Bottom actions */}
+      <div
+        style={{ padding: '0 1rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+      >
+        <button className="sup-primary" onClick={handleNewChat} style={{ width: '100%' }}>
+          Start new chat
+        </button>
+        <button
+          className="sup-rule-edit"
+          onClick={startDemo}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'center' }}
+        >
+          See decision-tier showcase ›
         </button>
       </div>
 
-      {/* Active chats */}
-      <div className="sup-chat-list">
-        {activeChats.map((chat) => {
-          const preview = chat.messages.find((m) => m.role === 'supervisor')?.text ?? '';
-          return (
-            <div key={chat.id} className="sup-chat-row" style={{ position: 'relative' }}>
-              <div
-                className="sup-chat-row-info"
-                onClick={() => {
-                  setPopoverId(null);
-                  setOpenId(chat.id);
-                }}
-                style={{ cursor: 'pointer', flex: 1 }}
-              >
-                <div className="sup-chat-row-title">{chat.title}</div>
-                <div className="sup-chat-row-preview">
-                  {preview.length > 60 ? preview.slice(0, 57) + '…' : preview}
-                </div>
-                <div className="sup-chat-row-meta">{chat.startedAt}</div>
-              </div>
-              <button
-                className="sup-chat-dots"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPopoverId((p) => (p === chat.id ? null : chat.id));
-                }}
-                aria-label="Chat options"
-              >
-                <DotsIcon />
-              </button>
-              {popoverId === chat.id && (
-                <ChatRowPopover
-                  onWrap={() => wrapChat(chat.id)}
-                  onDelete={() => deleteChat(chat.id)}
-                  onClose={() => setPopoverId(null)}
-                />
-              )}
-            </div>
-          );
-        })}
-        {activeChats.length === 0 && (
-          <div style={{ padding: '1.5rem 1rem', opacity: 0.5, fontSize: '0.85rem' }}>
-            No active chats today.
-          </div>
-        )}
-      </div>
+      {/* Past-chats sheet */}
+      {sheetOpen && (
+        <PastChatsSheet
+          chats={chats}
+          onClose={() => setSheetOpen(false)}
+          onWrap={wrapChat}
+          onDelete={deleteChat}
+        />
+      )}
 
-      {/* Yesterday section */}
-      <div className="sup-yesterday-section">
-        <div className="sup-yesterday-label">YESTERDAY</div>
-        <div className="sup-yesterday-row">Site walks · 6:42 AM</div>
-        <div className="sup-yesterday-row">Mukesh follow-up · 4:18 PM</div>
-      </div>
-
-      {/* Demo overlay */}
+      {/* Decision demo overlay */}
       <DemoOverlay
         state={demo}
         onConfirm={handleConfirm}
@@ -482,12 +585,11 @@ export function ChatTab({ timeOfDay }: { timeOfDay: TimeOfDay }): JSX.Element {
         onInput={handleInput}
       />
 
-      {/* Popover backdrop */}
-      {popoverId && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 10 }}
-          onClick={() => setPopoverId(null)}
-        />
+      {/* New-chat toast */}
+      {newChatToast && (
+        <div className="sup-undo" style={{ pointerEvents: 'none' }}>
+          Demo: would open new chat thread
+        </div>
       )}
     </div>
   );

@@ -1,194 +1,204 @@
 /**
- * TodayTab — Today's Plan tab for the Axhy supervisor mobile preview.
- *
- * Shows the stat strip, site cards with worker chips, an AI-draft action,
- * and the long-press-to-swap tip. Varies lightly on timeOfDay.
+ * TodayTab — answers ONE question: "Anything I need to handle today?"
+ * Hero number (present/total), absences in plain language, site status tag,
+ * drill-down to site cards, single AI action button.
  *
  * @derives(master-plan §G)
  */
 
 'use client';
 
+import { useState } from 'react';
+
 import { SITES, WORKERS, type TimeOfDay, type Site, type Worker } from '../_lib/mock';
 
-/** Map a site's todayStatus to the status pill label. @derives(master-plan §G) */
-function statusLabel(status: Site['todayStatus']): string {
-  switch (status) {
-    case 'covered':
-      return 'Covered';
-    case 'short_staffed':
-      return 'Short';
-    case 'flagged':
-      return 'Flagged';
-    case 'pending':
-      return 'Pending';
-  }
+/** Map todayStatus to pill label. @derives(master-plan §G) */
+const LABEL: Record<Site['todayStatus'], string> = {
+  covered: 'Covered',
+  short_staffed: 'Short',
+  flagged: 'Flagged',
+  pending: 'Pending',
+};
+function statusLabel(s: Site['todayStatus']): string {
+  return LABEL[s];
 }
 
-/** CSS modifier class for a site card / status pill. @derives(master-plan §G) */
-function siteModifier(status: Site['todayStatus']): string {
-  switch (status) {
-    case 'flagged':
-      return 'is-flagged';
-    case 'short_staffed':
-      return 'is-short';
-    case 'covered':
-      return 'is-covered';
-    case 'pending':
-      return 'is-pending';
-  }
+/** CSS modifier for site card / pill. @derives(master-plan §G) */
+const MOD: Record<Site['todayStatus'], string> = {
+  flagged: 'is-flagged',
+  short_staffed: 'is-short',
+  covered: 'is-covered',
+  pending: 'is-pending',
+};
+function siteModifier(s: Site['todayStatus']): string {
+  return MOD[s];
 }
 
-/** CSS modifier for a worker chip based on todayStatus. @derives(master-plan §G) */
+/** CSS modifier for worker chip. @derives(master-plan §G) */
 function chipModifier(status: Worker['todayStatus']): string {
-  switch (status) {
-    case 'absent_no_call':
-      return 'is-absent';
-    case 'absent_notified':
-      return 'is-absent-noted';
-    default:
-      return '';
-  }
+  if (status === 'absent_no_call') return 'is-absent';
+  if (status === 'absent_notified') return 'is-absent-noted';
+  return '';
 }
 
-/** Workers assigned to a given site. @derives(master-plan §G) */
+/** Workers at a given site. @derives(master-plan §G) */
 function workersAtSite(siteId: string): Worker[] {
   return WORKERS.filter((w) => w.assignedSite === siteId);
 }
 
 /**
- * Compute the three headline stats from mock data.
- * present = any status that is NOT 'off'.
+ * Compute hero stats from mock data.
+ * present = status 'present' only (absent/off do not count as present).
+ * total   = all workers not 'off'.
  * @derives(master-plan §G)
  */
-function computeStats(): { presentCount: number; shortCount: number; flaggedCount: number } {
-  const presentCount = WORKERS.filter(
-    (w) =>
-      w.todayStatus === 'present' ||
-      w.todayStatus === 'absent_notified' ||
-      w.todayStatus === 'absent_no_call',
-  ).length;
-  const shortCount = SITES.filter((s) => s.todayStatus === 'short_staffed').length;
+function computeHero(): {
+  presentCount: number;
+  totalCount: number;
+  absenceDetail: string;
+  flaggedCount: number;
+  shortCount: number;
+} {
+  const presentCount = WORKERS.filter((w) => w.todayStatus === 'present').length;
+  const totalCount = WORKERS.filter((w) => w.todayStatus !== 'off').length;
+
+  const onLeave = WORKERS.filter((w) => w.todayStatus === 'absent_notified').map(
+    (w) => `${w.name} on leave`,
+  );
+  const noCall = WORKERS.filter((w) => w.todayStatus === 'absent_no_call').map(
+    (w) => `${w.name} no-call`,
+  );
+  const allParts = [...onLeave, ...noCall];
+
+  let absenceDetail = '';
+  if (allParts.length === 0) {
+    absenceDetail = 'All workers accounted for';
+  } else {
+    const joined = allParts.join(' · ');
+    if (joined.length <= 60) {
+      absenceDetail = joined;
+    } else {
+      // keep fitting items, append "+N more"
+      let running = '';
+      let shown = 0;
+      for (const part of allParts) {
+        const candidate = running ? `${running} · ${part}` : part;
+        const withMore = `${candidate} +${allParts.length - shown - 1} more`;
+        if (withMore.length > 60 && running) break;
+        running = candidate;
+        shown++;
+      }
+      const remaining = allParts.length - shown;
+      absenceDetail = remaining > 0 ? `${running} +${remaining} more` : running;
+    }
+  }
+
   const flaggedCount = SITES.filter((s) => s.todayStatus === 'flagged').length;
-  return { presentCount, shortCount, flaggedCount };
+  const shortCount = SITES.filter((s) => s.todayStatus === 'short_staffed').length;
+
+  return { presentCount, totalCount, absenceDetail, flaggedCount, shortCount };
+}
+
+/** Time-of-day suffix for the drill-down meta. @derives(master-plan §G) */
+function drillMeta(timeOfDay: TimeOfDay): string {
+  switch (timeOfDay) {
+    case '7am':
+      return 'Plan ready';
+    case '11am':
+      return 'Mid-morning';
+    case '3pm':
+      return 'Afternoon';
+    case '11pm':
+      return 'Day done';
+  }
 }
 
 /** @derives(master-plan §G) */
 export function TodayTab({ timeOfDay }: { timeOfDay: TimeOfDay }): React.ReactElement {
-  const { presentCount, shortCount, flaggedCount } = computeStats();
-  const totalWorkers = WORKERS.filter((w) => w.todayStatus !== 'off').length;
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const eyebrowSuffix =
-    timeOfDay === '7am'
-      ? 'MORNING ROUNDS'
-      : timeOfDay === '11am'
-        ? 'MID-MORNING'
-        : timeOfDay === '3pm'
-          ? 'AFTERNOON'
-          : /* 11pm */ 'DAY WRAPPED';
+  const { presentCount, totalCount, absenceDetail, flaggedCount, shortCount } = computeHero();
+
+  const statusDotMod = flaggedCount > 0 ? 'is-danger' : shortCount > 0 ? 'is-warn' : 'is-clear';
+
+  const statusText =
+    flaggedCount > 0
+      ? `${flaggedCount} site${flaggedCount > 1 ? 's' : ''} flagged`
+      : shortCount > 0
+        ? `${shortCount} site${shortCount > 1 ? 's' : ''} short-staffed`
+        : 'all clear';
 
   return (
     <>
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <div className="sup-screen-header">
-        <p className="sup-eyebrow">TUESDAY · MAY 1 · {eyebrowSuffix}</p>
-        <h1 className="sup-h1">Today's plan</h1>
-        <p style={{ margin: 0 }}>
-          <span className="sup-bignum">
-            <span className="sup-bignum-n">{SITES.length}</span>
-            <span className="sup-bignum-label">sites</span>
-          </span>
-          {' · '}
-          <span className="sup-bignum">
-            <span className="sup-bignum-n">
-              {WORKERS.filter((w) => w.todayStatus !== 'off').length}
-            </span>
-            <span className="sup-bignum-label">workers</span>
-          </span>
+      {/* ── Hero ──────────────────────────────────────────────────────── */}
+      <div className="sup-hero">
+        <p className="sup-hero-eyebrow">Today · May 1</p>
+
+        <p className="sup-hero-answer">
+          {presentCount}/{totalCount}
+        </p>
+
+        <p className="sup-hero-detail">{absenceDetail}</p>
+
+        {/* Status tag */}
+        <p className="sup-hero-tag">
+          <span className={`sup-dot ${statusDotMod}`} />
+          {statusText}
         </p>
       </div>
 
-      {/* ── Content ───────────────────────────────────────────────── */}
-      <div className="sup-screen-content">
-        {/* Stat strip */}
-        <div className="sup-today-stats">
-          <div className="sup-stat">
-            <span className="sup-stat-num">
-              {presentCount} / {totalWorkers}
-            </span>
-            <span className="sup-stat-label">Workers in</span>
-          </div>
-          <div className="sup-stat">
-            <span className={`sup-stat-num${shortCount > 0 ? ' is-warn' : ''}`}>
-              {shortCount} short
-            </span>
-            <span className="sup-stat-label">Sites short</span>
-          </div>
-          <div className="sup-stat">
-            <span className={`sup-stat-num${flaggedCount > 0 ? ' is-danger' : ''}`}>
-              {flaggedCount} flagged
-            </span>
-            <span className="sup-stat-label">Sites flagged</span>
-          </div>
-        </div>
+      {/* ── Drill-down ────────────────────────────────────────────────── */}
+      <button type="button" className="sup-drill" onClick={() => setSheetOpen(true)}>
+        <span className="sup-drill-label">{SITES.length} sites — see today&apos;s plan</span>
+        <span className="sup-drill-meta">{drillMeta(timeOfDay)} ›</span>
+      </button>
 
-        {/* AI draft action */}
-        <button className="sup-secondary" type="button">
-          Ask AI to draft today's plan
+      {/* ── Bottom action ─────────────────────────────────────────────── */}
+      <div className="sup-bottom-action">
+        <button type="button" className="sup-primary">
+          Talk to AI
         </button>
-
-        {/* Site cards */}
-        {SITES.map((site) => {
-          const mod = siteModifier(site.todayStatus);
-          const label = statusLabel(site.todayStatus);
-          const assigned = workersAtSite(site.id);
-
-          return (
-            <div key={site.id} className={`sup-site-card ${mod}`}>
-              <div className="sup-site-head">
-                <span className="sup-site-name">{site.name}</span>
-                <span className={`sup-site-status ${mod}`}>{label.toUpperCase()}</span>
-              </div>
-
-              {site.quirk && <p className="sup-site-quirk">{site.quirk}</p>}
-
-              <div className="sup-site-workers">
-                {assigned.length > 0 ? (
-                  assigned.map((worker) => {
-                    const chipMod = chipModifier(worker.todayStatus);
-                    return (
-                      <span
-                        key={worker.id}
-                        className={`sup-worker-chip${chipMod ? ` ${chipMod}` : ''}`}
-                      >
-                        {worker.name.split(' ')[0]}
-                      </span>
-                    );
-                  })
-                ) : (
-                  <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>Tap to assign workers</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Long-press tip */}
-        <div className="sup-card">
-          <p className="sup-h2">Tip</p>
-          <p>
-            Long-press a worker chip to swap them. The AI will check today's plan and suggest where
-            they fit best.
-          </p>
-        </div>
-
-        {/* Day-wrapped footer — 11pm only */}
-        {timeOfDay === '11pm' && (
-          <div className="sup-card" style={{ borderColor: '#22c55e33', background: '#052e16' }}>
-            <p>Day wrapped. 4 decisions applied. Tomorrow's draft ready in Summary.</p>
-          </div>
-        )}
       </div>
+
+      {/* ── Slide-up sheet ────────────────────────────────────────────── */}
+      {sheetOpen && (
+        <div className="sup-sheet">
+          <div className="sup-sheet-head">
+            <button type="button" className="sup-back" onClick={() => setSheetOpen(false)}>
+              ‹ Back
+            </button>
+            <span className="sup-sheet-title">Today&apos;s plan</span>
+          </div>
+
+          {SITES.map((site) => {
+            const mod = siteModifier(site.todayStatus);
+            const assigned = workersAtSite(site.id);
+            return (
+              <div key={site.id} className={`sup-site-card ${mod}`}>
+                <div className="sup-site-head">
+                  <span className="sup-site-name">{site.name}</span>
+                  <span className={`sup-site-status ${mod}`}>{statusLabel(site.todayStatus)}</span>
+                </div>
+                {site.quirk && <p className="sup-site-quirk">{site.quirk}</p>}
+                <div className="sup-site-workers">
+                  {assigned.length > 0 ? (
+                    assigned.map((w) => (
+                      <span
+                        key={w.id}
+                        className={`sup-worker-chip${chipModifier(w.todayStatus) ? ` ${chipModifier(w.todayStatus)}` : ''}`}
+                      >
+                        {w.name.split(' ')[0]}
+                      </span>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>No workers assigned</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }

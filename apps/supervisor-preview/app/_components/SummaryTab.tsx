@@ -1,57 +1,77 @@
 /**
- * SummaryTab — day-level summary view for the supervisor preview prototype.
+ * SummaryTab — "How's the day going?" single-answer summary for the supervisor preview.
  *
- * Shows hero headline, 4 metrics, today's decision log, and tomorrow's AI draft preview.
+ * One sentence hero answer, drill-down sheet for decisions, tomorrow draft at end of day.
+ * No metric grid. No decision list on landing. Less is more.
  *
  * @derives(master-plan §G)
  */
 'use client';
 
-import { TODAYS_DECISIONS, SITES, WORKERS, type TimeOfDay, type Decision } from '../_lib/mock';
+import { useState } from 'react';
+
+import { TODAYS_DECISIONS, SITES, type TimeOfDay, type Decision } from '../_lib/mock';
 
 /** @derives(master-plan §G) */
-function heroLine(timeOfDay: TimeOfDay): string {
+function appliedCount(): number {
+  return TODAYS_DECISIONS.filter((d) => d.status === 'applied').length;
+}
+
+/** @derives(master-plan §G) */
+function payImpactFormatted(): string {
+  let total = 0;
+  for (const d of TODAYS_DECISIONS) {
+    if (!d.consequence) continue;
+    const match = d.consequence.match(/₹(\d+(?:,\d+)*)/);
+    if (match && match[1]) {
+      total += parseInt(match[1].replace(/,/g, ''), 10);
+    }
+  }
+  return `₹${total.toLocaleString('en-IN')}`;
+}
+
+/** @derives(master-plan §G) */
+function followUpCount(): number {
+  return SITES.filter((s) => s.todayStatus === 'flagged' || s.todayStatus === 'short_staffed')
+    .length;
+}
+
+/** @derives(master-plan §G) */
+function lastDecisionTime(): string {
+  const last = TODAYS_DECISIONS[TODAYS_DECISIONS.length - 1];
+  return last ? last.createdAt : '--:--';
+}
+
+/** @derives(master-plan §G) */
+function heroAnswer(timeOfDay: TimeOfDay): string {
   switch (timeOfDay) {
     case '7am':
       return 'Quiet so far. 0 decisions today.';
     case '11am':
-      return '3 decisions made. 1 site flagged.';
+      return `${appliedCount()} decisions made. ${payImpactFormatted()} pay impact.`;
     case '3pm':
-      return '4 decisions in. Phoenix complaint logged.';
+      return `${TODAYS_DECISIONS.length} decisions in. Phoenix complaint logged.`;
     case '11pm':
-      return "Day wrapped. 4 decisions applied to your team's records.";
+      return `Day wrapped. ${TODAYS_DECISIONS.length} decisions applied.`;
   }
 }
 
 /** @derives(master-plan §G) */
-function heroSub(timeOfDay: TimeOfDay): string {
+function heroDetail(timeOfDay: TimeOfDay): string {
   switch (timeOfDay) {
     case '7am':
-      return 'Morning is just starting. Check in after the first round.';
+      return 'Workers will start arriving by 6:30 AM. AI will parse their absences.';
     case '11am':
-      return 'Half the day done. Phoenix still needs a follow-up.';
+      return `Half the day done. ${followUpCount()} site needs follow-up.`;
     case '3pm':
-      return 'Afternoon check. Mukesh flagged for HR, plan ready at night.';
+      return "Vinod moved to Apollo this morning. Sarita's leave processed.";
     case '11pm':
-      return 'All applied. HR copy sent. Tomorrow draft is ready.';
+      return 'Plan ready for tomorrow. Tap below to review.';
   }
 }
 
 /** @derives(master-plan §G) */
-function tomorrowText(timeOfDay: TimeOfDay): string {
-  switch (timeOfDay) {
-    case '7am':
-    case '11am':
-      return "AI will draft tomorrow's plan after midnight. Wrap up today's chats to feed it.";
-    case '3pm':
-      return 'AI sees: Sarita on leave (already approved), Mukesh follow-up pending. Draft will be ready 11:30 PM.';
-    case '11pm':
-      return 'Plan ready. Worker counts: Brigade 4, IT Park C 6 (with Anil leading), Apollo A 5, Phoenix 3, Central School 2. One swap suggestion: Vinod back to Phoenix from Apollo (after morning rounds).';
-  }
-}
-
-/** @derives(master-plan §G) */
-function tierModifier(tier: Decision['tier']): string {
+function tierModifierClass(tier: Decision['tier']): string {
   if (tier === 'EMPLOYMENT') return 'is-employment';
   if (tier === 'PERSONNEL') return 'is-personnel';
   return '';
@@ -72,80 +92,22 @@ function tierLabel(tier: Decision['tier']): string {
 }
 
 /** @derives(master-plan §G) */
-function payImpact(): string {
-  // Sum ₹ amounts from consequence strings across all decisions.
-  // Currently dec_3 carries "₹500".
-  let total = 0;
-  for (const d of TODAYS_DECISIONS) {
-    if (!d.consequence) continue;
-    const match = d.consequence.match(/₹(\d+(?:,\d+)*)/);
-    if (match && match[1]) {
-      total += parseInt(match[1].replace(/,/g, ''), 10);
-    }
-  }
-  return `₹${total.toLocaleString('en-IN')}`;
-}
-
-/** @derives(master-plan §G) */
-function workerPresence(): string {
-  const present = WORKERS.filter((w) => w.todayStatus === 'present').length;
-  return `${present} / ${WORKERS.length}`;
-}
-
-/** @derives(master-plan §G) */
-function sitesNeedingFollowUp(): number {
-  return SITES.filter((s) => s.todayStatus === 'flagged' || s.todayStatus === 'short_staffed')
-    .length;
-}
-
-/**
- * SummaryTab renders the day-level summary screen for the supervisor preview.
- *
- * @derives(master-plan §G)
- */
-export function SummaryTab({ timeOfDay }: { timeOfDay: TimeOfDay }) {
-  const decisionCount = TODAYS_DECISIONS.length;
-  const followUpCount = sitesNeedingFollowUp();
-  const isEndOfDay = timeOfDay === '11pm';
-
+function DecisionSheet({ onClose }: { onClose: () => void }) {
   return (
-    <div className="sup-screen-content">
-      {/* Hero */}
-      <div className="sup-summary-hero">
-        <span className="sup-eyebrow">DAY SUMMARY · TUESDAY</span>
-        <p className="sup-summary-bigline">{heroLine(timeOfDay)}</p>
-        <p className="sup-summary-sub">{heroSub(timeOfDay)}</p>
+    <div className="sup-sheet">
+      <div className="sup-sheet-header">
+        <span className="sup-sheet-title">Today's decisions</span>
+        <button className="sup-sheet-close" onClick={onClose}>
+          Close
+        </button>
       </div>
-
-      {/* Metrics grid */}
-      <div className="sup-metrics">
-        <div className="sup-metric">
-          <span className="sup-metric-num">{payImpact()}</span>
-          <span className="sup-metric-label">Pay impact today</span>
-        </div>
-        <div className="sup-metric">
-          <span className="sup-metric-num">{workerPresence()}</span>
-          <span className="sup-metric-label">Worker presence</span>
-        </div>
-        <div className="sup-metric">
-          <span className="sup-metric-num">{decisionCount}</span>
-          <span className="sup-metric-label">Decisions logged</span>
-        </div>
-        <div className="sup-metric">
-          <span className="sup-metric-num">{followUpCount}</span>
-          <span className="sup-metric-label">Sites needing follow-up</span>
-        </div>
-      </div>
-
-      {/* Decision list */}
-      <h2 className="sup-h2">Today's decisions</h2>
       <div className="sup-decision-list">
         {TODAYS_DECISIONS.map((decision) => {
-          const modifier = tierModifier(decision.tier);
+          const mod = tierModifierClass(decision.tier);
           return (
             <div key={decision.id} className="sup-decision-row">
               <div className="sup-decision-row-head">
-                <span className={`sup-decision-row-tier${modifier ? ` ${modifier}` : ''}`}>
+                <span className={`sup-decision-row-tier${mod ? ` ${mod}` : ''}`}>
                   {tierLabel(decision.tier)}
                 </span>
                 <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', opacity: 0.6 }}>
@@ -156,7 +118,7 @@ export function SummaryTab({ timeOfDay }: { timeOfDay: TimeOfDay }) {
                 {decision.summary}
                 {decision.status === 'pending' && (
                   <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', opacity: 0.7 }}>
-                    · Pending HR confirm
+                    Pending HR confirm
                   </span>
                 )}
               </p>
@@ -167,22 +129,56 @@ export function SummaryTab({ timeOfDay }: { timeOfDay: TimeOfDay }) {
           );
         })}
       </div>
+    </div>
+  );
+}
 
-      {/* Tomorrow preview */}
-      <div className="sup-tomorrow-section">
-        <span className="sup-tomorrow-label">TOMORROW'S DRAFT</span>
-        <p className="sup-tomorrow-text">{tomorrowText(timeOfDay)}</p>
+/**
+ * SummaryTab — single-answer "How's the day going?" screen.
+ *
+ * @derives(master-plan §G)
+ */
+export function SummaryTab({ timeOfDay }: { timeOfDay: TimeOfDay }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const isEndOfDay = timeOfDay === '11pm';
+  const total = TODAYS_DECISIONS.length;
+
+  return (
+    <div className="sup-screen-content">
+      {/* Hero */}
+      <div className="sup-hero">
+        <span className="sup-hero-eyebrow">Day summary · Tuesday</span>
+        <p className="sup-hero-answer-sm">{heroAnswer(timeOfDay)}</p>
+        <p className="sup-hero-detail">{heroDetail(timeOfDay)}</p>
       </div>
 
-      {/* HR action button */}
-      <button
-        className="sup-primary"
-        disabled={!isEndOfDay}
-        onClick={isEndOfDay ? () => undefined : undefined}
-        style={{ marginTop: '1rem', width: '100%' }}
-      >
-        Send to HR for night review
+      {/* Drill-down row */}
+      <button className="sup-drill" onClick={() => setSheetOpen(true)}>
+        <span className="sup-drill-label">{total} decisions today</span>
+        <span className="sup-drill-meta">Most recent {lastDecisionTime()}</span>
+        <span className="sup-drill-chev">›</span>
       </button>
+
+      {/* Decision sheet */}
+      {sheetOpen && <DecisionSheet onClose={() => setSheetOpen(false)} />}
+
+      {/* Tomorrow card — end of day only */}
+      {isEndOfDay && (
+        <div className="sup-tomorrow-section">
+          <span className="sup-tomorrow-label">TOMORROW'S DRAFT</span>
+          <p className="sup-tomorrow-text">
+            Plan ready. Brigade 4, IT Park C 6, Apollo 5, Phoenix 3, Central School 2. One swap
+            suggestion: Vinod back to Phoenix from Apollo.
+          </p>
+        </div>
+      )}
+
+      {/* Bottom action — end of day only */}
+      {isEndOfDay && (
+        <div className="sup-bottom-action">
+          <button className="sup-primary">Send to HR for night review</button>
+        </div>
+      )}
     </div>
   );
 }

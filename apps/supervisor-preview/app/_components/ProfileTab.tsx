@@ -1,9 +1,9 @@
 /**
- * ProfileTab — Profile tab for the Axhy supervisor mobile preview.
+ * ProfileTab — "My setup" for the Axhy supervisor mobile preview.
  *
- * Shows the supervisor identity header, then two rule sections:
- * company rules (locked, set by HR) and five personal rule cards
- * (editable in-place). Language preference uses pill selection.
+ * One question, one big answer. Six collapsed section rows on landing.
+ * Tap any row to open a sheet for viewing or editing that section.
+ * Company rules are locked (set by HR). Personal rules are editable.
  *
  * @derives(master-plan §G)
  */
@@ -20,27 +20,38 @@ import {
   type TimeOfDay,
 } from '../_lib/mock';
 
-/** Language pill configuration. @derives(master-plan §G) */
+/** Language pill options. @derives(master-plan §G) */
 const LANG_PILLS: { value: PersonalRules['language']; label: string }[] = [
   { value: 'hi', label: 'Hindi' },
   { value: 'en', label: 'English' },
   { value: 'te', label: 'Telugu' },
-  { value: 'mixed', label: 'Mixed (auto)' },
+  { value: 'mixed', label: 'Mixed' },
 ];
 
-/** Personal rule section definitions (excludes 'language', handled separately). @derives(master-plan §G) */
-const TEXT_SECTIONS: { key: Exclude<keyof PersonalRules, 'language'>; title: string }[] = [
-  { key: 'sites', title: 'Sites you manage' },
-  { key: 'workers', title: 'Workers and how to use them' },
-  { key: 'escalation', title: 'Escalation and reachability' },
-  { key: 'style', title: 'Your communication style' },
-];
+/** Label for a language code. @derives(master-plan §G) */
+function langLabel(value: PersonalRules['language']): string {
+  return LANG_PILLS.find((p) => p.value === value)?.label ?? value;
+}
 
-/** State for a single editable section. @derives(master-plan §G) */
-type SectionEditState = {
-  key: Exclude<keyof PersonalRules, 'language'>;
-  draftValue: string;
+/** Parsed bullet items + count from COMPANY_SUPERVISOR_RULES. @derives(master-plan §G) */
+const COMPANY_RULE_BULLETS: string[] = COMPANY_SUPERVISOR_RULES.split('\n')
+  .filter((l) => l.trimStart().startsWith('-'))
+  .map((l) => l.replace(/^\s*-\s*/, ''));
+const COMPANY_RULE_COUNT = COMPANY_RULE_BULLETS.length;
+
+/** Which sheet is open. @derives(master-plan §G) */
+type OpenSheet = 'company' | 'sites' | 'workers' | 'escalation' | 'style' | 'language' | null;
+
+/** Titles for each text section sheet. @derives(master-plan §G) */
+const SECTION_TITLES: Record<Exclude<OpenSheet, 'company' | 'language' | null>, string> = {
+  sites: 'Sites you manage',
+  workers: 'Workers and how to use them',
+  escalation: 'Escalation and reachability',
+  style: 'Your communication style',
 };
+
+/** Editable personal rule keys. @derives(master-plan §G) */
+type TextKey = Exclude<keyof PersonalRules, 'language'>;
 
 /** @derives(master-plan §G) */
 export function ProfileTab({
@@ -49,54 +60,66 @@ export function ProfileTab({
   timeOfDay: TimeOfDay;
 }): React.ReactElement {
   const [rules, setRules] = useState<PersonalRules>({ ...PERSONAL_RULES_DEFAULT });
-  const [editing, setEditing] = useState<SectionEditState | null>(null);
-  const [savedKey, setSavedKey] = useState<string | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [open, setOpen] = useState<OpenSheet>(null);
+  const [draft, setDraft] = useState<string>('');
+  const [draftLang, setDraftLang] = useState<PersonalRules['language']>(rules.language);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Flash "Saved" near the edit button for 2 seconds. @derives(master-plan §G) */
-  function flashSaved(key: string): void {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    setSavedKey(key);
-    saveTimerRef.current = setTimeout(() => setSavedKey(null), 2000);
-  }
-
-  /** Open a text section for editing; discard any open section first. @derives(master-plan §G) */
-  function openEdit(key: Exclude<keyof PersonalRules, 'language'>): void {
-    setEditing({ key, draftValue: rules[key] });
-  }
-
-  /** Cancel editing — revert draft. @derives(master-plan §G) */
-  function cancelEdit(): void {
-    setEditing(null);
-  }
-
-  /** Commit draft to local state. @derives(master-plan §G) */
-  function commitEdit(): void {
-    if (!editing) return;
-    setRules((prev) => ({ ...prev, [editing.key]: editing.draftValue }));
-    const key = editing.key;
-    setEditing(null);
-    flashSaved(key);
-  }
-
-  /** Handle edit button click — open or open-while-replacing. @derives(master-plan §G) */
-  function handleEditClick(key: Exclude<keyof PersonalRules, 'language'>): void {
-    if (editing && editing.key !== key) {
-      // Discard the open section before opening the new one.
-      setEditing({ key, draftValue: rules[key] });
-    } else {
-      openEdit(key);
+  /** Open a sheet, initializing draft state. @derives(master-plan §G) */
+  function openSheet(sheet: OpenSheet): void {
+    if (sheet === 'company') {
+      setOpen('company');
+      return;
+    }
+    if (sheet === 'language') {
+      setDraftLang(rules.language);
+      setOpen('language');
+      return;
+    }
+    if (sheet !== null) {
+      setDraft(rules[sheet as TextKey]);
+      setOpen(sheet);
     }
   }
 
-  /** Set language pill selection. @derives(master-plan §G) */
-  function selectLanguage(value: PersonalRules['language']): void {
-    setRules((prev) => ({ ...prev, language: value }));
+  /** Close sheet without saving. @derives(master-plan §G) */
+  function closeSheet(): void {
+    setOpen(null);
+  }
+
+  /** Commit draft text — flash Saved 2 s then close. @derives(master-plan §G) */
+  function commitText(key: TextKey): void {
+    setRules((prev) => ({ ...prev, [key]: draft }));
+    flashThenClose();
+  }
+
+  /** Commit language selection — flash Saved 2 s then close. @derives(master-plan §G) */
+  function commitLanguage(): void {
+    setRules((prev) => ({ ...prev, language: draftLang }));
+    flashThenClose();
+  }
+
+  /** Show "Saved" for 2 s then close the sheet. @derives(master-plan §G) */
+  function flashThenClose(): void {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setSavedFlash(true);
+    flashTimerRef.current = setTimeout(() => {
+      setSavedFlash(false);
+      setOpen(null);
+    }, 2000);
+  }
+
+  /** Sub-line for a text rule row. @derives(master-plan §G) */
+  function textSub(key: TextKey): string {
+    const val = rules[key];
+    if (!val.trim()) return '(empty)';
+    return `${val.length} chars`;
   }
 
   return (
     <>
-      {/* ── Profile header ─────────────────────────────────────────── */}
+      {/* ── Profile header ───────────────────────────────────────── */}
       <div className="sup-profile-header">
         <div className="sup-avatar">S</div>
         <div>
@@ -105,126 +128,234 @@ export function ProfileTab({
         </div>
       </div>
 
-      {/* ── Content ────────────────────────────────────────────────── */}
-      <div className="sup-screen-content">
-        {/* Eyebrow + hint */}
-        <div className="sup-rule-section">
-          <p className="sup-eyebrow">YOUR RULES</p>
-          <p className="sup-rule-body" style={{ marginTop: 6 }}>
-            The AI uses these to work the way you work. Edit anytime — changes take effect at
-            tomorrow&apos;s 3:30 AM context refresh.
-          </p>
-        </div>
-
-        {/* ── Section 0: Company rules (locked) ──────────────────── */}
-        <div className="sup-rule-section">
-          <div className="sup-rule-card is-locked">
-            <div className="sup-rule-head">
-              <span className="sup-rule-title">Company rules</span>
-              <span className="sup-rule-locked-tag">SET BY HR</span>
-            </div>
-            <p className="sup-rule-body">{COMPANY_SUPERVISOR_RULES}</p>
-            <p className="sup-rule-body" style={{ fontStyle: 'italic', marginTop: 2 }}>
-              Set by Kavitha (HR). Ask her to change.
-            </p>
-          </div>
-        </div>
-
-        {/* ── Sections 1–4: Text rule cards ──────────────────────── */}
-        {TEXT_SECTIONS.map(({ key, title }) => {
-          const isEditing = editing?.key === key;
-          const isSaved = savedKey === key;
-
-          return (
-            <div key={key} className="sup-rule-section">
-              <div className="sup-rule-card">
-                <div className="sup-rule-head">
-                  <span className="sup-rule-title">{title}</span>
-                  {isEditing ? (
-                    <span className="sup-rule-edit" onClick={cancelEdit}>
-                      Cancel
-                    </span>
-                  ) : isSaved ? (
-                    <span className="sup-rule-edit sup-update-acked">Saved</span>
-                  ) : (
-                    <span className="sup-rule-edit" onClick={() => handleEditClick(key)}>
-                      Edit
-                    </span>
-                  )}
-                </div>
-
-                {isEditing ? (
-                  <>
-                    <textarea
-                      className="sup-rule-textarea"
-                      autoFocus
-                      value={editing.draftValue}
-                      onChange={(e) =>
-                        setEditing((prev) =>
-                          prev ? { ...prev, draftValue: e.target.value } : prev,
-                        )
-                      }
-                    />
-                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                      <button className="sup-secondary" type="button" onClick={cancelEdit}>
-                        Cancel
-                      </button>
-                      <button className="sup-primary" type="button" onClick={commitEdit}>
-                        Save
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <p className="sup-rule-body">{rules[key]}</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* ── Section 5: Language preference (pills) ─────────────── */}
-        <div className="sup-rule-section">
-          <div className="sup-rule-card">
-            <div className="sup-rule-head">
-              <span className="sup-rule-title">Language preference</span>
-            </div>
-            <div className="sup-lang-row">
-              {LANG_PILLS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`sup-lang-pill${rules.language === value ? ' is-on' : ''}`}
-                  onClick={() => selectLanguage(value)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ── "What Mixed means" explainer ───────────────────────── */}
-        <div className="sup-card">
-          <p className="sup-h2">What &apos;Mixed&apos; means</p>
-          <p>
-            If you write in Hindi-English-Telugu mix, the AI will reply in the same mix. It
-            won&apos;t &apos;fix&apos; your typing or translate. Set a single language only if you
-            want strict replies.
-          </p>
-        </div>
-
-        {/* ── Footer ─────────────────────────────────────────────── */}
+      {/* ── Section list ─────────────────────────────────────────── */}
+      <div className="sup-section-list">
+        {/* Row 0: Company rules (locked) */}
         <div
-          style={{ padding: '12px 20px 28px', display: 'flex', flexDirection: 'column', gap: 10 }}
+          className="sup-section-row is-locked"
+          onClick={() => openSheet('company')}
+          style={{ cursor: 'pointer' }}
         >
-          <p className="sup-profile-sub">
-            Phone: {SUPERVISOR.phone} · Last login: just now · Multi-company: 1
+          <div>
+            <div className="sup-section-row-title">Company rules</div>
+            <div className="sup-section-row-sub">
+              {COMPANY_RULE_COUNT} rules · set by Kavitha (HR)
+            </div>
+          </div>
+          <span
+            style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              fontWeight: 700,
+              color: 'var(--text-mute)',
+              letterSpacing: '0.07em',
+              textTransform: 'uppercase',
+              flexShrink: 0,
+            }}
+          >
+            LOCKED
+          </span>
+        </div>
+
+        {/* Row 1: Sites */}
+        <div className="sup-section-row" onClick={() => openSheet('sites')}>
+          <div>
+            <div className="sup-section-row-title">Sites you manage</div>
+            <div className="sup-section-row-sub">{textSub('sites')}</div>
+          </div>
+          <span className="sup-drill-chev">›</span>
+        </div>
+
+        {/* Row 2: Workers */}
+        <div className="sup-section-row" onClick={() => openSheet('workers')}>
+          <div>
+            <div className="sup-section-row-title">Workers and how to use them</div>
+            <div className="sup-section-row-sub">{textSub('workers')}</div>
+          </div>
+          <span className="sup-drill-chev">›</span>
+        </div>
+
+        {/* Row 3: Escalation */}
+        <div className="sup-section-row" onClick={() => openSheet('escalation')}>
+          <div>
+            <div className="sup-section-row-title">Escalation and reachability</div>
+            <div className="sup-section-row-sub">{textSub('escalation')}</div>
+          </div>
+          <span className="sup-drill-chev">›</span>
+        </div>
+
+        {/* Row 4: Style */}
+        <div className="sup-section-row" onClick={() => openSheet('style')}>
+          <div>
+            <div className="sup-section-row-title">Your communication style</div>
+            <div className="sup-section-row-sub">{textSub('style')}</div>
+          </div>
+          <span className="sup-drill-chev">›</span>
+        </div>
+
+        {/* Row 5: Language */}
+        <div className="sup-section-row" onClick={() => openSheet('language')}>
+          <div>
+            <div className="sup-section-row-title">Language preference</div>
+            <div className="sup-section-row-sub">{langLabel(rules.language)}</div>
+          </div>
+          <span className="sup-drill-chev">›</span>
+        </div>
+
+        {/* Footer */}
+        <div style={{ marginTop: 8 }}>
+          <p className="sup-profile-sub" style={{ marginBottom: 10 }}>
+            {SUPERVISOR.phone} · Last login: just now
           </p>
           <button className="sup-secondary" type="button" disabled>
             Sign out
           </button>
         </div>
       </div>
+
+      {/* ── Sheet: Company rules (locked) ────────────────────────── */}
+      {open === 'company' && (
+        <div className="sup-sheet">
+          <div className="sup-sheet-head">
+            <button className="sup-back" type="button" onClick={closeSheet}>
+              ‹
+            </button>
+            <span className="sup-sheet-title">Company rules</span>
+          </div>
+          <div className="sup-sheet-body">
+            <ul className="sup-bullet-list">
+              {COMPANY_RULE_BULLETS.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+            <p
+              style={{
+                fontStyle: 'italic',
+                color: 'var(--text-mute)',
+                fontSize: 13,
+                fontWeight: 500,
+                marginTop: 4,
+              }}
+            >
+              Set by Kavitha (HR). Ask her to change.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sheet: Text rule sections ─────────────────────────────── */}
+      {open != null && open in SECTION_TITLES && (
+        <TextRuleSheet
+          title={SECTION_TITLES[open as keyof typeof SECTION_TITLES]}
+          value={draft}
+          savedFlash={savedFlash}
+          onChange={setDraft}
+          onCancel={closeSheet}
+          onSave={() => commitText(open as TextKey)}
+        />
+      )}
+
+      {/* ── Sheet: Language preference ───────────────────────────── */}
+      {open === 'language' && (
+        <div className="sup-sheet">
+          <div className="sup-sheet-head">
+            <button className="sup-back" type="button" onClick={closeSheet}>
+              ‹
+            </button>
+            <span className="sup-sheet-title">Language preference</span>
+          </div>
+          <div className="sup-sheet-body">
+            <div className="sup-lang-row">
+              {LANG_PILLS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`sup-lang-pill${draftLang === value ? ' is-on' : ''}`}
+                  onClick={() => setDraftLang(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ padding: '0 16px 8px', textAlign: 'center' }}>
+            {savedFlash && (
+              <span className="sup-update-acked" style={{ display: 'block', marginBottom: 8 }}>
+                Saved
+              </span>
+            )}
+            <button
+              className="sup-secondary"
+              type="button"
+              onClick={closeSheet}
+              style={{ marginBottom: 8 }}
+            >
+              Cancel
+            </button>
+          </div>
+          <div className="sup-bottom-action">
+            <button className="sup-primary" type="button" onClick={commitLanguage}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+/** Inline sub-component for text-rule editing sheets. @derives(master-plan §G) */
+function TextRuleSheet({
+  title,
+  value,
+  savedFlash,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  title: string;
+  value: string;
+  savedFlash: boolean;
+  onChange: (v: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}): React.ReactElement {
+  return (
+    <div className="sup-sheet">
+      <div className="sup-sheet-head">
+        <button className="sup-back" type="button" onClick={onCancel}>
+          ‹
+        </button>
+        <span className="sup-sheet-title">{title}</span>
+      </div>
+      <div className="sup-sheet-body">
+        <textarea
+          className="sup-rule-textarea"
+          autoFocus
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </div>
+      <div style={{ padding: '0 16px 8px', textAlign: 'center' }}>
+        {savedFlash && (
+          <span className="sup-update-acked" style={{ display: 'block', marginBottom: 8 }}>
+            Saved
+          </span>
+        )}
+        <button
+          className="sup-secondary"
+          type="button"
+          onClick={onCancel}
+          style={{ marginBottom: 8 }}
+        >
+          Cancel
+        </button>
+      </div>
+      <div className="sup-bottom-action">
+        <button className="sup-primary" type="button" onClick={onSave}>
+          Save
+        </button>
+      </div>
+    </div>
   );
 }

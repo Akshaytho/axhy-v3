@@ -1184,3 +1184,356 @@ button {
     gap: 10px;
   }
 }
+
+/* ─── frame=off — full-bleed phone preview, no desktop chrome ─── */
+.sup-stage.is-frameless .sup-phone-wrap {
+  padding: 0;
+}
+.sup-stage.is-frameless .sup-phone {
+  width: 100vw;
+  height: calc(100vh - 48px);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.sup-stage.is-frameless .sup-phone-notch,
+.sup-stage.is-frameless .sup-phone-status {
+  display: none;
+}
+
+/* ─── REDESIGN (panel-2026-05-01 round 2) — one question per tab ─── */
+/* Hero block — dominant 60% of viewport, centered, big-text answer */
+.sup-hero {
+  padding: 28px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sup-hero-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mute);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.sup-hero-answer {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 56px;
+  letter-spacing: -0.04em;
+  color: var(--gold);
+  line-height: 1;
+  margin-top: 6px;
+}
+.sup-hero-answer-sm {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: -0.025em;
+  color: var(--text);
+  line-height: 1.15;
+  margin-top: 6px;
+}
+.sup-hero-detail {
+  color: var(--text-dim);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin-top: 10px;
+  max-width: 30ch;
+}
+.sup-hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sup-hero-tag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ff7878;
+  display: inline-block;
+}
+.sup-hero-tag-dot.is-warn {
+  background: #f59e0b;
+}
+.sup-hero-tag-dot.is-clear {
+  background: #4ade80;
+}
+
+/* Single primary action — bottom-anchored above tab bar, BIG */
+.sup-bottom-action {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 96px;
+  z-index: 9;
+}
+.sup-bottom-action .sup-primary {
+  height: 60px;
+  font-size: 17px;
+}
+
+/* Drill-down sheet — slides up over the hero when triggered */
+.sup-sheet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 80px;
+  background: #000;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  animation: sup-sheet-in 200ms ease-out;
+}
+@keyframes sup-sheet-in {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.sup-sheet-head {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.sup-back {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.sup-back:hover {
+  color: var(--gold);
+  background: rgba(212, 175, 55, 0.06);
+}
+.sup-sheet-title {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.sup-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Refined tab bar — proper minimal SVG icons not letters */
+.sup-tab-icon-svg {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sup-tab-icon-svg svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Inline drill-down link below hero — tap to reveal */
+.sup-drill {
+  margin: 4px 24px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--gray-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.sup-drill:hover {
+  border-color: var(--border-strong);
+}
+.sup-drill-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.sup-drill-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mute);
+}
+.sup-drill-chev {
+  color: var(--text-mute);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* Empty / "all clear" state */
+.sup-clear {
+  padding: 64px 32px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.sup-clear-mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  border: 2px solid rgba(74, 222, 128, 0.4);
+  background: rgba(74, 222, 128, 0.08);
+  color: #4ade80;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sup-clear-title {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.sup-clear-sub {
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  max-width: 30ch;
+  line-height: 1.5;
+}
+
+/* Big-input chat hero (Chat tab) */
+.sup-chat-hero {
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sup-chat-greet {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  line-height: 1.25;
+}
+.sup-chat-sub {
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.sup-chat-bigcard {
+  border: 1px solid var(--border);
+  background: var(--gray-1);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.sup-chat-bigcard-from {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--gold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sup-chat-bigcard-text {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+/* Profile redesign — collapsed sections by default */
+.sup-section-list {
+  padding: 4px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sup-section-row {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--gray-1);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.sup-section-row:hover {
+  border-color: var(--border-strong);
+}
+.sup-section-row.is-locked {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.05);
+  cursor: default;
+}
+.sup-section-row-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+.sup-section-row-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mute);
+  margin-top: 2px;
+}
+
+/* Properly-formatted bullet list inside locked rules sheet */
+.sup-bullet-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
+}
+.sup-bullet-list li {
+  position: relative;
+  padding-left: 18px;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.sup-bullet-list li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--gold);
+}

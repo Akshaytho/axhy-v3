@@ -14,6 +14,7 @@ const config = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: 'standalone',
+  devIndicators: false,
   experimental: {
     typedRoutes: true,
   },

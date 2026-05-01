@@ -271,13 +271,6 @@ export const TODAYS_CHATS: Chat[] = [
         },
       },
       {
-        id: 'm4',
-        role: 'supervisor',
-        text: 'Confirm',
-        language: 'en',
-        timestamp: '06:45',
-      },
-      {
         id: 'm5',
         role: 'ai',
         text: 'Done. Sarita ki leave applied. HR ko notification gayi.',
