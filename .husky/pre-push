@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# Pre-push: refuse push if graph audit dead-links grew vs main.
-# This is the architectural-drift guard.
+# Pre-push: refuse push if graph audit reports orphans or dead-links.
+# This is the architectural-drift guard (Phase 1 lock — fast audit, no full rebuild).
 #
 # @derives(ADR-0002)
 
@@ -9,10 +9,9 @@ if [ -z "$DATABASE_URL" ] && [ -z "$DATABASE_PUBLIC_URL" ] && [ -z "$AXHY_DB_URL
   exit 0
 fi
 
-pnpm --filter @axhy/knowledge-graph graph:audit
-status=$?
-if [ $status -ne 0 ]; then
-  echo "[pre-push] Graph audit reported dead-links. Fix or push with --no-verify if intentional."
+# Phase 1 lock: graph audit on every push (fast — no full rebuild).
+echo "[pre-push] running graph audit..."
+pnpm --filter @axhy/knowledge-graph graph:audit || {
+  echo "[pre-push] graph audit failed — orphans or dead-link detected"
   exit 1
-fi
-exit 0
+}
