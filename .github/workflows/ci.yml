@@ -98,7 +98,14 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm graph:build
+      - name: Graph build + audit (Phase 4 — navigates_to + triggers)
+        run: |
+          pnpm db:migrate
+          pnpm --filter @axhy/knowledge-graph graph:build --full
+          pnpm --filter @axhy/knowledge-graph graph:audit
+        env:
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
   lineage-audit:
     name: Lineage audit (orphan + dead-link + version drift)
@@ -111,6 +118,8 @@ jobs:
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm graph:audit
+        env:
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
 
   ai-eval:
     name: AI evaluation (regression budget)
