@@ -85,10 +85,10 @@ button {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
+  background: rgba(246, 241, 232, 0.88);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border-bottom: 1px solid var(--card-edge);
 }
 .nav-inner {
   display: flex;
@@ -417,10 +417,11 @@ h1.display .line {
 .hero-a .voice-card {
   position: relative;
   z-index: 1;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--card-edge);
   border-radius: 12px;
-  background: #000;
+  background: var(--card);
   padding: 18px;
+  box-shadow: var(--sh-2);
 }
 .hero-a .vc-meta {
   display: flex;
@@ -502,8 +503,8 @@ h1.display .line {
   background: rgba(0, 0, 0, 0.5);
 }
 .hero-a .vc-tag.is-on {
-  color: var(--gold);
-  border-color: rgba(212, 175, 55, 0.4);
+  color: var(--accent);
+  border-color: rgba(192, 73, 42, 0.4);
 }
 
 @media (max-width: 720px) {
@@ -627,13 +628,13 @@ h1.display .line {
   background: var(--gray-1);
 }
 .price-card-glow {
-  border: 1px solid rgba(212, 175, 55, 0.45);
+  border: 1px solid rgba(192, 73, 42, 0.35);
   background:
-    radial-gradient(120% 80% at 50% 0%, rgba(212, 175, 55, 0.1) 0%, rgba(212, 175, 55, 0) 60%),
-    var(--gray-1);
+    radial-gradient(120% 80% at 50% 0%, rgba(192, 73, 42, 0.08) 0%, rgba(192, 73, 42, 0) 60%),
+    var(--card);
   box-shadow:
-    0 0 0 1px rgba(212, 175, 55, 0.18),
-    0 0 60px -20px rgba(212, 175, 55, 0.5);
+    0 0 0 1px rgba(192, 73, 42, 0.14),
+    0 4px 24px -8px rgba(40, 30, 20, 0.10);
 }
 .price-card-glow::before {
   content: '';
@@ -892,10 +893,10 @@ h1.display .line {
   aspect-ratio: 1 / 1.1;
   border-radius: 10px;
   background:
-    radial-gradient(60% 50% at 50% 35%, rgba(212, 175, 55, 0.18), rgba(0, 0, 0, 0) 70%),
-    repeating-linear-gradient(135deg, rgba(212, 175, 55, 0.05) 0 8px, transparent 8px 16px),
-    #0d0d0d;
-  border: 1px solid var(--border);
+    radial-gradient(60% 50% at 50% 35%, var(--accent-soft), rgba(246, 241, 232, 0) 70%),
+    repeating-linear-gradient(135deg, rgba(192, 73, 42, 0.04) 0 8px, transparent 8px 16px),
+    var(--paper-2);
+  border: 1px solid var(--card-edge);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1236,8 +1237,9 @@ h1.display .line {
   font-weight: 700;
 }
 .login-input:focus {
-  border-color: var(--gold);
-  background: #0d0d0d;
+  border-color: var(--accent);
+  background: var(--card);
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 .login-input-error {
   border-color: #e64d4d;
