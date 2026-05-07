@@ -22,6 +22,14 @@ import crypto from 'node:crypto';
 
 import pg from 'pg';
 
+import { extractComponents } from './extractors/components.js';
+import { extractFastifyRoutes } from './extractors/fastify-routes.js';
+import { extractNextjsRoutes } from './extractors/nextjs-routes.js';
+import { extractPrismaFields } from './extractors/prisma-fields.js';
+import { extractScreens } from './extractors/screens.js';
+import { extractXStateTransitions } from './extractors/xstate-transitions.js';
+import type { EdgeRecord, ExtractorOutput, NodeRecord } from './extractors/index.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, '../../..');
 
@@ -40,6 +48,10 @@ const IGNORE_DIRS = new Set([
 const DERIVES_RE = /@derives\(\s*([^)]+?)\s*\)/g;
 const PRISMA_MODEL_RE = /^model\s+(\w+)\s*\{/gm;
 const XSTATE_MACHINE_RE = /createMachine\s*\(\s*\{[\s\S]*?id:\s*['"](\w+)['"]/g;
+
+// Ceiling guards (panel-locked Q12).
+const NODE_CEILING = 5000;
+const EDGE_CEILING = 15000;
 
 // Phase-2 task: tighten return types to NodeKind from ./extractors/index.js once that barrel exists.
 
@@ -246,12 +258,15 @@ async function extractStructural(files: string[]): Promise<number> {
       }
     }
 
-    // XState createMachine({ id: '...' }) blocks become state-machine nodes
-    let mm: RegExpExecArray | null;
-    const sre = new RegExp(XSTATE_MACHINE_RE.source, 'g');
-    while ((mm = sre.exec(content)) !== null) {
-      await upsertNode('state', mm[1]!, sourcePath, { source: 'xstate' });
-      added++;
+    // XState createMachine({ id: '...' }) blocks become state-machine nodes.
+    // Gate to .ts/.tsx only — regex matches code blocks inside .md files (false positives).
+    if (/\.tsx?$/.test(sourcePath)) {
+      let mm: RegExpExecArray | null;
+      const sre = new RegExp(XSTATE_MACHINE_RE.source, 'g');
+      while ((mm = sre.exec(content)) !== null) {
+        await upsertNode('state', mm[1]!, sourcePath, { source: 'xstate' });
+        added++;
+      }
     }
   }
   return added;
@@ -301,6 +316,8 @@ async function extractProvenance(files: string[]): Promise<number> {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  const fullExtraction = process.argv.includes('--full');
+  console.log(`[graph:build] mode=${fullExtraction ? 'full' : 'incremental'}`);
   console.log('[graph] Starting graph build...');
   await client.connect();
 
@@ -310,6 +327,9 @@ async function main() {
   }
   console.log(`[graph] Found ${allFiles.length} indexable files`);
 
+  // Relative paths (from REPO_ROOT) for extractor context.
+  const relFiles = allFiles.map((f) => relative(REPO_ROOT, f));
+
   console.log('[graph] Step 1/3: semantic chunks...');
   const { inserted, skipped } = await upsertChunks(allFiles);
   console.log(`[graph]   inserted ${inserted}, unchanged ${skipped}`);
@@ -317,6 +337,47 @@ async function main() {
   console.log('[graph] Step 2/3: structural nodes (Prisma + XState)...');
   const struct = await extractStructural(allFiles);
   console.log(`[graph]   ${struct} entity/state nodes upserted`);
+
+  console.log('[graph] Step 2b/3: Phase 2 extractors (fields, routes, screens, components)...');
+  const ctx = { repoRoot: REPO_ROOT, files: relFiles, fullExtraction };
+  const extractorOutputs: ExtractorOutput[] = await Promise.all([
+    extractPrismaFields(ctx),
+    extractXStateTransitions(ctx),
+    extractFastifyRoutes(ctx),
+    extractNextjsRoutes(ctx),
+    extractScreens(ctx),
+    extractComponents(ctx),
+  ]);
+
+  const allNodes: NodeRecord[] = extractorOutputs.flatMap((o) => o.nodes);
+  const allEdges: EdgeRecord[] = extractorOutputs.flatMap((o) => o.edges);
+
+  // Ceiling guards (panel-locked Q12).
+  if (allNodes.length > NODE_CEILING) {
+    throw new Error(`[graph:build] node ceiling exceeded: ${allNodes.length} > ${NODE_CEILING}`);
+  }
+  if (allEdges.length > EDGE_CEILING) {
+    throw new Error(`[graph:build] edge ceiling exceeded: ${allEdges.length} > ${EDGE_CEILING}`);
+  }
+
+  // Upsert Phase 2 nodes + edges in batch.
+  const nodeIdMap = new Map<string, string>();
+  for (const n of allNodes) {
+    const id = await upsertNode(n.kind, n.name, n.sourcePath, n.metadata);
+    nodeIdMap.set(`${n.kind}::${n.name}`, id);
+  }
+  for (const e of allEdges) {
+    const srcKey = `${e.srcKey.kind}::${e.srcKey.name}`;
+    const dstKey = `${e.dstKey.kind}::${e.dstKey.name}`;
+    const srcId =
+      nodeIdMap.get(srcKey) ??
+      (await upsertNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
+    const dstId =
+      nodeIdMap.get(dstKey) ??
+      (await upsertNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
+    await upsertEdge(e.kind, srcId, dstId, e.metadata);
+  }
+  console.log(`[graph:build] phase 2 — ${allNodes.length} nodes, ${allEdges.length} edges`);
 
   console.log('[graph] Step 3/3: provenance edges (@derives)...');
   const prov = await extractProvenance(allFiles);
