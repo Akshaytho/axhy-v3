@@ -37,11 +37,25 @@ const IGNORE_DIRS = new Set([
   'generated',
 ]);
 
-const DERIVES_RE = /@derives\(([A-Z0-9-]+|master-plan §[A-Z0-9.]+)\)/g;
+const DERIVES_RE = /@derives\(\s*([^)]+?)\s*\)/g;
 const PRISMA_MODEL_RE = /^model\s+(\w+)\s*\{/gm;
 const XSTATE_MACHINE_RE = /createMachine\s*\(\s*\{[\s\S]*?id:\s*['"](\w+)['"]/g;
 
-// Phase-2 task: tighten return type to NodeKind from ./extractors/index.js once that barrel exists.
+// Phase-2 task: tighten return types to NodeKind from ./extractors/index.js once that barrel exists.
+
+type DerivesTarget = { kind: string; name: string };
+
+function normalizeDerivesTarget(raw: string): DerivesTarget {
+  const trimmed = raw.trim();
+  if (/^ADR-\d{4}$/.test(trimmed)) return { kind: 'adr', name: trimmed };
+  if (/^master-plan §/.test(trimmed)) return { kind: 'master_plan_section', name: trimmed };
+  if (/^docs\/.+\.md$/.test(trimmed)) return { kind: 'doc', name: trimmed };
+  if (/^panel-\d{4}-\d{2}-\d{2}/.test(trimmed)) return { kind: 'panel_debate', name: trimmed };
+  if (/^invariant:/.test(trimmed))
+    return { kind: 'doc', name: `docs/invariants/${trimmed.slice('invariant:'.length)}.md` };
+  return { kind: 'doc', name: trimmed }; // fallback
+}
+
 function inferSourceKind(path: string): string {
   if (path.endsWith('.prisma')) return 'entity';
   if (path.endsWith('.md')) return 'doc';
@@ -273,9 +287,9 @@ async function extractProvenance(files: string[]): Promise<number> {
       const srcKind = inferSourceKind(sourcePath);
       const srcId = await upsertNode(srcKind, sourcePath, sourcePath, {});
 
-      // Target node: ADR-NNNN or master-plan §X.Y
-      const targetKind = target.startsWith('ADR-') ? 'adr' : 'master_plan_section';
-      const dstId = await upsertNode(targetKind, target, null, {});
+      // Target node: normalize raw @derives() ref to kind + canonical name.
+      const { kind: targetKind, name: targetName } = normalizeDerivesTarget(target);
+      const dstId = await upsertNode(targetKind, targetName, null, {});
 
       await upsertEdge('derives_from', srcId, dstId, {});
       edges++;
