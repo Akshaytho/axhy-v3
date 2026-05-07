@@ -1537,3 +1537,421 @@ button {
   border-radius: 999px;
   background: var(--gold);
 }
+
+/* ─── ACTION-FIRST home (panel-2026-05-06 round 3) ───
+   Drops the 5-tab dashboard paradigm. Single home with stacked
+   big-action buttons + giant voice mic. Field-tool, not app. */
+
+.sup-home {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+}
+.sup-home-top {
+  padding: 16px 20px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sup-home-greet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sup-home-greet-name {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.sup-home-greet-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sup-home-gear {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.sup-home-gear:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* Pulse line — shows the supervisor what's happening RIGHT NOW.
+   Action-prompted, not dashboard. */
+.sup-pulse {
+  margin: 4px 16px 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sup-pulse.is-clear {
+  border-color: rgba(74, 222, 128, 0.3);
+  background: rgba(74, 222, 128, 0.04);
+}
+.sup-pulse-line {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.4;
+}
+.sup-pulse-detail {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.sup-pulse-prompt {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+}
+.sup-pulse-prompt button {
+  flex: 1;
+  height: 44px;
+  border-radius: 10px;
+  font-family: var(--body);
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  border: 0;
+}
+.sup-pulse-prompt button.is-primary {
+  background: var(--gold);
+  color: #000;
+}
+.sup-pulse-prompt button.is-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+/* Stacked action buttons — each is a big do-it tap target */
+.sup-actions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 16px 8px;
+  overflow-y: auto;
+}
+.sup-action {
+  height: 64px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--gray-1);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  font-family: var(--body);
+  font-weight: 800;
+  font-size: 17px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+  letter-spacing: -0.005em;
+}
+.sup-action:hover {
+  border-color: var(--gold);
+}
+.sup-action.is-primary {
+  background: var(--gold);
+  color: #000;
+  border-color: var(--gold);
+}
+.sup-action-arrow {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-mute);
+}
+.sup-action.is-primary .sup-action-arrow {
+  color: #000;
+}
+.sup-action-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mute);
+  margin-left: 12px;
+}
+
+/* Giant mic button — bottom-anchored, the primary input across all actions */
+.sup-mic-zone {
+  padding: 8px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.sup-mic {
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 30%, #f0cb52 0%, var(--gold) 60%, var(--gold-dim) 100%);
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.4), 0 0 32px -8px rgba(212, 175, 55, 0.6);
+  transition: transform 0.12s ease-out;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.sup-mic:active,
+.sup-mic.is-recording {
+  transform: scale(0.94);
+  box-shadow:
+    0 0 0 6px rgba(212, 175, 55, 0.2),
+    0 0 0 12px rgba(212, 175, 55, 0.1),
+    0 0 48px -8px rgba(212, 175, 55, 0.7);
+}
+.sup-mic svg {
+  width: 38px;
+  height: 38px;
+}
+.sup-mic-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sup-mic-hint.is-recording {
+  color: var(--gold);
+}
+
+/* Voice transcript card — shows what was heard, then proposed action */
+.sup-voice-result {
+  margin: 0 16px 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--gray-1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: sup-undo-in 200ms ease-out;
+}
+.sup-voice-heard {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sup-voice-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+.sup-voice-proposed {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sup-voice-proposed-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sup-voice-proposed-action {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+.sup-voice-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.sup-voice-actions button {
+  flex: 1;
+  height: 44px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  border: 0;
+}
+.sup-voice-actions .is-confirm {
+  background: var(--gold);
+  color: #000;
+}
+.sup-voice-actions .is-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+/* Sheet for action flow — opens when user taps an action button */
+.sup-sheet-action {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sup-sheet-question {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.sup-pick-row {
+  height: 60px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--gray-1);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  text-align: left;
+}
+.sup-pick-row:hover {
+  border-color: var(--gold);
+}
+.sup-pick-row.is-selected {
+  border-color: var(--gold);
+  background: rgba(212, 175, 55, 0.08);
+}
+.sup-pick-row-meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-mute);
+}
+.sup-pick-row-status {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sup-pick-row-status.is-warn {
+  color: #f59e0b;
+}
+.sup-pick-row-status.is-danger {
+  color: #ff7878;
+}
+.sup-pick-row-status.is-clear {
+  color: #4ade80;
+}
+
+/* Confirmation summary card inside an action sheet */
+.sup-confirm {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: rgba(212, 175, 55, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sup-confirm-line {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.4;
+}
+.sup-confirm-cons {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.sup-confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.sup-confirm-actions button {
+  flex: 1;
+  height: 52px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 15px;
+  cursor: pointer;
+  border: 0;
+}
+.sup-confirm-actions .is-go {
+  background: var(--gold);
+  color: #000;
+}
+.sup-confirm-actions .is-back {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+/* Done state inside an action sheet — confirmation feedback before sheet closes */
+.sup-done {
+  padding: 32px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.sup-done-mark {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  background: rgba(74, 222, 128, 0.12);
+  border: 2px solid rgba(74, 222, 128, 0.5);
+  color: #4ade80;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sup-done-title {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.sup-done-detail {
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  max-width: 28ch;
+}

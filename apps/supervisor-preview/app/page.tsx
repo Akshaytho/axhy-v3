@@ -1,11 +1,10 @@
 /**
- * Supervisor preview — main orchestrator (rebuilt 2026-05-01 round 2).
+ * Supervisor preview — main orchestrator (rebuilt 2026-05-06 round 3).
  *
- * Renders phone-frame + debug strip + tab bar + active tab. Each tab now
- * answers ONE question per panel-locked redesign principle.
+ * Action-first home: single-screen, stacked big-action buttons, giant voice
+ * mic, settings gear. No tabs. Field-tool not dashboard.
  *
- * Query param `?frame=off` drops the desktop phone-frame chrome for
- * founder full-bleed testing.
+ * Query param `?frame=off` drops desktop chrome for full-bleed mobile preview.
  *
  * @derives(master-plan §G)
  */
@@ -15,14 +14,8 @@
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-import { ChatTab } from './_components/ChatTab';
-import { TodayTab } from './_components/TodayTab';
-import { SummaryTab } from './_components/SummaryTab';
-import { UpdatesTab } from './_components/UpdatesTab';
-import { ProfileTab } from './_components/ProfileTab';
+import { ActionHome } from './_components/ActionHome';
 import type { TimeOfDay } from './_lib/mock';
-
-type TabKey = 'chat' | 'today' | 'summary' | 'updates' | 'profile';
 
 const TIMES: Array<{ key: TimeOfDay; label: string }> = [
   { key: '7am', label: '7 AM' },
@@ -45,14 +38,13 @@ function PageInner() {
   const searchParams = useSearchParams();
   const frameless = searchParams.get('frame') === 'off';
 
-  const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('11am');
   const [showReach, setShowReach] = useState(false);
 
   return (
     <div className={frameless ? 'sup-stage is-frameless' : 'sup-stage'}>
       <div className="sup-debug-strip">
-        <strong>Supervisor preview</strong>
+        <strong>Supervisor preview · v0.3 action-first</strong>
         <span>· Suresh @ Reddy Cleaning</span>
         <span className="sup-debug-time">
           <span style={{ marginRight: 4, color: 'var(--text-mute)' }}>Time</span>
@@ -91,12 +83,8 @@ function PageInner() {
             <span>5G · 84%</span>
           </div>
 
-          <div className="sup-screen">
-            {activeTab === 'chat' && <ChatTab timeOfDay={timeOfDay} />}
-            {activeTab === 'today' && <TodayTab timeOfDay={timeOfDay} />}
-            {activeTab === 'summary' && <SummaryTab timeOfDay={timeOfDay} />}
-            {activeTab === 'updates' && <UpdatesTab timeOfDay={timeOfDay} />}
-            {activeTab === 'profile' && <ProfileTab timeOfDay={timeOfDay} />}
+          <div className="sup-screen" style={{ paddingBottom: 0 }}>
+            <ActionHome timeOfDay={timeOfDay} />
           </div>
 
           {showReach && (
@@ -111,64 +99,9 @@ function PageInner() {
               </div>
             </div>
           )}
-
-          <nav className="sup-tabbar" aria-label="Supervisor tabs">
-            <TabButton
-              active={activeTab === 'chat'}
-              label="Chat"
-              icon={<ChatIcon />}
-              onClick={() => setActiveTab('chat')}
-            />
-            <TabButton
-              active={activeTab === 'today'}
-              label="Today"
-              icon={<TodayIcon />}
-              onClick={() => setActiveTab('today')}
-            />
-            <TabButton
-              active={activeTab === 'summary'}
-              label="Summary"
-              icon={<SummaryIcon />}
-              onClick={() => setActiveTab('summary')}
-            />
-            <TabButton
-              active={activeTab === 'updates'}
-              label="Updates"
-              icon={<UpdatesIcon />}
-              onClick={() => setActiveTab('updates')}
-            />
-            <TabButton
-              active={activeTab === 'profile'}
-              label="Profile"
-              icon={<ProfileIcon />}
-              onClick={() => setActiveTab('profile')}
-            />
-          </nav>
         </div>
       </div>
     </div>
-  );
-}
-
-/** @derives(master-plan §G) */
-function TabButton({
-  active,
-  label,
-  icon,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" className={active ? 'sup-tab is-on' : 'sup-tab'} onClick={onClick}>
-      <span className="sup-tab-icon-svg" aria-hidden="true">
-        {icon}
-      </span>
-      {label}
-    </button>
   );
 }
 
@@ -183,47 +116,4 @@ function phoneClock(t: TimeOfDay): string {
     case '11pm':
       return '11:42 PM';
   }
-}
-
-function ChatIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <path d="M21 12a8 8 0 0 1-12.3 6.7L3 20l1.3-5.7A8 8 0 1 1 21 12z" />
-    </svg>
-  );
-}
-
-function TodayIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      <path d="M3 10h18M8 3v4M16 3v4" />
-    </svg>
-  );
-}
-
-function SummaryIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <path d="M4 19V5M4 19h16M8 16V9M12 16v-4M16 16v-9" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function UpdatesIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M10 21a2 2 0 0 0 4 0" />
-    </svg>
-  );
-}
-
-function ProfileIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21c0-4 4-7 8-7s8 3 8 7" />
-    </svg>
-  );
 }
