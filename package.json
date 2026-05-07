@@ -23,6 +23,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "clean": "turbo run clean && rm -rf node_modules",
+    "db:migrate": "node scripts/run-migrations.mjs",
     "prepare": "husky"
   },
   "devDependencies": {
