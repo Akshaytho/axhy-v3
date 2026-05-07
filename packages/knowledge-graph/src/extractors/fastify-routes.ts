@@ -18,7 +18,12 @@ const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', '
 export async function extractFastifyRoutes(ctx: ExtractorContext): Promise<ExtractorOutput> {
   const nodes: NodeRecord[] = [];
 
-  const tsFiles = ctx.files.filter((f) => /\.tsx?$/.test(f));
+  // Phase-3 fold-in fix: gate to backend route files only.
+  // Previously ran over all .ts/.tsx files, causing false-positive api_endpoint nodes
+  // from non-backend files (e.g. apps/supervisor-preview/app/page.tsx).
+  const tsFiles = ctx.files.filter(
+    (f) => /\.tsx?$/.test(f) && /^apps\/backend\/src\/routes\//.test(f),
+  );
   const project = new Project({ useInMemoryFileSystem: false, skipFileDependencyResolution: true });
   for (const relPath of tsFiles) {
     project.addSourceFileAtPath(join(ctx.repoRoot, relPath));

@@ -8,11 +8,15 @@ import { extractFastifyRoutes } from '../../src/extractors/fastify-routes.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = join(__dirname, '..', 'fixtures');
 
+// Phase-3 fold-in fix: extractor now gates to apps/backend/src/routes/ only.
+// Test fixture path uses the real backend-routes pattern so the scoping filter passes.
+const ROUTE_PATH = 'apps/backend/src/routes/sample-route.ts';
+
 describe('extractFastifyRoutes', () => {
   it('emits api_endpoint node per Fastify route declaration', async () => {
     const result = await extractFastifyRoutes({
       repoRoot: FIXTURE_DIR,
-      files: ['sample-route.ts'],
+      files: [ROUTE_PATH],
       fullExtraction: true,
     });
 
@@ -27,7 +31,7 @@ describe('extractFastifyRoutes', () => {
   it('captures method + path in metadata', async () => {
     const result = await extractFastifyRoutes({
       repoRoot: FIXTURE_DIR,
-      files: ['sample-route.ts'],
+      files: [ROUTE_PATH],
       fullExtraction: true,
     });
 
@@ -38,7 +42,7 @@ describe('extractFastifyRoutes', () => {
   it('records source_path with line number', async () => {
     const result = await extractFastifyRoutes({
       repoRoot: FIXTURE_DIR,
-      files: ['sample-route.ts'],
+      files: [ROUTE_PATH],
       fullExtraction: true,
     });
 

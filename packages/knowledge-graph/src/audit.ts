@@ -17,16 +17,16 @@
 
 import pg from 'pg';
 
-// Phase 1 set: any node with one of these kinds is expected to derive from
+// Phase 3 set: any node with one of these kinds is expected to derive from
 // at least one ADR / master-plan section / doc. The audit reports orphans.
-// `field` kind is EXCLUDED until Phase 4 wires reads/writes edges
-// (otherwise the audit floods false positives during Phase 2-3).
+// `field` kind re-included after Phase 3 wires reads/writes edges.
 export const AUDIT_KINDS = [
   'ui_screen',
   'ui_component',
   'api_endpoint',
   'entity',
   'state',
+  'field', // re-included after Phase 3 (reads/writes edges land)
 ] as const;
 
 const url =
@@ -63,6 +63,33 @@ if ((orphanResult.rowCount ?? 0) > 0) {
   console.warn(`[audit] WARN: ${orphanResult.rowCount} nodes have NO @derives lineage:`);
   for (const r of orphanResult.rows) console.warn(`  - ${r.kind}  ${r.source_path}`);
   warnings += orphanResult.rowCount ?? 0;
+}
+
+// 1b. ZERO-OUTGOING check — ui_screen nodes with no outgoing edges (warn; suggests
+// the screen has no mounts/navigates_to/mirrors edges yet — Phase 3/4 gap).
+const zeroOutgoing = await client.query(`
+  SELECT n.id, n.kind, n.source_path
+  FROM axhy_graph.nodes n
+  WHERE n.kind = 'ui_screen'
+    AND NOT EXISTS (
+      SELECT 1 FROM axhy_graph.edges e
+      WHERE e.src_id = n.id
+    )
+  ORDER BY n.source_path
+`);
+if ((zeroOutgoing.rowCount ?? 0) > 0) {
+  console.warn(
+    `[audit] WARN: ${zeroOutgoing.rowCount} ui_screen nodes with zero outgoing edges (expected until Phase 4)`,
+  );
+  warnings += zeroOutgoing.rowCount ?? 0;
+}
+
+// 1c. EDGE CEILING check — hard fail if total edges exceed 15K (panel-locked Q12).
+const edgeCount = await client.query(`SELECT COUNT(*)::int AS count FROM axhy_graph.edges`);
+const totalEdges = edgeCount.rows[0].count as number;
+if (totalEdges > 15000) {
+  console.error(`[audit] FAIL: edge ceiling exceeded: ${totalEdges} > 15000`);
+  hardFail++;
 }
 
 // 2. DEAD-LINK check — referenced ADRs whose actual file doesn't exist on disk.
@@ -116,6 +143,8 @@ const summary = {
     return acc;
   }, {}),
   deadLinks: dead.length,
+  zeroOutgoingScreens: zeroOutgoing.rowCount ?? 0,
+  totalEdges,
   hardFail,
   warnings,
 };

@@ -28,6 +28,9 @@ import { extractNextjsRoutes } from './extractors/nextjs-routes.js';
 import { extractPrismaFields } from './extractors/prisma-fields.js';
 import { extractScreens } from './extractors/screens.js';
 import { extractXStateTransitions } from './extractors/xstate-transitions.js';
+import { extractReadsWrites } from './extractors/edges-reads-writes.js';
+import { extractMounts } from './extractors/edges-mounts.js';
+import { extractMirrors } from './extractors/edges-mirrors.js';
 import type { EdgeRecord, ExtractorOutput, NodeRecord } from './extractors/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -43,6 +46,9 @@ const IGNORE_DIRS = new Set([
   '.expo',
   '.git',
   'generated',
+  // Phase-3 fold-in fix: exclude test fixture files from structural graph extraction.
+  // They are synthetic stubs and pollute the graph with false api_endpoint/entity/state nodes.
+  'fixtures',
 ]);
 
 const DERIVES_RE = /@derives\(\s*([^)]+?)\s*\)/g;
@@ -321,6 +327,17 @@ async function main() {
   console.log('[graph] Starting graph build...');
   await client.connect();
 
+  // Phase-3 fold-in fix: one-time cleanup of stale state nodes sourced from .md files.
+  // Phase 1 regex extraction created these; Phase 2 added the .tsx-only gate so no new ones
+  // are created, but ON CONFLICT DO UPDATE keeps old rows alive. Safe to delete: no domain data.
+  // Panel-approved: Hari + Maya + Vinod (schema cleanup).
+  const mdStateCleanup = await client.query(
+    `DELETE FROM axhy_graph.nodes WHERE kind = 'state' AND source_path LIKE '%.md' RETURNING id`,
+  );
+  if ((mdStateCleanup.rowCount ?? 0) > 0) {
+    console.log(`[graph] Cleaned up ${mdStateCleanup.rowCount} stale .md-sourced state nodes`);
+  }
+
   const allFiles: string[] = [];
   for (const dir of SCAN_DIRS) {
     walk(join(REPO_ROOT, dir), allFiles);
@@ -378,6 +395,63 @@ async function main() {
     await upsertEdge(e.kind, srcId, dstId, e.metadata);
   }
   console.log(`[graph:build] phase 2 — ${allNodes.length} nodes, ${allEdges.length} edges`);
+
+  console.log('[graph] Step 2c/3: Phase 3 edge extractors (reads, writes, mounts, mirrors)...');
+
+  // Build registries for edge extractors that need cross-reference.
+  // Component registry: keyed by component name.
+  const componentRegistry = new Map<
+    string,
+    { kind: 'ui_component'; name: string; sourcePath: string }
+  >();
+  for (const n of allNodes) {
+    if (n.kind === 'ui_component') {
+      componentRegistry.set(n.name, {
+        kind: 'ui_component',
+        name: n.name,
+        sourcePath: n.sourcePath ?? '',
+      });
+    }
+  }
+
+  // Machine registry: keyed by conventional variable name (${id}Machine) per IMPL_PLAN §3.4 step 1.
+  const machineRegistry = new Map<string, { name: string; sourcePath: string }>();
+  for (const n of allNodes) {
+    if (n.kind === 'state' && n.metadata.isRoot) {
+      // Convention: workerMachine → machine root with id 'worker'.
+      machineRegistry.set(`${n.name}Machine`, {
+        name: n.name,
+        sourcePath: n.sourcePath ?? '',
+      });
+    }
+  }
+
+  const edgeOutputs = await Promise.all([
+    extractReadsWrites({ ...ctx }),
+    extractMounts({ ...ctx, componentRegistry }),
+    extractMirrors({ ...ctx, machineRegistry }),
+  ]);
+  const edgesPhase3 = edgeOutputs.flatMap((o) => o.edges);
+
+  if (edgesPhase3.length + allEdges.length > EDGE_CEILING) {
+    throw new Error(
+      `[graph:build] edge ceiling exceeded after Phase 3: ${edgesPhase3.length + allEdges.length} > ${EDGE_CEILING}`,
+    );
+  }
+
+  // Upsert phase 3 edges.
+  for (const e of edgesPhase3) {
+    const srcMapKey = `${e.srcKey.kind}::${e.srcKey.name}`;
+    const dstMapKey = `${e.dstKey.kind}::${e.dstKey.name}`;
+    const srcId =
+      nodeIdMap.get(srcMapKey) ??
+      (await upsertNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
+    const dstId =
+      nodeIdMap.get(dstMapKey) ??
+      (await upsertNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
+    await upsertEdge(e.kind, srcId, dstId, e.metadata);
+  }
+  console.log(`[graph:build] phase 3 — ${edgesPhase3.length} edges`);
 
   console.log('[graph] Step 3/3: provenance edges (@derives)...');
   const prov = await extractProvenance(allFiles);
