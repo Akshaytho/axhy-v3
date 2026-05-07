@@ -1,39 +1,115 @@
 /* AUTO-GENERATED from @axhy/ui-tokens — do not edit by hand. */
 
 :root {
-  /* brand */
-  --gold: #D4AF37;
-  --gold-dim: #A88928;
-  --gold-hi: #F0CB52;
+  /* surface — warm paper family */
+  --paper: #F6F1E8;
+  --paper-2: #EFE7D8;
+  --paper-3: #E6DCC8;
+  --card: #FDFAF3;
+  --card-edge: rgba(40, 30, 20, 0.08);
 
-  /* surface */
-  --black: #000000;
-  --gray-1: #0A0A0A;
-  --gray-2: #141414;
-  --gray-3: #1F1F1F;
-  --surface-sunken: #050505;
+  /* ink — carbon, warm-tinted near-black */
+  --ink: #1A1612;
+  --ink-2: #4A3F33;
+  --ink-3: #7A6B58;
+  --ink-4: #A89880;
 
-  /* text — primary uses solid white; dim/mute use alpha-on-black */
-  --text: #FFFFFF;
-  --text-dim: rgba(255, 255, 255, 0.62);
-  --text-mute: rgba(255, 255, 255, 0.42);
-
-  /* borders — alpha-on-black to ride any background shade */
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  /* terracotta accent */
+  --accent: #C0492A;
+  --accent-2: #A83D20;
+  --accent-soft: #F5DAC9;
+  --accent-ink: #6E2410;
 
   /* semantic */
-  --success: #10B981;
-  --warning: #F59E0B;
-  --danger: #EF4444;
-  --info: #3B82F6;
+  --ok: #4A7C59;
+  --ok-soft: #D6E5D0;
+  --warn: #B8860B;
+  --warn-soft: #F0E2B6;
+  --bad: #A8341D;
+  --bad-soft: #F0C8BD;
+  --info-ink: #2C4A6B;
+  --info-soft: #D5DDE6;
 
-  /* type */
-  --display: var(--font-body, 'Inter'), system-ui, -apple-system, sans-serif;
-  --body: var(--font-body, 'Inter'), system-ui, -apple-system, sans-serif;
-  --mono: var(--font-mono, 'JetBrains Mono'), ui-monospace, 'SF Mono', Menlo, monospace;
+  /* type — Inter for Latin, Noto Sans Devanagari + Telugu for Indic, JetBrains Mono for tabular.
+     Variables (--font-inter etc) are injected by next/font with hashed family names; the
+     literal fallbacks ('Inter', 'Noto Sans Devanagari'…) only matter outside Next. */
+  --font-body: var(--font-inter, 'Inter'), var(--font-noto-devanagari, 'Noto Sans Devanagari'), var(--font-noto-telugu, 'Noto Sans Telugu'), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-inter, 'Inter'), var(--font-noto-devanagari, 'Noto Sans Devanagari'), var(--font-noto-telugu, 'Noto Sans Telugu'), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono, 'JetBrains Mono'), ui-monospace, 'SF Mono', Menlo, monospace;
 
-  /* misc */
+  /* radii — slightly less rounded than typical web */
+  --r-1: 6px;
+  --r-2: 10px;
+  --r-3: 14px;
+  --r-4: 20px;
+
+  /* shadows — warm-tinted, sparingly used */
+  --sh-1: 0 1px 2px rgba(40, 30, 20, 0.06);
+  --sh-2: 0 1px 3px rgba(40,30,20,0.08), 0 4px 12px rgba(40,30,20,0.06);
+  --sh-3: 0 4px 16px rgba(40,30,20,0.12), 0 12px 32px rgba(40,30,20,0.08);
+
+  /* motion */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --ease-natural: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-paper: cubic-bezier(0.165, 0.84, 0.44, 1);
+
+  /* container */
   --max: 1120px;
   --gutter: 24px;
+}
+
+/* dark mode (opt-in, surface-only flip; brand accent unchanged) */
+:root[data-theme='dark'] {
+  --paper: #1A1815;
+  --paper-2: #221F1A;
+  --paper-3: #2A2620;
+  --card: #1F1C18;
+  --card-edge: rgba(255, 240, 220, 0.06);
+  --ink: #F5F0E1;
+  --ink-2: #C8BFA5;
+  --ink-3: #8A8268;
+  --ink-4: #5A5340;
+  --accent: #D4583A;
+  --accent-soft: #4A1E10;
+}
+
+/* ── compatibility aliases ──
+   Maps old gold-on-black token names to the new terracotta+paper system
+   so existing components keep working without manual rewrites. New code
+   should use the canonical names above. */
+:root {
+  /* surface aliases */
+  --black: var(--paper);          /* old --black bg becomes paper bg */
+  --gray-1: var(--paper-2);
+  --gray-2: var(--paper-2);
+  --gray-3: var(--paper-3);
+  --gray-4: var(--card-edge);
+  --surface-sunken: var(--paper-2);
+
+  /* text aliases */
+  --text: var(--ink);
+  --text-dim: var(--ink-2);
+  --text-mute: var(--ink-3);
+
+  /* brand aliases */
+  --gold: var(--accent);
+  --gold-dim: var(--accent-2);
+  --gold-hi: var(--accent);
+
+  /* border aliases */
+  --border: var(--card-edge);
+  --border-strong: var(--ink-4);
+
+  /* semantic aliases */
+  --success: var(--ok);
+  --warning: var(--warn);
+  --danger: var(--bad);
+  --info: var(--info-ink);
+
+  /* type aliases */
+  --display: var(--font-display);
+  --body: var(--font-body);
+  --mono: var(--font-mono);
 }
