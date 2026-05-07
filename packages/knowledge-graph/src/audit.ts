@@ -17,6 +17,18 @@
 
 import pg from 'pg';
 
+// Phase 1 set: any node with one of these kinds is expected to derive from
+// at least one ADR / master-plan section / doc. The audit reports orphans.
+// `field` kind is EXCLUDED until Phase 4 wires reads/writes edges
+// (otherwise the audit floods false positives during Phase 2-3).
+export const AUDIT_KINDS = [
+  'ui_screen',
+  'ui_component',
+  'api_endpoint',
+  'entity',
+  'state',
+] as const;
+
 const url =
   process.env.DATABASE_PUBLIC_URL ?? process.env.DATABASE_URL ?? process.env.AXHY_DB_URL ?? '';
 if (!url) {
@@ -32,22 +44,25 @@ let warnings = 0;
 
 console.log('[audit] Lineage audit starting...');
 
-// 1. ORPHAN check — code files in apps/* or packages/* without provenance
-const orphansRes = await client.query(`
-  SELECT n.source_path
-  FROM axhy_graph.nodes n
-  WHERE n.kind = 'ui_component'
-    AND (n.source_path LIKE 'apps/%' OR n.source_path LIKE 'packages/%')
-    AND NOT EXISTS (
-      SELECT 1 FROM axhy_graph.edges e
-      WHERE e.kind = 'derives_from' AND e.src_id = n.id
-    )
-  ORDER BY n.source_path
-`);
-if ((orphansRes.rowCount ?? 0) > 0) {
-  console.warn(`[audit] WARN: ${orphansRes.rowCount} files have NO @derives lineage:`);
-  for (const r of orphansRes.rows) console.warn(`  - ${r.source_path}`);
-  warnings += orphansRes.rowCount ?? 0;
+// 1. ORPHAN check — nodes of audited kinds in apps/* or packages/* without provenance
+const orphanResult = await client.query(
+  `
+    SELECT n.id, n.kind, n.source_path
+    FROM axhy_graph.nodes n
+    WHERE n.kind = ANY($1::axhy_graph.node_kind[])
+      AND (n.source_path LIKE 'apps/%' OR n.source_path LIKE 'packages/%')
+      AND NOT EXISTS (
+        SELECT 1 FROM axhy_graph.edges e
+        WHERE e.kind = 'derives_from' AND e.src_id = n.id
+      )
+    ORDER BY n.kind, n.source_path
+  `,
+  [AUDIT_KINDS],
+);
+if ((orphanResult.rowCount ?? 0) > 0) {
+  console.warn(`[audit] WARN: ${orphanResult.rowCount} nodes have NO @derives lineage:`);
+  for (const r of orphanResult.rows) console.warn(`  - ${r.kind}  ${r.source_path}`);
+  warnings += orphanResult.rowCount ?? 0;
 }
 
 // 2. DEAD-LINK check — referenced ADRs whose actual file doesn't exist on disk.
@@ -93,9 +108,26 @@ console.log(`  derives edges:  ${c.derives_edges}`);
 
 await client.end();
 
+// Emit machine-readable summary for CI consumption.
+const summary = {
+  orphans: orphanResult.rowCount ?? 0,
+  byKind: orphanResult.rows.reduce<Record<string, number>>((acc, r) => {
+    acc[r.kind] = (acc[r.kind] ?? 0) + 1;
+    return acc;
+  }, {}),
+  deadLinks: dead.length,
+  hardFail,
+  warnings,
+};
+console.log(JSON.stringify(summary));
+
 console.log('');
 if (hardFail > 0) {
   console.error(`[audit] FAILED with ${hardFail} hard errors and ${warnings} warnings.`);
   process.exit(1);
 }
-console.log(`[audit] PASSED (${warnings} warnings).`);
+if ((orphanResult.rowCount ?? 0) > 0) {
+  console.warn(`[audit] PASSED WITH WARNINGS (${warnings} orphans).`);
+  process.exit(1);
+}
+console.log('[audit] PASSED.');
