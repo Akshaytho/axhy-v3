@@ -2,8 +2,8 @@
  * /system/graph — internal knowledge-graph viewer.
  *
  * Fetches nodes + edges from /api/graph and renders with react-force-graph-2d.
- * Brand colors. Internal-only. No auth gate yet (panel-locked: graph data
- * is non-PII, already in open codebase).
+ * Brand colors from @axhy/ui-tokens (per ADR-0014). Internal-only.
+ * No auth gate yet (Phase 5 wires SUPER_ADMIN gate per SPEC.md §7.5).
  *
  * @derives(panel-2026-04-30 — graph viewer cheap version)
  */
@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamicImport from 'next/dynamic';
+import { tokens } from '@axhy/ui-tokens';
 
 // react-force-graph uses canvas + window — must be dynamic-import client-only.
 const ForceGraph2D = dynamicImport(() => import('react-force-graph-2d').then((m) => m.default), {
@@ -38,14 +39,34 @@ type Snapshot = {
   counts: { nodes: number; edges: number; chunks: number };
 };
 
-const DEFAULT_COLOR = '#606060'; // text-muted
+// All keys lowercase to match DB enum values (axhy_graph.node_kind).
+// Colors from @axhy/ui-tokens — no inline hex (per ADR-0014).
+// Viewer renders on a black canvas; chosen values are legible against #000000.
+const DEFAULT_COLOR = tokens.color.ink.tertiary; // #7A6B58 — warm gray for unknown kinds
+
 const KIND_COLORS: Record<string, string> = {
-  ENTITY: '#D4AF37', // gold — Prisma models
-  STATE_MACHINE: '#F0CB52', // gold-hi — XState machines
-  ADR: '#3B82F6', // info — ADR docs
-  FILE: '#A0A0A0', // text-secondary — generic files
-  PACKAGE: '#10B981', // success — workspace packages
-  ROUTE: '#F59E0B', // warning — Fastify routes
+  // structural
+  entity: tokens.color.brand.accent, // terracotta — Prisma models (most referenced)
+  field: tokens.color.brand.accentSoft, // soft terracotta — Prisma fields
+  state: tokens.color.semantic.ok, // green — XState machine root
+  transition: tokens.color.semantic.okSoft, // soft green — XState transitions
+  api_endpoint: tokens.color.semantic.warn, // amber — backend routes
+  ui_screen: tokens.color.semantic.infoSoft, // light blue — Next.js pages
+  ui_component: tokens.color.semantic.infoInk, // dark blue — feature components
+  test: tokens.color.ink.placeholder, // warm neutral — test files
+  i18n_key: tokens.color.surface.paper3, // cream — i18n keys
+  audit_event_kind: tokens.color.semantic.bad, // red — audit events
+  // provenance
+  master_plan_section: tokens.color.brand.accent2, // dark terracotta — master-plan §refs
+  panel_debate: tokens.color.brand.accentInk, // deep terracotta — panel debate docs
+  iteration_lock: tokens.color.semantic.badSoft, // soft red — locked iteration items
+  adr: tokens.color.ink.secondary, // dark warm — ADR docs
+  persona: tokens.color.semantic.warnSoft, // soft amber — persona nodes
+  journey: tokens.color.surface.paper2, // off-white — journey nodes
+  workflow: tokens.color.surface.paper, // cream — workflow nodes
+  feature: tokens.color.surface.card, // near-white — feature nodes
+  // semantic
+  doc: tokens.color.ink.placeholder, // warm neutral — generic docs
 };
 
 function colorFor(kind: string): string {
@@ -88,11 +109,16 @@ export default function GraphPage() {
     const filteredEdges = data.edges.filter(
       (e) => allowedIds.has(e.source) && allowedIds.has(e.target),
     );
+    // Map node val to incoming-edge degree (visually larger nodes have more references).
+    const inDegree = new Map<string, number>();
+    for (const e of filteredEdges) {
+      inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+    }
     return {
       nodes: filteredNodes.map((n) => ({
         ...n,
         color: colorFor(n.kind),
-        val: n.kind === 'ADR' ? 6 : n.kind === 'ENTITY' ? 5 : 3,
+        val: 1 + Math.min(8, inDegree.get(n.id) ?? 0),
       })),
       links: filteredEdges,
     };
