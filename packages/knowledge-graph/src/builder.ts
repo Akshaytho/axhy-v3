@@ -41,6 +41,18 @@ const DERIVES_RE = /@derives\(([A-Z0-9-]+|master-plan §[A-Z0-9.]+)\)/g;
 const PRISMA_MODEL_RE = /^model\s+(\w+)\s*\{/gm;
 const XSTATE_MACHINE_RE = /createMachine\s*\(\s*\{[\s\S]*?id:\s*['"](\w+)['"]/g;
 
+// Phase-2 task: tighten return type to NodeKind from ./extractors/index.js once that barrel exists.
+function inferSourceKind(path: string): string {
+  if (path.endsWith('.prisma')) return 'entity';
+  if (path.endsWith('.md')) return 'doc';
+  if (/packages\/state-machines\//.test(path)) return 'state';
+  if (/apps\/backend\/src\/routes\//.test(path)) return 'api_endpoint';
+  if (/apps\/[^/]+\/app\/.+\/page\.tsx?$/.test(path)) return 'ui_screen';
+  if (/apps\/[^/]+\/(components\/feature|app\/.*\/_components)\//.test(path)) return 'ui_component';
+  if (/\.test\.tsx?$/.test(path)) return 'test';
+  return 'doc';
+}
+
 // ─── DB connection ───────────────────────────────────────────────────────────
 
 const url =
@@ -257,8 +269,8 @@ async function extractProvenance(files: string[]): Promise<number> {
       if (seen.has(target)) continue;
       seen.add(target);
 
-      // Source node: this file (kind: 'doc' for .md, otherwise 'ui_component' as a catch-all for code)
-      const srcKind = sourcePath.endsWith('.md') ? 'doc' : 'ui_component';
+      // Source node: this file — kind inferred from path (replaces hardcoded 'ui_component' catch-all).
+      const srcKind = inferSourceKind(sourcePath);
       const srcId = await upsertNode(srcKind, sourcePath, sourcePath, {});
 
       // Target node: ADR-NNNN or master-plan §X.Y
