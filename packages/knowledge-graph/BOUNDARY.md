@@ -1,6 +1,7 @@
 # @axhy/knowledge-graph — BOUNDARY
 
 ## Owns
+
 - Three graphs over the repo:
   1. **Structural** — entities, fields, states, transitions, endpoints, tests, UI screens (from static analysis)
   2. **Semantic** — pgvector embeddings of every code chunk + doc + decision + conversation (RAG)
@@ -11,16 +12,25 @@
 - Dashboard UI at `axhy-graph.local:3000`
 
 ## Does NOT own
+
 - Code changes (graph informs; Claude/Cursor edit)
 - Tests (graph maps structure; tests verify behavior)
 - Operational data (lives in `apps/backend` Postgres)
 
 ## Internal dependencies
+
 - Reads ALL packages and apps for graph construction
 - Writes only to its own Postgres tables (separate from operational data)
 
 ## Who imports this
+
 - Nobody. Leaf consumer. CI runs it; Claude Code consumes via MCP.
 
 ## Lineage anchor
+
 Master plan §M (memory). ADR-0021 — Three-graph knowledge system + MCP server.
+
+## Deferred (Phase B)
+
+- MCP server (`mcp-server.ts`, 4 query tools per ADR-0002). Tracking: see SPEC.md §9.
+- Tree-sitter aware chunking. Tracking: see SPEC.md §9.
