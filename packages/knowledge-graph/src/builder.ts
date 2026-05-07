@@ -31,6 +31,8 @@ import { extractXStateTransitions } from './extractors/xstate-transitions.js';
 import { extractReadsWrites } from './extractors/edges-reads-writes.js';
 import { extractMounts } from './extractors/edges-mounts.js';
 import { extractMirrors } from './extractors/edges-mirrors.js';
+import { extractNavigatesTo } from './extractors/edges-navigates-to.js';
+import { extractTriggers } from './extractors/edges-triggers.js';
 import type { EdgeRecord, ExtractorOutput, NodeRecord } from './extractors/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -477,6 +479,30 @@ async function main() {
     await upsertEdge(e.kind, srcId, dstId, e.metadata);
   }
   console.log(`[graph:build] phase 3 — ${edgesPhase3.length} edges`);
+
+  console.log('[graph] Step 2d/3: Phase 4 edge extractors (navigates_to, triggers)...');
+  const phase4Outputs = await Promise.all([extractNavigatesTo(ctx), extractTriggers(ctx)]);
+  const edgesPhase4 = phase4Outputs.flatMap((o) => o.edges);
+
+  if (edgesPhase4.length + edgesPhase3.length + allEdges.length > EDGE_CEILING) {
+    throw new Error(
+      `[graph:build] edge ceiling exceeded after Phase 4: ${edgesPhase4.length + edgesPhase3.length + allEdges.length} > ${EDGE_CEILING}`,
+    );
+  }
+
+  // Upsert phase 4 edges.
+  for (const e of edgesPhase4) {
+    const srcMapKey = `${e.srcKey.kind}::${e.srcKey.name}`;
+    const dstMapKey = `${e.dstKey.kind}::${e.dstKey.name}`;
+    const srcId =
+      nodeIdMap.get(srcMapKey) ??
+      (await upsertNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
+    const dstId =
+      nodeIdMap.get(dstMapKey) ??
+      (await upsertNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
+    await upsertEdge(e.kind, srcId, dstId, e.metadata);
+  }
+  console.log(`[graph:build] phase 4 — ${edgesPhase4.length} edges`);
 
   console.log('[graph] Step 3/3: provenance edges (@derives)...');
   const prov = await extractProvenance(allFiles);

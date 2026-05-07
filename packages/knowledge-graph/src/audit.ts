@@ -116,6 +116,18 @@ if (dead.length > 0) {
   hardFail += dead.length;
 }
 
+// 2b. UNRESOLVABLE navigates_to count — Phase 4 baseline metric (panel Q5 lock).
+// Counts navigates_to edges where the href could not be statically resolved.
+// This is a drivable metric: count should trend down as code quality improves.
+const unresolvableResult = await client.query(`
+  SELECT COUNT(*)::int AS c
+  FROM axhy_graph.edges e
+  WHERE e.kind = 'navigates_to'
+    AND e.metadata->>'unresolvable' = 'true'
+`);
+const unresolvableNavigatesToCount = unresolvableResult.rows[0].c as number;
+console.error(`[audit] unresolvable_navigates_to_count=${unresolvableNavigatesToCount}`);
+
 // 3. Coverage summary
 const cov = await client.query(`
   SELECT
@@ -145,6 +157,8 @@ const summary = {
   deadLinks: dead.length,
   zeroOutgoingScreens: zeroOutgoing.rowCount ?? 0,
   totalEdges,
+  // Phase 4 metric: unresolvable navigates_to count. Baseline established first run.
+  unresolvableNavigatesTo: unresolvableNavigatesToCount,
   hardFail,
   warnings,
 };
