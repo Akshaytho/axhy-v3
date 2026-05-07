@@ -1,0 +1,16 @@
+model Worker {
+  id           String   @id @default(cuid())
+  /// @personal — phone number, DPDP-protected
+  phone        String   @unique
+  /// @personal
+  name         String
+  baseSalary   Int      @default(0)
+  companyId    String
+  createdAt    DateTime @default(now())
+}
+
+model Site {
+  id        String  @id
+  name      String
+  companyId String
+}
