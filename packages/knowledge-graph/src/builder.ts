@@ -338,6 +338,31 @@ async function main() {
     console.log(`[graph] Cleaned up ${mdStateCleanup.rowCount} stale .md-sourced state nodes`);
   }
 
+  // Phase-3 fold-in fix: delete stale fixture-sourced nodes (from before IGNORE_DIRS 'fixtures' fix).
+  // These were created in Phase 2 before the exclusion was added. ON CONFLICT DO UPDATE kept them alive.
+  const fixtureCleanup = await client.query(
+    `DELETE FROM axhy_graph.nodes WHERE source_path LIKE '%/test/fixtures/%' RETURNING id`,
+  );
+  if ((fixtureCleanup.rowCount ?? 0) > 0) {
+    console.log(`[graph] Cleaned up ${fixtureCleanup.rowCount} stale fixture-sourced nodes`);
+  }
+
+  // Phase-3 fold-in fix: delete stale api_endpoint nodes from non-backend files.
+  // Caused by extractFastifyRoutes previously running over all .ts/.tsx files.
+  const staleEndpointCleanup = await client.query(
+    `DELETE FROM axhy_graph.nodes
+     WHERE kind = 'api_endpoint'
+       AND source_path IS NOT NULL
+       AND source_path NOT LIKE 'apps/backend/src/routes/%'
+       AND source_path NOT LIKE 'apps/%/app/api/%/route.ts%'
+     RETURNING id`,
+  );
+  if ((staleEndpointCleanup.rowCount ?? 0) > 0) {
+    console.log(
+      `[graph] Cleaned up ${staleEndpointCleanup.rowCount} stale non-backend api_endpoint nodes`,
+    );
+  }
+
   const allFiles: string[] = [];
   for (const dir of SCAN_DIRS) {
     walk(join(REPO_ROOT, dir), allFiles);
