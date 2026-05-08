@@ -24,6 +24,7 @@ import rateLimit from '@fastify/rate-limit';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerWorkerRoutes } from './routes/workers.js';
+import { registerLeaveRequestRoutes } from './routes/leave-requests.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -60,6 +61,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerMeRoutes(app);
   await registerWorkerRoutes(app);
+  await registerLeaveRequestRoutes(app);
 
   return app;
 }

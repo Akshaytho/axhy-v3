@@ -104,3 +104,58 @@ export const MarkAbsentOutput = z.object({
  * @derives(ADR-0007)
  */
 export type MarkAbsentOutput = z.infer<typeof MarkAbsentOutput>;
+
+// ─── POST /leave-requests/:id/approve | /reject ──────────────────────────────
+
+/**
+ * Input shape for POST /leave-requests/:id/approve and /reject.
+ * @derives(data-flow §5 — approve leave PERSONNEL tier)
+ * @derives(ADR-0007)
+ */
+export const LeaveDecisionInput = z.object({
+  /** Optional supervisor note attached to the decision. */
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * Inferred input type for /leave-requests/:id/{approve,reject}.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type LeaveDecisionInput = z.infer<typeof LeaveDecisionInput>;
+
+/**
+ * LeaveRequestState — 12-state machine per data-flow §4.
+ * @derives(data-flow §4 — state machines)
+ * @derives(ADR-0007)
+ */
+export const LeaveRequestStateSchema = z.enum([
+  'REQUESTED',
+  'APPROVED',
+  'REJECTED',
+  'CANCELLED',
+  'EXPIRED',
+  'APPLIED',
+  'COMPLETED',
+]);
+
+/**
+ * Output shape for the leave-decision routes.
+ * @derives(data-flow §5 — approve leave)
+ * @derives(ADR-0007)
+ */
+export const LeaveDecisionOutput = z.object({
+  ok: z.literal(true),
+  leaveRequestId: z.string().uuid(),
+  workerId: z.string().uuid(),
+  state: LeaveRequestStateSchema,
+  decidedBy: z.string().uuid(),
+  decidedAt: z.string(), // ISO timestamp
+});
+
+/**
+ * Inferred output type for the leave-decision routes.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type LeaveDecisionOutput = z.infer<typeof LeaveDecisionOutput>;
