@@ -112,6 +112,22 @@ export async function verifyOtp(
   code: string,
 ): Promise<boolean> {
   await ensureSchema(prisma);
+
+  // Dev-mode magic code: bypass mode accepts a fixed code so the app can be
+  // exercised without reading DB rows or waiting on SMS. Real-code path below
+  // still works (so existing tests that read the issued code keep passing).
+  if (process.env.AXHY_OTP_BYPASS === '1' && code === '123456') {
+    // Mark the most recent unconsumed row consumed so rate-limit + reuse
+    // semantics still match production.
+    await prisma.$executeRawUnsafe(
+      `UPDATE axhy.otp_attempts
+       SET consumed = true
+       WHERE phone = $1 AND consumed = false AND expires_at > now()`,
+      phone,
+    );
+    return true;
+  }
+
   const codeHash = hashCode(phone, code);
 
   const rows = await prisma.$queryRawUnsafe<

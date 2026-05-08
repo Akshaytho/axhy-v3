@@ -30,6 +30,14 @@ import { registerMeRoutes } from './routes/me.js';
  * @derives(ADR-0004)
  */
 export async function buildServer(): Promise<FastifyInstance> {
+  // Refuse to boot if the OTP bypass is on in production — magic code "123456"
+  // would let anyone log in as anyone.
+  if (process.env.NODE_ENV === 'production' && process.env.AXHY_OTP_BYPASS === '1') {
+    throw new Error(
+      'AXHY_OTP_BYPASS=1 is set in production. Refusing to boot — unset before deploy.',
+    );
+  }
+
   const app = Fastify({
     logger:
       process.env.NODE_ENV === 'production'
