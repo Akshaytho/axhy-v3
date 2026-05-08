@@ -131,11 +131,15 @@ function computeTransitiveByEntity(
   return byEntity;
 }
 
-/** Format a route node as a readable label like "POST /workers/:id" */
+/** Format a route node as a readable label like "POST /workers/:id".
+ * Avoid double-prefixing when route.name already starts with the method
+ * (e.g. extractFastifyRoutes stores name = "POST /auth/otp/request"). */
 function routeLabel(route: GraphNode): string {
   const meta = route.metadata as Record<string, unknown> | undefined;
   const method = (meta?.method as string) ?? '';
-  return method ? `${method} ${route.name}` : route.name;
+  if (!method) return route.name;
+  if (route.name.startsWith(`${method} `)) return route.name;
+  return `${method} ${route.name}`;
 }
 
 /** @derives(ADR-0021) */
