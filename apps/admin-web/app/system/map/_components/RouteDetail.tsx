@@ -39,33 +39,23 @@ export function RouteDetail({ node, nodes, edges, onNavigate }: RouteDetailProps
     };
   });
 
-  // Reads: outgoing "reads" edges
+  // Reads: outgoing "reads" edges. A route may have N reads edges to the
+  // same entity (one per call site like prisma.user.findFirst, .findMany).
+  // Group by target name + show a count badge so the panel reads like
+  // "User · 6 call sites" instead of repeating "User" 6 times.
   const readEdges = edgesFrom(edges, node.id, 'reads');
-  const readRows: EdgeRow[] = readEdges.map((e) => {
-    const target = nodeById(nodes, e.target);
-    return {
-      id: e.target,
-      name: target?.name ?? e.target,
-      meta: target?.sourcePath ?? undefined,
-    };
-  });
+  const readRows: EdgeRow[] = aggregateEdgesByTargetName(readEdges, nodes);
 
-  // Writes: outgoing "writes" edges
+  // Writes: same shape.
   const writeEdges = edgesFrom(edges, node.id, 'writes');
-  const writeRows: EdgeRow[] = writeEdges.map((e) => {
-    const target = nodeById(nodes, e.target);
-    return {
-      id: e.target,
-      name: target?.name ?? e.target,
-      meta: target?.sourcePath ?? undefined,
-    };
-  });
+  const writeRows: EdgeRow[] = aggregateEdgesByTargetName(writeEdges, nodes);
 
-  // Lineage
+  // Lineage: dedup ADR refs (a file with N @derives(ADR-0007) annotations
+  // produces N edges; show ADR-0007 once).
   const lineageEdges = edgesFrom(edges, node.id, 'derives_from');
-  const lineageNodes = lineageEdges
-    .map((e) => nodeById(nodes, e.target))
-    .filter(Boolean) as GraphNode[];
+  const lineageNodes = dedupNodesByName(
+    lineageEdges.map((e) => nodeById(nodes, e.target)).filter(Boolean) as GraphNode[],
+  );
 
   return (
     <div className={styles.detailPanel}>
@@ -166,4 +156,43 @@ function deduplicateBySrc(edges: GraphEdge[]): GraphEdge[] {
     seen.add(e.source);
     return true;
   });
+}
+
+/** Group edges by target NAME (not id, since the graph has multiple
+ * nodes with the same name from the structural extractor). One row per
+ * unique entity/field name; show "· N call sites" when N > 1. */
+function aggregateEdgesByTargetName(edges: GraphEdge[], nodes: GraphNode[]): EdgeRow[] {
+  const byName = new Map<string, { name: string; sourcePath: string | null; count: number }>();
+  for (const e of edges) {
+    const target = nodeById(nodes, e.target);
+    const name = target?.name ?? e.target;
+    const sourcePath = target?.sourcePath ?? null;
+    const cur = byName.get(name);
+    if (cur) {
+      cur.count += 1;
+    } else {
+      byName.set(name, { name, sourcePath, count: 1 });
+    }
+  }
+  return Array.from(byName.values())
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((r) => ({
+      id: `aggregate::${r.name}`,
+      name: r.name,
+      meta: [r.sourcePath, r.count > 1 ? `${r.count} call sites` : null]
+        .filter(Boolean)
+        .join(' · '),
+    }));
+}
+
+/** Dedup graph nodes by name. Keeps first occurrence; preserves order. */
+function dedupNodesByName(nodes: GraphNode[]): GraphNode[] {
+  const seen = new Set<string>();
+  const out: GraphNode[] = [];
+  for (const n of nodes) {
+    if (seen.has(n.name)) continue;
+    seen.add(n.name);
+    out.push(n);
+  }
+  return out;
 }
