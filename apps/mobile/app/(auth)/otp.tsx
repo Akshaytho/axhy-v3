@@ -169,7 +169,7 @@ const s = StyleSheet.create({
   },
   back: {
     position: 'absolute',
-    top: tokens.space[10],
+    top: tokens.space[2],
     left: tokens.space[4],
   },
   backText: {

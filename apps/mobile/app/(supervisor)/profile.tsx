@@ -176,8 +176,8 @@ const s = StyleSheet.create({
   },
   content: {
     padding: tokens.space[4],
-    paddingTop: tokens.space[9],
-    paddingBottom: tokens.space[9],
+    paddingTop: tokens.space[3],
+    paddingBottom: tokens.space[6],
   },
   center: {
     flex: 1,
