@@ -10,6 +10,7 @@
  * Routes:
  *   - /auth/otp/request, /auth/otp/verify  → @derives(ADR-0007)
  *   - /me                                  → @derives(ADR-0007)
+ *   - /workers/:id/mark-absent             → @derives(data-flow §5)
  *
  * @derives(ADR-0004)
  */
@@ -22,6 +23,7 @@ import rateLimit from '@fastify/rate-limit';
 
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
+import { registerWorkerRoutes } from './routes/workers.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -57,6 +59,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   app.get('/health', async () => ({ ok: true, version: '0.0.1', ts: new Date().toISOString() }));
   await registerAuthRoutes(app);
   await registerMeRoutes(app);
+  await registerWorkerRoutes(app);
 
   return app;
 }
