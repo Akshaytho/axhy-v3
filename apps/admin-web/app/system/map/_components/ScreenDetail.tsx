@@ -34,6 +34,13 @@ type TransitiveEntityEntry = {
  * Compute the transitive entity map for a given edge kind (reads | writes).
  * Follows: screen --triggers--> api_endpoint --[kind]--> entity/field
  *
+ * Fallback: some graph builds attach reads/writes to a file-level api_endpoint
+ * node (e.g. "apps/backend/src/routes/auth.ts") rather than individual route
+ * nodes ("POST /auth/otp/verify"). When a triggered route has no direct data
+ * edges, we look for any api_endpoint node that shares the same sourcePath
+ * (the file that defines the route) and pick up its data edges instead.
+ * Both the route node and the file-level node are reported as "via" labels.
+ *
  * @derives(ADR-0021)
  */
 function computeTransitiveByEntity(
@@ -45,12 +52,9 @@ function computeTransitiveByEntity(
   const triggerEdges = edgesFrom(edges, screenId, 'triggers');
   const byEntity = new Map<string, TransitiveEntityEntry>();
 
-  for (const trigger of triggerEdges) {
-    const route = nodeById(nodes, trigger.target);
-    if (!route || route.kind !== 'api_endpoint') continue;
-
-    const routeDataEdges = edgesFrom(edges, route.id, kind);
-    for (const r of routeDataEdges) {
+  /** Collect data edges from a node into the byEntity map */
+  const collectDataEdges = (dataEdges: GraphEdge[], viaRoute: GraphNode): void => {
+    for (const r of dataEdges) {
       const target = nodeById(nodes, r.target);
       if (!target) continue;
 
@@ -60,7 +64,7 @@ function computeTransitiveByEntity(
           viaRoutes: [],
           fields: [],
         };
-        if (!entry.viaRoutes.find((x) => x.id === route.id)) entry.viaRoutes.push(route);
+        if (!entry.viaRoutes.find((x) => x.id === viaRoute.id)) entry.viaRoutes.push(viaRoute);
         byEntity.set(target.id, entry);
       } else if (target.kind === 'field') {
         // Resolve parent entity via belongs_to edge
@@ -74,11 +78,44 @@ function computeTransitiveByEntity(
               viaRoutes: [],
               fields: [],
             };
-            if (!entry.viaRoutes.find((x) => x.id === route.id)) entry.viaRoutes.push(route);
+            if (!entry.viaRoutes.find((x) => x.id === viaRoute.id)) entry.viaRoutes.push(viaRoute);
             if (!entry.fields.find((x) => x.id === target.id)) entry.fields.push(target);
             byEntity.set(parentId, entry);
           }
         }
+      }
+    }
+  };
+
+  for (const trigger of triggerEdges) {
+    const route = nodeById(nodes, trigger.target);
+    if (!route || route.kind !== 'api_endpoint') continue;
+
+    const directDataEdges = edgesFrom(edges, route.id, kind);
+
+    if (directDataEdges.length > 0) {
+      // Happy path: route node itself has data edges
+      collectDataEdges(directDataEdges, route);
+    } else if (route.sourcePath) {
+      // Fallback: find the file-level api_endpoint node whose sourcePath is the
+      // base file of this route (route sourcePaths may include a line suffix like
+      // "apps/backend/src/routes/auth.ts:30"; the file-level node has just the
+      // bare file path "apps/backend/src/routes/auth.ts").
+      // This covers graph builds where reads/writes are attached at the file level
+      // rather than per individual route endpoint.
+      const baseFilePath = route.sourcePath.replace(/:\d+$/, '');
+      const fileLevelNode = nodes.find(
+        (n) =>
+          n.kind === 'api_endpoint' &&
+          n.id !== route.id &&
+          n.sourcePath != null &&
+          n.sourcePath.replace(/:\d+$/, '') === baseFilePath &&
+          n.name === baseFilePath,
+      );
+      if (fileLevelNode) {
+        const fileLevelDataEdges = edgesFrom(edges, fileLevelNode.id, kind);
+        // Report via the named route (not the file-level node) for readability
+        collectDataEdges(fileLevelDataEdges, route);
       }
     }
   }
