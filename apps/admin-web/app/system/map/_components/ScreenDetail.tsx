@@ -75,19 +75,28 @@ export function ScreenDetail({ node, nodes, edges, onNavigate }: ScreenDetailPro
     };
   });
 
-  // 5. Navigates to: outgoing "navigates_to" edges
-  const navEdges = edgesFrom(edges, node.id, 'navigates_to');
+  // 5. Navigates to: outgoing "navigates_to" edges.
+  // Skip unresolvable + sentinel-named targets entirely — they're noise from
+  // Phase 4's failed-href fallback. The audit metric tracks them separately.
+  const navEdges = edgesFrom(edges, node.id, 'navigates_to').filter((e) => {
+    const meta = e.metadata as Record<string, unknown> | undefined;
+    if (meta?.unresolvable === true) return false;
+    const target = nodeById(nodes, e.target);
+    if (!target) return false;
+    if (target.name === '__unresolvable__') return false;
+    if (target.name.startsWith('__')) return false;
+    return true;
+  });
   const navRows: EdgeRow[] = navEdges.map((e) => {
     const target = nodeById(nodes, e.target);
     const meta = e.metadata as Record<string, unknown> | undefined;
     const isDynamic = meta?.dynamic === true;
-    const isUnresolvable = meta?.unresolvable === true;
     return {
       id: e.target,
       name: target?.name ?? e.target,
       meta: target?.sourcePath ?? undefined,
-      badge: isUnresolvable ? 'unresolvable' : isDynamic ? 'dynamic' : undefined,
-      badgeVariant: isUnresolvable ? 'unresolvable' : isDynamic ? 'dynamic' : undefined,
+      badge: isDynamic ? 'dynamic' : undefined,
+      badgeVariant: isDynamic ? 'dynamic' : undefined,
     };
   });
 

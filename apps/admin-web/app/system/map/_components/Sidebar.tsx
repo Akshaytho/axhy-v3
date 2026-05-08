@@ -103,16 +103,35 @@ export function Sidebar({ nodes, edges, selectedId, onSelect }: SidebarProps) {
           return n.kind === group.kind;
         });
 
-        // Deduplicate ADRs: multiple nodes with the same name are graph references,
-        // not distinct ADRs. Show only the first occurrence of each unique name.
-        if (group.kind === 'adr') {
-          const seenNames = new Set<string>();
-          groupNodes = groupNodes.filter((n) => {
-            if (seenNames.has(n.name)) return false;
-            seenNames.add(n.name);
-            return true;
-          });
-        }
+        // Hide sentinel / stale node names that pollute every group.
+        // - "__unresolvable__" / any "__*" comes from Phase 4's failed-href
+        //   resolution (extractNavigatesTo). Never user-meaningful.
+        // - For ui_screen: skip stale Phase-1 path-based names ("apps/...") and
+        //   non-screen URL schemes (mailto:, http:, tel:) that the
+        //   navigates_to extractor created as edge targets.
+        // - For entity: skip names that look like file paths (the regex
+        //   extractor picked them up by mistake from non-Prisma files).
+        groupNodes = groupNodes.filter((n) => {
+          if (n.name === '__unresolvable__') return false;
+          if (n.name.startsWith('__')) return false;
+          if (group.kind === 'ui_screen') {
+            if (n.name.startsWith('apps/')) return false;
+            if (/^(mailto|tel|https?):/i.test(n.name)) return false;
+          }
+          if (group.kind === 'entity' && n.name.includes('/')) return false;
+          return true;
+        });
+
+        // Deduplicate by name. The same logical entity (e.g. `User` model,
+        // `ADR-0021`) often produces many graph nodes — one per source file
+        // that mentions it. The sidebar shows ONE entry per unique name;
+        // detail panels aggregate all back-references when clicked.
+        const seenNames = new Set<string>();
+        groupNodes = groupNodes.filter((n) => {
+          if (seenNames.has(n.name)) return false;
+          seenNames.add(n.name);
+          return true;
+        });
 
         if (groupNodes.length === 0) return null;
 
