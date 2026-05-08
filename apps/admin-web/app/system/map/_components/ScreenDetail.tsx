@@ -52,20 +52,27 @@ function computeTransitiveByEntity(
   const triggerEdges = edgesFrom(edges, screenId, 'triggers');
   const byEntity = new Map<string, TransitiveEntityEntry>();
 
-  /** Collect data edges from a node into the byEntity map */
+  /**
+   * Collect data edges from a node into the byEntity map.
+   * Keyed by entity name (not id) to tolerate duplicate entity nodes in the
+   * graph — the builder may emit multiple nodes with the same name/kind when
+   * edges are created before the structural pass completes deduplication.
+   */
   const collectDataEdges = (dataEdges: GraphEdge[], viaRoute: GraphNode): void => {
     for (const r of dataEdges) {
       const target = nodeById(nodes, r.target);
       if (!target) continue;
 
       if (target.kind === 'entity') {
-        const entry = byEntity.get(target.id) ?? {
+        // Use entity name as the dedup key to collapse duplicate nodes
+        const key = `entity:${target.name}`;
+        const entry = byEntity.get(key) ?? {
           entity: target,
           viaRoutes: [],
           fields: [],
         };
         if (!entry.viaRoutes.find((x) => x.id === viaRoute.id)) entry.viaRoutes.push(viaRoute);
-        byEntity.set(target.id, entry);
+        byEntity.set(key, entry);
       } else if (target.kind === 'field') {
         // Resolve parent entity via belongs_to edge
         const belongsToEdges = edgesFrom(edges, target.id, 'belongs_to');
@@ -73,14 +80,15 @@ function computeTransitiveByEntity(
         if (parentId) {
           const parent = nodeById(nodes, parentId);
           if (parent) {
-            const entry = byEntity.get(parentId) ?? {
+            const key = `entity:${parent.name}`;
+            const entry = byEntity.get(key) ?? {
               entity: parent,
               viaRoutes: [],
               fields: [],
             };
             if (!entry.viaRoutes.find((x) => x.id === viaRoute.id)) entry.viaRoutes.push(viaRoute);
             if (!entry.fields.find((x) => x.id === target.id)) entry.fields.push(target);
-            byEntity.set(parentId, entry);
+            byEntity.set(key, entry);
           }
         }
       }
@@ -528,13 +536,15 @@ function computeBreaks(
         ['reads', 'triggers', 'mirrors'].includes(e.kind),
     );
 
-    // Count other screens that also touch this entity transitively
+    // Count other screens that also touch this entity transitively.
+    // The transitive map is keyed by "entity:<name>", so match by entity name.
+    const entityKey = `entity:${target.name}`;
     const otherTransitiveScreens = new Set<string>();
     for (const sid of allScreenIds) {
       if (sid === screen.id) continue;
       const tr = computeTransitiveByEntity(sid, nodes, edges, 'reads');
       const tw = computeTransitiveByEntity(sid, nodes, edges, 'writes');
-      if (tr.has(targetId) || tw.has(targetId)) {
+      if (tr.has(entityKey) || tw.has(entityKey)) {
         otherTransitiveScreens.add(sid);
       }
     }
@@ -559,14 +569,14 @@ function computeBreaks(
     addDep(dep.target, false);
   }
 
-  // 2. Transitive read entities
-  for (const entityId of transitiveReads.keys()) {
-    addDep(entityId, true);
+  // 2. Transitive read entities — use the canonical entity node id from the entry
+  for (const entry of transitiveReads.values()) {
+    addDep(entry.entity.id, true);
   }
 
   // 3. Transitive write entities
-  for (const entityId of transitiveWrites.keys()) {
-    addDep(entityId, true);
+  for (const entry of transitiveWrites.values()) {
+    addDep(entry.entity.id, true);
   }
 
   return result.sort((a, b) => b.sharedScreenCount - a.sharedScreenCount);
