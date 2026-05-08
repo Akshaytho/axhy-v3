@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 import type { RequestOTPOutput } from '@axhy/shared-schema';
@@ -53,49 +54,51 @@ export default function PhoneScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <View style={s.inner}>
-        <Text style={s.brand}>Axhy</Text>
-        <Text style={s.heading}>Sign in</Text>
-        <Text style={s.sub}>Enter your mobile number to continue.</Text>
+    <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
+      <KeyboardAvoidingView style={s.kb} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={s.inner}>
+          <Text style={s.brand}>Axhy</Text>
+          <Text style={s.heading}>Sign in</Text>
+          <Text style={s.sub}>Enter your mobile number to continue.</Text>
 
-        <View style={s.inputRow}>
-          <View style={s.prefix}>
-            <Text style={s.prefixText}>+91</Text>
+          <View style={s.inputRow}>
+            <View style={s.prefix}>
+              <Text style={s.prefixText}>+91</Text>
+            </View>
+            <TextInput
+              style={s.input}
+              value={digits}
+              onChangeText={(t) => {
+                setError(null);
+                setDigits(t.replace(/\D/g, '').slice(0, 10));
+              }}
+              placeholder="98765 43210"
+              placeholderTextColor={tokens.color.ink.placeholder}
+              keyboardType="phone-pad"
+              maxLength={10}
+              returnKeyType="done"
+              onSubmitEditing={handleGetOtp}
+              autoFocus
+            />
           </View>
-          <TextInput
-            style={s.input}
-            value={digits}
-            onChangeText={(t) => {
-              setError(null);
-              setDigits(t.replace(/\D/g, '').slice(0, 10));
-            }}
-            placeholder="98765 43210"
-            placeholderTextColor={tokens.color.ink.placeholder}
-            keyboardType="phone-pad"
-            maxLength={10}
-            returnKeyType="done"
-            onSubmitEditing={handleGetOtp}
-            autoFocus
-          />
+
+          {error !== null && <Text style={s.error}>{error}</Text>}
+
+          <TouchableOpacity
+            style={[s.btn, (loading || digits.length !== 10) && s.btnDisabled]}
+            onPress={handleGetOtp}
+            disabled={loading || digits.length !== 10}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color={tokens.color.surface.paper} />
+            ) : (
+              <Text style={s.btnText}>Get OTP</Text>
+            )}
+          </TouchableOpacity>
         </View>
-
-        {error !== null && <Text style={s.error}>{error}</Text>}
-
-        <TouchableOpacity
-          style={[s.btn, (loading || digits.length !== 10) && s.btnDisabled]}
-          onPress={handleGetOtp}
-          disabled={loading || digits.length !== 10}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color={tokens.color.surface.paper} />
-          ) : (
-            <Text style={s.btnText}>Get OTP</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -103,6 +106,9 @@ const s = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.color.surface.paper,
+  },
+  kb: {
+    flex: 1,
   },
   inner: {
     flex: 1,

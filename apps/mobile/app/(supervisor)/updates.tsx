@@ -3,14 +3,15 @@
  * @derives(ADR-0021)
  */
 
-import { View, Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '@axhy/ui-tokens';
 
 export default function UpdatesScreen() {
   return (
-    <View style={s.root}>
+    <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       <Text style={s.label}>Coming soon — Slice 2+</Text>
-    </View>
+    </SafeAreaView>
   );
 }
 

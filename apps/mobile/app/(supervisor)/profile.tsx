@@ -12,6 +12,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { tokens } from '@axhy/ui-tokens';
@@ -116,19 +117,19 @@ export default function ProfileScreen() {
 
   if (isLoading) {
     return (
-      <View style={s.center}>
+      <SafeAreaView style={s.center} edges={['top', 'left', 'right']}>
         <ActivityIndicator size="large" color={tokens.color.brand.accent} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (isError || !data) {
     return (
-      <View style={s.center}>
+      <SafeAreaView style={s.center} edges={['top', 'left', 'right']}>
         <TouchableOpacity onPress={() => refetch()}>
           <Text style={s.errorText}>Couldn't load profile. Tap to retry.</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -137,36 +138,34 @@ export default function ProfileScreen() {
   const initial = firstName[0]?.toUpperCase() ?? '?';
 
   return (
-    <ScrollView
-      style={s.root}
-      contentContainerStyle={s.content}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <View style={s.header}>
-        <View style={s.avatar}>
-          <Text style={s.avatarText}>{initial}</Text>
+    <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
+      <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={s.header}>
+          <View style={s.avatar}>
+            <Text style={s.avatarText}>{initial}</Text>
+          </View>
+          <View style={s.headerText}>
+            <Text style={s.greeting}>Namaste, {firstName}.</Text>
+            <Text style={s.roleChip}>
+              {data.activeRole} · {data.activeCompany.name}
+            </Text>
+          </View>
         </View>
-        <View style={s.headerText}>
-          <Text style={s.greeting}>Namaste, {firstName}.</Text>
-          <Text style={s.roleChip}>
-            {data.activeRole} · {data.activeCompany.name}
-          </Text>
-        </View>
-      </View>
 
-      <Section title="PROFILE">
-        <StatRow label="Name" value={displayName} />
-        <StatRow label="Company" value={data.activeCompany.name} />
-        <StatRow label="Role" value={data.activeRole} divider={false} />
-      </Section>
+        <Section title="PROFILE">
+          <StatRow label="Name" value={displayName} />
+          <StatRow label="Company" value={data.activeCompany.name} />
+          <StatRow label="Role" value={data.activeRole} divider={false} />
+        </Section>
 
-      <TouchableOpacity style={s.signOut} onPress={handleSignOut} activeOpacity={0.8}>
-        <Text style={s.signOutText}>Sign out</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={s.signOut} onPress={handleSignOut} activeOpacity={0.8}>
+          <Text style={s.signOutText}>Sign out</Text>
+        </TouchableOpacity>
 
-      <Text style={s.build}>AXHY · v3 · BUILD 2026.05.08</Text>
-    </ScrollView>
+        <Text style={s.build}>AXHY · v3 · BUILD 2026.05.08</Text>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 

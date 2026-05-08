@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 import type { VerifyOTPOutput, RequestOTPOutput } from '@axhy/shared-schema';
@@ -93,60 +94,62 @@ export default function OtpScreen() {
     : '';
 
   return (
-    <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <View style={s.inner}>
-        <TouchableOpacity style={s.back} onPress={() => router.back()}>
-          <Text style={s.backText}>← Back</Text>
-        </TouchableOpacity>
+    <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
+      <KeyboardAvoidingView style={s.kb} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={s.inner}>
+          <TouchableOpacity style={s.back} onPress={() => router.back()}>
+            <Text style={s.backText}>← Back</Text>
+          </TouchableOpacity>
 
-        <Text style={s.heading}>Enter OTP</Text>
-        <Text style={s.sub}>Sent to {maskedPhone}</Text>
+          <Text style={s.heading}>Enter OTP</Text>
+          <Text style={s.sub}>Sent to {maskedPhone}</Text>
 
-        <TextInput
-          style={s.input}
-          value={code}
-          onChangeText={(t) => {
-            setError(null);
-            setCode(t.replace(/\D/g, '').slice(0, 6));
-          }}
-          placeholder="------"
-          placeholderTextColor={tokens.color.ink.placeholder}
-          keyboardType="number-pad"
-          maxLength={6}
-          returnKeyType="done"
-          onSubmitEditing={handleVerify}
-          autoFocus
-          textAlign="center"
-        />
+          <TextInput
+            style={s.input}
+            value={code}
+            onChangeText={(t) => {
+              setError(null);
+              setCode(t.replace(/\D/g, '').slice(0, 6));
+            }}
+            placeholder="------"
+            placeholderTextColor={tokens.color.ink.placeholder}
+            keyboardType="number-pad"
+            maxLength={6}
+            returnKeyType="done"
+            onSubmitEditing={handleVerify}
+            autoFocus
+            textAlign="center"
+          />
 
-        {error !== null && <Text style={s.error}>{error}</Text>}
+          {error !== null && <Text style={s.error}>{error}</Text>}
 
-        <TouchableOpacity
-          style={[s.btn, (loading || code.length !== 6) && s.btnDisabled]}
-          onPress={handleVerify}
-          disabled={loading || code.length !== 6}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color={tokens.color.surface.paper} />
-          ) : (
-            <Text style={s.btnText}>Verify</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.btn, (loading || code.length !== 6) && s.btnDisabled]}
+            onPress={handleVerify}
+            disabled={loading || code.length !== 6}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color={tokens.color.surface.paper} />
+            ) : (
+              <Text style={s.btnText}>Verify</Text>
+            )}
+          </TouchableOpacity>
 
-        <View style={s.resendRow}>
-          {countdown > 0 ? (
-            <Text style={s.resendTimer}>Resend OTP in {countdown}s</Text>
-          ) : (
-            <TouchableOpacity onPress={handleResend} disabled={resending}>
-              <Text style={[s.resendLink, resending && s.resendLinkDisabled]}>
-                {resending ? 'Sending…' : 'Resend OTP'}
-              </Text>
-            </TouchableOpacity>
-          )}
+          <View style={s.resendRow}>
+            {countdown > 0 ? (
+              <Text style={s.resendTimer}>Resend OTP in {countdown}s</Text>
+            ) : (
+              <TouchableOpacity onPress={handleResend} disabled={resending}>
+                <Text style={[s.resendLink, resending && s.resendLinkDisabled]}>
+                  {resending ? 'Sending…' : 'Resend OTP'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -154,6 +157,9 @@ const s = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.color.surface.paper,
+  },
+  kb: {
+    flex: 1,
   },
   inner: {
     flex: 1,
