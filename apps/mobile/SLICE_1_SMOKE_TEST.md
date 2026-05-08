@@ -38,18 +38,29 @@ EXPO_PUBLIC_API_BASE_URL=http://<lan-ip>:4000 pnpm dev
 
 Scan the QR code in Expo Go. The app opens on the phone screen.
 
-## 5. Manual smoke test (4 steps)
+## 5. Seed the sandbox tenant (first run only)
 
-1. Enter any 10-digit number (e.g. `9876543210`) and tap **Get OTP**.
+```bash
+cd apps/backend
+pnpm exec tsx --env-file=.env.local scripts/seed-sandbox.ts
+```
+
+This creates Company `axhy-sandbox` + User `+919999999999` + Membership(SUPERVISOR). Idempotent — safe to re-run.
+
+## 6. Manual smoke test (4 steps)
+
+1. Enter `9999999999` (the seeded sandbox phone) and tap **Get OTP**.
 2. The OTP screen appears showing a masked phone number.
 3. Enter `123456` and tap **Verify**.
-4. Profile screen loads showing **Namaste, {name}.** and company + role.
+4. Profile screen loads showing **Namaste, Akshay (sandbox).** and company `Axhy Sandbox` + role `SUPERVISOR`.
 
-## 6. Sign out and re-test
+**Note:** Any other 10-digit number will produce a `403 NO_MEMBERSHIPS` error — only seeded phones can sign in. Add additional test users by editing `seed-sandbox.ts`.
+
+## 7. Sign out and re-test
 
 On the Profile screen, tap **Sign out**. You land back on the phone screen. Repeat from step 1.
 
-## 7. Known limitations (Slice 1)
+## 8. Known limitations (Slice 1)
 
 - Chat, Today, Summary, Updates tabs show "Coming soon — Slice 2+".
 - No refresh-token auto-rotation: 401 kicks user back to sign-in.
