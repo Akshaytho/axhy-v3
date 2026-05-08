@@ -1,6 +1,7 @@
 /**
  * ScreenDetail — detail panel for ui_screen nodes.
  * Shows: reads, triggers, mounts, mirrors, navigates_to, "what breaks", lineage.
+ * Tier 3: also shows transitive reads/writes via screen -> triggers -> api_endpoint -> reads/writes.
  *
  * @derives(ADR-0021)
  */
@@ -22,12 +23,89 @@ type ScreenDetailProps = {
   onNavigate: (node: GraphNode) => void;
 };
 
+/** Groups for a single transitive entity: which routes touch it and which fields */
+type TransitiveEntityEntry = {
+  entity: GraphNode;
+  viaRoutes: GraphNode[];
+  fields: GraphNode[];
+};
+
+/**
+ * Compute the transitive entity map for a given edge kind (reads | writes).
+ * Follows: screen --triggers--> api_endpoint --[kind]--> entity/field
+ *
+ * @derives(ADR-0021)
+ */
+function computeTransitiveByEntity(
+  screenId: string,
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  kind: 'reads' | 'writes',
+): Map<string, TransitiveEntityEntry> {
+  const triggerEdges = edgesFrom(edges, screenId, 'triggers');
+  const byEntity = new Map<string, TransitiveEntityEntry>();
+
+  for (const trigger of triggerEdges) {
+    const route = nodeById(nodes, trigger.target);
+    if (!route || route.kind !== 'api_endpoint') continue;
+
+    const routeDataEdges = edgesFrom(edges, route.id, kind);
+    for (const r of routeDataEdges) {
+      const target = nodeById(nodes, r.target);
+      if (!target) continue;
+
+      if (target.kind === 'entity') {
+        const entry = byEntity.get(target.id) ?? {
+          entity: target,
+          viaRoutes: [],
+          fields: [],
+        };
+        if (!entry.viaRoutes.find((x) => x.id === route.id)) entry.viaRoutes.push(route);
+        byEntity.set(target.id, entry);
+      } else if (target.kind === 'field') {
+        // Resolve parent entity via belongs_to edge
+        const belongsToEdges = edgesFrom(edges, target.id, 'belongs_to');
+        const parentId = belongsToEdges[0]?.target;
+        if (parentId) {
+          const parent = nodeById(nodes, parentId);
+          if (parent) {
+            const entry = byEntity.get(parentId) ?? {
+              entity: parent,
+              viaRoutes: [],
+              fields: [],
+            };
+            if (!entry.viaRoutes.find((x) => x.id === route.id)) entry.viaRoutes.push(route);
+            if (!entry.fields.find((x) => x.id === target.id)) entry.fields.push(target);
+            byEntity.set(parentId, entry);
+          }
+        }
+      }
+    }
+  }
+
+  return byEntity;
+}
+
+/** Format a route node as a readable label like "POST /workers/:id" */
+function routeLabel(route: GraphNode): string {
+  const meta = route.metadata as Record<string, unknown> | undefined;
+  const method = (meta?.method as string) ?? '';
+  return method ? `${method} ${route.name}` : route.name;
+}
+
 /** @derives(ADR-0021) */
 export function ScreenDetail({ node, nodes, edges, onNavigate }: ScreenDetailProps) {
-  // 1. Reads: outgoing "reads" edges from this screen
+  // 1. Reads: outgoing "reads" edges from this screen (direct)
   const readEdges = edgesFrom(edges, node.id, 'reads');
-  // Group by target entity
   const readsByEntity = groupEdgesByTarget(readEdges, nodes);
+
+  // 1b. Transitive reads: screen -> triggers -> api_endpoint -> reads -> entity/field
+  const transitiveReads = computeTransitiveByEntity(node.id, nodes, edges, 'reads');
+  const transitiveReadEntries = Array.from(transitiveReads.values());
+
+  // 1c. Transitive writes: screen -> triggers -> api_endpoint -> writes -> entity/field
+  const transitiveWrites = computeTransitiveByEntity(node.id, nodes, edges, 'writes');
+  const transitiveWriteEntries = Array.from(transitiveWrites.values());
 
   // 2. Triggers: outgoing "triggers" edges from this screen
   const triggerEdges = edgesFrom(edges, node.id, 'triggers');
@@ -100,9 +178,9 @@ export function ScreenDetail({ node, nodes, edges, onNavigate }: ScreenDetailPro
     };
   });
 
-  // 6. "What breaks" — for each table/route/machine this screen depends on,
+  // 6. "What breaks" — for each table/route/machine this screen depends on (direct + transitive),
   // find OTHER ui_screen nodes that ALSO depend on it.
-  const breaksItems = computeBreaks(node, nodes, edges);
+  const breaksItems = computeBreaks(node, nodes, edges, transitiveReads, transitiveWrites);
 
   // 7. Lineage: outgoing "derives_from" edges
   const lineageEdges = edgesFrom(edges, node.id, 'derives_from');
@@ -112,6 +190,10 @@ export function ScreenDetail({ node, nodes, edges, onNavigate }: ScreenDetailPro
 
   const meta = node.metadata as Record<string, unknown> | undefined;
   const app = (meta?.app as string) ?? extractApp(node.sourcePath);
+
+  const hasDirectReads = readsByEntity.length > 0;
+  const hasTransitiveReads = transitiveReadEntries.length > 0;
+  const hasTransitiveWrites = transitiveWriteEntries.length > 0;
 
   return (
     <div className={styles.detailPanel}>
@@ -144,9 +226,15 @@ export function ScreenDetail({ node, nodes, edges, onNavigate }: ScreenDetailPro
         data available yet.
       </div>
 
+      {/* Direct reads — shown when present */}
       <Section title="Reads from these tables" count={readsByEntity.length} icon="📖">
-        {readsByEntity.length === 0 ? (
-          <p className={styles.noData}>No reads recorded for this screen.</p>
+        {!hasDirectReads && !hasTransitiveReads ? (
+          <p className={styles.noData}>
+            This screen does not directly query any tables. (Tables touched via API calls — see
+            Triggers section.)
+          </p>
+        ) : !hasDirectReads ? (
+          <p className={styles.noData}>No direct table reads on this screen.</p>
         ) : (
           <ul className={styles.edgeList}>
             {readsByEntity.map((item) => (
@@ -179,6 +267,28 @@ export function ScreenDetail({ node, nodes, edges, onNavigate }: ScreenDetailPro
           </ul>
         )}
       </Section>
+
+      {/* Transitive reads — only shown when there is at least one */}
+      {hasTransitiveReads && (
+        <Section
+          title="Reads from these tables (via API)"
+          count={transitiveReadEntries.length}
+          icon="📖"
+        >
+          <TransitiveEntityList entries={transitiveReadEntries} onNavigate={onNavigate} />
+        </Section>
+      )}
+
+      {/* Transitive writes — only shown when there is at least one */}
+      {hasTransitiveWrites && (
+        <Section
+          title="Writes to these tables (via API)"
+          count={transitiveWriteEntries.length}
+          icon="✏️"
+        >
+          <TransitiveEntityList entries={transitiveWriteEntries} onNavigate={onNavigate} />
+        </Section>
+      )}
 
       <Section title="Triggers these actions" count={triggerRows.length} icon="⚡">
         <EdgeList
@@ -230,6 +340,7 @@ export function ScreenDetail({ node, nodes, edges, onNavigate }: ScreenDetailPro
                 <div className={styles.breaksRowCount}>
                   also used by {item.sharedScreenCount} other screen
                   {item.sharedScreenCount !== 1 ? 's' : ''}
+                  {item.isTransitive ? ' (via API)' : ''}
                 </div>
               </div>
             </div>
@@ -254,6 +365,44 @@ export function ScreenDetail({ node, nodes, edges, onNavigate }: ScreenDetailPro
         </Section>
       )}
     </div>
+  );
+}
+
+// ── Transitive entity list component ──
+
+type TransitiveEntityListProps = {
+  entries: TransitiveEntityEntry[];
+  onNavigate: (node: GraphNode) => void;
+};
+
+function TransitiveEntityList({ entries, onNavigate }: TransitiveEntityListProps) {
+  return (
+    <ul className={styles.edgeList}>
+      {entries.map((entry) => {
+        const routeLabels = entry.viaRoutes.map(routeLabel).join(', ');
+        const fieldNames = entry.fields.map((f) => f.name.split('.').pop() ?? f.name);
+        const fieldSuffix =
+          fieldNames.length > 0 ? ` · fields: ${fieldNames.slice(0, 4).join(', ')}` : '';
+        const metaLine = `via ${routeLabels}${fieldSuffix}`;
+        return (
+          <li
+            key={entry.entity.id}
+            className={`${styles.edgeRow} ${styles.edgeRowClickable}`}
+            onClick={() => onNavigate(entry.entity)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') onNavigate(entry.entity);
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className={styles.edgeRowName}>{entry.entity.name}</div>
+              <div className={styles.edgeRowMeta}>{metaLine}</div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -299,12 +448,25 @@ type BreaksItem = {
   depId: string;
   depName: string;
   sharedScreenCount: number;
+  isTransitive: boolean;
 };
 
-function computeBreaks(screen: GraphNode, nodes: GraphNode[], edges: GraphEdge[]): BreaksItem[] {
-  // For each dependency of this screen (reads, triggers, mirrors edges),
-  // find other ui_screen nodes that also have a relationship to the same target
-  const outEdges = edges.filter(
+/**
+ * Compute "what breaks" — for each dependency of this screen (direct edges +
+ * transitive entity reads/writes via API), find other ui_screen nodes that also
+ * depend on the same target (directly or transitively).
+ *
+ * @derives(ADR-0021)
+ */
+function computeBreaks(
+  screen: GraphNode,
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  transitiveReads: Map<string, TransitiveEntityEntry>,
+  transitiveWrites: Map<string, TransitiveEntityEntry>,
+): BreaksItem[] {
+  // Direct outgoing deps (reads, triggers, mirrors)
+  const directOutEdges = edges.filter(
     (e) => e.source === screen.id && ['reads', 'triggers', 'mirrors'].includes(e.kind),
   );
   const allScreenIds = nodes.filter((n) => n.kind === 'ui_screen').map((n) => n.id);
@@ -312,31 +474,62 @@ function computeBreaks(screen: GraphNode, nodes: GraphNode[], edges: GraphEdge[]
   const result: BreaksItem[] = [];
   const seen = new Set<string>();
 
-  for (const dep of outEdges) {
-    if (seen.has(dep.target)) continue;
-    seen.add(dep.target);
+  // Helper: add a dep target to the result
+  const addDep = (targetId: string, isTransitive: boolean): void => {
+    if (seen.has(targetId)) return;
+    seen.add(targetId);
 
-    const target = nodeById(nodes, dep.target);
-    if (!target) continue;
+    const target = nodeById(nodes, targetId);
+    if (!target) return;
 
-    // Count other screens that also depend on this target
-    const otherScreens = edges.filter(
+    // Count other screens that also depend on this target (directly)
+    const otherDirectScreens = edges.filter(
       (e) =>
-        e.target === dep.target &&
+        e.target === targetId &&
         e.source !== screen.id &&
         allScreenIds.includes(e.source) &&
         ['reads', 'triggers', 'mirrors'].includes(e.kind),
     );
 
-    const uniqueOtherScreens = new Set(otherScreens.map((e) => e.source));
+    // Count other screens that also touch this entity transitively
+    const otherTransitiveScreens = new Set<string>();
+    for (const sid of allScreenIds) {
+      if (sid === screen.id) continue;
+      const tr = computeTransitiveByEntity(sid, nodes, edges, 'reads');
+      const tw = computeTransitiveByEntity(sid, nodes, edges, 'writes');
+      if (tr.has(targetId) || tw.has(targetId)) {
+        otherTransitiveScreens.add(sid);
+      }
+    }
+
+    const uniqueOtherScreens = new Set([
+      ...otherDirectScreens.map((e) => e.source),
+      ...otherTransitiveScreens,
+    ]);
 
     if (uniqueOtherScreens.size > 0) {
       result.push({
-        depId: dep.target,
+        depId: targetId,
         depName: target.name,
         sharedScreenCount: uniqueOtherScreens.size,
+        isTransitive,
       });
     }
+  };
+
+  // 1. Direct deps
+  for (const dep of directOutEdges) {
+    addDep(dep.target, false);
+  }
+
+  // 2. Transitive read entities
+  for (const entityId of transitiveReads.keys()) {
+    addDep(entityId, true);
+  }
+
+  // 3. Transitive write entities
+  for (const entityId of transitiveWrites.keys()) {
+    addDep(entityId, true);
   }
 
   return result.sort((a, b) => b.sharedScreenCount - a.sharedScreenCount);
