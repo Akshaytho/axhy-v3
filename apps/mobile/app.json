@@ -1,3 +1,18 @@
 {
-  "plugins": ["expo-localization", "expo-router", "expo-secure-store"]
+  "expo": {
+    "name": "Axhy",
+    "slug": "axhy",
+    "scheme": "axhy",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "app.axhy.mobile",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "app.axhy.mobile"
+    },
+    "plugins": ["expo-localization", "expo-router", "expo-secure-store"]
+  }
 }
