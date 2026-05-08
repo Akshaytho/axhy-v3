@@ -236,6 +236,46 @@ async function upsertNode(
   return res.rows[0].id;
 }
 
+// Resolve a node by (kind, name) — preferring existing rows with a real
+// source_path over creating duplicates with NULL source_path.
+//
+// Why: edge extractors emit endpoints with null sourcePath when they don't
+// know the canonical source. Without this lookup, every edge to "User"
+// creates a new entity row with source_path=NULL, multiplying duplicates
+// across builds. We prefer the canonical (kind, name) row from the
+// structural pass (which has a real source_path).
+//
+// In-memory cache: resolutions are stable within a single build run, so
+// every (kind, name) pair hits the DB at most once. Without this, a 2K-edge
+// build issued ~4K SELECTs over the network — minutes of latency.
+const nodeResolutionCache = new Map<string, string>();
+
+async function resolveOrCreateNode(
+  kind: string,
+  name: string,
+  sourcePath: string | null,
+  metadata: Record<string, unknown> = {},
+): Promise<string> {
+  const cacheKey = `${kind}::${name}`;
+  const cached = nodeResolutionCache.get(cacheKey);
+  if (cached) return cached;
+
+  const found = await client.query(
+    `SELECT id FROM axhy_graph.nodes
+     WHERE kind = $1 AND name = $2
+     ORDER BY (source_path IS NULL), source_path
+     LIMIT 1`,
+    [kind, name],
+  );
+  if ((found.rowCount ?? 0) > 0) {
+    nodeResolutionCache.set(cacheKey, found.rows[0].id);
+    return found.rows[0].id;
+  }
+  const id = await upsertNode(kind, name, sourcePath, metadata);
+  nodeResolutionCache.set(cacheKey, id);
+  return id;
+}
+
 async function upsertEdge(
   kind: string,
   srcId: string,
@@ -415,10 +455,10 @@ async function main() {
     const dstKey = `${e.dstKey.kind}::${e.dstKey.name}`;
     const srcId =
       nodeIdMap.get(srcKey) ??
-      (await upsertNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
+      (await resolveOrCreateNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
     const dstId =
       nodeIdMap.get(dstKey) ??
-      (await upsertNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
+      (await resolveOrCreateNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
     await upsertEdge(e.kind, srcId, dstId, e.metadata);
   }
   console.log(`[graph:build] phase 2 — ${allNodes.length} nodes, ${allEdges.length} edges`);
@@ -472,10 +512,10 @@ async function main() {
     const dstMapKey = `${e.dstKey.kind}::${e.dstKey.name}`;
     const srcId =
       nodeIdMap.get(srcMapKey) ??
-      (await upsertNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
+      (await resolveOrCreateNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
     const dstId =
       nodeIdMap.get(dstMapKey) ??
-      (await upsertNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
+      (await resolveOrCreateNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
     await upsertEdge(e.kind, srcId, dstId, e.metadata);
   }
   console.log(`[graph:build] phase 3 — ${edgesPhase3.length} edges`);
@@ -496,10 +536,10 @@ async function main() {
     const dstMapKey = `${e.dstKey.kind}::${e.dstKey.name}`;
     const srcId =
       nodeIdMap.get(srcMapKey) ??
-      (await upsertNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
+      (await resolveOrCreateNode(e.srcKey.kind, e.srcKey.name, e.srcKey.sourcePath, {}));
     const dstId =
       nodeIdMap.get(dstMapKey) ??
-      (await upsertNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
+      (await resolveOrCreateNode(e.dstKey.kind, e.dstKey.name, e.dstKey.sourcePath, {}));
     await upsertEdge(e.kind, srcId, dstId, e.metadata);
   }
   console.log(`[graph:build] phase 4 — ${edgesPhase4.length} edges`);
