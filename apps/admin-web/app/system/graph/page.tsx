@@ -83,7 +83,9 @@ export default function GraphPage() {
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
 
   useEffect(() => {
-    fetch('/api/graph')
+    const devToken = process.env.NEXT_PUBLIC_DEV_GRAPH_TOKEN;
+    const headers: Record<string, string> = devToken ? { Authorization: `Bearer ${devToken}` } : {};
+    fetch('/api/graph', { headers })
       .then((r) => r.json())
       .then((j) => {
         if (j.error) setError(j.error);
