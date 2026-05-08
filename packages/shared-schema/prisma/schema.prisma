@@ -4,13 +4,14 @@
 //
 // @derives(ADR-0003) — Single source of truth for schema
 // @derives(ADR-0004) — Postgres on Railway
-// @derives(panel-2026-05-08 — Phase B.1 foundation: AuditEvent + Outbox + Device)
+// @derives(panel-2026-05-08 — Phase B.1 foundation + B.2 domain tables)
 //
 // Day 3 scope: Company, User, Membership + Site, Worker, Visit, LeaveRequest.
-// Phase B.1: AuditEvent (system-of-record audit trail), Outbox (atomic
-// side-effect queue), Device (registered phone with TRUSTED state).
-// Remaining domain tables (Attendance, SupervisorDecision,
-// SupervisorDailyContext, HRUpdate, SwapRequest, VisitPhoto) land in B.2.
+// Phase B.1: AuditEvent + Outbox + Device + OtpAttempt (mirror).
+// Phase B.2: Attendance + Complaint + SwapRequest + SupervisorDecision +
+// SupervisorDailyContext + HRUpdate + VisitPhoto. Tier 1 routes use a
+// subset; the rest are placeholders the connectedness map can already
+// see + B.3+ commits can fill in callers without re-migrating.
 
 generator client {
   provider        = "prisma-client-js"
@@ -39,15 +40,22 @@ model Company {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  memberships Membership[]
-  users       User[]
-  sites       Site[]
-  workers     Worker[]
-  visits      Visit[]
-  leaves      LeaveRequest[]
-  auditEvents AuditEvent[]
-  outbox      Outbox[]
-  devices     Device[]
+  memberships             Membership[]
+  users                   User[]
+  sites                   Site[]
+  workers                 Worker[]
+  visits                  Visit[]
+  leaves                  LeaveRequest[]
+  auditEvents             AuditEvent[]
+  outbox                  Outbox[]
+  devices                 Device[]
+  attendances             Attendance[]
+  complaints              Complaint[]
+  swapRequests            SwapRequest[]
+  supervisorDecisions     SupervisorDecision[]
+  supervisorDailyContexts SupervisorDailyContext[]
+  hrUpdates               HRUpdate[]
+  visitPhotos             VisitPhoto[]
 
   @@schema("axhy")
 }
@@ -117,8 +125,10 @@ model Site {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  visits  Visit[]
+  company    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  visits     Visit[]
+  complaints Complaint[]
+  swaps      SwapRequest[]
 
   @@index([companyId])
   @@index([companyId, state])
@@ -145,10 +155,13 @@ model Worker {
   joinedAt        DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user    User?          @relation(fields: [userId], references: [id])
-  visits  Visit[]
-  leaves  LeaveRequest[]
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User?          @relation(fields: [userId], references: [id])
+  visits      Visit[]
+  leaves      LeaveRequest[]
+  attendances Attendance[]
+  fromSwaps   SwapRequest[]  @relation("SwapFromWorker")
+  toSwaps     SwapRequest[]  @relation("SwapToWorker")
 
   @@unique([companyId, phone])
   @@index([companyId])
@@ -180,9 +193,10 @@ model Visit {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  worker  Worker  @relation(fields: [workerId], references: [id], onDelete: Cascade)
-  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  worker  Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  site    Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  photos  VisitPhoto[]
 
   @@index([companyId, scheduledFor])
   @@index([companyId, state])
@@ -307,8 +321,8 @@ model OtpAttempt {
   /// @personal phone (E.164)
   phone     String   @db.VarChar(16)
   codeHash  String   @map("code_hash")
-  issuedAt  DateTime @default(now()) @db.Timestamptz(6) @map("issued_at")
-  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+  issuedAt  DateTime @default(now()) @map("issued_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
   consumed  Boolean  @default(false)
 
   @@id([phone, issuedAt])
@@ -350,5 +364,269 @@ model Device {
   @@index([companyId])
   @@index([userId])
   @@index([companyId, state])
+  @@schema("axhy")
+}
+
+// ============================================================================
+// Domain (Phase B.2) — supervisor / HR action targets
+// ============================================================================
+
+/// Daily attendance fact: one row per (worker × date) with a status
+/// (PRESENT, ABSENT_NO_CALL, ABSENT_APPROVED_LEAVE, HALF_DAY, ON_BREAK).
+/// Written by supervisor's "Mark worker absent" action (B.3) and by the
+/// auto-clock-in flow when a Visit transitions STARTED. Used by the
+/// payroll computation pipeline (B.6 outbox topic `payroll.recompute`).
+///
+/// @derives(data-flow §5 — supervisor "Mark worker absent" action)
+/// @derives(panel-2026-05-08) — Phase B.2 domain table
+model Attendance {
+  id                   String   @id @default(uuid()) @db.Uuid
+  companyId            String   @db.Uuid
+  workerId             String   @db.Uuid
+  date                 DateTime @db.Date
+  /// PRESENT | ABSENT_NO_CALL | ABSENT_APPROVED_LEAVE | HALF_DAY | ON_BREAK
+  status               String
+  /// UUID of the supervisor who marked. Not a FK — actor may be deleted
+  /// while the attendance fact must persist (DPDP archive).
+  markedBySupervisorId String   @db.Uuid
+  /// optional free-text reason from supervisor / voice transcription
+  reason               String?
+  /// pay deduction in paise (0 for PRESENT; e.g. 50000 = ₹500 for full
+  /// absence). Computed by payroll worker, may be 0 here on initial
+  /// insert and updated later.
+  payDeductPaise       Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  worker  Worker  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([workerId, date])
+  @@index([companyId])
+  @@index([companyId, date])
+  @@index([companyId, status])
+  @@schema("axhy")
+}
+
+/// Site-level complaint logged by supervisor. NOTE-tier decision per
+/// data-flow §5. If a site has 3+ open complaints in 24h, dispatcher
+/// fires `hr.complaint_persisted` outbox topic and SiteState transitions
+/// to FLAGGED.
+///
+/// @derives(data-flow §5 — log site complaint NOTE tier)
+/// @derives(panel-2026-05-08) — Phase B.2 domain table
+model Complaint {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @db.Uuid
+  siteId       String    @db.Uuid
+  /// UUID of supervisor who logged the complaint
+  supervisorId String    @db.Uuid
+  /// short complaint text — supervisor's words via voice or button flow
+  text         String
+  /// LOW | MEDIUM | HIGH (NOTE-tier severity)
+  severity     String    @default("LOW")
+  /// nullable until the complaint is dismissed / resolved by HR/owner
+  resolvedAt   DateTime?
+  /// UUID of resolver (HR / owner / supervisor)
+  resolvedBy   String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([companyId, siteId])
+  @@index([companyId, resolvedAt])
+  @@schema("axhy")
+}
+
+/// Worker swap request — supervisor wants to move workerA off siteA in
+/// favor of workerB at siteB (or reassign within the same site).
+/// 12-state SwapRequestState machine: DRAFT → SENT → ACCEPTED |
+/// DECLINED | EXPIRED → APPLIED | REVERSED.
+///
+/// OPERATIONAL-tier decision (no typed-words ack required).
+///
+/// @derives(data-flow §5 — swap worker OPERATIONAL tier)
+/// @derives(panel-2026-05-08) — Phase B.2 domain table
+model SwapRequest {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @db.Uuid
+  /// UUID of supervisor who initiated the swap
+  supervisorId String    @db.Uuid
+  fromWorkerId String    @db.Uuid
+  toWorkerId   String    @db.Uuid
+  siteId       String    @db.Uuid
+  /// 12-state SwapRequestState
+  state        String    @default("DRAFT")
+  /// when the swap takes effect
+  effectiveAt  DateTime
+  /// reason supervisor gave
+  reason       String?
+  /// nullable until accepted/declined by both workers (or the system)
+  decidedAt    DateTime?
+  appliedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromWorker Worker  @relation("SwapFromWorker", fields: [fromWorkerId], references: [id], onDelete: Cascade)
+  toWorker   Worker  @relation("SwapToWorker", fields: [toWorkerId], references: [id], onDelete: Cascade)
+  site       Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([companyId, state])
+  @@index([siteId, effectiveAt])
+  @@schema("axhy")
+}
+
+/// Supervisor decision proposed by AI chat (Phase C) before being
+/// applied. Phase B Tier 1 routes write directly to the domain table
+/// (Attendance, LeaveRequest, etc.) + AuditEvent without going through
+/// SupervisorDecision. This table exists so the connectedness map can
+/// see the planned Phase C entity, and so AI-extracted proposals have
+/// a stable home when chat ships.
+///
+/// Decision tiers per data-flow §5:
+///   - NOTE: auto-stored quietly, no UX
+///   - OPERATIONAL: informational, supervisor confirms in passing
+///   - PERSONNEL: warm/important, single-tap confirm
+///   - EMPLOYMENT: danger/irreversible, typed-words ack required
+///
+/// @derives(data-flow §5 — supervisor decision tiers)
+/// @derives(panel-2026-05-08) — Phase B.2 placeholder for Phase C AI
+model SupervisorDecision {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @db.Uuid
+  supervisorId String    @db.Uuid
+  /// MARK_ABSENT | APPROVE_LEAVE | LOG_COMPLAINT | SWAP_WORKER | ...
+  kind         String
+  /// NOTE | OPERATIONAL | PERSONNEL | EMPLOYMENT
+  tier         String
+  /// flexible target — worker / site / swap / leave_request / visit
+  targetId     String?
+  /// AI-extracted reasoning + entity refs + confidence
+  payload      Json      @default("{}")
+  /// nullable until supervisor confirms (or rejects)
+  appliedAt    DateTime?
+  /// EMPLOYMENT-tier requires explicit typed-words acknowledgment
+  ackRequired  Boolean   @default(false)
+  ackedAt      DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([companyId, supervisorId, createdAt])
+  @@index([companyId, tier])
+  @@index([companyId, appliedAt])
+  @@schema("axhy")
+}
+
+/// Supervisor's daily living-doc snapshot — personal rules, today's
+/// worker status, today's sites, prior-day context. Loaded fresh at
+/// 3:30 AM by the daily-prep worker (B.6+) and cached for the day's
+/// AI chat context. Referenced by Phase C `supervisor.context_load`
+/// AI surface (per data-flow §8).
+///
+/// One row per (supervisor × date).
+///
+/// @derives(data-flow §8 — supervisor.context_load AI surface)
+/// @derives(panel-2026-05-08) — Phase B.2 placeholder for Phase C AI
+model SupervisorDailyContext {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @db.Uuid
+  supervisorId String    @db.Uuid
+  date         DateTime  @db.Date
+  /// snapshot of supervisor's personal rules, worker assignments, site
+  /// status — fed into AI chat as priming context
+  snapshot     Json      @default("{}")
+  /// turn-by-turn chat history (Phase C); array of { role, content, ts }
+  chatHistory  Json      @default("[]")
+  /// when the context was first loaded (typically ~3:30 AM)
+  loadedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([supervisorId, date])
+  @@index([companyId])
+  @@index([companyId, date])
+  @@schema("axhy")
+}
+
+/// HR Update — HR creates these to push instructions to supervisors
+/// (e.g. "new policy effective Monday, ack required"). Supervisor must
+/// type a stable acknowledgment phrase to clear it. Per data-flow §5
+/// (PERSONNEL/EMPLOYMENT tier — typed-words ack required).
+///
+/// @derives(data-flow §5 — HR update + typed-words ack)
+/// @derives(panel-2026-05-08) — Phase B.2 placeholder for HR routes
+model HRUpdate {
+  id                     String    @id @default(uuid()) @db.Uuid
+  companyId              String    @db.Uuid
+  /// UUID of HR user who created the update
+  hrId                   String    @db.Uuid
+  /// POLICY_CHANGE | URGENT_NOTICE | PAYROLL_REMINDER | ...
+  kind                   String
+  /// the message body (rendered to supervisor as-is)
+  content                String
+  /// nullable for org-wide updates; UUID of specific supervisor when
+  /// targeted
+  targetSupervisorId     String?   @db.Uuid
+  /// require explicit typed-words ack before clearing
+  acknowledgmentRequired Boolean   @default(false)
+  /// the exact phrase the supervisor must type (matched case-
+  /// insensitive). Defaults to "I understand" if ack required.
+  acknowledgmentPhrase   String?
+  /// UUID of supervisor who acknowledged (only one per HRUpdate per
+  /// supervisor; this captures most-recent ack)
+  acknowledgedBy         String?   @db.Uuid
+  acknowledgedAt         DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([companyId, targetSupervisorId])
+  @@index([companyId, acknowledgedAt])
+  @@schema("axhy")
+}
+
+/// Photo evidence per Visit. Each row tracks one R2 path + side
+/// metadata (BEFORE/AFTER) + AI verification status. Visit.photosBefore
+/// + Visit.photosAfter are denormalized counts for fast supervisor
+/// reads; this table holds the row-level detail.
+///
+/// @derives(data-flow §5 — worker capture photos)
+/// @derives(panel-2026-05-08) — Phase B.2 placeholder for photo upload
+///   flow (real upload routes ship in B.5+)
+model VisitPhoto {
+  id             String   @id @default(uuid()) @db.Uuid
+  companyId      String   @db.Uuid
+  visitId        String   @db.Uuid
+  /// BEFORE | AFTER
+  side           String
+  /// R2 object key (path within bucket, NOT full URL)
+  r2Key          String
+  /// optional perceptual hash for duplicate-photo detection
+  pHash          String?
+  /// AI verification status: PENDING | PASS | FLAGGED | NEEDS_REVIEW
+  aiVerifyStatus String   @default("PENDING")
+  /// short verification reasoning text from AI (1-2KB)
+  aiVerifyText   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  visit   Visit   @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([visitId])
+  @@index([companyId, aiVerifyStatus])
   @@schema("axhy")
 }
