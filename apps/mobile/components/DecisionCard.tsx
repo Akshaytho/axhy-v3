@@ -16,6 +16,19 @@ import { tokens } from '@axhy/ui-tokens';
 import type { DecisionCardData } from '../lib/chat-api';
 import { applyDecisionCard } from '../lib/chat-api';
 
+/** UUID regex — values matching this pattern are internal refs, not user-readable */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Human-readable labels for known camelCase field keys */
+const FIELD_LABELS: Record<string, string> = {
+  shiftStart: 'Shift starts',
+  shiftEnd: 'Shift ends',
+  dayMask: 'Days',
+  validFrom: 'Start date',
+  validUntil: 'End date',
+  oneOffDate: 'Date',
+};
+
 type Props = {
   chatMessageId: string;
   card: NonNullable<DecisionCardData>;
@@ -69,12 +82,19 @@ export function DecisionCard({ chatMessageId, card, onApplied, onCancelled }: Pr
 
       {card.fields && Object.keys(card.fields).length > 0 && (
         <View style={s.fieldsTable}>
-          {Object.entries(card.fields).map(([key, value]) => (
-            <View key={key} style={s.fieldRow}>
-              <Text style={s.fieldKey}>{key}</Text>
-              <Text style={s.fieldValue}>{String(value)}</Text>
-            </View>
-          ))}
+          {Object.entries(card.fields)
+            .filter(([, value]) => !UUID_RE.test(String(value ?? '')))
+            .map(([key, value]) => {
+              const label = FIELD_LABELS[key] ?? key;
+              const display =
+                value === null && key === 'validUntil' ? 'Open-ended' : String(value ?? '');
+              return (
+                <View key={key} style={s.fieldRow}>
+                  <Text style={s.fieldKey}>{label}</Text>
+                  <Text style={s.fieldValue}>{display}</Text>
+                </View>
+              );
+            })}
         </View>
       )}
 

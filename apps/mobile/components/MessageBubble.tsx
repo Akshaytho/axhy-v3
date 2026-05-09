@@ -12,6 +12,16 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 
+/** Strip common markdown characters so RN Text renders cleanly. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*/g, '') // bold markers
+    .replace(/^---.*$/gm, '') // horizontal rules
+    .replace(/\|/g, '  ') // table pipes → spaces
+    .replace(/\n{3,}/g, '\n\n') // collapse triple+ newlines
+    .trim();
+}
+
 import type { DecisionCardData } from '../lib/chat-api';
 
 import { DecisionCard } from './DecisionCard';
@@ -39,7 +49,9 @@ export function MessageBubble({
   return (
     <View style={[s.row, isUser ? s.userRow : s.assistantRow]}>
       <View style={[s.bubble, isUser ? s.userBubble : s.assistantBubble]}>
-        <Text style={[s.text, isUser ? s.userText : s.assistantText]}>{text}</Text>
+        <Text style={[s.text, isUser ? s.userText : s.assistantText]}>
+          {isUser ? text : stripMarkdown(text)}
+        </Text>
         {status === 'pending' && <Text style={s.status}>Sending…</Text>}
         {status === 'failed' && <Text style={s.statusFail}>Failed</Text>}
       </View>
