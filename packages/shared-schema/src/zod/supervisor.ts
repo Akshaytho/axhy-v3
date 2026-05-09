@@ -215,3 +215,74 @@ export const LogComplaintOutput = z.object({
  * @derives(ADR-0007)
  */
 export type LogComplaintOutput = z.infer<typeof LogComplaintOutput>;
+
+// ─── POST /swap-requests ─────────────────────────────────────────────────────
+
+/**
+ * 12-state SwapRequestState machine.
+ * @derives(data-flow §4)
+ * @derives(ADR-0007)
+ */
+export const SwapRequestStateSchema = z.enum([
+  'DRAFT',
+  'SENT',
+  'ACCEPTED',
+  'DECLINED',
+  'EXPIRED',
+  'APPLIED',
+  'REVERSED',
+  'CANCELLED',
+]);
+
+/**
+ * Input shape for POST /swap-requests.
+ * @derives(data-flow §5 — swap worker OPERATIONAL tier)
+ * @derives(ADR-0007)
+ */
+export const CreateSwapRequestInput = z
+  .object({
+    /** Worker being moved off the site. */
+    fromWorkerId: z.string().uuid(),
+    /** Worker taking the slot. */
+    toWorkerId: z.string().uuid(),
+    /** Site where the swap takes effect. */
+    siteId: z.string().uuid(),
+    /** When the swap takes effect (ISO timestamp). Must be in the future. */
+    effectiveAt: z.string().datetime(),
+    /** Optional supervisor reason. */
+    reason: z.string().trim().max(500).optional(),
+  })
+  .refine((d) => d.fromWorkerId !== d.toWorkerId, {
+    message: 'fromWorkerId and toWorkerId must differ',
+    path: ['toWorkerId'],
+  });
+
+/**
+ * Inferred input type for /swap-requests.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type CreateSwapRequestInput = z.infer<typeof CreateSwapRequestInput>;
+
+/**
+ * Output shape for POST /swap-requests.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export const CreateSwapRequestOutput = z.object({
+  ok: z.literal(true),
+  swapRequestId: z.string().uuid(),
+  fromWorkerId: z.string().uuid(),
+  toWorkerId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  state: SwapRequestStateSchema,
+  effectiveAt: z.string(), // ISO timestamp
+  createdAt: z.string(), // ISO timestamp
+});
+
+/**
+ * Inferred output type for /swap-requests.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type CreateSwapRequestOutput = z.infer<typeof CreateSwapRequestOutput>;
