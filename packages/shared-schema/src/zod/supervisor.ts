@@ -286,3 +286,64 @@ export const CreateSwapRequestOutput = z.object({
  * @derives(ADR-0007)
  */
 export type CreateSwapRequestOutput = z.infer<typeof CreateSwapRequestOutput>;
+
+// ─── POST /visits/:id/end ────────────────────────────────────────────────────
+
+/**
+ * VisitState v1.1 (12-state machine).
+ * Prior states valid for ending: STARTED, IN_PROGRESS.
+ * Terminal-after-end states: ENDED, AI_VERIFIED, FLAGGED, COMPLETED.
+ *
+ * @derives(data-flow §4 — VisitState v1.1 LOCKED)
+ * @derives(ADR-0007)
+ */
+export const VisitStateSchema = z.enum([
+  'DRAFT',
+  'SCHEDULED',
+  'DISPATCHED',
+  'ARRIVED',
+  'STARTED',
+  'IN_PROGRESS',
+  'ENDED',
+  'AI_VERIFIED',
+  'FLAGGED',
+  'COMPLETED',
+  'CANCELLED',
+  'BLOCKED',
+]);
+
+/**
+ * Input shape for POST /visits/:id/end.
+ * @derives(data-flow §5 — supervisor "Mark visit done" action)
+ * @derives(ADR-0007)
+ */
+export const EndVisitInput = z.object({
+  /** Optional supervisor closing note. */
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * Inferred input type for /visits/:id/end.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type EndVisitInput = z.infer<typeof EndVisitInput>;
+
+/**
+ * Output shape for POST /visits/:id/end.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export const EndVisitOutput = z.object({
+  ok: z.literal(true),
+  visitId: z.string().uuid(),
+  state: z.literal('ENDED'),
+  endedAt: z.string(), // ISO timestamp
+});
+
+/**
+ * Inferred output type for /visits/:id/end.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type EndVisitOutput = z.infer<typeof EndVisitOutput>;
