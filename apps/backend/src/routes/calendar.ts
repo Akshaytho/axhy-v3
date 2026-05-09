@@ -8,8 +8,8 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { CreateCalendarEntryInput } from '@axhy/shared-schema';
-import { computeEditableUntil } from '@axhy/state-machines';
+import { CreateCalendarEntryInput, UpdateCalendarEntryInput } from '@axhy/shared-schema';
+import { computeEditableUntil, canEdit } from '@axhy/state-machines';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
@@ -77,4 +77,69 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
       reply.code(500).send({ error: 'INTERNAL', message: 'Could not create calendar entry' });
     }
   });
+
+  app.patch<{ Params: { id: string } }>(
+    '/calendar/:id',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth' });
+        return;
+      }
+
+      const parsed = UpdateCalendarEntryInput.safeParse(req.body);
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+        return;
+      }
+
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        const entry = await tx.calendarEntry.findFirst({
+          where: { id: req.params.id, companyId: auth.companyId },
+        });
+        if (!entry) return { kind: 'NOT_FOUND' as const };
+        if (!canEdit(entry.editableUntil, entry.promotedAt)) {
+          return { kind: 'NOT_EDITABLE' as const };
+        }
+
+        const updates: { notes?: string | null; payload?: object } = {};
+        if (parsed.data.notes !== undefined) updates.notes = parsed.data.notes;
+        if (parsed.data.payload !== undefined) updates.payload = parsed.data.payload as object;
+
+        const updated = await tx.calendarEntry.update({
+          where: { id: entry.id },
+          data: updates,
+        });
+
+        await recordAuditEvent(tx, {
+          companyId: auth.companyId,
+          kind: 'CALENDAR_ENTRY_UPDATED',
+          actorId: auth.userId,
+          targetId: entry.id,
+          payload: { changes: Object.keys(updates) },
+        });
+
+        return { kind: 'OK' as const, entry: updated };
+      });
+
+      if (out.kind === 'NOT_FOUND') {
+        reply.code(404).send({ error: 'NOT_FOUND' });
+        return;
+      }
+      if (out.kind === 'NOT_EDITABLE') {
+        reply
+          .code(403)
+          .send({ error: 'NOT_EDITABLE', message: 'Past editable window or already promoted' });
+        return;
+      }
+      reply.code(200).send({
+        id: out.entry.id,
+        kind: out.entry.kind,
+        payload: out.entry.payload,
+        notes: out.entry.notes,
+        editableUntil: out.entry.editableUntil.toISOString(),
+      });
+    },
+  );
 }
