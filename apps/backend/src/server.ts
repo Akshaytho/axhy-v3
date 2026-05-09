@@ -34,6 +34,7 @@ import { registerSitesRoutes } from './routes/sites.js';
 import { registerSwapRequestRoutes } from './routes/swap-requests.js';
 import { registerVisitRoutes } from './routes/visits.js';
 import { registerCalendarRoutes } from './routes/calendar.js';
+import { registerAssignmentRoutes } from './routes/assignments.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -75,6 +76,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerSwapRequestRoutes(app);
   await registerVisitRoutes(app);
   await registerCalendarRoutes(app);
+  await registerAssignmentRoutes(app);
 
   return app;
 }
