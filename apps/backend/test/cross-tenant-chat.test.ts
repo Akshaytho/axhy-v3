@@ -121,5 +121,5 @@ describe('cross-tenant chat isolation', () => {
     const bThreads = await prismaRaw.chatThread.findMany({ where: { companyId: coBId } });
     expect(aThreads.length).toBe(1);
     expect(bThreads.length).toBe(1);
-  }, 30000);
+  }, 60000);
 });

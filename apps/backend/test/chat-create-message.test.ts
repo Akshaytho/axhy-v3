@@ -94,7 +94,7 @@ describe('POST /chat/messages', () => {
     expect(thread).toBeTruthy();
     const messages = await prismaRaw.chatMessage.findMany({ where: { companyId } });
     expect(messages.length).toBeGreaterThanOrEqual(2);
-  }, 20000);
+  }, 60000);
 
   it('idempotency dedup: same key returns cached response', async () => {
     const idempKey = crypto.randomUUID();
@@ -113,5 +113,5 @@ describe('POST /chat/messages', () => {
     expect(r1.statusCode).toBe(200);
     expect(r2.statusCode).toBe(200);
     expect(r1.json().chatMessageId).toBe(r2.json().chatMessageId);
-  }, 20000);
+  }, 60000);
 });

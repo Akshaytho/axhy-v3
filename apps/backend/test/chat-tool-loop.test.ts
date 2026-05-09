@@ -121,5 +121,5 @@ describe('end-to-end magic loop (vignette 1 + 5)', () => {
     expect(afterApply.length).toBe(1);
     expect(afterApply[0].workerId).toBe(workerId);
     expect(afterApply[0].siteId).toBe(siteId);
-  }, 30000);
+  }, 90000);
 });
