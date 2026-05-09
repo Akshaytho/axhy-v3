@@ -18,4 +18,5 @@ export * from './tools/calendar.js';
 export * from './tools/leave.js';
 export * from './tools/mark-absent.js';
 export * from './tools/read.js';
+export * from './tools/swap.js';
 export * from './sonnet-tool-loop.js';
