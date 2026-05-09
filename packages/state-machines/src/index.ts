@@ -16,3 +16,4 @@ export { visitMachine, BILLABLE_VISIT_STATES } from './visit.js';
 export type { VisitStateValue, VisitEvent, VisitContext, VisitMachine } from './visit.js';
 
 export * from './calendar.js';
+export * from './assignment.js';
