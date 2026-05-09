@@ -71,6 +71,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prismaRaw.assignment.deleteMany({ where: { companyId } });
   await prismaRaw.calendarEntry.deleteMany({ where: { companyId } });
   await prismaRaw.auditEvent.deleteMany({ where: { companyId } });
   await prismaRaw.worker.deleteMany({ where: { companyId } });
@@ -82,7 +83,7 @@ afterAll(async () => {
 });
 
 describe('POST /calendar/:id/promote', () => {
-  it('happy path: TENTATIVE_ASSIGNMENT → deferred Assignment row', async () => {
+  it('happy path: TENTATIVE_ASSIGNMENT → real Assignment row (Wave 2a)', async () => {
     const entry = await prismaRaw.calendarEntry.create({
       data: {
         companyId,
@@ -105,13 +106,17 @@ describe('POST /calendar/:id/promote', () => {
     const body = r.json();
     expect(body.promoted.kind).toBe('ASSIGNMENT');
     expect(body.promoted.id).toBeTruthy();
-    expect(body.promoted.deferred).toBe(true);
+    expect(body.promoted.deferred).toBe(false); // was true in Wave 1
 
     const updatedEntry = await prismaRaw.calendarEntry.findUnique({ where: { id: entry.id } });
     expect(updatedEntry?.promotedToKind).toBe('ASSIGNMENT');
     expect(updatedEntry?.promotedToId).toBe(body.promoted.id);
     expect(updatedEntry?.promotedAt).toBeTruthy();
-    expect(updatedEntry?.pendingAssignmentPayload).toBeTruthy();
+    expect(updatedEntry?.pendingAssignmentPayload).toBeNull();
+
+    const assignment = await prismaRaw.assignment.findUnique({ where: { id: body.promoted.id } });
+    expect(assignment).toBeTruthy();
+    expect(assignment?.state).toBe('ACTIVE');
 
     const audits = await prismaRaw.auditEvent.findMany({
       where: {

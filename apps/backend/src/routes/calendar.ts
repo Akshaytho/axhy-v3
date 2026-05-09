@@ -199,16 +199,32 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
           { extraFields: parsed.data.additionalFields as { validUntil?: Date | null } | undefined },
         );
 
+        // Wave 2a: write real Assignment instead of deferred payload
+        const assignment = await tx.assignment.create({
+          data: {
+            companyId: auth.companyId,
+            workerId: assignmentPayload.workerId,
+            siteId: assignmentPayload.siteId,
+            shiftStart: assignmentPayload.shiftStart,
+            shiftEnd: assignmentPayload.shiftEnd,
+            dayMask: assignmentPayload.dayMask,
+            validFrom: new Date(assignmentPayload.validFrom),
+            validUntil: assignmentPayload.validUntil
+              ? new Date(assignmentPayload.validUntil)
+              : null,
+            state: 'ACTIVE',
+          },
+        });
+
         const promotedAt = new Date();
-        const synthId = crypto.randomUUID();
 
         const updatedEntry = await tx.calendarEntry.update({
           where: { id: entry.id },
           data: {
             promotedToKind: 'ASSIGNMENT',
-            promotedToId: synthId,
+            promotedToId: assignment.id,
             promotedAt,
-            pendingAssignmentPayload: assignmentPayload as object,
+            pendingAssignmentPayload: null,
           },
         });
 
@@ -217,18 +233,18 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
           kind: 'CALENDAR_ENTRY_PROMOTED',
           actorId: auth.userId,
           targetId: entry.id,
-          payload: { target: 'assignment', synthAssignmentId: synthId },
+          payload: { target: 'assignment', assignmentId: assignment.id },
         });
 
         await recordAuditEvent(tx, {
           companyId: auth.companyId,
           kind: 'ASSIGNMENT_CREATED',
           actorId: auth.userId,
-          targetId: synthId,
-          payload: { source: 'calendar', sourceEntryId: entry.id, deferred: true },
+          targetId: assignment.id,
+          payload: { source: 'calendar', sourceEntryId: entry.id, deferred: false },
         });
 
-        return { kind: 'OK' as const, entry: updatedEntry, synthId };
+        return { kind: 'OK' as const, entry: updatedEntry, assignmentId: assignment.id };
       });
 
       if (out.kind === 'NOT_FOUND') {
@@ -252,7 +268,7 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
       }
       reply.code(200).send({
         entryId: out.entry.id,
-        promoted: { kind: 'ASSIGNMENT', id: out.synthId, deferred: true },
+        promoted: { kind: 'ASSIGNMENT', id: out.assignmentId, deferred: false },
         promotedAt: out.entry.promotedAt!.toISOString(),
       });
     },
