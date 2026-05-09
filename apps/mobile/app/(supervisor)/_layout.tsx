@@ -19,7 +19,7 @@ function tabIcon(label: string) {
 function TabIconView({ focused, label }: TabIconProps) {
   return (
     <View style={focused ? iconS.dotActive : iconS.dot}>
-      <Text style={focused ? iconS.textActive : iconS.text}>{label.slice(0, 1)}</Text>
+      <Text style={focused ? iconS.textActive : iconS.text}>{label}</Text>
     </View>
   );
 }
