@@ -16,3 +16,4 @@ export type { AISurface, AIVendor, ModelChoice } from './model-policy.js';
 export * from './tools/calendar.js';
 export * from './tools/read.js';
 export * from './tools/assignment.js';
+export * from './sonnet-tool-loop.js';
