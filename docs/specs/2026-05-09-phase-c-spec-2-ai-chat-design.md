@@ -14,11 +14,11 @@
 
 1. **Hardened-sync chat loop**: `POST /chat/messages` runs the full Anthropic tool-use loop server-side, returns DecisionCard. Mandatory `Idempotency-Key` header for retry safety on flaky Indian networks. 10s server timeout. Client retries with same key on network failure.
 2. **One ChatThread per supervisor, forever** (WhatsApp-style). All messages append. 90-day hot retention, 1-year cold archive for state-changing messages.
-3. **LivingDoc restructure** (existing `SupervisorDailyContext` → `LivingDoc`) with 5 JSON sections + a new `LivingDocProposal` staging table. Explicit rules captured immediately via `propose_living_doc_update` tool (15th propose\_\*); inferred patterns via nightly nano-tier cron.
+3. **LivingDoc restructure** (existing `SupervisorDailyContext` → `LivingDoc`) with 5 JSON sections + each rule has a `state` field (`PENDING`/`ACTIVE`/`REJECTED`/`EXPIRED`). Explicit rules captured immediately via `propose_living_doc_update` tool (15th propose\_\*); inferred patterns written into LivingDoc with `state='PENDING'` via nightly nano-tier cron, supervisor reviews each morning.
 4. **Assignment table created + hydrator runs** to convert Wave 1's deferred `pendingAssignmentPayload` into real Assignment rows. Trigger `block_past_assignment_update` attached.
 5. **Prompt cache 3-tier strategy** — tools (1h) + per-supervisor LivingDoc (1h) + recent context (5min) — saves ~70% input tokens.
 6. **Per-tenant daily AI cost ceiling** — soft warn ₹3000, hard cap ₹5000 → 429 with friendly copy.
-7. **Schema grows: 22 → 26 tables**. Adds Assignment, ChatRequestLog, ChatThread, ChatMessage, LivingDocProposal. Each justified by real scenarios per `feedback_no_premature_schema_slots.md`.
+7. **Schema grows: 22 → 25 tables.** Adds Assignment, ChatRequestLog, ChatThread, ChatMessage. Each justified by real scenarios. **LivingDocProposal merged into LivingDoc** as a `state` field on each rule (panel-locked 2026-05-09 — same concept, different state, single retention).
 8. **AI-impact-analyzer (Claude grep+reason) is the v3 default** for cross-file change tracking — empirical 93% accuracy on hard scenario. Connectedness Map deferred to Phase D.
 9. **No streaming, no WebSocket, no Outbox-driven chat** — all explicitly rejected for v3.0; revisit in Phase D pilot data.
 
@@ -48,19 +48,19 @@ After Wave 2: vignettes 1, 2, 3, 5, 6 from Vision Narrative work end-to-end with
 
 ## 2. What ships (locks summary)
 
-| #          | Lock                                                                                                                                                                                                                                                                                                                           | Source                           |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
-| Q1         | Hardened-sync `POST /chat/messages` + mandatory `Idempotency-Key` + 10s server timeout + client retry-with-key + optimistic mobile UI. NO streaming, NO WebSocket, NO Outbox. New table: `ChatRequestLog` (idempotency dedup).                                                                                                 | Q1 round-2 panel debate          |
-| Q2         | One ChatThread per supervisor (lifetime). ChatMessage append-only. 90-day hot, 1-year cold archive for state-changing (non-null toolCalls). NO topic clustering, NO daily threads. PII-bearing fields scrubbed on supervisor erasure.                                                                                          | Q2 panel debate                  |
-| Q3         | LivingDoc restructure (rename `SupervisorDailyContext` → `LivingDoc`, 5 JSON sections per master plan §G.6). Explicit rules captured immediately via `propose_living_doc_update` tool (15th propose\_\*). Inferred patterns via nightly nano-tier cron, staged in new `LivingDocProposal` table for morning supervisor review. | Q3 panel debate                  |
-| Q4         | Assignment table created per Spec 1 §3.2. `block_past_assignment_update` trigger attached. One-time hydrator script converts Wave 1's `pendingAssignmentPayload` JSON → real Assignment rows + updates `CalendarEntry.promotedToId` from synth IDs to real Assignment IDs.                                                     | Q4 batched lock                  |
-| Q5         | Prompt cache 3-tier: tier 1 = tool schemas + system instructions (1h); tier 2 = per-supervisor LivingDoc + aliases (1h); tier 3 = last 30-day Calendar + last 10 ChatMessages (5min). Saves ~70% input tokens.                                                                                                                 | Q5 batched lock                  |
-| Q6         | Per-tenant daily AI cost ceiling: soft warn ₹3000 (Slack alert), hard cap ₹5000 (429 + Owner notification). New column `Company.aiSpendDailyInr`, midnight cron resets. ADR-0023 hard rule #2 enforced at gateway.                                                                                                             | Q6 batched lock                  |
-| Discipline | AI-impact-analyzer (Claude grep+reason) is v3 default for cross-file change tracking. Empirical test: ~93% accuracy on enum-conversion scenario. PR template gains "concepts touched" line. Connectedness Map deferred to Phase D unless accuracy drops below 80%.                                                             | Empirical test + panel synthesis |
+| #          | Lock                                                                                                                                                                                                                                                                                                                                                                                  | Source                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Q1         | Hardened-sync `POST /chat/messages` + mandatory `Idempotency-Key` + 10s server timeout + client retry-with-key + optimistic mobile UI. NO streaming, NO WebSocket, NO Outbox. New table: `ChatRequestLog` (idempotency dedup).                                                                                                                                                        | Q1 round-2 panel debate             |
+| Q2         | One ChatThread per supervisor (lifetime). ChatMessage append-only. 90-day hot, 1-year cold archive for state-changing (non-null toolCalls). NO topic clustering, NO daily threads. PII-bearing fields scrubbed on supervisor erasure.                                                                                                                                                 | Q2 panel debate                     |
+| Q3         | LivingDoc restructure (rename `SupervisorDailyContext` → `LivingDoc`, 5 JSON sections per master plan §G.6). Explicit rules captured immediately via `propose_living_doc_update` tool (15th propose\_\*). Inferred patterns via nightly nano-tier cron, written into LivingDoc with `state='PENDING'` for morning supervisor review (no separate proposal table — merged 2026-05-09). | Q3 panel debate + table-count panel |
+| Q4         | Assignment table created per Spec 1 §3.2. `block_past_assignment_update` trigger attached. One-time hydrator script converts Wave 1's `pendingAssignmentPayload` JSON → real Assignment rows + updates `CalendarEntry.promotedToId` from synth IDs to real Assignment IDs.                                                                                                            | Q4 batched lock                     |
+| Q5         | Prompt cache 3-tier: tier 1 = tool schemas + system instructions (1h); tier 2 = per-supervisor LivingDoc + aliases (1h); tier 3 = last 30-day Calendar + last 10 ChatMessages (5min). Saves ~70% input tokens.                                                                                                                                                                        | Q5 batched lock                     |
+| Q6         | Per-tenant daily AI cost ceiling: soft warn ₹3000 (Slack alert), hard cap ₹5000 (429 + Owner notification). New column `Company.aiSpendDailyInr`, midnight cron resets. ADR-0023 hard rule #2 enforced at gateway.                                                                                                                                                                    | Q6 batched lock                     |
+| Discipline | AI-impact-analyzer (Claude grep+reason) is v3 default for cross-file change tracking. Empirical test: ~93% accuracy on enum-conversion scenario. PR template gains "concepts touched" line. Connectedness Map deferred to Phase D unless accuracy drops below 80%.                                                                                                                    | Empirical test + panel synthesis    |
 
 ---
 
-## 3. Schema additions (22 → 26 tables)
+## 3. Schema additions (22 → 25 tables)
 
 The 6 buckets, updated:
 
@@ -70,13 +70,18 @@ places/      — Client, Site, SiteShiftRequirement                             
 work/        — Assignment ★, Visit, VisitPhoto, Attendance                    (4 tables)
 decisions/   — ChangeRequest, Complaint                                       (2 tables)
 chat/        — ChatThread ★, ChatMessage ★, ChatRequestLog ★, LivingDoc,
-               LivingDocProposal ★, CalendarEntry                             (6 tables)
+               CalendarEntry                                                  (5 tables)
 infra/       — Company, AuditEvent, Outbox, Device                            (4 tables)
-                                                                  total: 22 → 26 tables
+                                                                  total: 22 → 25 tables
                                                                   ★ = added in Wave 2
 ```
 
-**Bucket integrity:** `chat/` grows to 6 tables. Approaching the cognitive-load ceiling but each table has 1 distinct job. No further additions in Wave 2 without explicit founder approval.
+**Bucket integrity:** `chat/` grows to 5 tables (was almost 6 before LivingDocProposal was merged into LivingDoc). Each table has 1 distinct job. No further additions in Wave 2 without explicit founder approval.
+
+**Table-count discipline (panel synthesis 2026-05-09):** AI cost does NOT grow linearly with table count (Tier 1 cache amortizes the schema in system prompt). AI accuracy depends on **conceptual distinctness, not count**. Decision framework:
+
+- Same concept + different state + single retention = MERGE (e.g., LivingDoc + LivingDocProposal → state field on rule)
+- Different lifecycle + different retention + future divergence = KEEP SEPARATE (e.g., ChatThread vs ChatMessage; ChatRequestLog vs ChatMessage)
 
 ### 3.1 Assignment (deferred from Wave 1, lands here)
 
@@ -220,31 +225,23 @@ type LivingDocRule = {
   scope: { workerId?: string; siteId?: string; clientId?: string };
   createdAt: string; // ISO date
   createdBy: 'supervisor' | 'ai_inferred';
+  /// Lifecycle state — replaces what would have been a separate LivingDocProposal table.
+  /// PENDING = AI inferred this overnight, awaiting supervisor's morning review
+  /// ACTIVE = supervisor confirmed (or supervisor wrote it directly)
+  /// REJECTED = supervisor rejected on review (kept for audit + future training)
+  /// EXPIRED = stale PENDING (>30 days); ignored by AI prompts
+  state: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'EXPIRED';
+  decidedAt?: string; // null until supervisor decides on a PENDING rule
   confidence?: number; // 0-1, only for ai_inferred
-  source: { chatMessageId?: string; visitIds?: string[] };
+  source: { chatMessageId?: string; visitIds?: string[]; pattern?: string };
 };
 ```
 
-### 3.6 LivingDocProposal (staging for inferred patterns)
+**Why state lives on the rule** (not a separate table): same concept, different state, single retention policy. Per panel decision framework — merge wins. AI prompt context filters by `state==='ACTIVE'`. Morning-review query flattens sections + filters `state==='PENDING'`. JSONB GIN index on the state field keeps this fast at scale.
 
-```ts
-model LivingDocProposal {
-  id            String    @id @default(uuid()) @db.Uuid
-  companyId     String    @db.Uuid
-  supervisorId  String    @db.Uuid
-  proposedRule  Json      // matches LivingDocRule shape
-  confidence    Decimal
-  source        Json      // { chatMessageIds: [], visitIds: [], pattern: '...' }
-  state         String    @default("PENDING")  // PENDING|ACCEPTED|REJECTED|EXPIRED
-  createdAt     DateTime  @default(now())
-  decidedAt     DateTime?
+### 3.6 ~~LivingDocProposal~~ — MERGED into LivingDoc
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@index([companyId, supervisorId, state])
-  @@schema("axhy")
-}
-```
+Originally proposed as a separate staging table. **Merged 2026-05-09** via panel decision framework into `LivingDocRule.state` field. Saves 1 table; clarifies that "rules" and "proposed rules" are the same concept at different lifecycle states. See §3.5 for the unified shape.
 
 ### 3.7 Migrations + hydrator
 
@@ -252,7 +249,7 @@ model LivingDocProposal {
 
 1. `CREATE TABLE Assignment` per §3.1
 2. Attach trigger `assignment_block_past_update` per §3.1
-3. `CREATE TABLE ChatThread`, `ChatMessage`, `ChatRequestLog`, `LivingDocProposal` per §3.2-3.6
+3. `CREATE TABLE ChatThread`, `ChatMessage`, `ChatRequestLog` per §3.2-3.4 (LivingDocProposal removed via merge — state lives on rule)
 4. `ALTER TABLE SupervisorDailyContext RENAME TO LivingDoc` (and re-add new JSON columns; data migration of any existing Phase B SupervisorDailyContext rows)
 5. ALTER `Company` add column `aiSpendDailyInr Decimal @default(0)`
 
@@ -402,7 +399,7 @@ Cron job at midnight per-tenant local time:
 - Worker: `apps/backend/src/jobs/livingdoc-pattern-extractor.ts`
 - Surface: `livingdoc_inferred_pattern` (new entry in ADR-0023 → `gpt-5.4-nano`)
 - Input: yesterday's `ChatMessage` rows + `Visit` events for each supervisor
-- Output: proposed inferred patterns staged in `LivingDocProposal`
+- Output: inferred patterns written into LivingDoc with `state='PENDING'` (one rule per pattern, in the relevant section based on scope)
 - Supervisor sees "AI noticed 3 patterns. Review?" card on next morning login
 
 ### 6.2 New tool surface: `propose_living_doc_update`
@@ -467,13 +464,13 @@ Routes to `POST /living-doc/rules`. Backend writes to the appropriate JSON secti
 
 ### 7.3 Code changes from migration cascade
 
-| File                                                                             | Change                                                                                                                                   |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared-schema/prisma/schema.prisma`                                    | Add `Assignment` model; add `LivingDoc` rename + new sections; add `ChatThread` + `ChatMessage` + `ChatRequestLog` + `LivingDocProposal` |
-| `packages/shared-schema/prisma/migrations/20260510_phase_c_wave_2/migration.sql` | All schema changes + trigger attach + RENAME TABLE for LivingDoc                                                                         |
-| `apps/backend/src/routes/calendar.ts` (promote handler)                          | Replace `pendingAssignmentPayload + synthId` logic with real `prisma.assignment.create()`                                                |
-| `apps/backend/scripts/hydrate-deferred-assignments.ts`                           | NEW — one-time hydrator                                                                                                                  |
-| `apps/backend/test/calendar-promote.test.ts`                                     | Update assertions: real Assignment row exists; no more synth IDs                                                                         |
+| File                                                                             | Change                                                                                                                                                                                   |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared-schema/prisma/schema.prisma`                                    | Add `Assignment` model; add `LivingDoc` rename + new sections (with `state` field on rules); add `ChatThread` + `ChatMessage` + `ChatRequestLog`. (LivingDocProposal removed via merge.) |
+| `packages/shared-schema/prisma/migrations/20260510_phase_c_wave_2/migration.sql` | All schema changes + trigger attach + RENAME TABLE for LivingDoc                                                                                                                         |
+| `apps/backend/src/routes/calendar.ts` (promote handler)                          | Replace `pendingAssignmentPayload + synthId` logic with real `prisma.assignment.create()`                                                                                                |
+| `apps/backend/scripts/hydrate-deferred-assignments.ts`                           | NEW — one-time hydrator                                                                                                                                                                  |
+| `apps/backend/test/calendar-promote.test.ts`                                     | Update assertions: real Assignment row exists; no more synth IDs                                                                                                                         |
 
 ---
 
@@ -735,7 +732,7 @@ This is the GATE before Wave 2.5 (ChangeRequest routes) starts.
 > **Wave decomposition (likely):**
 >
 > - **Wave 2a** (~10 tasks): Assignment table + hydrator + `POST /chat/messages` skeleton + idempotency + ONE tool wired (propose_create_assignment) — vertical slice
-> - **Wave 2b** (~8 tasks): LivingDoc restructure + propose_living_doc_update + LivingDocProposal + nightly cron
+> - **Wave 2b** (~8 tasks): LivingDoc restructure (with state field on rules) + propose_living_doc_update + nightly cron writes pending rules
 > - **Wave 2c** (~6 tasks): ChatThread/ChatMessage history + scroll-back + cross-tenant tests
 > - **Wave 2d** (~5 tasks): Prompt cache 3-tier + cost ceiling + dashboard + observability
 
