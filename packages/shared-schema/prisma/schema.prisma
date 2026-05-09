@@ -56,6 +56,7 @@ model Company {
   supervisorDailyContexts SupervisorDailyContext[]
   hrUpdates               HRUpdate[]
   visitPhotos             VisitPhoto[]
+  calendarEntries         CalendarEntry[]
 
   @@schema("axhy")
 }
@@ -193,6 +194,14 @@ model Visit {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  /// FK to Visit being corrected — null on canonical (uncorrected) row
+  correctsVisitId   String?  @db.Uuid
+  /// self-pointer to root of correction chain — equals own id on root rows
+  originalVisitId   String?  @db.Uuid
+  /// 'wrong-site' | 'wrong-time' | 'duplicate' | 'wrong-worker' | 'other'
+  correctionReason  String?
+  correctionNote    String?
+
   company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   worker  Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
   site    Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
@@ -203,6 +212,34 @@ model Visit {
   @@index([workerId, scheduledFor])
   @@index([siteId, scheduledFor])
   @@index([companyId, flagged], map: "visit_flagged_idx")
+  @@schema("axhy")
+}
+
+model CalendarEntry {
+  id             String    @id @default(uuid()) @db.Uuid
+  companyId      String    @db.Uuid
+  /// FK Membership — per-supervisor scope
+  supervisorId   String    @db.Uuid
+  date           DateTime  @db.Date
+  /// 'NOTE' | 'DEMAND' | 'TENTATIVE_ASSIGNMENT' | 'EVENT'
+  kind           String
+  /// kind-specific structured fields validated at app layer (Zod)
+  payload        Json      @default("{}")
+  /// @personal — free-form text (PII-bearing, scrubbed on supervisor erasure)
+  notes          String?
+  /// computed: min(createdAt + 30d, promotedAt) — stored for query speed
+  editableUntil  DateTime
+  /// 'ASSIGNMENT' | 'SITE_SHIFT_REQ' | 'CHANGE_REQUEST' | null
+  promotedToKind String?
+  promotedToId   String?   @db.Uuid
+  promotedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, supervisorId, date])
+  @@index([companyId, date])
   @@schema("axhy")
 }
 
