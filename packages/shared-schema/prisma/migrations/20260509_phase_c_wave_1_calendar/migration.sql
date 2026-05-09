@@ -31,3 +31,36 @@ CREATE INDEX "CalendarEntry_companyId_date_idx" ON "axhy"."CalendarEntry"("compa
 
 -- AddForeignKey
 ALTER TABLE "axhy"."CalendarEntry" ADD CONSTRAINT "CalendarEntry_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "axhy"."Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Section 6: latest_visit view
+-- Returns the most-recent (uncorrected) row in each correction chain.
+-- Reporting queries in services/payroll/* and services/billing/* MUST use this view.
+CREATE VIEW "axhy"."latest_visit" AS
+  SELECT v.*
+  FROM "axhy"."Visit" v
+  WHERE NOT EXISTS (
+    SELECT 1 FROM "axhy"."Visit" v2
+    WHERE v2."correctsVisitId" = v.id
+  );
+
+-- Section 7: partial unique index on Visit correction chain
+-- Guarantees one canonical (uncorrected) row per chain.
+CREATE UNIQUE INDEX "Visit_canonical_per_chain"
+  ON "axhy"."Visit" ("originalVisitId")
+  WHERE "correctsVisitId" IS NULL;
+
+-- Section 8: past-Assignment immutability trigger function placeholder.
+-- The Assignment table is created in Wave 2. The trigger function is defined here
+-- so Wave 2 only needs to attach it via CREATE TRIGGER.
+CREATE OR REPLACE FUNCTION "axhy"."block_past_assignment_update"()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD."validUntil" IS NOT NULL
+     AND OLD."validUntil" < CURRENT_DATE
+     AND OLD.state != 'TERMINATED' THEN
+    RAISE EXCEPTION 'past-immutability: Assignment validUntil < today and state != TERMINATED'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
