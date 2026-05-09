@@ -15,6 +15,7 @@ import {
   proposeCreateAssignmentTool,
   proposeMarkAbsentTool,
   proposeLeaveTool,
+  proposeSwapTool,
 } from '@axhy/ai-tools';
 
 import { prisma } from '../lib/prisma.js';
@@ -30,6 +31,10 @@ When the supervisor says a worker is absent / did not show up / called sick / "X
 call find_workers first, then propose_mark_absent with the resolved worker UUID.
 When the supervisor says a worker needs leave / is sick for X days / "Pradeep off Mon-Wed" / "needs leave from <date> to <date>",
 call find_workers first, then propose_leave with the resolved worker UUID and the date range.
+When the supervisor wants to swap two workers between sites/shifts ("Swap Ravi and Lakshmi at Hospital A tomorrow"),
+FIRST call find_workers for each name (separate calls) AND find_sites for the site, THEN call propose_swap with
+two DIFFERENT worker UUIDs (fromWorkerId !== toWorkerId), the site UUID, and an ISO datetime for effectiveAt
+(must be in the future).
 Speak in the same language(s) the supervisor used (English, Hindi, Telugu).
 Keep responses concise — supervisors are busy.`;
 
@@ -77,6 +82,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         proposeCreateAssignmentTool,
         proposeMarkAbsentTool,
         proposeLeaveTool,
+        proposeSwapTool,
       ];
 
       const loopResult = await sonnetToolLoop({
@@ -201,6 +207,50 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                   toDate,
                   reason: reason ?? 'other',
                   ...(reasonDetail ? { reasonDetail } : {}),
+                },
+                severity: 'CONFIRM',
+              },
+            };
+          }
+          if (name === 'propose_swap') {
+            const { fromWorkerId, toWorkerId, siteId, effectiveAt, reason } = input as {
+              fromWorkerId: string;
+              toWorkerId: string;
+              siteId: string;
+              effectiveAt: string;
+              reason?: string;
+            };
+            if (fromWorkerId === toWorkerId) {
+              return { output: { error: 'SAME_WORKER' } };
+            }
+            const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+              const fw = await tx.worker.findFirst({
+                where: { id: fromWorkerId, companyId: auth.companyId },
+              });
+              const tw = await tx.worker.findFirst({
+                where: { id: toWorkerId, companyId: auth.companyId },
+              });
+              const site = await tx.site.findFirst({
+                where: { id: siteId, companyId: auth.companyId },
+              });
+              return { fw, tw, site };
+            });
+            if (!out.fw || !out.tw) return { output: { error: 'WORKER_NOT_FOUND' } };
+            if (!out.site) return { output: { error: 'SITE_NOT_FOUND' } };
+            return {
+              output: {
+                proposed: true,
+                fields: { fromWorkerId, toWorkerId, siteId, effectiveAt, reason },
+              },
+              decisionCardData: {
+                title: 'Swap workers',
+                description: `Swap ${out.fw.name} → ${out.tw.name} at ${out.site.name}, effective ${effectiveAt}?`,
+                fields: {
+                  fromWorkerId,
+                  toWorkerId,
+                  siteId,
+                  effectiveAt,
+                  ...(reason ? { reason } : {}),
                 },
                 severity: 'CONFIRM',
               },
@@ -346,6 +396,17 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           toDate: ti.toDate,
           reason: reasonStr,
         },
+      });
+      reply.code(inner.statusCode).send(inner.json());
+      return;
+    }
+
+    if (parsed.data.toolName === 'propose_swap') {
+      const inner = await app.inject({
+        method: 'POST',
+        url: '/swap-requests',
+        headers: { authorization: req.headers.authorization! },
+        payload: parsed.data.toolInput,
       });
       reply.code(inner.statusCode).send(inner.json());
       return;
