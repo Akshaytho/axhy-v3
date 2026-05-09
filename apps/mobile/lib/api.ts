@@ -33,6 +33,8 @@ type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   auth?: boolean;
+  /** Extra headers to merge with defaults (Authorization + Content-Type). */
+  headers?: Record<string, string>;
 };
 
 /** @derives(ADR-0007) @derives(ADR-0011) */
@@ -41,6 +43,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...(options.headers ?? {}),
   };
 
   if (auth) {
