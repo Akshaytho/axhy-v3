@@ -15,6 +15,7 @@
  *   - /sites/:id/complaints                → @derives(data-flow §5)
  *   - /swap-requests                       → @derives(data-flow §5)
  *   - /visits/:id/end                      → @derives(data-flow §5)
+ *   - /calendar                            → @derives(master-plan §G)
  *
  * @derives(ADR-0004)
  */
@@ -32,6 +33,7 @@ import { registerLeaveRequestRoutes } from './routes/leave-requests.js';
 import { registerSitesRoutes } from './routes/sites.js';
 import { registerSwapRequestRoutes } from './routes/swap-requests.js';
 import { registerVisitRoutes } from './routes/visits.js';
+import { registerCalendarRoutes } from './routes/calendar.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -72,6 +74,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerSitesRoutes(app);
   await registerSwapRequestRoutes(app);
   await registerVisitRoutes(app);
+  await registerCalendarRoutes(app);
 
   return app;
 }
