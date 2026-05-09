@@ -9,3 +9,12 @@
  */
 
 export const PACKAGE_NAME = '@axhy/knowledge-graph' as const;
+export type {
+  NodeKind,
+  EdgeKind,
+  Metadata,
+  ExtractorOutput,
+  ExtractorContext,
+  Extractor,
+} from './extractors/index.js';
+export { AUDIT_KINDS } from './audit.js';
