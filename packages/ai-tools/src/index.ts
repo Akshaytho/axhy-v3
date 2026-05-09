@@ -12,3 +12,5 @@ export const PACKAGE_NAME = '@axhy/ai-tools' as const;
 
 export { modelFor, assertWithinBudget, ALL_SURFACES } from './model-policy.js';
 export type { AISurface, AIVendor, ModelChoice } from './model-policy.js';
+
+export * from './tools/calendar.js';

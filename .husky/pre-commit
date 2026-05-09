@@ -1,3 +1,9 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
+
+# Load nvm so pnpm (managed by corepack inside the active node version) is on PATH.
+# Git hooks run in a non-interactive shell and don't source ~/.zshrc.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
 pnpm exec lint-staged

@@ -10,6 +10,12 @@
  * Routes:
  *   - /auth/otp/request, /auth/otp/verify  → @derives(ADR-0007)
  *   - /me                                  → @derives(ADR-0007)
+ *   - /workers/:id/mark-absent             → @derives(data-flow §5)
+ *   - /leave-requests/:id/{approve,reject} → @derives(data-flow §5)
+ *   - /sites/:id/complaints                → @derives(data-flow §5)
+ *   - /swap-requests                       → @derives(data-flow §5)
+ *   - /visits/:id/end                      → @derives(data-flow §5)
+ *   - /calendar                            → @derives(master-plan §G)
  *
  * @derives(ADR-0004)
  */
@@ -22,6 +28,12 @@ import rateLimit from '@fastify/rate-limit';
 
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
+import { registerWorkerRoutes } from './routes/workers.js';
+import { registerLeaveRequestRoutes } from './routes/leave-requests.js';
+import { registerSitesRoutes } from './routes/sites.js';
+import { registerSwapRequestRoutes } from './routes/swap-requests.js';
+import { registerVisitRoutes } from './routes/visits.js';
+import { registerCalendarRoutes } from './routes/calendar.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -30,6 +42,14 @@ import { registerMeRoutes } from './routes/me.js';
  * @derives(ADR-0004)
  */
 export async function buildServer(): Promise<FastifyInstance> {
+  // Refuse to boot if the OTP bypass is on in production — magic code "123456"
+  // would let anyone log in as anyone.
+  if (process.env.NODE_ENV === 'production' && process.env.AXHY_OTP_BYPASS === '1') {
+    throw new Error(
+      'AXHY_OTP_BYPASS=1 is set in production. Refusing to boot — unset before deploy.',
+    );
+  }
+
   const app = Fastify({
     logger:
       process.env.NODE_ENV === 'production'
@@ -49,6 +69,12 @@ export async function buildServer(): Promise<FastifyInstance> {
   app.get('/health', async () => ({ ok: true, version: '0.0.1', ts: new Date().toISOString() }));
   await registerAuthRoutes(app);
   await registerMeRoutes(app);
+  await registerWorkerRoutes(app);
+  await registerLeaveRequestRoutes(app);
+  await registerSitesRoutes(app);
+  await registerSwapRequestRoutes(app);
+  await registerVisitRoutes(app);
+  await registerCalendarRoutes(app);
 
   return app;
 }

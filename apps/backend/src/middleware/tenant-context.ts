@@ -81,9 +81,20 @@ export async function withTenantContext<T>(
   companyId: string,
   fn: (tx: import('@prisma/client').Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  return await prisma.$transaction(async (tx) => {
-    // SET LOCAL is scoped to the transaction; it auto-resets on commit/rollback.
-    await tx.$executeRawUnsafe(`SELECT set_config('axhy.current_company_id', $1, true)`, companyId);
-    return await fn(tx);
-  });
+  // Prisma's default transaction timeout is 5s. Under Railway-Postgres latency
+  // (~200-500ms per query) plus parallel test pressure, multi-step transactions
+  // (read worker + read site + write row + audit + 2 outbox = 6+ queries)
+  // routinely exceed 5s and surface as 500s. Bump to 30s — matches the
+  // testTimeout/hookTimeout we use in vitest.config.ts.
+  return await prisma.$transaction(
+    async (tx) => {
+      // SET LOCAL is scoped to the transaction; it auto-resets on commit/rollback.
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('axhy.current_company_id', $1, true)`,
+        companyId,
+      );
+      return await fn(tx);
+    },
+    { timeout: 30_000, maxWait: 10_000 },
+  );
 }
