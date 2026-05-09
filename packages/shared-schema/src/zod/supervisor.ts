@@ -105,6 +105,30 @@ export const MarkAbsentOutput = z.object({
  */
 export type MarkAbsentOutput = z.infer<typeof MarkAbsentOutput>;
 
+// ─── POST /leave-requests (creator) ──────────────────────────────────────────
+
+/**
+ * Input shape for POST /leave-requests (creator).
+ * Used by chat/apply when supervisor confirms a propose_leave DecisionCard.
+ *
+ * @derives(data-flow §5)
+ * @derives(master-plan §G)
+ */
+export const CreateLeaveRequestInput = z.object({
+  workerId: z.string().uuid(),
+  fromDate: DateOnlySchema,
+  toDate: DateOnlySchema,
+  /** Freeform reason; chat passes "sick: kid down with flu" via reason+reasonDetail merge. */
+  reason: z.string().trim().min(1).max(500),
+});
+
+/**
+ * Inferred input type for POST /leave-requests.
+ * @derives(data-flow §5)
+ * @derives(master-plan §G)
+ */
+export type CreateLeaveRequestInput = z.infer<typeof CreateLeaveRequestInput>;
+
 // ─── POST /leave-requests/:id/approve | /reject ──────────────────────────────
 
 /**

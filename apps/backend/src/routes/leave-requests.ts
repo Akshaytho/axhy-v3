@@ -23,7 +23,7 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { LeaveDecisionInput } from '@axhy/shared-schema';
+import { CreateLeaveRequestInput, LeaveDecisionInput } from '@axhy/shared-schema';
 import type { LeaveDecisionOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
@@ -41,6 +41,86 @@ type DecisionRequest = FastifyRequest<{ Params: { id: string } }>;
  * @derives(data-flow §5)
  */
 export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<void> {
+  app.post('/leave-requests', { preHandler: requireAuth }, async (req, reply) => {
+    const auth = req.auth;
+    if (!auth) {
+      reply.code(401).send({ error: 'AUTH_REQUIRED' });
+      return;
+    }
+    const parsed = CreateLeaveRequestInput.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+      return;
+    }
+    const { workerId, fromDate, toDate, reason } = parsed.data;
+
+    if (new Date(fromDate) > new Date(toDate)) {
+      reply.code(400).send({ error: 'BAD_RANGE', message: 'fromDate must be ≤ toDate' });
+      return;
+    }
+
+    try {
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        const worker = await tx.worker.findFirst({
+          where: { id: workerId, companyId: auth.companyId },
+        });
+        if (!worker) return { kind: 'NOT_FOUND' as const };
+
+        const leave = await tx.leaveRequest.create({
+          data: {
+            companyId: auth.companyId,
+            workerId,
+            fromDate: new Date(fromDate),
+            toDate: new Date(toDate),
+            reason,
+            state: 'REQUESTED',
+          },
+        });
+
+        await recordAuditEvent(tx, {
+          companyId: auth.companyId,
+          kind: 'LEAVE_REQUESTED',
+          actorId: auth.userId,
+          targetId: leave.id,
+          payload: { workerId, workerName: worker.name, fromDate, toDate, reason },
+        });
+
+        await enqueueOutbox(tx, {
+          companyId: auth.companyId,
+          topic: 'hr.leave_requested',
+          payload: {
+            leaveRequestId: leave.id,
+            workerId,
+            workerName: worker.name,
+            workerPhone: worker.phone,
+            fromDate,
+            toDate,
+            reason,
+          },
+        });
+
+        return { kind: 'OK' as const, leave };
+      });
+
+      if (out.kind === 'NOT_FOUND') {
+        reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
+        return;
+      }
+
+      reply.code(201).send({
+        ok: true,
+        leaveRequestId: out.leave.id,
+        workerId: out.leave.workerId,
+        fromDate: out.leave.fromDate.toISOString().slice(0, 10),
+        toDate: out.leave.toDate.toISOString().slice(0, 10),
+        state: out.leave.state,
+      });
+    } catch (err) {
+      req.log.error({ err }, 'create-leave-request failed');
+      reply.code(500).send({ error: 'INTERNAL', message: 'Could not create leave request' });
+    }
+  });
+
   for (const action of ['approve', 'reject'] as const) {
     app.post<{ Params: { id: string } }>(
       `/leave-requests/:id/${action}`,

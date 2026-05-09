@@ -14,6 +14,7 @@ import {
   findSitesTool,
   proposeCreateAssignmentTool,
   proposeMarkAbsentTool,
+  proposeLeaveTool,
 } from '@axhy/ai-tools';
 
 import { prisma } from '../lib/prisma.js';
@@ -27,6 +28,8 @@ When the supervisor asks to add a worker to a site, FIRST call find_workers and 
 resolve names → IDs, THEN call propose_create_assignment with the resolved IDs.
 When the supervisor says a worker is absent / did not show up / called sick / "X is off today",
 call find_workers first, then propose_mark_absent with the resolved worker UUID.
+When the supervisor says a worker needs leave / is sick for X days / "Pradeep off Mon-Wed" / "needs leave from <date> to <date>",
+call find_workers first, then propose_leave with the resolved worker UUID and the date range.
 Speak in the same language(s) the supervisor used (English, Hindi, Telugu).
 Keep responses concise — supervisors are busy.`;
 
@@ -73,6 +76,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         findSitesTool,
         proposeCreateAssignmentTool,
         proposeMarkAbsentTool,
+        proposeLeaveTool,
       ];
 
       const loopResult = await sonnetToolLoop({
@@ -159,6 +163,43 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                   workerId: wid,
                   date: dateStr,
                   reason: reason ?? 'unknown',
+                  ...(reasonDetail ? { reasonDetail } : {}),
+                },
+                severity: 'CONFIRM',
+              },
+            };
+          }
+          if (name === 'propose_leave') {
+            const {
+              workerId: wid,
+              fromDate,
+              toDate,
+              reason,
+              reasonDetail,
+            } = input as {
+              workerId: string;
+              fromDate: string;
+              toDate: string;
+              reason?: string;
+              reasonDetail?: string;
+            };
+            const worker = await withTenantContext(prisma, auth.companyId, async (tx) =>
+              tx.worker.findFirst({ where: { id: wid, companyId: auth.companyId } }),
+            );
+            if (!worker) return { output: { error: 'WORKER_NOT_FOUND' } };
+            return {
+              output: {
+                proposed: true,
+                fields: { workerId: wid, fromDate, toDate, reason, reasonDetail },
+              },
+              decisionCardData: {
+                title: 'Leave request',
+                description: `Submit leave for ${worker.name} from ${fromDate} to ${toDate}?`,
+                fields: {
+                  workerId: wid,
+                  fromDate,
+                  toDate,
+                  reason: reason ?? 'other',
                   ...(reasonDetail ? { reasonDetail } : {}),
                 },
                 severity: 'CONFIRM',
@@ -277,6 +318,33 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         payload: {
           date: ti.date ?? new Date().toISOString().slice(0, 10),
           ...(reasonStr ? { reason: reasonStr } : {}),
+        },
+      });
+      reply.code(inner.statusCode).send(inner.json());
+      return;
+    }
+
+    if (parsed.data.toolName === 'propose_leave') {
+      const ti = parsed.data.toolInput as {
+        workerId: string;
+        fromDate: string;
+        toDate: string;
+        reason?: string;
+        reasonDetail?: string;
+      };
+      // POST /leave-requests accepts { workerId, fromDate, toDate, reason } per
+      // packages/shared-schema/src/zod/supervisor.ts (CreateLeaveRequestInput).
+      // Merge reason+reasonDetail into a single freeform string.
+      const reasonStr = [ti.reason, ti.reasonDetail].filter(Boolean).join(': ') || 'other';
+      const inner = await app.inject({
+        method: 'POST',
+        url: '/leave-requests',
+        headers: { authorization: req.headers.authorization! },
+        payload: {
+          workerId: ti.workerId,
+          fromDate: ti.fromDate,
+          toDate: ti.toDate,
+          reason: reasonStr,
         },
       });
       reply.code(inner.statusCode).send(inner.json());
