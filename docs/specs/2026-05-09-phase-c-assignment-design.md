@@ -19,7 +19,7 @@
 4. **Past Visits append-only.** Corrections via `correctsVisitId` chain + `latest_visit` view. Reporting queries forbidden from direct Visit reads (ESLint-enforced).
 5. **5 ChangeRequest kinds ship in v3.0**: LEAVE, SWAP, VISIT_CORRECTION, TERMINATION_PROBATION, TERMINATION_PERMANENT. SALARY_ADVANCE / BANK_UPDATE / WORKER_TRANSFER deferred to v3.1.
 6. **Approvers route to SUPERVISOR or HR by default; OWNER reserved for legal anchors + HR-absent fallback.** Owner is hands-off operationally.
-7. **19-tool AI surface contract** (14 `propose_*` + 5 read) locks the Spec 1 → Spec 2 interface. Routes 1:1 mapped.
+7. **20-tool AI surface contract** (14 `propose_*` + 6 read) locks the Spec 1 → Spec 2 interface. Routes 1:1 mapped. Patched 2026-05-09 from live tool-use test (Move 1) — added `find_sites`, `propose_replace_visit_worker`, collapsed termination to one tool, defined `Ambiguity` type, multi-call pattern for compound utterances.
 8. **Calendar (soft state) is distinct from Assignment (hard state).** AI reads 30-day Calendar window for context. Soft → hard via DecisionCard promotion.
 
 ---
@@ -52,7 +52,7 @@ This spec covers the assignment primitive only. It is the foundation Spec 2's to
 | Q4-extended  | Calendar (soft state) = `chat/CalendarEntry` table, 18th in schema. 30-day editable forward window. AI reads for context. Soft → hard promotion via DecisionCard.                                          | Founder-proposed + adopted                                 |
 | Q5           | Conflict policy: HARD (leave, terminated, anonymized) / SOFT (overlap) / SUGGEST_PROMOTE (Calendar tentative) / INFO. Override flow with preset chips. Voice-low-confidence makes "Re-record" primary CTA. | Q5 round-2 panel debate                                    |
 | Q6           | 5 ChangeRequest kinds ship: LEAVE, SWAP, VISIT_CORRECTION, TERMINATION_PROBATION, TERMINATION_PERMANENT. SALARY_ADVANCE / BANK_UPDATE / WORKER_TRANSFER / SITE_REASSIGN defer to v3.1.                     | Q6 panel debate                                            |
-| Q7           | 14-tool AI surface contract; 1:1 backend route mapping; standardized DecisionCard return shape.                                                                                                            | Q7 panel debate                                            |
+| Q7           | 20-tool AI surface contract (14 `propose_*` + 6 read); 1:1 backend route mapping; standardized DecisionCard return shape; `Ambiguity` type defined; multi-call pattern; AI utterance translations.         | Q7 panel debate + Move 1 patches                           |
 | Q7-rolled-in | rruleOverride deferred entirely (no real customer scenario yet). Tenant.holidays JSON for v3.0 (no Holiday table).                                                                                         | Q7 + Q4 lock                                               |
 
 ---
@@ -424,9 +424,11 @@ Windows are by `Visit.scheduledFor`, not by correction-creation time.
 
 ### 6.3 Correctable fields
 
-- ✅ `siteId`, `startTime`, `endTime`, `notes`
-- ❌ `workerId` — different operation: terminate Visit + new Visit
+- ✅ via `propose_visit_correction`: `siteId`, `startTime`, `endTime`, `notes`
+- ✅ via `propose_replace_visit_worker` (separate tool): `workerId`. AI translates supervisor utterances like "correct, was Pradeep not Suresh" into this tool — NOT into `propose_visit_correction(fields: { workerId })`.
 - ❌ `aiVerificationScore`, `phoneOtpAttempts` — system-generated, never edited
+
+**Why two tools:** changing the worker on a Visit is semantically different from correcting site/time/notes. It terminates one worker's record and creates another's, with payroll implications for both. A single DecisionCard renders the dual operation atomically.
 
 ### 6.4 Cascades on every Visit correction
 
@@ -548,27 +550,48 @@ Handles HR-absent fallback: if resolved role is `HR` and tenant has no active HR
 
 ---
 
-## 9. AI tool surface contract — 19 tools (14 `propose_*` + 5 read)
+## 9. AI tool surface contract — 20 tools (14 `propose_*` + 6 read)
 
 This is the **Spec 1 → Spec 2 interface.** Spec 2's AI chat builds tools that call these. Spec 1 implements the backend routes (Section 10).
 
-### 9.1 Assignment tools (4)
+> **Patched 2026-05-09 from Move 1 (live tool-use test):** added `find_sites`, expanded `find_workers` return shape with disambiguation context, defined `Ambiguity` type explicitly, added `propose_replace_visit_worker`, collapsed termination tools to single `propose_termination` (backend computes probation/permanent from tenure), simplified composite tool signature to use `fromDate` not `leaveId`, added `oneOffDate` shorthand on `propose_create_assignment`, documented multi-call pattern for compound utterances.
+
+### 9.1 Assignment tools (5)
 
 ```ts
-propose_create_assignment(workerId, siteId, dayMask, shiftStart, shiftEnd, validFrom)
+// Recurring assignment (95% case)
+propose_create_assignment(
+  workerId, siteId, dayMask, shiftStart, shiftEnd, validFrom,
+  validUntil?
+)
+
+// Single-day shorthand (one-off "send Suresh to Westfield today")
+// Backend auto-fills: validFrom = validUntil = oneOffDate, dayMask = day-of-week of oneOffDate
+propose_create_assignment(
+  workerId, siteId, oneOffDate, shiftStart, shiftEnd
+)
+
 propose_terminate_assignment(assignmentId, effectiveDate, reason?)
 propose_modify_assignment(assignmentId, changes: { dayMask?, shiftStart?, shiftEnd?, validUntil? })
-propose_cancel_leave_and_reassign(workerId, leaveId, newAssignment)  // composite
+
+// Composite — backend resolves which active LEAVE for workerId covers fromDate
+propose_cancel_leave_and_reassign(workerId, fromDate, newAssignment)
+
+// Visit-level worker swap (one Visit, replace worker)
+propose_replace_visit_worker(visitId, newWorkerId, reason, reasonDetail?)
 ```
 
-### 9.2 ChangeRequest tools (7)
+### 9.2 ChangeRequest tools (6)
 
 ```ts
 propose_leave(workerId, fromDate, toDate, reason, reasonDetail?)
 propose_swap(workerAId, workerBId, dateRange, swapKind)
-propose_visit_correction(visitId, fields, reason, reasonDetail?)
-propose_termination_probation(workerId, effectiveDate, reason, reasonDetail?)
-propose_termination_permanent(workerId, effectiveDate, reason, reasonDetail, noticePeriodDays, gratuityApplicable, signedDocumentRef?)
+propose_visit_correction(visitId, fields: { siteId?, startTime?, endTime?, notes? }, reason, reasonDetail?)
+
+// Single termination tool — backend computes probation vs permanent from tenure (>=240 days continuous)
+// Backend sets approverRole: HR (probation) or OWNER (permanent), validates signedDocumentRef if permanent
+propose_termination(workerId, effectiveDate, reason, reasonDetail, signedDocumentRef?)
+
 propose_decide_change_request(crId, decision: 'APPROVE'|'REJECT', decisionNote?)
 propose_cancel_change_request(crId)
 ```
@@ -581,54 +604,112 @@ propose_promote_calendar_entry(entryId, target: 'assignment'|'requirement'|'chan
 propose_edit_calendar_entry(entryId, changes)
 ```
 
-### 9.4 Read tools (no DB writes)
+### 9.4 Read tools (6, no DB writes)
 
 ```ts
 get_worker_status(workerId) → { worker, activeAssignments, pendingChangeRequests, currentLeave?, recentVisits }
 get_supervisor_today_pulse(supervisorId) → { todayVisits, pendingApprovals, openComplaints, calendarToday }
-find_workers(query, supervisorScope: boolean) → { exact: Worker[], ambiguous: Worker[], none: boolean }
+
+find_workers(query, supervisorScope: boolean) → {
+  exact: WorkerWithContext[],
+  ambiguous: WorkerWithContext[],
+  none: boolean
+}
+find_sites(query, supervisorScope: boolean) → {
+  exact: SiteWithContext[],
+  ambiguous: SiteWithContext[],
+  none: boolean
+}
 find_calendar_entries(supervisorId, dateRange) → CalendarEntry[]
 find_change_requests(filters) → ChangeRequest[]
+
+// Disambiguation context shapes (for AI's AmbiguousDecisionCard rendering)
+type WorkerWithContext = {
+  id, name, role, phone_last4,
+  recentSite?: string,         // most recent assigned site
+  recentAction?: string,       // 'clocked in 06:30 today' | 'on leave Tue-Wed' | etc
+  tenureDays: number           // for probation/permanent termination resolution
+}
+type SiteWithContext = {
+  id, name, alias?, address_brief,
+  activeAssignments: number,
+  client_name: string
+}
 ```
 
 ### 9.5 Standardized return shape (every `propose_*`)
 
 ```ts
-{
+type ToolResponse = {
   toolCallId,
-  decisionCardData: {
-    title, description,                                     // for chat bubble
-    fields: { ... },                                        // for the card UI
-    severity: 'OK' | 'CONFIRM' | 'WARN' | 'BLOCKED',
-    presets?: { chips: [...] }                              // override flow
-  },
-  conflicts: Conflict[],                                    // from conflicts.ts
-  ambiguities?: Ambiguity[],                                // from find_workers
-  voiceConfidence?: 'HIGH' | 'MEDIUM' | 'LOW'               // passthrough from Sarvam
+  decisionCardData: DecisionCardData | { batch: DecisionCardData[] },  // see "Multi-call pattern" below
+  conflicts: Conflict[],                                                // from conflicts.ts
+  ambiguities?: Ambiguity[],                                            // see Ambiguity type below
+  voiceConfidence?: 'HIGH' | 'MEDIUM' | 'LOW'                           // passthrough from Sarvam
+}
+
+type DecisionCardData = {
+  title, description,                                                   // for chat bubble
+  fields: { ... },                                                      // for the card UI
+  severity: 'OK' | 'CONFIRM' | 'WARN' | 'BLOCKED',
+  presets?: { chips: [...] }                                            // override flow
+}
+
+type Ambiguity = {
+  kind: 'MISSING_INFO' | 'AMBIGUOUS_WORKER' | 'AMBIGUOUS_SITE' | 'OFF_TOPIC' | 'CONTRADICTION'
+  what?: 'workerId' | 'siteId' | 'date' | 'shift' | string  // which field is ambiguous
+  candidates?: Array<{ id, label, context }>                // for selection card rendering
+  prompt: string                                            // human-readable question for DecisionCard
 }
 ```
+
+### 9.6 Multi-call pattern (compound utterances)
+
+When supervisor's utterance maps to multiple structured operations, AI emits multiple `propose_*` tool calls in a SINGLE turn. Frontend collects them and renders as ONE DecisionCard with sub-items, atomic confirm.
+
+**Examples:**
+
+- _"Apollo needs 5 next Tuesday, thinking Pradeep"_ → `propose_calendar_entry(kind='DEMAND')` + `propose_calendar_entry(kind='TENTATIVE_ASSIGNMENT')` — one DecisionCard, two sub-cards.
+- _"Lock in Apollo Tuesday"_ (where 2 tentatives exist) → `propose_promote_calendar_entry(entry1)` + `propose_promote_calendar_entry(entry2)` — one DecisionCard, batch promotion.
+- _"Cancel Suresh's leave + put him on Apollo tomorrow"_ → single `propose_cancel_leave_and_reassign` call (composite tool encapsulates the two ops).
+
+Per-call vs composite-tool decision rule: **use a composite tool when the operations are tightly coupled and meaningless in isolation** (cancel-leave-and-reassign — neither half makes sense alone). **Use multi-call when operations are independent but contextually related** (Calendar demand + tentative — supervisor might want either separately).
+
+### 9.7 AI behavior translations (utterance → tool mapping)
+
+Some natural utterances don't map 1:1 to a tool name; AI must translate the supervisor's mental model to the right shape:
+
+| Utterance                                               | NOT this tool                                         | Use this tool                                         |
+| ------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------- |
+| _"correct Wednesday Westfield, was Pradeep not Suresh"_ | `propose_visit_correction(fields: { workerId })`      | `propose_replace_visit_worker(visitId, newWorkerId)`  |
+| _"send Suresh to Apollo today only"_                    | `propose_calendar_entry(kind='TENTATIVE_ASSIGNMENT')` | `propose_create_assignment(oneOffDate)`               |
+| _"fire Pradeep"_                                        | `propose_termination_probation` OR `_permanent`       | `propose_termination` (backend resolves tenure)       |
+| _"thinking next Tuesday Apollo needs five workers"_     | `propose_create_assignment(validFrom=Tuesday)`        | `propose_calendar_entry(kind='DEMAND')`               |
+| _"Suresh maybe Pradeep covers Apollo Tuesday"_          | `propose_create_assignment` (commits prematurely)     | `propose_calendar_entry(kind='TENTATIVE_ASSIGNMENT')` |
 
 ---
 
 ## 10. Backend routes (1:1 mapping)
 
-| Tool                                | Route                                                                         |
-| ----------------------------------- | ----------------------------------------------------------------------------- |
-| `propose_create_assignment`         | `POST /assignments` (creates state=DRAFT)                                     |
-| `propose_terminate_assignment`      | `PATCH /assignments/:id/terminate`                                            |
-| `propose_modify_assignment`         | `PATCH /assignments/:id`                                                      |
-| `propose_cancel_leave_and_reassign` | composite tx — calls `POST /change-requests/:id/cancel` + `POST /assignments` |
-| `propose_<change-request-kind>`     | `POST /change-requests` (kind in body)                                        |
-| `propose_decide_change_request`     | `POST /change-requests/:id/decide`                                            |
-| `propose_cancel_change_request`     | `POST /change-requests/:id/cancel`                                            |
-| `propose_calendar_entry`            | `POST /calendar`                                                              |
-| `propose_promote_calendar_entry`    | `POST /calendar/:id/promote`                                                  |
-| `propose_edit_calendar_entry`       | `PATCH /calendar/:id`                                                         |
-| `get_worker_status`                 | `GET /workers/:id/status`                                                     |
-| `get_supervisor_today_pulse`        | `GET /supervisor/:id/today-pulse`                                             |
-| `find_workers`                      | `GET /workers/search?q=...`                                                   |
-| `find_calendar_entries`             | `GET /calendar?supervisorId=...&from=...&to=...`                              |
-| `find_change_requests`              | `GET /change-requests?...`                                                    |
+| Tool                                                                                  | Route                                                                                                                                                      |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `propose_create_assignment`                                                           | `POST /assignments` (creates state=DRAFT). `oneOffDate` shorthand handled server-side: validFrom=validUntil=oneOffDate, dayMask=day-of-week of oneOffDate. |
+| `propose_terminate_assignment`                                                        | `PATCH /assignments/:id/terminate`                                                                                                                         |
+| `propose_modify_assignment`                                                           | `PATCH /assignments/:id`                                                                                                                                   |
+| `propose_cancel_leave_and_reassign`                                                   | Composite tx: backend looks up active LEAVE for `workerId` covering `fromDate`, cancels it, then creates new Assignment.                                   |
+| `propose_replace_visit_worker`                                                        | `PATCH /visits/:id/replace-worker` — atomically writes correction Visit row (new workerId) + AuditEvent + Outbox payroll.recompute for both workers.       |
+| `propose_leave` / `propose_swap` / `propose_visit_correction` / `propose_termination` | `POST /change-requests` (kind in body). `propose_termination`: backend computes tenure → kind=TERMINATION_PROBATION or \_PERMANENT.                        |
+| `propose_decide_change_request`                                                       | `POST /change-requests/:id/decide`                                                                                                                         |
+| `propose_cancel_change_request`                                                       | `POST /change-requests/:id/cancel`                                                                                                                         |
+| `propose_calendar_entry`                                                              | `POST /calendar`                                                                                                                                           |
+| `propose_promote_calendar_entry`                                                      | `POST /calendar/:id/promote`                                                                                                                               |
+| `propose_edit_calendar_entry`                                                         | `PATCH /calendar/:id`                                                                                                                                      |
+| `get_worker_status`                                                                   | `GET /workers/:id/status`                                                                                                                                  |
+| `get_supervisor_today_pulse`                                                          | `GET /supervisor/:id/today-pulse`                                                                                                                          |
+| `find_workers`                                                                        | `GET /workers/search?q=...&supervisorScope=...`                                                                                                            |
+| `find_sites`                                                                          | `GET /sites/search?q=...&supervisorScope=...`                                                                                                              |
+| `find_calendar_entries`                                                               | `GET /calendar?supervisorId=...&from=...&to=...`                                                                                                           |
+| `find_change_requests`                                                                | `GET /change-requests?...`                                                                                                                                 |
 
 ---
 
