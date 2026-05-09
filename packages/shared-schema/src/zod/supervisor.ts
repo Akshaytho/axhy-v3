@@ -159,3 +159,59 @@ export const LeaveDecisionOutput = z.object({
  * @derives(ADR-0007)
  */
 export type LeaveDecisionOutput = z.infer<typeof LeaveDecisionOutput>;
+
+// ─── POST /sites/:id/complaints ──────────────────────────────────────────────
+
+/**
+ * Complaint severity. NOTE-tier action — supervisor logs it without confirm.
+ * @derives(data-flow §5 — log complaint NOTE tier)
+ * @derives(ADR-0007)
+ */
+export const ComplaintSeveritySchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
+
+/**
+ * Inferred complaint severity type.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type ComplaintSeverity = z.infer<typeof ComplaintSeveritySchema>;
+
+/**
+ * Input shape for POST /sites/:id/complaints.
+ * @derives(data-flow §5 — supervisor "Log complaint" action)
+ * @derives(ADR-0007)
+ */
+export const LogComplaintInput = z.object({
+  /** Complaint text — supervisor's words via voice or button flow. */
+  text: z.string().trim().min(1, 'Text is required').max(2000),
+  /** Severity. Defaults to LOW (NOTE-tier). */
+  severity: ComplaintSeveritySchema.default('LOW'),
+});
+
+/**
+ * Inferred input type for /sites/:id/complaints.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type LogComplaintInput = z.infer<typeof LogComplaintInput>;
+
+/**
+ * Output shape for POST /sites/:id/complaints.
+ * @derives(data-flow §5 — supervisor "Log complaint" action)
+ * @derives(ADR-0007)
+ */
+export const LogComplaintOutput = z.object({
+  ok: z.literal(true),
+  complaintId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  severity: ComplaintSeveritySchema,
+  loggedBy: z.string().uuid(),
+  loggedAt: z.string(), // ISO timestamp
+});
+
+/**
+ * Inferred output type for /sites/:id/complaints.
+ * @derives(data-flow §5)
+ * @derives(ADR-0007)
+ */
+export type LogComplaintOutput = z.infer<typeof LogComplaintOutput>;

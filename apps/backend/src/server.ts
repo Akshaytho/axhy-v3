@@ -11,6 +11,8 @@
  *   - /auth/otp/request, /auth/otp/verify  → @derives(ADR-0007)
  *   - /me                                  → @derives(ADR-0007)
  *   - /workers/:id/mark-absent             → @derives(data-flow §5)
+ *   - /leave-requests/:id/{approve,reject} → @derives(data-flow §5)
+ *   - /sites/:id/complaints                → @derives(data-flow §5)
  *
  * @derives(ADR-0004)
  */
@@ -25,6 +27,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerWorkerRoutes } from './routes/workers.js';
 import { registerLeaveRequestRoutes } from './routes/leave-requests.js';
+import { registerSitesRoutes } from './routes/sites.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -62,6 +65,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerMeRoutes(app);
   await registerWorkerRoutes(app);
   await registerLeaveRequestRoutes(app);
+  await registerSitesRoutes(app);
 
   return app;
 }
