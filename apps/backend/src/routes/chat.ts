@@ -73,7 +73,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         userMessage: parsed.data.text,
         tools: tools as never,
         maxIterations: 6,
-        timeoutMs: 9000,
+        timeoutMs: 50000,
         handler: async (name, input) => {
           if (name === 'find_workers') {
             const workers = await withTenantContext(prisma, auth.companyId, async (tx) =>
