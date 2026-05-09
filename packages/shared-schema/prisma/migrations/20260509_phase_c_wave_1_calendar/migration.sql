@@ -64,3 +64,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Section 9: pendingAssignmentPayload column for Wave 1 deferred Assignment promotion
+-- Wave 2 reads this column and creates real Assignment rows.
+ALTER TABLE "axhy"."CalendarEntry" ADD COLUMN "pendingAssignmentPayload" JSONB;

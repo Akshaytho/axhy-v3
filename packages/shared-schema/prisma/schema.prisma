@@ -233,6 +233,8 @@ model CalendarEntry {
   promotedToKind String?
   promotedToId   String?   @db.Uuid
   promotedAt     DateTime?
+  /// Wave 1: stored when promoted to Assignment; Wave 2 hydrates real Assignment row from this.
+  pendingAssignmentPayload Json?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
