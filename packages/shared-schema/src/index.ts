@@ -13,3 +13,5 @@ export * from './zod/auth.js';
 export * from './zod/me.js';
 export * from './zod/supervisor.js';
 export * from './zod/calendar.js';
+export * from './zod/assignment.js';
+export * from './zod/chat.js';
