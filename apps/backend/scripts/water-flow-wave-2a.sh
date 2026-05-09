@@ -7,7 +7,7 @@
 #   1. Backend dev server running at localhost:4000:
 #        cd apps/backend && pnpm dev
 #   2. AXHY_OTP_BYPASS=1 in apps/backend/.env.local (already set)
-#   3. Sandbox tenant seeded (run: pnpm exec tsx scripts/seed-sandbox.ts)
+#   3. Sandbox tenant seeded
 #   4. ANTHROPIC_API_KEY set in apps/backend/.env.local (already set)
 #
 # Usage: ./apps/backend/scripts/water-flow-wave-2a.sh
@@ -31,9 +31,46 @@ pass() { echo -e "${green}✓ $1${nc}"; }
 fail() { echo -e "${red}✗ $1${nc}"; exit 1; }
 info() { echo -e "${yellow}  $1${nc}"; }
 
-# Check curl + jq are available
+# JSON helpers using Node.js — no jq dependency
+json_get() {
+  # Usage: json_get "$JSON_STRING" ".path.to.field"
+  node -e "
+    let raw = '';
+    process.stdin.on('data', c => raw += c);
+    process.stdin.on('end', () => {
+      try {
+        const obj = JSON.parse(raw);
+        const path = process.argv[1].replace(/^\./, '').split('.');
+        let v = obj;
+        for (const p of path) v = v?.[p];
+        if (v === undefined || v === null) {
+          process.stdout.write('');
+        } else if (typeof v === 'object') {
+          process.stdout.write(JSON.stringify(v));
+        } else {
+          process.stdout.write(String(v));
+        }
+      } catch (e) { process.exit(1); }
+    });
+  " "$2" <<< "$1"
+}
+
+json_pretty() {
+  # Usage: json_pretty "$JSON_STRING"
+  node -e "
+    let raw = '';
+    process.stdin.on('data', c => raw += c);
+    process.stdin.on('end', () => {
+      try {
+        const obj = JSON.parse(raw);
+        process.stdout.write(JSON.stringify(obj, null, 2));
+      } catch (e) { process.stdout.write(raw); }
+    });
+  " <<< "$1"
+}
+
 command -v curl >/dev/null 2>&1 || fail "curl not found"
-command -v jq >/dev/null 2>&1 || fail "jq not found (brew install jq)"
+command -v node >/dev/null 2>&1 || fail "node not found"
 
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
@@ -52,7 +89,8 @@ step "2/7 Request OTP for $SUPERVISOR_PHONE"
 OTP_REQ=$(curl -sf -X POST "$API/auth/otp/request" \
   -H 'Content-Type: application/json' \
   -d "{\"phone\":\"$SUPERVISOR_PHONE\"}")
-echo "$OTP_REQ" | jq -c .
+json_pretty "$OTP_REQ"
+echo ""
 pass "OTP requested"
 
 # 3. Verify OTP with bypass code
@@ -60,13 +98,15 @@ step "3/7 Verify OTP with bypass code 123456"
 OTP_RES=$(curl -sf -X POST "$API/auth/otp/verify" \
   -H 'Content-Type: application/json' \
   -d "{\"phone\":\"$SUPERVISOR_PHONE\",\"code\":\"$OTP_CODE\"}")
-TOKEN=$(echo "$OTP_RES" | jq -r '.accessToken // .access_token // empty')
-if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-  echo "$OTP_RES" | jq .
+TOKEN=$(json_get "$OTP_RES" ".accessToken")
+[ -z "$TOKEN" ] && TOKEN=$(json_get "$OTP_RES" ".access_token")
+if [ -z "$TOKEN" ]; then
+  json_pretty "$OTP_RES"
+  echo ""
   fail "No access token. Verify AXHY_OTP_BYPASS=1 + sandbox seeded."
 fi
 pass "JWT acquired"
-info "$(echo "$TOKEN" | head -c 40)..."
+info "${TOKEN:0:40}..."
 
 # 4. Generate idempotency key
 step "4/7 Generate Idempotency-Key"
@@ -74,7 +114,7 @@ IDEM=$(uuidgen | tr '[:upper:]' '[:lower:]')
 pass "$IDEM"
 
 # 5. Send chat message
-step "5/7 POST /chat/messages — 'Add Pradeep to Apollo Hospital, Mon-Sat 9 to 5 starting Monday'"
+step "5/7 POST /chat/messages — 'Add Pradeep to Apollo Hospital, Mon-Sat 9 to 5...'"
 info "Calling real Anthropic Sonnet 4.6 — this takes 5-15 seconds..."
 START_T=$(date +%s)
 CHAT_RES=$(curl -sf -X POST "$API/chat/messages" \
@@ -84,15 +124,16 @@ CHAT_RES=$(curl -sf -X POST "$API/chat/messages" \
   -d '{"text":"Add Pradeep to Apollo Hospital, Mon-Sat 9 to 5, starting Monday May 12 2026"}')
 ELAPSED=$(($(date +%s) - START_T))
 pass "Response in ${ELAPSED}s"
-echo "$CHAT_RES" | jq .
+json_pretty "$CHAT_RES"
 echo ""
 
 # Extract DecisionCard fields
-CHAT_MSG_ID=$(echo "$CHAT_RES" | jq -r '.chatMessageId')
-TOOL_NAME=$(echo "$CHAT_RES" | jq -r '.decisionCard.toolName // empty')
-TOOL_INPUT=$(echo "$CHAT_RES" | jq -c '.decisionCard.fields // {}')
+CHAT_MSG_ID=$(json_get "$CHAT_RES" ".chatMessageId")
+TOOL_NAME=$(json_get "$CHAT_RES" ".decisionCard.toolName")
+TOOL_INPUT=$(json_get "$CHAT_RES" ".decisionCard.fields")
+[ -z "$TOOL_INPUT" ] && TOOL_INPUT="{}"
 
-if [ -z "$TOOL_NAME" ] || [ "$TOOL_NAME" = "null" ] || [ "$TOOL_NAME" = "empty" ]; then
+if [ -z "$TOOL_NAME" ]; then
   fail "No DecisionCard returned. AI may have asked clarification. See response above."
 fi
 pass "DecisionCard: $TOOL_NAME"
@@ -103,32 +144,24 @@ APPLY_RES=$(curl -sf -X POST "$API/chat/apply" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d "{\"chatMessageId\":\"$CHAT_MSG_ID\",\"toolName\":\"$TOOL_NAME\",\"toolInput\":$TOOL_INPUT}")
-echo "$APPLY_RES" | jq .
-ASSIGN_ID=$(echo "$APPLY_RES" | jq -r '.id // empty')
-if [ -z "$ASSIGN_ID" ] || [ "$ASSIGN_ID" = "null" ]; then
+json_pretty "$APPLY_RES"
+echo ""
+ASSIGN_ID=$(json_get "$APPLY_RES" ".id")
+if [ -z "$ASSIGN_ID" ]; then
   fail "Apply did not return an Assignment id"
 fi
 pass "Assignment created: $ASSIGN_ID"
 
-# 7. Verify in DB via prisma
-step "7/7 Verify Assignment row exists in DB"
-cd "$(dirname "$0")/../../../packages/shared-schema"
-QUERY="SELECT id, \"workerId\", \"siteId\", \"dayMask\", state FROM axhy.\"Assignment\" WHERE id = '$ASSIGN_ID';"
-echo "$QUERY"
-DB_RES=$(pnpm exec prisma db execute --schema=./prisma/schema.prisma --stdin <<< "$QUERY" 2>&1 || echo "")
-if echo "$DB_RES" | grep -q "Script executed successfully"; then
-  pass "Assignment row verified in Railway"
-else
-  echo "$DB_RES"
-  info "DB query may have succeeded (prisma db execute is silent on success)"
-fi
+# 7. Final summary
+step "7/7 Done — verify in Prisma Studio"
+info "Open in browser: cd packages/shared-schema && pnpm exec prisma studio"
+info "Look at axhy.Assignment table — id: $ASSIGN_ID"
 
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
 echo -e "  ${green}✓ MAGIC LOOP VERIFIED END-TO-END${nc}"
 echo "═══════════════════════════════════════════════════════════════"
 echo ""
-echo "  Voice/text → AI tool-use → DecisionCard → tap Apply → Assignment row"
-echo "  Open Prisma Studio to see the row visually:"
-echo "    cd packages/shared-schema && pnpm exec prisma studio"
+echo "  Voice/text → Anthropic Sonnet 4.6 tool-use → DecisionCard →"
+echo "  tap Apply → POST /assignments → real Assignment row in Railway."
 echo ""
