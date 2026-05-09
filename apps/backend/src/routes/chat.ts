@@ -13,6 +13,7 @@ import {
   findWorkersTool,
   findSitesTool,
   proposeCreateAssignmentTool,
+  proposeMarkAbsentTool,
 } from '@axhy/ai-tools';
 
 import { prisma } from '../lib/prisma.js';
@@ -24,6 +25,8 @@ import { tryAcquireChatSlot, releaseChatSlot } from '../lib/chat-concurrency.js'
 const SYSTEM_PROMPT = `You are Axhy's AI assistant for cleaning-company supervisors in India.
 When the supervisor asks to add a worker to a site, FIRST call find_workers and find_sites to
 resolve names → IDs, THEN call propose_create_assignment with the resolved IDs.
+When the supervisor says a worker is absent / did not show up / called sick / "X is off today",
+call find_workers first, then propose_mark_absent with the resolved worker UUID.
 Speak in the same language(s) the supervisor used (English, Hindi, Telugu).
 Keep responses concise — supervisors are busy.`;
 
@@ -65,7 +68,12 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      const tools = [findWorkersTool, findSitesTool, proposeCreateAssignmentTool];
+      const tools = [
+        findWorkersTool,
+        findSitesTool,
+        proposeCreateAssignmentTool,
+        proposeMarkAbsentTool,
+      ];
 
       const loopResult = await sonnetToolLoop({
         apiKey,
@@ -118,6 +126,41 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                 title: 'Confirm assignment',
                 description: 'Create assignment with these fields?',
                 fields: input,
+                severity: 'CONFIRM',
+              },
+            };
+          }
+          if (name === 'propose_mark_absent') {
+            const {
+              workerId: wid,
+              date,
+              reason,
+              reasonDetail,
+            } = input as {
+              workerId: string;
+              date?: string;
+              reason?: string;
+              reasonDetail?: string;
+            };
+            const worker = await withTenantContext(prisma, auth.companyId, async (tx) =>
+              tx.worker.findFirst({ where: { id: wid, companyId: auth.companyId } }),
+            );
+            if (!worker) return { output: { error: 'WORKER_NOT_FOUND' } };
+            const dateStr = date ?? new Date().toISOString().slice(0, 10);
+            return {
+              output: {
+                proposed: true,
+                fields: { workerId: wid, date: dateStr, reason, reasonDetail },
+              },
+              decisionCardData: {
+                title: 'Mark absent',
+                description: `Mark ${worker.name} absent on ${dateStr}?`,
+                fields: {
+                  workerId: wid,
+                  date: dateStr,
+                  reason: reason ?? 'unknown',
+                  ...(reasonDetail ? { reasonDetail } : {}),
+                },
                 severity: 'CONFIRM',
               },
             };
@@ -205,18 +248,43 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
       return;
     }
-    if (parsed.data.toolName !== 'propose_create_assignment') {
-      reply
-        .code(501)
-        .send({ error: 'NOT_IMPLEMENTED', message: 'Only propose_create_assignment in Wave 2a' });
+    if (parsed.data.toolName === 'propose_create_assignment') {
+      const inner = await app.inject({
+        method: 'POST',
+        url: '/assignments',
+        headers: { authorization: req.headers.authorization! },
+        payload: parsed.data.toolInput,
+      });
+      reply.code(inner.statusCode).send(inner.json());
       return;
     }
-    const inner = await app.inject({
-      method: 'POST',
-      url: '/assignments',
-      headers: { authorization: req.headers.authorization! },
-      payload: parsed.data.toolInput,
-    });
-    reply.code(inner.statusCode).send(inner.json());
+
+    if (parsed.data.toolName === 'propose_mark_absent') {
+      const ti = parsed.data.toolInput as {
+        workerId: string;
+        date?: string;
+        reason?: string;
+        reasonDetail?: string;
+      };
+      // POST /workers/:id/mark-absent accepts { date, status, reason } per
+      // packages/shared-schema/src/zod/supervisor.ts:71-78. status defaults to
+      // 'ABSENT_NO_CALL'. Merge reason+reasonDetail into a single freeform string.
+      const reasonStr = [ti.reason, ti.reasonDetail].filter(Boolean).join(': ') || undefined;
+      const inner = await app.inject({
+        method: 'POST',
+        url: `/workers/${ti.workerId}/mark-absent`,
+        headers: { authorization: req.headers.authorization! },
+        payload: {
+          date: ti.date ?? new Date().toISOString().slice(0, 10),
+          ...(reasonStr ? { reason: reasonStr } : {}),
+        },
+      });
+      reply.code(inner.statusCode).send(inner.json());
+      return;
+    }
+
+    reply
+      .code(501)
+      .send({ error: 'NOT_IMPLEMENTED', message: `Unknown toolName: ${parsed.data.toolName}` });
   });
 }
