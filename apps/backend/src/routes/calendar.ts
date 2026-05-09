@@ -244,18 +244,65 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
         return;
       }
       if (out.kind === 'NOT_IMPLEMENTED') {
-        reply
-          .code(501)
-          .send({
-            error: 'NOT_IMPLEMENTED',
-            message: 'Only assignment target supported in Wave 1',
-          });
+        reply.code(501).send({
+          error: 'NOT_IMPLEMENTED',
+          message: 'Only assignment target supported in Wave 1',
+        });
         return;
       }
       reply.code(200).send({
         entryId: out.entry.id,
         promoted: { kind: 'ASSIGNMENT', id: out.synthId, deferred: true },
         promotedAt: out.entry.promotedAt!.toISOString(),
+      });
+    },
+  );
+
+  app.get<{ Querystring: { supervisorId?: string; from?: string; to?: string } }>(
+    '/calendar',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
+      }
+
+      const supervisorId = req.query.supervisorId ?? auth.userId;
+      const from = req.query.from ? new Date(req.query.from) : new Date();
+      const to = req.query.to
+        ? new Date(req.query.to)
+        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: 'invalid from/to date' });
+        return;
+      }
+
+      const entries = await withTenantContext(prisma, auth.companyId, async (tx) =>
+        tx.calendarEntry.findMany({
+          where: {
+            companyId: auth.companyId,
+            supervisorId,
+            date: { gte: from, lte: to },
+          },
+          orderBy: { date: 'asc' },
+          take: 200,
+        }),
+      );
+
+      reply.code(200).send({
+        entries: entries.map((e) => ({
+          id: e.id,
+          kind: e.kind,
+          date: e.date.toISOString().slice(0, 10),
+          payload: e.payload,
+          notes: e.notes,
+          editableUntil: e.editableUntil.toISOString(),
+          promotedToKind: e.promotedToKind,
+          promotedToId: e.promotedToId,
+          promotedAt: e.promotedAt?.toISOString() ?? null,
+        })),
       });
     },
   );
