@@ -72,7 +72,7 @@ try {
 
   // Type a message
   const chatInput = page.locator('input').last();
-  await chatInput.fill('Add Pradeep to Apollo Hospital, Mon-Sat 9 to 5, starting Monday');
+  await chatInput.fill('Add Ravi Kumar to Hospital A, Monday to Saturday 9am to 5pm starting May 12 2026');
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/07-chat-typed.png`, fullPage: true });
   console.log('✓ 07-chat-typed.png');
