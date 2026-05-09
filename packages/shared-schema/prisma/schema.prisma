@@ -57,6 +57,9 @@ model Company {
   hrUpdates               HRUpdate[]
   visitPhotos             VisitPhoto[]
   calendarEntries         CalendarEntry[]
+  assignments             Assignment[]
+  chatThreads             ChatThread[]
+  chatMessages            ChatMessage[]
 
   @@schema("axhy")
 }
@@ -126,10 +129,11 @@ model Site {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  visits     Visit[]
-  complaints Complaint[]
-  swaps      SwapRequest[]
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  visits      Visit[]
+  complaints  Complaint[]
+  swaps       SwapRequest[]
+  assignments Assignment[]
 
   @@index([companyId])
   @@index([companyId, state])
@@ -163,6 +167,7 @@ model Worker {
   attendances Attendance[]
   fromSwaps   SwapRequest[]  @relation("SwapFromWorker")
   toSwaps     SwapRequest[]  @relation("SwapToWorker")
+  assignments Assignment[]
 
   @@unique([companyId, phone])
   @@index([companyId])
@@ -242,6 +247,101 @@ model CalendarEntry {
 
   @@index([companyId, supervisorId, date])
   @@index([companyId, date])
+  @@schema("axhy")
+}
+
+model Assignment {
+  id               String    @id @default(uuid()) @db.Uuid
+  companyId        String    @db.Uuid
+  workerId         String    @db.Uuid
+  siteId           String    @db.Uuid
+  /// "HH:mm" format
+  shiftStart       String
+  shiftEnd         String
+  /// 7-char Mon-Sun mask: "MTWTFS_" = Mon-Sat, "_______" = none
+  dayMask          String
+  validFrom        DateTime  @db.Date
+  /// null = open-ended (per Q1 lock)
+  validUntil       DateTime? @db.Date
+  /// 3 states: DRAFT | ACTIVE | TERMINATED (per Q2 lock)
+  state            String    @default("DRAFT")
+  terminatedReason String?
+  /// FK Membership — supervisor who terminated
+  terminatedBy     String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  worker  Worker  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, state])
+  @@index([workerId, state])
+  @@index([siteId, state])
+  @@schema("axhy")
+}
+
+model ChatThread {
+  id            String    @id @default(uuid()) @db.Uuid
+  companyId     String    @db.Uuid
+  /// FK Membership.id (per-supervisor)
+  supervisorId  String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  lastMessageAt DateTime?
+  archivedAt    DateTime?
+
+  company  Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@unique([companyId, supervisorId])
+  @@schema("axhy")
+}
+
+model ChatMessage {
+  id              String   @id @default(uuid()) @db.Uuid
+  companyId       String   @db.Uuid
+  threadId        String   @db.Uuid
+  /// 'user' | 'assistant' | 'system'
+  role            String
+  /// @personal supervisor's voice transcript or typed text
+  transcript      String?
+  /// @personal AI's response text
+  aiResponseText  String?
+  /// JSON array of { toolName, toolCallId, input, output? }
+  toolCalls       Json?
+  /// DecisionCardData per Spec 1 §9.5
+  decisionCard    Json?
+  /// 'HIGH'|'MEDIUM'|'LOW' from Sarvam
+  voiceConfidence String?
+  /// 'claude-sonnet-4-6' etc
+  modelUsed       String?
+  /// Computed cost in INR
+  costInr         Decimal?
+  /// Idempotency-Key from request
+  idempotencyKey  String?
+  createdAt       DateTime @default(now())
+
+  thread  ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, threadId, createdAt])
+  @@schema("axhy")
+}
+
+model ChatRequestLog {
+  companyId      String   @db.Uuid
+  /// Client-generated UUID; same key = same response
+  idempotencyKey String
+  /// Cached final response shape (full JSON returned to client)
+  responseJson   Json
+  /// FK to message row created on first call
+  chatMessageId  String?  @db.Uuid
+  createdAt      DateTime @default(now())
+  /// createdAt + 24h
+  expiresAt      DateTime
+
+  @@id([companyId, idempotencyKey])
+  @@index([expiresAt])
   @@schema("axhy")
 }
 
