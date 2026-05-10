@@ -18,6 +18,7 @@ import {
   proposeSwapTool,
   proposeTerminationTool,
 } from '@axhy/ai-tools';
+import { detectConflicts } from '@axhy/state-machines';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
@@ -135,13 +136,57 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             };
           }
           if (name === 'propose_create_assignment') {
+            // Plumb detectConflicts — Wave 4a-PRO Task 9
+            const conflicts = await withTenantContext(prisma, auth.companyId, async (tx) => {
+              const activeAssignments = await tx.assignment.findMany({
+                where: {
+                  companyId: auth.companyId,
+                  workerId: input.workerId as string,
+                  state: 'ACTIVE',
+                },
+              });
+              return detectConflicts(
+                {
+                  workerId: input.workerId as string,
+                  dateRange: {
+                    from: new Date(input.validFrom as string),
+                    to: input.validUntil ? new Date(input.validUntil as string) : null,
+                  },
+                  newShift: {
+                    shiftStart: input.shiftStart as string,
+                    shiftEnd: input.shiftEnd as string,
+                    dayMask: input.dayMask as string,
+                  },
+                },
+                { activeAssignments, visits: [], calendarEntries: [], changeRequests: [] },
+              );
+            });
+
+            const hasHard = conflicts.some((c) => c.severity === 'HARD');
+            const hasSoft = conflicts.some((c) => c.severity === 'SOFT');
+            const severity: 'CONFIRM' | 'WARN' | 'BLOCKED' = hasHard
+              ? 'BLOCKED'
+              : hasSoft
+                ? 'WARN'
+                : 'CONFIRM';
+            const chips = hasSoft
+              ? [
+                  { label: 'Split shift', value: 'split-shift' },
+                  { label: 'Covering for someone', value: 'covering' },
+                  { label: 'Mistake — cancel', value: 'mistake' },
+                  { label: 'Other', value: 'other' },
+                ]
+              : undefined;
+
             return {
-              output: { proposed: true, fields: input },
+              output: { proposed: true, fields: input, conflicts },
               decisionCardData: {
                 title: 'Confirm assignment',
                 description: 'Create assignment with these fields?',
                 fields: input,
-                severity: 'CONFIRM',
+                severity,
+                ...(conflicts.length > 0 ? { conflicts } : {}),
+                ...(chips ? { presets: { chips } } : {}),
               },
             };
           }

@@ -17,3 +17,4 @@ export type { VisitStateValue, VisitEvent, VisitContext, VisitMachine } from './
 
 export * from './calendar.js';
 export * from './assignment.js';
+export * from './conflicts.js';
