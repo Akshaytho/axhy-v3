@@ -15,3 +15,4 @@ export * from './zod/supervisor.js';
 export * from './zod/calendar.js';
 export * from './zod/assignment.js';
 export * from './zod/chat.js';
+export * from './zod/living-doc.js';

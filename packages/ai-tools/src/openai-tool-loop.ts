@@ -20,6 +20,7 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
   ChatCompletionMessageToolCall,
+  ChatCompletionCreateParamsNonStreaming,
 } from 'openai/resources/chat/completions.mjs';
 
 import {
@@ -85,6 +86,33 @@ export type OpenAIToolLoopArgs = {
    * @derives(spec-2 §9.2)
    */
   tenantCtx?: TenantBudgetCtx;
+  /**
+   * Tier 2 prompt block — supervisor's LivingDoc context (rules, aliases).
+   * Inserted as a SECOND system message between the main system prompt
+   * (Tier 1, fully stable) and priorMessages so OpenAI can cache the
+   * stable Tier 1 prefix even as Tier 2 changes per supervisor.
+   * Empty/undefined → no Tier 2 system message inserted.
+   * @derives(spec-2 §6.1, §8.1)
+   */
+  livingDocBlock?: string;
+  /**
+   * Tier 3 prompt block — last 30 days CalendarEntry for this supervisor.
+   * Inserted after Tier 2, before priorMessages. Same caching rationale.
+   * Empty/undefined → no Tier 3 system message inserted.
+   * @derives(spec-2 §8.1)
+   */
+  calendarBlock?: string;
+  /**
+   * For OpenAI prompt_cache_key shape:
+   *   "${companyId}:${supervisorId}:v${livingDocVersion}"
+   * Routes per-supervisor cache to consistent backend partitions and
+   * busts cache when LivingDoc.version increments. Falls back to no key
+   * when chat.ts didn't provide context.
+   * @derives(spec-2 §8.2)
+   */
+  livingDocVersion?: number;
+  companyId?: string;
+  supervisorId?: string;
 };
 
 export type OpenAIToolLoopResult = {
@@ -109,6 +137,13 @@ export type OpenAIToolLoopResult = {
   costInr: number;
   /** Resolved model used (post-DEFAULT_MODEL fallback). */
   modelUsed: string;
+  /**
+   * OpenAI `usage.prompt_tokens_details.cached_tokens` from the final
+   * response — null when the model/SDK doesn't surface it. Persisted
+   * to `ChatMessage.cacheTokens` for the `ai_cost_daily` view.
+   * @derives(spec-2 §8.3)
+   */
+  cacheTokens: number | null;
 };
 
 const DEFAULT_MODEL = 'gpt-5.4-nano';
@@ -147,15 +182,37 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
   const openai = new OpenAI({ apiKey });
   const openaiTools = toOpenAITools(tools);
 
-  const messages: ChatCompletionMessageParam[] = [
-    { role: 'system', content: systemPrompt },
-    ...(args.priorMessages ?? []).map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: userMessage },
-  ];
+  // Spec 2 §8.1 — 3-tier message structure for OpenAI by-prefix auto-cache:
+  //   Tier 1 (stable) — main systemPrompt + tools (passed via openaiTools arg)
+  //   Tier 2 (per-supervisor) — livingDocBlock as a 2nd system message
+  //   Tier 3a (per-supervisor recent) — calendarBlock as a 3rd system message
+  //   Tier 3b (per-call) — priorMessages + userMessage
+  // Empty Tier 2/3a strings are skipped so we don't waste a slot.
+  const messages: ChatCompletionMessageParam[] = [{ role: 'system', content: systemPrompt }];
+  if (args.livingDocBlock && args.livingDocBlock.length > 0) {
+    messages.push({ role: 'system', content: args.livingDocBlock });
+  }
+  if (args.calendarBlock && args.calendarBlock.length > 0) {
+    messages.push({ role: 'system', content: args.calendarBlock });
+  }
+  for (const m of args.priorMessages ?? []) {
+    messages.push({ role: m.role, content: m.content });
+  }
+  messages.push({ role: 'user', content: userMessage });
+
+  // Spec 2 §8.2 — prompt_cache_key routes per-supervisor cache to
+  // consistent backend partitions and busts cache when LivingDoc.version
+  // changes. Only set when caller provided full ctx (chat.ts always does;
+  // future test paths may not).
+  const promptCacheKey =
+    args.companyId && args.supervisorId && args.livingDocVersion !== undefined
+      ? `${args.companyId}:${args.supervisorId}:v${args.livingDocVersion}`
+      : undefined;
 
   const toolCalls: OpenAIToolLoopResult['toolCalls'] = [];
   const decisionCards: OpenAIToolLoopResult['decisionCards'] = [];
   let finalUsage = { inputTokens: 0, outputTokens: 0 };
+  let finalCacheTokens: number | null = null;
   let finalText = '';
 
   for (let iter = 0; iter < maxIterations; iter++) {
@@ -163,20 +220,35 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
       throw new Error('AI_TOOL_LOOP_TIMEOUT');
     }
 
-    const response = await openai.chat.completions.create({
+    // Spec 2 §8.2 — `prompt_cache_key` is a real OpenAI request-body param
+    // (added late 2024) but `openai@4.104.0` SDK types don't include it yet.
+    // Build the body as the typed non-streaming params object then add the
+    // optional cache-key field via a narrow cast — justified external-
+    // boundary cast per `feedback_no_ui_code_without_panel_approval` iter 4.
+    const body: ChatCompletionCreateParamsNonStreaming & { prompt_cache_key?: string } = {
       model,
       messages,
       tools: openaiTools,
       tool_choice: 'auto',
       // GPT-5 models reject `max_tokens` and require `max_completion_tokens`.
       max_completion_tokens: 1500,
-    });
+    };
+    if (promptCacheKey) body.prompt_cache_key = promptCacheKey;
+    const response = await openai.chat.completions.create(body);
 
     if (response.usage) {
       finalUsage = {
         inputTokens: response.usage.prompt_tokens,
         outputTokens: response.usage.completion_tokens,
       };
+      // Spec 2 §8.3 — capture cached_tokens for ai_cost_daily view.
+      // Null-safe: older SDK responses or models without cache surface
+      // may omit `prompt_tokens_details` entirely.
+      const detailed = (response.usage as { prompt_tokens_details?: { cached_tokens?: number } })
+        .prompt_tokens_details;
+      if (detailed && typeof detailed.cached_tokens === 'number') {
+        finalCacheTokens = detailed.cached_tokens;
+      }
     }
 
     const choice = response.choices[0];
@@ -243,5 +315,6 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
     usage: finalUsage,
     costInr,
     modelUsed: model,
+    cacheTokens: finalCacheTokens,
   };
 }
