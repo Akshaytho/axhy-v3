@@ -10,8 +10,18 @@
 
 export const PACKAGE_NAME = '@axhy/ai-tools' as const;
 
-export { modelFor, assertWithinBudget, ALL_SURFACES } from './model-policy.js';
-export type { AISurface, AIVendor, ModelChoice } from './model-policy.js';
+export { modelFor, assertWithinBudget, tokenCostInrFor, ALL_SURFACES } from './model-policy.js';
+export type { AISurface, AIVendor, ModelChoice, TenantBudgetCtx } from './model-policy.js';
+
+export { AICostBudgetError } from './errors.js';
+
+export {
+  incrementSpend,
+  dispatchBudgetAlert,
+  OUTBOX_TOPIC_BUDGET_WARN,
+  OUTBOX_TOPIC_BUDGET_CAPPED,
+} from './cost-tracking.js';
+export type { BudgetAlertKind, DbClient } from './cost-tracking.js';
 
 export * from './tools/assignment.js';
 export * from './tools/calendar.js';

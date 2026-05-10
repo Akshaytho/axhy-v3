@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { CreateChatMessageInput, ApplyDecisionCardInput } from '@axhy/shared-schema';
 import {
   openaiToolLoop,
+  AICostBudgetError,
   findWorkersTool,
   findSitesTool,
   proposeCreateAssignmentTool,
@@ -282,6 +283,11 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         tools,
         maxIterations: 6,
         timeoutMs: 50000,
+        // Spec 2 §9 — chat surface routes through `voice_change_parse` per
+        // ADR-0023 model-policy entry (gpt-5.4-nano). Tenant ctx enables
+        // the daily-budget gate; AICostBudgetError → 429 below.
+        surface: 'voice_change_parse',
+        tenantCtx: { companyId: auth.companyId, prisma },
         handler: async (name, input) => {
           if (name === 'find_workers') {
             const workers = await withTenantContext(prisma, auth.companyId, async (tx) =>
@@ -552,6 +558,19 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       );
 
       reply.code(200).send(response);
+    } catch (err) {
+      // Spec 2 §9.4 — daily AI budget exceeded. Friendly 429 with stable
+      // error code so the mobile client maps to its `AIBudgetExceededError`
+      // banner. NO retry-after header; cap clears at next UTC midnight.
+      // The CAP outbox alert already fired inside `assertWithinBudget`.
+      if (err instanceof AICostBudgetError) {
+        reply.code(429).send({
+          error: 'AI_BUDGET_EXCEEDED',
+          message: 'Daily AI usage limit reached. Try again tomorrow.',
+        });
+        return;
+      }
+      throw err;
     } finally {
       releaseChatSlot();
     }
