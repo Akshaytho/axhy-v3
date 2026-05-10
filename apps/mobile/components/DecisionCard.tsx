@@ -17,6 +17,8 @@ import type { DecisionCardData } from '../lib/chat-api';
 import { applyDecisionCard } from '../lib/chat-api';
 import { humanizeDayMask } from '../lib/format';
 
+import { ChipPicker } from './ChipPicker';
+
 /** UUID regex — values matching this pattern are internal refs, not user-readable */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,8 +43,16 @@ export function DecisionCard({ chatMessageId, card, onApplied, onCancelled }: Pr
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chipReason, setChipReason] = useState<string | null>(null);
+  const [chipFreeText, setChipFreeText] = useState<string | null>(null);
 
   const severity = card.severity ?? 'CONFIRM';
+  const cardWithChips = card as NonNullable<DecisionCardData> & {
+    presets?: { chips?: { label: string; value: string }[] };
+    conflicts?: unknown[];
+  };
+  const chips = cardWithChips.presets?.chips;
+  const requiresChip = severity === 'WARN' && Array.isArray(chips) && chips.length > 0;
   const borderColor =
     severity === 'WARN'
       ? tokens.color.semantic.warn
@@ -60,13 +70,23 @@ export function DecisionCard({ chatMessageId, card, onApplied, onCancelled }: Pr
 
   const onApply = async () => {
     if (!card.toolName) return;
+    if (requiresChip && !chipReason) return;
     setApplying(true);
     setError(null);
     try {
+      const enrichedInput = {
+        ...(card.fields ?? {}),
+        ...(chipReason
+          ? {
+              overrideReason: chipReason,
+              ...(chipFreeText ? { overrideText: chipFreeText } : {}),
+            }
+          : {}),
+      };
       await applyDecisionCard({
         chatMessageId,
         toolName: card.toolName,
-        toolInput: card.fields ?? {},
+        toolInput: enrichedInput,
       });
       setApplied(true);
       onApplied?.();
@@ -103,6 +123,16 @@ export function DecisionCard({ chatMessageId, card, onApplied, onCancelled }: Pr
         </View>
       )}
 
+      {requiresChip && chips && (
+        <ChipPicker
+          chips={chips}
+          onChange={(val, free) => {
+            setChipReason(val);
+            setChipFreeText(free);
+          }}
+        />
+      )}
+
       {error && <Text style={s.error}>{error}</Text>}
 
       <View style={s.buttons}>
@@ -111,9 +141,9 @@ export function DecisionCard({ chatMessageId, card, onApplied, onCancelled }: Pr
         </Pressable>
         {severity !== 'BLOCKED' && (
           <Pressable
-            style={[s.applyBtn, applying && s.applyBtnDisabled]}
+            style={[s.applyBtn, (applying || (requiresChip && !chipReason)) && s.applyBtnDisabled]}
             onPress={onApply}
-            disabled={applying}
+            disabled={applying || (requiresChip && !chipReason)}
           >
             {applying ? (
               <ActivityIndicator color={tokens.color.surface.paper} />
