@@ -104,7 +104,20 @@ export function DecisionCard({ chatMessageId, card, onApplied, onCancelled }: Pr
       {card.fields && Object.keys(card.fields).length > 0 && (
         <View style={s.fieldsTable}>
           {Object.entries(card.fields)
-            .filter(([, value]) => !UUID_RE.test(String(value ?? '')))
+            .filter(([key, value]) => {
+              // Hide UUID raw values (those are referenced by name elsewhere).
+              if (UUID_RE.test(String(value ?? ''))) return false;
+              // Hide rows where the AI didn't capture a real value: null,
+              // undefined, empty string, or the placeholder 'unknown' our
+              // tool schemas emit when the supervisor didn't specify.
+              if (value === null || value === undefined) return false;
+              const str = String(value).trim();
+              if (str === '' || str.toLowerCase() === 'unknown') return false;
+              // validUntil keeps its 'Open-ended' rendering even when null —
+              // handled in the display branch below — so let it pass.
+              if (key === 'validUntil') return true;
+              return true;
+            })
             .map(([key, value]) => {
               const label = FIELD_LABELS[key] ?? key;
               const display =
