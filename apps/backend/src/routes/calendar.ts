@@ -8,6 +8,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import {
   CreateCalendarEntryInput,
   UpdateCalendarEntryInput,
@@ -224,7 +225,7 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
             promotedToKind: 'ASSIGNMENT',
             promotedToId: assignment.id,
             promotedAt,
-            pendingAssignmentPayload: null,
+            pendingAssignmentPayload: Prisma.JsonNull,
           },
         });
 

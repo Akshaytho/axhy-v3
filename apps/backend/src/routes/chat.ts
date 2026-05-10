@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { CreateChatMessageInput, ApplyDecisionCardInput } from '@axhy/shared-schema';
 import {
-  sonnetToolLoop,
+  openaiToolLoop,
   findWorkersTool,
   findSitesTool,
   proposeCreateAssignmentTool,
@@ -26,22 +26,170 @@ import { recordAuditEvent } from '../lib/audit-event.js';
 import { checkIdempotency, recordIdempotency } from '../lib/chat-idempotency.js';
 import { tryAcquireChatSlot, releaseChatSlot } from '../lib/chat-concurrency.js';
 
-const SYSTEM_PROMPT = `You are Axhy's AI assistant for cleaning-company supervisors in India.
-When the supervisor asks to add a worker to a site, FIRST call find_workers and find_sites to
-resolve names → IDs, THEN call propose_create_assignment with the resolved IDs.
-When the supervisor says a worker is absent / did not show up / called sick / "X is off today",
-call find_workers first, then propose_mark_absent with the resolved worker UUID.
-When the supervisor says a worker needs leave / is sick for X days / "Pradeep off Mon-Wed" / "needs leave from <date> to <date>",
-call find_workers first, then propose_leave with the resolved worker UUID and the date range.
-When the supervisor wants to swap two workers between sites/shifts ("Swap Ravi and Lakshmi at Hospital A tomorrow"),
-FIRST call find_workers for each name (separate calls) AND find_sites for the site, THEN call propose_swap with
-two DIFFERENT worker UUIDs (fromWorkerId !== toWorkerId), the site UUID, and an ISO datetime for effectiveAt
-(must be in the future).
-When the supervisor wants to fire / terminate / let-go a worker, FIRST call find_workers,
-THEN call propose_termination with the worker UUID, an effectiveDate (YYYY-MM-DD), and a
-reason from this enum: performance, attendance, misconduct, mutual, redundancy, other.
-Speak in the same language(s) the supervisor used (English, Hindi, Telugu).
-Keep responses concise — supervisors are busy.`;
+/**
+ * Stripped system prompt — moved per-tool guidance into each tool's
+ * `description` field where the model actually picks tools. Cross-call
+ * behavior (one missing piece at a time, language matching) stays here.
+ *
+ * Founder-locked 2026-05-10 (panel: Aanya/Sara/Eric/Naina/Suresh persona):
+ *   "less context but detailed" + supervisors learn-by-doing + day-365 view.
+ * Old prompt was ~500 tokens of training-wheels duplication of the tool
+ * descriptions. New prompt is ~60 tokens.
+ */
+const SYSTEM_PROMPT = `You help cleaning-company supervisors in India run their day. Use the tools to resolve names and propose actions; the supervisor confirms.
+If a required field is missing, ask the supervisor for ONLY that one missing piece — never demand multiple fields at once.
+Match the language the supervisor used (English, Hindi, Telugu, or mixed). Keep replies short.`;
+
+/** Static help response — returned without any AI call when supervisor types help/menu. */
+const HELP_TEXT = `I can help with:
+• Mark a worker absent — say "Mukesh absent today"
+• Request leave — say "Suresh leave Monday to Wednesday"
+• Swap two workers — say "swap Ravi and Lakshmi at Hospital A tomorrow"
+• Add a worker to a site — say "put Lakshmi at IT Park C from Monday"
+• Terminate a worker — say "fire Pradeep, performance"
+You can speak in Hindi, Telugu, English, or mix. I'll match.`;
+
+const HELP_TRIGGERS = new Set([
+  '/help',
+  '/menu',
+  'help',
+  'menu',
+  '?',
+  'what can you do',
+  'what can you do?',
+  'kya kar sakte ho',
+  'kya kar sakte ho?',
+]);
+
+/** Number of prior chat turns to load for continuity. */
+const HISTORY_TURN_WINDOW = 10;
+
+/**
+ * Load the last N turns of the supervisor's chat thread, oldest → newest,
+ * formatted for openaiToolLoop's `priorMessages`. Returns [] when there
+ * is no prior thread (first message ever from this supervisor).
+ *
+ * Each row is mapped: ChatMessage.role → 'user' | 'assistant' (database
+ * already stores role as string); content = transcript (user) OR
+ * aiResponseText (assistant). Empty content is filtered out.
+ */
+async function loadPriorMessages(
+  companyId: string,
+  supervisorId: string,
+): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
+  const thread = await prisma.chatThread.findUnique({
+    where: { companyId_supervisorId: { companyId, supervisorId } },
+  });
+  if (!thread) return [];
+  const rows = await prisma.chatMessage.findMany({
+    where: { companyId, threadId: thread.id },
+    orderBy: { createdAt: 'desc' },
+    take: HISTORY_TURN_WINDOW,
+  });
+  return rows
+    .reverse()
+    .map((m) => ({
+      role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: m.role === 'assistant' ? (m.aiResponseText ?? '') : (m.transcript ?? ''),
+    }))
+    .filter((m) => m.content.length > 0);
+}
+
+/**
+ * Persist a user-message + assistant-response turn. Used by both the
+ * help short-circuit and the AI loop path so the on-disk shape is
+ * identical regardless of whether AI was invoked.
+ */
+async function persistChatTurn(input: {
+  companyId: string;
+  supervisorId: string;
+  userText: string;
+  voiceConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+  idempotencyKey: string;
+  assistantText: string;
+  toolCalls: ReadonlyArray<unknown>;
+  decisionCards: ReadonlyArray<Record<string, unknown>>;
+  modelUsed: string;
+}): Promise<{
+  chatMessageId: string;
+  assistantText: string;
+  decisionCard: Record<string, unknown> | null;
+  decisionCards: Array<Record<string, unknown>> | null;
+}> {
+  const result = await prisma.$transaction(async (tx) => {
+    const thread = await tx.chatThread.upsert({
+      where: {
+        companyId_supervisorId: {
+          companyId: input.companyId,
+          supervisorId: input.supervisorId,
+        },
+      },
+      create: {
+        companyId: input.companyId,
+        supervisorId: input.supervisorId,
+        lastMessageAt: new Date(),
+      },
+      update: { lastMessageAt: new Date() },
+    });
+
+    await tx.chatMessage.create({
+      data: {
+        companyId: input.companyId,
+        threadId: thread.id,
+        role: 'user',
+        transcript: input.userText,
+        voiceConfidence: input.voiceConfidence,
+        idempotencyKey: input.idempotencyKey,
+      },
+    });
+
+    const assistantMsg = await tx.chatMessage.create({
+      data: {
+        companyId: input.companyId,
+        threadId: thread.id,
+        role: 'assistant',
+        aiResponseText: input.assistantText,
+        toolCalls: input.toolCalls as Prisma.InputJsonValue,
+        decisionCard:
+          input.decisionCards.length === 0
+            ? Prisma.JsonNull
+            : ((input.decisionCards.length === 1
+                ? input.decisionCards[0]
+                : input.decisionCards) as Prisma.InputJsonValue),
+        modelUsed: input.modelUsed,
+        idempotencyKey: input.idempotencyKey,
+      },
+    });
+
+    await recordAuditEvent(tx, {
+      companyId: input.companyId,
+      kind: 'CHAT_MESSAGE_CREATED',
+      actorId: input.supervisorId,
+      targetId: assistantMsg.id,
+      payload: {
+        textLen: input.userText.length,
+        decisionCardCount: input.decisionCards.length,
+        modelUsed: input.modelUsed,
+      },
+    });
+
+    return assistantMsg.id;
+  });
+
+  return {
+    chatMessageId: result,
+    assistantText: input.assistantText,
+    ...(input.decisionCards.length > 1
+      ? {
+          decisionCard: null,
+          decisionCards: [...input.decisionCards],
+        }
+      : {
+          decisionCard: input.decisionCards[0] ?? null,
+          decisionCards: null,
+        }),
+  };
+}
 
 export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
   app.post('/chat/messages', { preHandler: requireAuth }, async (req, reply) => {
@@ -69,15 +217,46 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
+    // ── Help short-circuit ────────────────────────────────────────────────
+    // Matches /help, "help", "?", "what can you do", Hindi variants. Returns
+    // a static answer without burning any AI tokens. Still persists the
+    // user message + assistant response so chat history stays consistent.
+    const trimmed = parsed.data.text.trim().toLowerCase();
+    if (HELP_TRIGGERS.has(trimmed)) {
+      const helpResponse = await persistChatTurn({
+        companyId: auth.companyId,
+        supervisorId: auth.userId,
+        userText: parsed.data.text,
+        voiceConfidence: parsed.data.voiceConfidence ?? null,
+        idempotencyKey,
+        assistantText: HELP_TEXT,
+        toolCalls: [],
+        decisionCards: [],
+        modelUsed: 'static',
+      });
+      await recordIdempotency(
+        prisma,
+        auth.companyId,
+        idempotencyKey,
+        helpResponse,
+        helpResponse.chatMessageId,
+      );
+      reply.code(200).send(helpResponse);
+      return;
+    }
+
     if (!tryAcquireChatSlot()) {
       reply.code(503).header('Retry-After', '5').send({ error: 'CHAT_BUSY' });
       return;
     }
 
     try {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
+      const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
-        reply.code(500).send({ error: 'AI_NOT_CONFIGURED' });
+        reply.code(500).send({
+          error: 'AI_NOT_CONFIGURED',
+          message: 'OPENAI_API_KEY missing — set it in apps/backend/.env.local',
+        });
         return;
       }
 
@@ -91,11 +270,16 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         proposeTerminationTool,
       ];
 
-      const loopResult = await sonnetToolLoop({
+      // Load last N turns from this supervisor's chat thread so the model
+      // sees prior context (otherwise every message is zero-shot).
+      const priorMessages = await loadPriorMessages(auth.companyId, auth.userId);
+
+      const loopResult = await openaiToolLoop({
         apiKey,
         systemPrompt: SYSTEM_PROMPT,
         userMessage: parsed.data.text,
-        tools: tools as never,
+        priorMessages,
+        tools,
         maxIterations: 6,
         timeoutMs: 50000,
         handler: async (name, input) => {
@@ -347,77 +531,25 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      const chatMessageId = await withTenantContext(prisma, auth.companyId, async (tx) => {
-        const thread = await tx.chatThread.upsert({
-          where: {
-            companyId_supervisorId: { companyId: auth.companyId, supervisorId: auth.userId },
-          },
-          create: {
-            companyId: auth.companyId,
-            supervisorId: auth.userId,
-            lastMessageAt: new Date(),
-          },
-          update: { lastMessageAt: new Date() },
-        });
-
-        await tx.chatMessage.create({
-          data: {
-            companyId: auth.companyId,
-            threadId: thread.id,
-            role: 'user',
-            transcript: parsed.data.text,
-            voiceConfidence: parsed.data.voiceConfidence ?? null,
-            idempotencyKey,
-          },
-        });
-
-        const assistantMsg = await tx.chatMessage.create({
-          data: {
-            companyId: auth.companyId,
-            threadId: thread.id,
-            role: 'assistant',
-            aiResponseText: loopResult.finalText,
-            toolCalls: loopResult.toolCalls as Prisma.InputJsonValue,
-            decisionCard:
-              loopResult.decisionCards.length === 0
-                ? Prisma.JsonNull
-                : ((loopResult.decisionCards.length === 1
-                    ? loopResult.decisionCards[0]
-                    : loopResult.decisionCards) as Prisma.InputJsonValue),
-            modelUsed: 'claude-sonnet-4-6',
-            idempotencyKey,
-          },
-        });
-
-        await recordAuditEvent(tx, {
-          companyId: auth.companyId,
-          kind: 'CHAT_MESSAGE_CREATED',
-          actorId: auth.userId,
-          targetId: assistantMsg.id,
-          payload: {
-            textLen: parsed.data.text.length,
-            decisionCardCount: loopResult.decisionCards.length,
-          },
-        });
-
-        return assistantMsg.id;
+      const response = await persistChatTurn({
+        companyId: auth.companyId,
+        supervisorId: auth.userId,
+        userText: parsed.data.text,
+        voiceConfidence: parsed.data.voiceConfidence ?? null,
+        idempotencyKey,
+        assistantText: loopResult.finalText,
+        toolCalls: loopResult.toolCalls,
+        decisionCards: loopResult.decisionCards,
+        modelUsed: 'gpt-5.4-nano',
       });
 
-      const response = {
-        chatMessageId,
-        assistantText: loopResult.finalText,
-        ...(loopResult.decisionCards.length > 1
-          ? {
-              decisionCard: null,
-              decisionCards: loopResult.decisionCards,
-            }
-          : {
-              decisionCard: loopResult.decisionCards[0] ?? null,
-              decisionCards: null,
-            }),
-      };
-
-      await recordIdempotency(prisma, auth.companyId, idempotencyKey, response, chatMessageId);
+      await recordIdempotency(
+        prisma,
+        auth.companyId,
+        idempotencyKey,
+        response,
+        response.chatMessageId,
+      );
 
       reply.code(200).send(response);
     } finally {
