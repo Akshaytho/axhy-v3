@@ -6,12 +6,14 @@
  */
 
 import { useCallback, useState } from 'react';
-import { View, FlatList, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, FlatList, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '@axhy/ui-tokens';
 
 import { MessageBubble } from '../../components/MessageBubble';
 import { ChatInput } from '../../components/ChatInput';
+import { EmptyState } from '../../components/EmptyState';
+import { SkeletonBubble } from '../../components/SkeletonBubble';
 import { sendChatMessage, type DecisionCardData } from '../../lib/chat-api';
 import { generateIdempotencyKey } from '../../lib/idempotency-key';
 
@@ -73,31 +75,35 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <FlatList
-        inverted
-        data={[...messages].reverse()}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <MessageBubble
-            role={item.role}
-            text={item.text}
-            chatMessageId={item.chatMessageId}
-            decisionCard={item.decisionCard}
-            decisionCards={item.decisionCards}
-            status={item.status}
-            onCardCancelled={() => onCardCancelled(item.id)}
-          />
-        )}
-        contentContainerStyle={s.list}
-        ListHeaderComponent={
-          thinking ? (
-            <View style={s.thinking}>
-              <ActivityIndicator color={tokens.color.ink.tertiary} />
-              <Text style={s.thinkingText}>Thinking...</Text>
-            </View>
-          ) : null
-        }
-      />
+      {messages.length === 0 && !thinking ? (
+        // Hardcoded for Wave 4a-PRO; auth-context name plumbed in Wave 4b.
+        <EmptyState supervisorName="Mukesh" />
+      ) : (
+        <FlatList
+          inverted
+          data={[...messages].reverse()}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <MessageBubble
+              role={item.role}
+              text={item.text}
+              chatMessageId={item.chatMessageId}
+              decisionCard={item.decisionCard}
+              decisionCards={item.decisionCards}
+              status={item.status}
+              onCardCancelled={() => onCardCancelled(item.id)}
+            />
+          )}
+          contentContainerStyle={s.list}
+          ListHeaderComponent={
+            thinking ? (
+              <View style={s.thinking}>
+                <SkeletonBubble />
+              </View>
+            ) : null
+          }
+        />
+      )}
       {error && (
         <View style={s.errorBanner}>
           <Text style={s.errorText}>⚠ {error}</Text>
