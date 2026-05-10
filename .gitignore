@@ -51,3 +51,4 @@ secrets/
 # generated
 packages/api-client/src/generated/
 packages/shared-schema/src/generated/
+apps/mobile/screenshots-wave-4a/
