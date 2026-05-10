@@ -12,12 +12,21 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 
-/** Strip common markdown characters so RN Text renders cleanly. */
+/**
+ * Strip common markdown so RN Text renders cleanly. AI consistently emits
+ * tables ("Field | Detail / --- ---"), headers ("### Soft Conflict"), and
+ * bold markers — none of which RN Text understands.
+ */
 function stripMarkdown(text: string): string {
   return text
-    .replace(/\*\*/g, '') // bold markers
-    .replace(/^---.*$/gm, '') // horizontal rules
-    .replace(/\|/g, '  ') // table pipes → spaces
+    .replace(/\|/g, '  ') // table pipes → spaces FIRST so |---|---| becomes a strippable dash line
+    .replace(/^>[ \t]?/gm, '') // blockquote prefix "> ... " → "..."
+    .replace(/^#{1,6}[ \t]+/gm, '') // H1-H6 markers — "### Foo" → "Foo"
+    .replace(/^[ \t]*[-–—]{2,}[ \t\-–—]*$/gm, '') // dash-separator lines (table sep, HR)
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // **bold** → bold (keep content)
+    .replace(/(?<![*\w])\*([^*\n]+)\*(?![*\w])/g, '$1') // *italic* → italic (single * markers)
+    .replace(/\*\*/g, '') // any leftover ** markers
+    .replace(/`([^`]+)`/g, '$1') // `code` → code
     .replace(/\n{3,}/g, '\n\n') // collapse triple+ newlines
     .trim();
 }
