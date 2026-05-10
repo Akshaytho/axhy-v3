@@ -15,6 +15,7 @@ import { tokens } from '@axhy/ui-tokens';
 
 import type { DecisionCardData } from '../lib/chat-api';
 import { applyDecisionCard } from '../lib/chat-api';
+import { humanizeDayMask } from '../lib/format';
 
 /** UUID regex — values matching this pattern are internal refs, not user-readable */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -87,7 +88,11 @@ export function DecisionCard({ chatMessageId, card, onApplied, onCancelled }: Pr
             .map(([key, value]) => {
               const label = FIELD_LABELS[key] ?? key;
               const display =
-                value === null && key === 'validUntil' ? 'Open-ended' : String(value ?? '');
+                value === null && key === 'validUntil'
+                  ? 'Open-ended'
+                  : key === 'dayMask' && typeof value === 'string'
+                    ? humanizeDayMask(value)
+                    : String(value ?? '');
               return (
                 <View key={key} style={s.fieldRow}>
                   <Text style={s.fieldKey}>{label}</Text>
