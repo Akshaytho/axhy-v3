@@ -143,7 +143,11 @@ async function persistChatTurn(input: {
   decisionCard: Record<string, unknown> | null;
   decisionCards: Array<Record<string, unknown>> | null;
 }> {
-  const result = await prisma.$transaction(async (tx) => {
+  // Wave 4b Phase 2.5 — wrap in withTenantContext so the Postgres GUC
+  // `axhy.current_company_id` is set inside the tx → RLS policies fire.
+  // persistChatTurn runs on every chat call; this is the hot path.
+  // Panel-flagged Tier-1 fix.
+  const result = await withTenantContext(prisma, input.companyId, async (tx) => {
     const thread = await tx.chatThread.upsert({
       where: {
         companyId_supervisorId: {
@@ -823,7 +827,11 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         source: { chatMessageId: undefined as string | undefined },
       };
 
-      const result = await prisma.$transaction(async (tx) => {
+      // Wave 4b Phase 2.5 — wrap in withTenantContext so the Postgres GUC
+      // `axhy.current_company_id` is set inside the tx → RLS policies fire.
+      // Panel-flagged Tier-1 fix; `persistChatTurn` (line ~146) was wrapped
+      // in the same commit so every chat-route transaction is now scoped.
+      const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
         // Upsert ensures the row exists (matches getLivingDoc behavior;
         // first-time supervisors won't have a row yet).
         const doc = await tx.livingDoc.upsert({
