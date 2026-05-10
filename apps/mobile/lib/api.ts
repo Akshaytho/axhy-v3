@@ -29,6 +29,25 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Per-tenant daily AI usage cap reached. Backend returns HTTP 429 with
+ * body `{ error: 'AI_BUDGET_EXCEEDED' }`. Distinct from 503 retry — the
+ * cap clears at next UTC midnight, NOT after a brief retry window.
+ *
+ * @derives(spec-2 §9.4)
+ */
+export class AIBudgetExceededError extends ApiError {
+  constructor(message: string) {
+    super(429, 'AI_BUDGET_EXCEEDED', message);
+    this.name = 'AIBudgetExceededError';
+  }
+}
+
+/** @derives(spec-2 §9.4) */
+export function isAIBudgetExceededError(err: unknown): err is AIBudgetExceededError {
+  return err instanceof ApiError && err.code === 'AI_BUDGET_EXCEEDED';
+}
+
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -74,6 +93,12 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       if (errBody.message) message = errBody.message;
     } catch {
       // response body wasn't JSON — keep defaults
+    }
+    // Spec 2 §9.4 — daily AI budget exceeded gets a typed error so the
+    // chat screen can render the goldenrod "try tomorrow" banner without
+    // string-matching the message field.
+    if (res.status === 429 && code === 'AI_BUDGET_EXCEEDED') {
+      throw new AIBudgetExceededError(message);
     }
     throw new ApiError(res.status, code, message);
   }

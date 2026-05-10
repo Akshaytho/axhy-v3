@@ -18,7 +18,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { SkeletonBubble } from '../../components/SkeletonBubble';
 import { sendChatMessage, type DecisionCardData } from '../../lib/chat-api';
 import { generateIdempotencyKey } from '../../lib/idempotency-key';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, isAIBudgetExceededError } from '../../lib/api';
 
 type LocalMessage = {
   id: string;
@@ -35,6 +35,12 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Spec 2 §9.4 — daily AI budget cap reached. Distinct from generic
+   * `error` because the UX is different (goldenrod banner, no retry,
+   * input disabled until UTC midnight).
+   */
+  const [budgetCapped, setBudgetCapped] = useState(false);
 
   // Pull supervisor name from /me for the EmptyState greeting.
   // Cached by react-query — same data Profile tab uses, so on tab-switch
@@ -76,7 +82,15 @@ export default function ChatScreen() {
       setMessages((prev) =>
         prev.map((m) => (m.id === userId ? { ...m, status: 'failed' as const } : m)),
       );
-      setError(err instanceof Error ? err.message : 'Send failed');
+      if (isAIBudgetExceededError(err)) {
+        setBudgetCapped(true);
+        // [phase-d-i18n] move to @axhy/copy with en/hi/te locales.
+        // No rupee numbers — internal pricing detail; surfacing them
+        // confuses Mr. Reddy persona per Megha-CMO panel.
+        setError('Daily AI usage limit reached. Try again tomorrow or contact your administrator.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Send failed');
+      }
     } finally {
       setThinking(false);
     }
@@ -117,11 +131,14 @@ export default function ChatScreen() {
         />
       )}
       {error && (
-        <View style={s.errorBanner}>
-          <Text style={s.errorText}>⚠ {error}</Text>
+        <View style={budgetCapped ? s.budgetBanner : s.errorBanner}>
+          <Text style={budgetCapped ? s.budgetText : s.errorText}>
+            {budgetCapped ? '⏰ ' : '⚠ '}
+            {error}
+          </Text>
         </View>
       )}
-      <ChatInput onSend={onSend} disabled={thinking} />
+      <ChatInput onSend={onSend} disabled={thinking || budgetCapped} />
     </SafeAreaView>
   );
 }
@@ -154,6 +171,19 @@ const s = StyleSheet.create({
   },
   errorText: {
     color: tokens.color.semantic.bad,
+    fontSize: 13,
+  },
+  // Spec 2 §9.4 — goldenrod "try tomorrow" banner. Distinct from red
+  // error/network banner so Suresh doesn't think app is broken; ⏰
+  // emoji (Sara Park's lock — clock = "wait it out", NOT 💰 user-fault).
+  budgetBanner: {
+    padding: 10,
+    backgroundColor: tokens.color.semantic.warnSoft,
+    borderTopWidth: 1,
+    borderColor: tokens.color.semantic.warn,
+  },
+  budgetText: {
+    color: tokens.color.semantic.warn,
     fontSize: 13,
   },
 });
