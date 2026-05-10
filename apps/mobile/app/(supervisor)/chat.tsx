@@ -21,6 +21,8 @@ type LocalMessage = {
   text: string;
   chatMessageId?: string;
   decisionCard?: DecisionCardData;
+  /** Wave 4a-PRO Task 16 — batch DecisionCards from compound utterance. */
+  decisionCards?: NonNullable<DecisionCardData>[] | null;
   status?: 'pending' | 'sent' | 'failed';
 };
 
@@ -52,6 +54,7 @@ export default function ChatScreen() {
           text: res.assistantText || '(no response)',
           chatMessageId: res.chatMessageId,
           decisionCard: res.decisionCard,
+          decisionCards: res.decisionCards,
         },
       ]);
     } catch (err) {
@@ -80,6 +83,7 @@ export default function ChatScreen() {
             text={item.text}
             chatMessageId={item.chatMessageId}
             decisionCard={item.decisionCard}
+            decisionCards={item.decisionCards}
             status={item.status}
             onCardCancelled={() => onCardCancelled(item.id)}
           />

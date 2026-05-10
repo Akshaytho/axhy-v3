@@ -31,6 +31,8 @@ type Props = {
   text: string;
   chatMessageId?: string;
   decisionCard?: DecisionCardData;
+  /** Wave 4a-PRO Task 16 — batch DecisionCards for compound utterances. */
+  decisionCards?: NonNullable<DecisionCardData>[] | null;
   status?: 'pending' | 'sent' | 'failed';
   onCardApplied?: () => void;
   onCardCancelled?: () => void;
@@ -41,11 +43,13 @@ export function MessageBubble({
   text,
   chatMessageId,
   decisionCard,
+  decisionCards,
   status,
   onCardApplied,
   onCardCancelled,
 }: Props) {
   const isUser = role === 'user';
+  const batch = decisionCards && decisionCards.length > 0 ? decisionCards : null;
   return (
     <View style={[s.row, isUser ? s.userRow : s.assistantRow]}>
       <View style={[s.bubble, isUser ? s.userBubble : s.assistantBubble]}>
@@ -55,14 +59,27 @@ export function MessageBubble({
         {status === 'pending' && <Text style={s.status}>Sending…</Text>}
         {status === 'failed' && <Text style={s.statusFail}>Failed</Text>}
       </View>
-      {decisionCard && chatMessageId && (
+      {batch && chatMessageId ? (
+        <View style={s.batchWrapper}>
+          <Text style={s.batchTitle}>Apply {batch.length} changes?</Text>
+          {batch.map((c, i) => (
+            <DecisionCard
+              key={`${chatMessageId}-${i}`}
+              chatMessageId={chatMessageId}
+              card={c}
+              onApplied={onCardApplied}
+              onCancelled={onCardCancelled}
+            />
+          ))}
+        </View>
+      ) : decisionCard && chatMessageId ? (
         <DecisionCard
           chatMessageId={chatMessageId}
           card={decisionCard}
           onApplied={onCardApplied}
           onCancelled={onCardCancelled}
         />
-      )}
+      ) : null}
     </View>
   );
 }
@@ -108,5 +125,12 @@ const s = StyleSheet.create({
     fontSize: tokens.type.caption.size,
     marginTop: tokens.space[1],
     color: tokens.color.semantic.bad,
+  },
+  batchWrapper: { marginVertical: tokens.space[2] },
+  batchTitle: {
+    fontSize: tokens.type.body.size,
+    fontWeight: String(tokens.weight.bold) as '700',
+    color: tokens.color.ink.primary,
+    marginBottom: tokens.space[1],
   },
 });
