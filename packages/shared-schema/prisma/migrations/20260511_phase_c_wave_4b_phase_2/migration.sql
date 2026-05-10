@@ -2,6 +2,12 @@
 -- Spec anchor: axhy-v3/docs/specs/2026-05-09-phase-c-spec-2-ai-chat-design.md §3.5, §6, §8
 -- @derives(spec-2 §3.5, §6, §8) @derives(ADR-0023)
 --
+-- SAFE: SupervisorDailyContext row count was 0 at apply time (greenfield;
+-- table never had a writer). DROP COLUMN + DROP INDEX + RENAME TABLE are
+-- destructive but applied to empty rows, so zero data loss. Already
+-- applied to Railway sandbox 2026-05-11; comment added retroactively in
+-- Phase 2.5 to satisfy the new check-migration-safety CI scan.
+--
 -- Pre-flight verified: SupervisorDailyContext row count = 0 (greenfield;
 -- zero data loss from column drops). Table renamed + restructured + new
 -- ChatMessage.cacheTokens column + ai_cost_daily Postgres view, all
