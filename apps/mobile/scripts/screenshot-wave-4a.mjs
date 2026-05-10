@@ -7,7 +7,8 @@
  */
 
 import { chromium } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, unlinkSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { createRequire as _cr } from 'node:module';
 
 // Load pg from the pnpm store (CJS package — require the package root, not lib/index.js)
@@ -17,6 +18,21 @@ const { Client } = _req('/Users/thotaakshay/eclean_workspace/axhy-v3/node_module
 const URL = process.env.EXPO_URL || 'http://localhost:8081';
 const SCREENSHOT_DIR = './screenshots-wave-4a';
 mkdirSync(SCREENSHOT_DIR, { recursive: true });
+
+// Auto-clear stale PNGs from previous runs (founder asked 2026-05-10 — they pile up).
+// Skipped if KEEP_SCREENSHOTS=1 is set so a comparison run can preserve old captures.
+if (!process.env.KEEP_SCREENSHOTS) {
+  let cleared = 0;
+  for (const name of readdirSync(SCREENSHOT_DIR)) {
+    if (!name.endsWith('.png')) continue;
+    const p = join(SCREENSHOT_DIR, name);
+    if (statSync(p).isFile()) {
+      unlinkSync(p);
+      cleared++;
+    }
+  }
+  if (cleared > 0) console.log(`🧹 Cleared ${cleared} stale screenshots from ${SCREENSHOT_DIR}`);
+}
 
 const DB_URL =
   process.env.DATABASE_URL ||
@@ -48,7 +64,13 @@ function record(name, status, note) {
 }
 
 // ── Browser setup ──────────────────────────────────────────────────────────
-const browser = await chromium.launch({ headless: true });
+// Default: headed + slowMo:500 for visual review (per
+// feedback_expo_fast_refresh_plus_playwright.md). Set CI=true (or HEADLESS=1)
+// for batch CI mode.
+const headless = process.env.CI === 'true' || process.env.HEADLESS === '1';
+const slowMo = headless ? 0 : 500;
+const browser = await chromium.launch({ headless, slowMo });
+console.log(`🎭 Playwright launched (${headless ? 'headless' : 'headed'}, slowMo=${slowMo}ms)`);
 const context = await browser.newContext({
   viewport: { width: 390, height: 844 }, // iPhone 14 Pro
   deviceScaleFactor: 3,
