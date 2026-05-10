@@ -33,11 +33,11 @@ export type ModelChoice = {
 
 const POLICY: Record<AISurface, ModelChoice> = {
   voice_change_parse: {
-    vendor: 'anthropic',
-    model: 'claude-sonnet-4-6',
-    maxCostPerCallInr: 1.0,
+    vendor: 'openai',
+    model: 'gpt-5.4-nano',
+    maxCostPerCallInr: 0.1,
     rationale:
-      'Mix-language NLP (hi/te/en/code-switched). Sonnet handles ambiguity well at mid cost.',
+      'Founder-locked 2026-05-10. Switched from Sonnet 4.6 (₹4/call, 6-12× over master-plan ₹2/visit budget) to gpt-5.4-nano (~₹0.07/call). Watching multilingual hi/te quality — escalate to Sonnet if accuracy regresses materially.',
   },
   ai_verification: {
     vendor: 'openai',

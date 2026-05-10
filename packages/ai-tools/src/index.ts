@@ -21,3 +21,4 @@ export * from './tools/read.js';
 export * from './tools/swap.js';
 export * from './tools/termination.js';
 export * from './sonnet-tool-loop.js';
+export * from './openai-tool-loop.js';
