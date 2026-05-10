@@ -11,6 +11,7 @@ import { CreateChatMessageInput, ApplyDecisionCardInput } from '@axhy/shared-sch
 import {
   openaiToolLoop,
   AICostBudgetError,
+  incrementSpend,
   findWorkersTool,
   findSitesTool,
   proposeCreateAssignmentTool,
@@ -111,6 +112,13 @@ async function persistChatTurn(input: {
   toolCalls: ReadonlyArray<unknown>;
   decisionCards: ReadonlyArray<Record<string, unknown>>;
   modelUsed: string;
+  /**
+   * Cost in INR for the AI call that produced this turn. 0 for non-AI
+   * paths (help short-circuit). Persisted to ChatMessage.costInr AND
+   * atomically added to Company.aiSpendDailyInr inside this same tx.
+   * @derives(spec-2 §9.2)
+   */
+  costInr: number;
 }): Promise<{
   chatMessageId: string;
   assistantText: string;
@@ -159,8 +167,17 @@ async function persistChatTurn(input: {
                 : input.decisionCards) as Prisma.InputJsonValue),
         modelUsed: input.modelUsed,
         idempotencyKey: input.idempotencyKey,
+        // Spec 2 §9.2 — per-turn AI cost in INR. 0 for non-AI paths
+        // (help short-circuit). Number serializes to Decimal(12,4) via Prisma.
+        costInr: input.costInr,
       },
     });
+
+    // Spec 2 §9.2 — atomic UPDATE … SET col=col+x inside the same tx as
+    // the ChatMessage write. Race-free at the 50-concurrent semaphore
+    // because the increment is a single DB statement, no app-level
+    // read-modify-write. Zero-cost paths short-circuit inside incrementSpend.
+    await incrementSpend(input.companyId, input.costInr, tx);
 
     await recordAuditEvent(tx, {
       companyId: input.companyId,
@@ -171,6 +188,7 @@ async function persistChatTurn(input: {
         textLen: input.userText.length,
         decisionCardCount: input.decisionCards.length,
         modelUsed: input.modelUsed,
+        costInr: input.costInr,
       },
     });
 
@@ -234,6 +252,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         toolCalls: [],
         decisionCards: [],
         modelUsed: 'static',
+        // Help short-circuit makes no AI call — zero cost.
+        costInr: 0,
       });
       await recordIdempotency(
         prisma,
@@ -546,7 +566,10 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         assistantText: loopResult.finalText,
         toolCalls: loopResult.toolCalls,
         decisionCards: loopResult.decisionCards,
-        modelUsed: 'gpt-5.4-nano',
+        modelUsed: loopResult.modelUsed,
+        // Spec 2 §9.2 — costInr computed by openai-tool-loop from
+        // finalUsage tokens × per-1K rate from model-policy.
+        costInr: loopResult.costInr,
       });
 
       await recordIdempotency(
