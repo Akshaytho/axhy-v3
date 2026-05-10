@@ -16,6 +16,7 @@ import {
   proposeMarkAbsentTool,
   proposeLeaveTool,
   proposeSwapTool,
+  proposeTerminationTool,
 } from '@axhy/ai-tools';
 
 import { prisma } from '../lib/prisma.js';
@@ -35,6 +36,9 @@ When the supervisor wants to swap two workers between sites/shifts ("Swap Ravi a
 FIRST call find_workers for each name (separate calls) AND find_sites for the site, THEN call propose_swap with
 two DIFFERENT worker UUIDs (fromWorkerId !== toWorkerId), the site UUID, and an ISO datetime for effectiveAt
 (must be in the future).
+When the supervisor wants to fire / terminate / let-go a worker, FIRST call find_workers,
+THEN call propose_termination with the worker UUID, an effectiveDate (YYYY-MM-DD), and a
+reason from this enum: performance, attendance, misconduct, mutual, redundancy, other.
 Speak in the same language(s) the supervisor used (English, Hindi, Telugu).
 Keep responses concise — supervisors are busy.`;
 
@@ -83,6 +87,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         proposeMarkAbsentTool,
         proposeLeaveTool,
         proposeSwapTool,
+        proposeTerminationTool,
       ];
 
       const loopResult = await sonnetToolLoop({
@@ -256,6 +261,43 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
               },
             };
           }
+          if (name === 'propose_termination') {
+            const {
+              workerId: wid,
+              effectiveDate,
+              reason,
+              reasonDetail,
+            } = input as {
+              workerId: string;
+              effectiveDate: string;
+              reason: string;
+              reasonDetail?: string;
+            };
+            const worker = await withTenantContext(prisma, auth.companyId, async (tx) =>
+              tx.worker.findFirst({ where: { id: wid, companyId: auth.companyId } }),
+            );
+            if (!worker) return { output: { error: 'WORKER_NOT_FOUND' } };
+            if (worker.state === 'TERMINATED' || worker.state === 'TERMINATION_PENDING') {
+              return { output: { error: 'ALREADY_TERMINATING' } };
+            }
+            return {
+              output: {
+                proposed: true,
+                fields: { workerId: wid, effectiveDate, reason, reasonDetail },
+              },
+              decisionCardData: {
+                title: 'Terminate worker',
+                description: `Terminate ${worker.name} effective ${effectiveDate}? Reason: ${reason}.`,
+                fields: {
+                  workerId: wid,
+                  effectiveDate,
+                  reason,
+                  ...(reasonDetail ? { reasonDetail } : {}),
+                },
+                severity: 'WARN',
+              },
+            };
+          }
           return { output: { error: 'UNKNOWN_TOOL' } };
         },
       });
@@ -409,6 +451,59 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         payload: parsed.data.toolInput,
       });
       reply.code(inner.statusCode).send(inner.json());
+      return;
+    }
+
+    if (parsed.data.toolName === 'propose_termination') {
+      const {
+        workerId: wid,
+        effectiveDate,
+        reason,
+        reasonDetail,
+      } = parsed.data.toolInput as {
+        workerId: string;
+        effectiveDate: string;
+        reason: string;
+        reasonDetail?: string;
+      };
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        const w = await tx.worker.findFirst({
+          where: { id: wid, companyId: auth.companyId },
+        });
+        if (!w) return { kind: 'NOT_FOUND' as const };
+        if (w.state === 'TERMINATED' || w.state === 'TERMINATION_PENDING') {
+          return { kind: 'ALREADY' as const };
+        }
+        // Per Worker state machine (packages/state-machines/src/worker.ts):
+        // ACTIVE on TERMINATE → TERMINATION_PENDING. Wave 2b ChangeRequest
+        // workflow handles the TERMINATION_PENDING → TERMINATED finalization.
+        const updated = await tx.worker.update({
+          where: { id: wid },
+          data: { state: 'TERMINATION_PENDING' },
+        });
+        await recordAuditEvent(tx, {
+          companyId: auth.companyId,
+          kind: 'WORKER_TERMINATION_REQUESTED',
+          actorId: auth.userId,
+          targetId: wid,
+          payload: {
+            effectiveDate,
+            reason,
+            reasonDetail: reasonDetail ?? null,
+            previousState: w.state,
+          },
+        });
+        return { kind: 'OK' as const, worker: updated };
+      });
+      if (out.kind === 'NOT_FOUND') {
+        reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
+        return;
+      }
+      if (out.kind === 'ALREADY') {
+        reply.code(409).send({ error: 'ALREADY_TERMINATING' });
+        return;
+      }
+      reply.code(200).send({ workerId: out.worker.id, state: out.worker.state });
       return;
     }
 
