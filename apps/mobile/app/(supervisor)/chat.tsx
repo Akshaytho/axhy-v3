@@ -8,7 +8,9 @@
 import { useCallback, useState } from 'react';
 import { View, FlatList, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { tokens } from '@axhy/ui-tokens';
+import type { MeOutput } from '@axhy/shared-schema';
 
 import { MessageBubble } from '../../components/MessageBubble';
 import { ChatInput } from '../../components/ChatInput';
@@ -16,6 +18,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { SkeletonBubble } from '../../components/SkeletonBubble';
 import { sendChatMessage, type DecisionCardData } from '../../lib/chat-api';
 import { generateIdempotencyKey } from '../../lib/idempotency-key';
+import { apiFetch } from '../../lib/api';
 
 type LocalMessage = {
   id: string;
@@ -32,6 +35,16 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Pull supervisor name from /me for the EmptyState greeting.
+  // Cached by react-query — same data Profile tab uses, so on tab-switch
+  // there's no extra request.
+  const { data: me } = useQuery<MeOutput>({
+    queryKey: ['me'],
+    queryFn: () => apiFetch<MeOutput>('/me'),
+    staleTime: 5 * 60_000,
+  });
+  const supervisorFirstName = me?.user.name?.trim().split(/\s+/)[0] ?? '';
 
   const onSend = useCallback(async (text: string) => {
     const userId = generateIdempotencyKey();
@@ -76,8 +89,7 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       {messages.length === 0 && !thinking ? (
-        // Hardcoded for Wave 4a-PRO; auth-context name plumbed in Wave 4b.
-        <EmptyState supervisorName="Mukesh" />
+        <EmptyState supervisorName={supervisorFirstName} />
       ) : (
         <FlatList
           inverted
