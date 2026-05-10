@@ -22,6 +22,14 @@ import type {
   ChatCompletionMessageToolCall,
 } from 'openai/resources/chat/completions.mjs';
 
+import {
+  modelFor,
+  tokenCostInrFor,
+  assertWithinBudget,
+  type AISurface,
+  type TenantBudgetCtx,
+} from './model-policy.js';
+
 /** Anthropic-shaped tool def used everywhere in @axhy/ai-tools. */
 export type AnthropicShapedTool = {
   name: string;
@@ -61,6 +69,22 @@ export type OpenAIToolLoopArgs = {
   maxIterations?: number;
   /** Total time budget in ms. */
   timeoutMs?: number;
+  /**
+   * AI surface enum (per ADR-0023) — drives per-call cost ceiling and
+   * cost-tracking attribution. Required so model-policy can resolve the
+   * daily-budget gate against the right surface ceiling.
+   * @derives(ADR-0023) @derives(spec-2 §9.2)
+   */
+  surface: AISurface;
+  /**
+   * Tenant context for daily-budget enforcement. When provided, the loop
+   * calls `assertWithinBudget(surface, perCallCeiling, tenantCtx)` BEFORE
+   * the first OpenAI call; if the projected spend would exceed the daily
+   * cap, throws `AICostBudgetError` (chat route maps to HTTP 429). When
+   * omitted, only the per-call ceiling is enforced.
+   * @derives(spec-2 §9.2)
+   */
+  tenantCtx?: TenantBudgetCtx;
 };
 
 export type OpenAIToolLoopResult = {
@@ -76,6 +100,15 @@ export type OpenAIToolLoopResult = {
   elapsedMs: number;
   /** OpenAI usage from final response (last call) */
   usage: { inputTokens: number; outputTokens: number };
+  /**
+   * Computed INR cost for this call from `tokenCostInrFor(model, usage)`.
+   * Caller persists to `ChatMessage.costInr` AND increments
+   * `Company.aiSpendDailyInr` atomically inside the same write transaction.
+   * @derives(spec-2 §9.2)
+   */
+  costInr: number;
+  /** Resolved model used (post-DEFAULT_MODEL fallback). */
+  modelUsed: string;
 };
 
 const DEFAULT_MODEL = 'gpt-5.4-nano';
@@ -98,11 +131,18 @@ function toOpenAITools(tools: ReadonlyArray<AnthropicShapedTool>): ChatCompletio
 }
 
 export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAIToolLoopResult> {
-  const { apiKey, systemPrompt, userMessage, tools, handler } = args;
+  const { apiKey, systemPrompt, userMessage, tools, handler, surface } = args;
   const model = args.model ?? DEFAULT_MODEL;
   const maxIterations = args.maxIterations ?? 10;
   const timeoutMs = args.timeoutMs ?? 9000;
   const startedAt = Date.now();
+
+  // Pre-flight gateway check: per-call ceiling + (when tenantCtx provided)
+  // tenant daily-budget cap. Throws AICostBudgetError if projected daily
+  // spend would breach Spec 2 §9 cap. Caller (chat route) catches and
+  // returns HTTP 429 to the client.
+  const choice = modelFor(surface);
+  await assertWithinBudget(surface, choice.maxCostPerCallInr, args.tenantCtx);
 
   const openai = new OpenAI({ apiKey });
   const openaiTools = toOpenAITools(tools);
@@ -193,11 +233,15 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
     }
   }
 
+  const costInr = tokenCostInrFor(model, finalUsage);
+
   return {
     finalText,
     toolCalls,
     decisionCards,
     elapsedMs: Date.now() - startedAt,
     usage: finalUsage,
+    costInr,
+    modelUsed: model,
   };
 }

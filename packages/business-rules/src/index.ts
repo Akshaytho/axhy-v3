@@ -13,5 +13,7 @@ export {
   isVisitBillable,
   computeInvoicePaise,
   paiseToRupees,
+  paiseFromInr,
+  inrFromPaise,
   aiCostRatio,
 } from './pricing.js';
