@@ -57,7 +57,7 @@ model Company {
   complaints              Complaint[]
   swapRequests            SwapRequest[]
   supervisorDecisions     SupervisorDecision[]
-  supervisorDailyContexts SupervisorDailyContext[]
+  livingDocs              LivingDoc[]
   hrUpdates               HRUpdate[]
   visitPhotos             VisitPhoto[]
   calendarEntries         CalendarEntry[]
@@ -321,6 +321,11 @@ model ChatMessage {
   modelUsed       String?
   /// Computed cost in INR
   costInr         Decimal?
+  /// OpenAI prompt_tokens_details.cached_tokens captured per call.
+  /// Null when response didn't include the field (older SDK responses);
+  /// used by ai_cost_daily view for cache-hit ratio.
+  /// @derives(spec-2 §8.3)
+  cacheTokens     Int?
   /// Idempotency-Key from request
   idempotencyKey  String?
   createdAt       DateTime @default(now())
@@ -677,33 +682,45 @@ model SupervisorDecision {
 /// Supervisor's daily living-doc snapshot — personal rules, today's
 /// worker status, today's sites, prior-day context. Loaded fresh at
 /// 3:30 AM by the daily-prep worker (B.6+) and cached for the day's
-/// AI chat context. Referenced by Phase C `supervisor.context_load`
-/// AI surface (per data-flow §8).
+/// Per-supervisor "living context" — the moat. Loaded into chat prompt as
+/// Tier 2 cache slot; bumped on every confirmed propose_living_doc_update.
 ///
-/// One row per (supervisor × date).
+/// Renamed from `SupervisorDailyContext` in Wave 4b Phase 2 (2026-05-11) per
+/// Spec 2 §3.5. Five JSON sections, each an array of LivingDocRule with
+/// state ('PENDING'|'ACTIVE'|'REJECTED'|'EXPIRED'); only ACTIVE filtered
+/// into prompt context this wave. PENDING/REJECTED used by Phase D nightly
+/// nano-tier extractor.
 ///
+/// @derives(spec-2 §3.5 — LivingDoc shape)
+/// @derives(spec-2 §6 — extraction paths)
 /// @derives(data-flow §8 — supervisor.context_load AI surface)
-/// @derives(panel-2026-05-08) — Phase B.2 placeholder for Phase C AI
-model SupervisorDailyContext {
-  id           String    @id @default(uuid()) @db.Uuid
-  companyId    String    @db.Uuid
-  supervisorId String    @db.Uuid
-  date         DateTime  @db.Date
-  /// snapshot of supervisor's personal rules, worker assignments, site
-  /// status — fed into AI chat as priming context
-  snapshot     Json      @default("{}")
-  /// turn-by-turn chat history (Phase C); array of { role, content, ts }
-  chatHistory  Json      @default("[]")
-  /// when the context was first loaded (typically ~3:30 AM)
-  loadedAt     DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+model LivingDoc {
+  id                String    @id @default(uuid()) @db.Uuid
+  companyId         String    @db.Uuid
+  supervisorId      String    @db.Uuid
+  /// JSON arrays of LivingDocRule per Spec 2 §3.5. Each rule:
+  ///   { id, ruleText, description, visibility, scope, createdAt,
+  ///     createdBy, state, decidedAt?, confidence?, source }
+  /// Only state='ACTIVE' filtered into prompt context this wave.
+  /// @derives(spec-2 §3.5)
+  siteRules         Json      @default("[]")
+  workerNotes       Json      @default("[]")
+  clientPreferences Json      @default("[]")
+  recurringTasks    Json      @default("[]")
+  freeNotes         Json      @default("[]")
+  /// Bumped on every successful propose_living_doc_update apply. Used as
+  /// part of OpenAI prompt_cache_key so cache busts when rules change.
+  /// @derives(spec-2 §8.2)
+  version           Int       @default(0)
+  /// Yesterday's snapshot for "what changed today" diff (Phase 2c follow-up).
+  lastArchivedAt    DateTime?
+  archivedSnapshot  Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@unique([supervisorId, date])
-  @@index([companyId])
-  @@index([companyId, date])
+  @@unique([companyId, supervisorId])
   @@schema("axhy")
 }
 
