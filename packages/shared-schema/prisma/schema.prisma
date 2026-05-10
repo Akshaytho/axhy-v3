@@ -712,9 +712,6 @@ model LivingDoc {
   /// part of OpenAI prompt_cache_key so cache busts when rules change.
   /// @derives(spec-2 §8.2)
   version           Int       @default(0)
-  /// Yesterday's snapshot for "what changed today" diff (Phase 2c follow-up).
-  lastArchivedAt    DateTime?
-  archivedSnapshot  Json?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
