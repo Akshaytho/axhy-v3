@@ -379,9 +379,11 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             aiResponseText: loopResult.finalText,
             toolCalls: loopResult.toolCalls as Prisma.InputJsonValue,
             decisionCard:
-              loopResult.decisionCards[0] != null
-                ? (loopResult.decisionCards[0] as Prisma.InputJsonValue)
-                : Prisma.JsonNull,
+              loopResult.decisionCards.length === 0
+                ? Prisma.JsonNull
+                : ((loopResult.decisionCards.length === 1
+                    ? loopResult.decisionCards[0]
+                    : loopResult.decisionCards) as Prisma.InputJsonValue),
             modelUsed: 'claude-sonnet-4-6',
             idempotencyKey,
           },
@@ -404,7 +406,15 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       const response = {
         chatMessageId,
         assistantText: loopResult.finalText,
-        decisionCard: loopResult.decisionCards[0] ?? null,
+        ...(loopResult.decisionCards.length > 1
+          ? {
+              decisionCard: null,
+              decisionCards: loopResult.decisionCards,
+            }
+          : {
+              decisionCard: loopResult.decisionCards[0] ?? null,
+              decisionCards: null,
+            }),
       };
 
       await recordIdempotency(prisma, auth.companyId, idempotencyKey, response, chatMessageId);
