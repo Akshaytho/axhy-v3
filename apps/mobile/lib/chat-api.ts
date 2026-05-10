@@ -19,7 +19,13 @@ export type DecisionCardData = {
 export type ChatMessageResponse = {
   chatMessageId: string;
   assistantText: string;
+  /** Singular card — present when the AI emits 0 or 1 propose_* tool calls. */
   decisionCard: DecisionCardData;
+  /**
+   * Plural batch — present when the AI emits 2+ propose_* tool calls in a
+   * single turn (compound utterance). When set, decisionCard is null. Wave 4a-PRO Task 10.
+   */
+  decisionCards?: NonNullable<DecisionCardData>[] | null;
 };
 
 export type SendChatMessageInput = {
