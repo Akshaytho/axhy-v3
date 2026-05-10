@@ -611,8 +611,11 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             return {
               output: { proposed: true, fields: p },
               decisionCardData: {
-                title: 'Save rule for AI',
-                description: `Add to ${p.section.replace('_', ' ')}: "${p.ruleText}"`,
+                // Wave 4b Phase 2.5 — Sara panel: 'Save rule for AI' is
+                // engineer-speak. Suresh-day-365 mental model is "I'm
+                // saving a note for next time."
+                title: 'Remember this for next time',
+                description: `${p.ruleText}`,
                 fields: p,
                 severity: 'CONFIRM',
               },

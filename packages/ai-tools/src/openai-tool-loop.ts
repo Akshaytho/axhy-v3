@@ -280,8 +280,22 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
       let parsedInput: Record<string, unknown> = {};
       try {
         parsedInput = JSON.parse(tc.function.arguments) as Record<string, unknown>;
-      } catch {
-        // Model emitted invalid JSON; pass an empty object so handler can decide.
+      } catch (parseErr) {
+        // Wave 4b Phase 2.5 — was silent drop. Now a structured warn so
+        // ops can detect pathological model JSON output. Handler still
+        // gets empty {} and decides (most return BAD_TOOL_INPUT).
+
+        console.warn(
+          {
+            event: 'openai_tool_loop.bad_tool_args_json',
+            companyId: args.tenantCtx?.companyId,
+            supervisorId: args.supervisorId,
+            toolName: tc.function.name,
+            err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            rawTruncated: tc.function.arguments?.slice(0, 512) ?? null,
+          },
+          'openai-tool-loop: model emitted invalid JSON for tool args; passing {} to handler',
+        );
         parsedInput = {};
       }
       const result = await handler(tc.function.name, parsedInput);
