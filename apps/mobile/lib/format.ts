@@ -14,10 +14,12 @@
  * "_______" → "(none)"
  */
 export function humanizeDayMask(mask: string): string {
-  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
   const days: string[] = [];
   for (let i = 0; i < 7; i++) {
-    if (mask[i] && mask[i] !== '_') days.push(labels[i]);
+    const ch = mask[i];
+    const label = labels[i];
+    if (ch && ch !== '_' && label) days.push(label);
   }
   if (days.length === 0) return '(none)';
   if (days.length === 7) return 'Every day';
