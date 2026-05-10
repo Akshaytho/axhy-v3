@@ -27,6 +27,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import pino from 'pino';
 
 import { prisma } from '../lib/prisma.js';
+import { maybeResetAiSpend } from '../jobs/reset-ai-spend.js';
 
 import { HANDLERS, REGISTERED_TOPICS } from './handlers/registry.js';
 
@@ -172,6 +173,13 @@ export function startDispatcher(opts?: {
 
   const tick = async (): Promise<void> => {
     if (stopped) return;
+    // Spec 2 §9.3 — daily AI spend reset, piggybacked on dispatcher tick.
+    // No new cron lib; reuses long-running process. Idempotent + failure-
+    // tolerant inside maybeResetAiSpend so a reset failure never breaks
+    // the outbox-poll loop.
+    await maybeResetAiSpend(client, log).catch((err: unknown) => {
+      log.error({ err }, 'reset-ai-spend dispatch wrapper crashed');
+    });
     inFlight = processOnce(client, log).catch((err: unknown) => {
       log.error({ err }, 'dispatcher batch crashed');
     });
@@ -196,7 +204,6 @@ export function startDispatcher(opts?: {
 async function main(): Promise<void> {
   const handle = startDispatcher();
   const shutdown = async (signal: string) => {
-     
     console.log(`[dispatcher] received ${signal}, draining…`);
     await handle.stop();
     await prisma.$disconnect();
