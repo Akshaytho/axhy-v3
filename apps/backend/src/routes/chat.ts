@@ -15,6 +15,7 @@ import {
   LIVING_DOC_SECTION_TO_COLUMN,
   ProposeLivingDocUpdateInput,
 } from '@axhy/shared-schema';
+import { CHAT_HISTORY_TURN_WINDOW } from '@axhy/business-rules';
 import {
   openaiToolLoop,
   AICostBudgetError,
@@ -74,8 +75,9 @@ const HELP_TRIGGERS = new Set([
   'kya kar sakte ho?',
 ]);
 
-/** Number of prior chat turns to load for continuity. */
-const HISTORY_TURN_WINDOW = 10;
+// Number of prior chat turns to load for continuity is the
+// CHAT_HISTORY_TURN_WINDOW constant from @axhy/business-rules
+// (centralized Wave 4b Phase 2.5 cleanup).
 
 /**
  * Load the last N turns of the supervisor's chat thread, oldest → newest,
@@ -97,7 +99,7 @@ async function loadPriorMessages(
   const rows = await prisma.chatMessage.findMany({
     where: { companyId, threadId: thread.id },
     orderBy: { createdAt: 'desc' },
-    take: HISTORY_TURN_WINDOW,
+    take: CHAT_HISTORY_TURN_WINDOW,
   });
   return rows
     .reverse()

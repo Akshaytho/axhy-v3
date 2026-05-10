@@ -14,11 +14,9 @@
  */
 
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { CALENDAR_LOOKBACK_DAYS, CALENDAR_MAX_ENTRIES } from '@axhy/business-rules';
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
-
-const CALENDAR_LOOKBACK_DAYS = 30;
-const CALENDAR_MAX_ENTRIES = 50;
 
 export async function loadCalendarTier3(
   client: DbClient,
