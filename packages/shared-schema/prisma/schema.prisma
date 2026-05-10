@@ -37,6 +37,10 @@ model Company {
   /// @personal owner contact name
   ownerName  String
   status     String   @default("ACTIVE")
+  /// daily AI spend counter in INR. Resets at UTC midnight via cron.
+  /// NOT @personal — financial counter, not PII (Vinod DPDP scoping).
+  /// @derives(spec-2 §9.1) @derives(ADR-0023)
+  aiSpendDailyInr Decimal @default(0) @db.Decimal(12, 4)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -433,11 +437,17 @@ model Outbox {
   nextRetryAt DateTime  @default(now())
   /// last error message, for ops triage
   lastError   String?
+  /// idempotency key for at-most-once enqueue (e.g. "${companyId}:budget_WARN:20260510").
+  /// Partial unique index on (companyId, idempotencyKey) WHERE idempotencyKey IS NOT NULL
+  /// enforces dedup at DB layer; existing rows with NULL key coexist freely.
+  /// @derives(spec-2 §9.4) @derives(ADR-0009)
+  idempotencyKey String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
+  @@unique([companyId, idempotencyKey])
   @@index([companyId])
   @@index([processedAt, nextRetryAt])
   @@index([topic])
