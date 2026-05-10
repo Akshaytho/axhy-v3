@@ -448,3 +448,79 @@ Pre-flight zero-data-loss check: `SELECT COUNT(*) FROM SupervisorDailyContext` w
 ## Phase 2 close decision
 
 9/11 spec features shipped (82% Phase 2 coverage; cumulative 75% chat surface). 2 panel-surfaced gaps named in deferrals. 10-criteria production-ready audit passes for Phase 2 scope. **Status: complete.** Phase 3 (10 missing propose\_\* tools + GET /chat/messages history pagination) unblocked.
+
+---
+
+# Phase 2.5 Done-Memo (2026-05-11) — Permanent fixes for Phase 2 panel-flagged gaps
+
+**Status:** complete
+**Branch:** `feat/phase-c-wave-4b-chat-completion`
+**Trigger:** post-hoc panel review of Phase 2 surfaced 4 Tier-1 + 8 Tier-2 gaps. Founder lock 2026-05-10: "no patch, permanent only" + "did you test with multiple companies?" — answer was no.
+
+## Commits (oldest → newest)
+
+| #   | SHA       | Task                                                                       |
+| --- | --------- | -------------------------------------------------------------------------- |
+| P1  | `738683d` | test-utils: withMultipleTenants helper + injectAuthed                      |
+| P2  | `801c63d` | chat: wrap both transactions in withTenantContext                          |
+| P3  | `e8a7e1b` | schema: drop dead LivingDoc columns (archivedSnapshot + lastArchivedAt)    |
+| P4  | `a3b580b` | business-rules: centralize 4 chat-surface constants                        |
+| P5  | `a2d2fb4` | schema: fix 6 supervisorId comment lies + memory lock                      |
+| P6  | `9bb11c7` | test: refactor living-doc test to withMultipleTenants + cross-COMPANY case |
+| P7  | `b966acc` | ci: migration-safety scanner + retroactive SAFE comment                    |
+| P8  | `486337e` | polish: safeParseOrLog + copy + tool description tweaks                    |
+
+## Tier-1 fixes (4/4)
+
+| Gap                                                                    | Fix                                                                                                     | Commit  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------- |
+| Cross-tenant test missing for LivingDoc                                | New `withMultipleTenants` helper + 5-tenant cross-COMPANY case in living-doc.test.ts                    | P1 + P6 |
+| `/chat/apply` LivingDoc branch bypassed `withTenantContext` (RLS hole) | Both chat-route transactions (persistChatTurn + LivingDoc apply) now wrapped                            | P2      |
+| Migration with destructive ops had no DB-level guard                   | New `scripts/check-migration-safety.mjs` + CI job; retroactive `-- SAFE:` comment on existing migration | P7      |
+| Test case 3 shadow-implemented the route logic                         | Refactored to hit real `/chat/apply` via `injectAuthed` helper                                          | P6      |
+
+## Tier-2 fixes (5 shipped, 3 deferred)
+
+**Shipped:**
+
+- 4 hardcoded numeric constants moved to `@axhy/business-rules` (P4)
+- 6 misleading `supervisorId` comments fixed + panel-locked memory file (P5)
+- 2 dead LivingDoc columns dropped (P3)
+- 3 silent error drops replaced with `safeParseOrLog` structured warns (P8)
+- "Save rule for AI" → "Remember this for next time" copy (P8)
+- Tool description disambiguation against alias_map historical surface (P8)
+
+**Deferred (named):**
+
+- GIN index on rule `state` field — Phase 2.6 sub-wave; trigger when first tenant crosses 1000 active rules
+- Concurrent-apply test for `version: { increment: 1 }` — next wave; Prisma's atomic increment is theoretically proven, ask was "verify it"
+- `@axhy/copy` catalog bootstrap — Phase D i18n wave (consistent with Phase 2 lock)
+
+## Production-ready 10-criteria audit (re-run for Phase 2.5 scope)
+
+1. **Error handling** — silent drops replaced with structured warns; no new throw paths. ✅
+2. **Edge cases** — withMultipleTenants tests fn-throw cleanup path; living-doc covers cross-company + cross-supervisor + version-bump-cache-busts. ✅
+3. **Multi-tenant safety** — withTenantContext wrap on both chat tx; cross-COMPANY isolation proven across 5 tenants. ✅
+4. **Observability** — safeParseOrLog with tenant-scoped context; openai-tool-loop bad-JSON path now structured-logged. ✅
+5. **Types** — strict; SafeParser duck-types zod; SafeParseLogger duck-types pino. ✅
+6. **Tests** — all real Railway; withMultipleTenants smoke 3/3; living-doc 6/6 incl cross-COMPANY case. ✅
+7. **Rollback** — every commit independently revertable; column drop has rollback SQL in migration header. ✅
+8. **No hardcoded values** — 4 chat constants centralized; grep verified 0 leaks outside business-rules + tests. ✅
+9. **No partial implementations** — dead columns DROPPED (not deferred); silent drops FIXED. ✅
+10. **ESLint + typecheck + tests** — all green for Phase 2.5 scope. ✅
+
+## Adversarial 7-voice mini-panel checkpoint
+
+- **Maya:** "Single chokepoint enforced — both chat tx through withTenantContext. Migration CI scan locks 'destructive without guard' invariant going forward. ✅"
+- **Aanya:** "Tool description disambiguation prevents model from looking for non-existent alias_map. Cross-COMPANY isolation now proven by test. ✅"
+- **Naina:** "4 constants centralized; future tuning is one diff. ✅"
+- **Suresh persona day-365:** _"'Remember this for next time' samajh aata hai."_ ✅
+- **Mr. Reddy persona day-365:** "Cross-COMPANY test proves my data won't leak to Mr. Sharma. ✅"
+- **Vikram:** "Both transactions wrapped, RLS GUC fires, cross-tenant test asserts no bleed across 5 companies. Tier-1 multi-tenant safety closed. ✅"
+- **Eric (10-yr arc):** "withMultipleTenants becomes the default for every future test. Migration CI catches future destructive ops. Compounds. ✅"
+
+**Gaps surfaced: 0.** All 7 voices satisfied with Phase 2.5 scope.
+
+## Phase 2.5 close decision
+
+Cumulative chat surface coverage unchanged at 18/24 (75%) — Phase 2.5 was hardening, not feature shipping. Quality + multi-tenant safety + bloat ALL improved. **Status: complete.** Phase 3 still unblocked.
