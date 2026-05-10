@@ -22,6 +22,7 @@ import type {
   ChatCompletionMessageToolCall,
   ChatCompletionCreateParamsNonStreaming,
 } from 'openai/resources/chat/completions.mjs';
+import { CHAT_MAX_COMPLETION_TOKENS } from '@axhy/business-rules';
 
 import {
   modelFor,
@@ -231,7 +232,7 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
       tools: openaiTools,
       tool_choice: 'auto',
       // GPT-5 models reject `max_tokens` and require `max_completion_tokens`.
-      max_completion_tokens: 1500,
+      max_completion_tokens: CHAT_MAX_COMPLETION_TOKENS,
     };
     if (promptCacheKey) body.prompt_cache_key = promptCacheKey;
     const response = await openai.chat.completions.create(body);
