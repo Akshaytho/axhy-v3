@@ -5,9 +5,16 @@
  * @derives(master-plan §G)
  */
 
+import { randomUUID } from 'node:crypto';
+
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
-import { CreateChatMessageInput, ApplyDecisionCardInput } from '@axhy/shared-schema';
+import {
+  CreateChatMessageInput,
+  ApplyDecisionCardInput,
+  LIVING_DOC_SECTION_TO_COLUMN,
+  ProposeLivingDocUpdateInput,
+} from '@axhy/shared-schema';
 import {
   openaiToolLoop,
   AICostBudgetError,
@@ -17,6 +24,7 @@ import {
   proposeCreateAssignmentTool,
   proposeMarkAbsentTool,
   proposeLeaveTool,
+  proposeLivingDocUpdateTool,
   proposeSwapTool,
   proposeTerminationTool,
 } from '@axhy/ai-tools';
@@ -27,6 +35,9 @@ import { requireAuth, withTenantContext } from '../middleware/tenant-context.js'
 import { recordAuditEvent } from '../lib/audit-event.js';
 import { checkIdempotency, recordIdempotency } from '../lib/chat-idempotency.js';
 import { tryAcquireChatSlot, releaseChatSlot } from '../lib/chat-concurrency.js';
+import { getLivingDoc } from '../lib/living-doc.js';
+import { formatLivingDocPrompt } from '../lib/living-doc-prompt.js';
+import { loadCalendarTier3 } from '../lib/calendar-context.js';
 
 /**
  * Stripped system prompt — moved per-tool guidance into each tool's
@@ -119,6 +130,13 @@ async function persistChatTurn(input: {
    * @derives(spec-2 §9.2)
    */
   costInr: number;
+  /**
+   * OpenAI prompt_tokens_details.cached_tokens from the response (or null
+   * for help short-circuit / non-cache paths). Used by ai_cost_daily view
+   * for cache-hit ratio.
+   * @derives(spec-2 §8.3)
+   */
+  cacheTokens: number | null;
 }): Promise<{
   chatMessageId: string;
   assistantText: string;
@@ -170,6 +188,9 @@ async function persistChatTurn(input: {
         // Spec 2 §9.2 — per-turn AI cost in INR. 0 for non-AI paths
         // (help short-circuit). Number serializes to Decimal(12,4) via Prisma.
         costInr: input.costInr,
+        // Spec 2 §8.3 — OpenAI prompt_tokens_details.cached_tokens for
+        // ai_cost_daily view cache-hit-ratio aggregation.
+        cacheTokens: input.cacheTokens,
       },
     });
 
@@ -252,8 +273,9 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         toolCalls: [],
         decisionCards: [],
         modelUsed: 'static',
-        // Help short-circuit makes no AI call — zero cost.
+        // Help short-circuit makes no AI call — zero cost, no cache tokens.
         costInr: 0,
+        cacheTokens: null,
       });
       await recordIdempotency(
         prisma,
@@ -287,6 +309,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         proposeCreateAssignmentTool,
         proposeMarkAbsentTool,
         proposeLeaveTool,
+        proposeLivingDocUpdateTool,
         proposeSwapTool,
         proposeTerminationTool,
       ];
@@ -294,6 +317,15 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       // Load last N turns from this supervisor's chat thread so the model
       // sees prior context (otherwise every message is zero-shot).
       const priorMessages = await loadPriorMessages(auth.companyId, auth.userId);
+
+      // Spec 2 §3.5 + §6.1 + §8.1 — Tier 2 + Tier 3 prompt context.
+      // getLivingDoc upserts on first read so chat path always has a doc;
+      // formatter returns empty string when all 5 sections empty (no
+      // wasted system-message slot). loadCalendarTier3 returns empty
+      // string when no entries in last 30 days.
+      const livingDoc = await getLivingDoc(prisma, auth.companyId, auth.userId);
+      const livingDocBlock = formatLivingDocPrompt(livingDoc);
+      const calendarBlock = await loadCalendarTier3(prisma, auth.companyId, auth.userId);
 
       const loopResult = await openaiToolLoop({
         apiKey,
@@ -308,6 +340,14 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // the daily-budget gate; AICostBudgetError → 429 below.
         surface: 'voice_change_parse',
         tenantCtx: { companyId: auth.companyId, prisma },
+        // Spec 2 §8 — 3-tier prompt cache. livingDocVersion + (companyId,
+        // supervisorId) form the prompt_cache_key for routing consistency
+        // and busts cache when supervisor adds a new rule (version bump).
+        livingDocBlock,
+        calendarBlock,
+        livingDocVersion: livingDoc.version,
+        companyId: auth.companyId,
+        supervisorId: auth.userId,
         handler: async (name, input) => {
           if (name === 'find_workers') {
             const workers = await withTenantContext(prisma, auth.companyId, async (tx) =>
@@ -553,6 +593,25 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
               },
             };
           }
+          if (name === 'propose_living_doc_update') {
+            // Spec 2 §6.2 — supervisor codifies a rule. AI emits this as
+            // part of the main turn; we just validate + surface as a
+            // DecisionCard. Actual write happens on /chat/apply.
+            const parsedTool = ProposeLivingDocUpdateInput.safeParse(input);
+            if (!parsedTool.success) {
+              return { output: { error: 'BAD_TOOL_INPUT', message: parsedTool.error.message } };
+            }
+            const p = parsedTool.data;
+            return {
+              output: { proposed: true, fields: p },
+              decisionCardData: {
+                title: 'Save rule for AI',
+                description: `Add to ${p.section.replace('_', ' ')}: "${p.ruleText}"`,
+                fields: p,
+                severity: 'CONFIRM',
+              },
+            };
+          }
           return { output: { error: 'UNKNOWN_TOOL' } };
         },
       });
@@ -570,6 +629,9 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // Spec 2 §9.2 — costInr computed by openai-tool-loop from
         // finalUsage tokens × per-1K rate from model-policy.
         costInr: loopResult.costInr,
+        // Spec 2 §8.3 — cached_tokens captured by openai-tool-loop from
+        // response.usage.prompt_tokens_details (null when SDK omits).
+        cacheTokens: loopResult.cacheTokens,
       });
 
       await recordIdempotency(
@@ -733,6 +795,71 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
       reply.code(200).send({ workerId: out.worker.id, state: out.worker.state });
+      return;
+    }
+
+    if (parsed.data.toolName === 'propose_living_doc_update') {
+      // Spec 2 §6.1 + §6.2 — supervisor confirmed; append rule to the
+      // matching LivingDoc section + bump version (busts prompt cache so
+      // next chat sees the new rule). Atomic in $transaction with the
+      // AuditEvent write.
+      const parsedTool = ProposeLivingDocUpdateInput.safeParse(parsed.data.toolInput);
+      if (!parsedTool.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsedTool.error.message });
+        return;
+      }
+      const p = parsedTool.data;
+      const column = LIVING_DOC_SECTION_TO_COLUMN[p.section];
+      const ruleId = randomUUID();
+      const newRule = {
+        id: ruleId,
+        ruleText: p.ruleText,
+        description: p.description,
+        visibility: p.visibility,
+        scope: p.scope,
+        createdAt: new Date().toISOString(),
+        createdBy: 'supervisor' as const,
+        state: 'ACTIVE' as const,
+        source: { chatMessageId: undefined as string | undefined },
+      };
+
+      const result = await prisma.$transaction(async (tx) => {
+        // Upsert ensures the row exists (matches getLivingDoc behavior;
+        // first-time supervisors won't have a row yet).
+        const doc = await tx.livingDoc.upsert({
+          where: {
+            companyId_supervisorId: {
+              companyId: auth.companyId,
+              supervisorId: auth.userId,
+            },
+          },
+          create: { companyId: auth.companyId, supervisorId: auth.userId },
+          update: {},
+        });
+        const existing = (doc[column] as unknown as Array<Record<string, unknown>>) ?? [];
+        const updated = await tx.livingDoc.update({
+          where: { id: doc.id },
+          data: {
+            [column]: [...existing, newRule] as Prisma.InputJsonValue,
+            version: { increment: 1 },
+          },
+          select: { version: true },
+        });
+        await recordAuditEvent(tx, {
+          companyId: auth.companyId,
+          kind: 'LIVING_DOC_RULE_ADDED',
+          actorId: auth.userId,
+          targetId: ruleId,
+          payload: {
+            section: p.section,
+            visibility: p.visibility,
+            ruleText: p.ruleText,
+            version: updated.version,
+          },
+        });
+        return { ruleId, version: updated.version };
+      });
+      reply.code(200).send(result);
       return;
     }
 
