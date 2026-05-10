@@ -29,41 +29,41 @@ datasource db {
 // ============================================================================
 
 model Company {
-  id         String   @id @default(uuid()) @db.Uuid
-  name       String
-  slug       String   @unique
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String   @unique
   /// @personal owner contact phone (E.164)
-  ownerPhone String   @db.VarChar(16)
+  ownerPhone      String   @db.VarChar(16)
   /// @personal owner contact name
-  ownerName  String
-  status     String   @default("ACTIVE")
+  ownerName       String
+  status          String   @default("ACTIVE")
   /// daily AI spend counter in INR. Resets at UTC midnight via cron.
   /// NOT @personal — financial counter, not PII (Vinod DPDP scoping).
   /// @derives(spec-2 §9.1) @derives(ADR-0023)
-  aiSpendDailyInr Decimal @default(0) @db.Decimal(12, 4)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  aiSpendDailyInr Decimal  @default(0) @db.Decimal(12, 4)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  memberships             Membership[]
-  users                   User[]
-  sites                   Site[]
-  workers                 Worker[]
-  visits                  Visit[]
-  leaves                  LeaveRequest[]
-  auditEvents             AuditEvent[]
-  outbox                  Outbox[]
-  devices                 Device[]
-  attendances             Attendance[]
-  complaints              Complaint[]
-  swapRequests            SwapRequest[]
-  supervisorDecisions     SupervisorDecision[]
-  livingDocs              LivingDoc[]
-  hrUpdates               HRUpdate[]
-  visitPhotos             VisitPhoto[]
-  calendarEntries         CalendarEntry[]
-  assignments             Assignment[]
-  chatThreads             ChatThread[]
-  chatMessages            ChatMessage[]
+  memberships         Membership[]
+  users               User[]
+  sites               Site[]
+  workers             Worker[]
+  visits              Visit[]
+  leaves              LeaveRequest[]
+  auditEvents         AuditEvent[]
+  outbox              Outbox[]
+  devices             Device[]
+  attendances         Attendance[]
+  complaints          Complaint[]
+  swapRequests        SwapRequest[]
+  supervisorDecisions SupervisorDecision[]
+  livingDocs          LivingDoc[]
+  hrUpdates           HRUpdate[]
+  visitPhotos         VisitPhoto[]
+  calendarEntries     CalendarEntry[]
+  assignments         Assignment[]
+  chatThreads         ChatThread[]
+  chatMessages        ChatMessage[]
 
   @@schema("axhy")
 }
@@ -204,12 +204,12 @@ model Visit {
   updatedAt         DateTime  @updatedAt
 
   /// FK to Visit being corrected — null on canonical (uncorrected) row
-  correctsVisitId   String?  @db.Uuid
+  correctsVisitId  String? @db.Uuid
   /// self-pointer to root of correction chain — equals own id on root rows
-  originalVisitId   String?  @db.Uuid
+  originalVisitId  String? @db.Uuid
   /// 'wrong-site' | 'wrong-time' | 'duplicate' | 'wrong-worker' | 'other'
-  correctionReason  String?
-  correctionNote    String?
+  correctionReason String?
+  correctionNote   String?
 
   company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   worker  Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
@@ -225,27 +225,28 @@ model Visit {
 }
 
 model CalendarEntry {
-  id             String    @id @default(uuid()) @db.Uuid
-  companyId      String    @db.Uuid
-  /// FK Membership — per-supervisor scope
-  supervisorId   String    @db.Uuid
-  date           DateTime  @db.Date
+  id                       String    @id @default(uuid()) @db.Uuid
+  companyId                String    @db.Uuid
+  /// User.id of the supervisor (composite-keyed with companyId; NOT Membership.id).
+  /// See feedback_supervisor_id_is_user_id.md (panel-locked 2026-05-10).
+  supervisorId             String    @db.Uuid
+  date                     DateTime  @db.Date
   /// 'NOTE' | 'DEMAND' | 'TENTATIVE_ASSIGNMENT' | 'EVENT'
-  kind           String
+  kind                     String
   /// kind-specific structured fields validated at app layer (Zod)
-  payload        Json      @default("{}")
+  payload                  Json      @default("{}")
   /// @personal — free-form text (PII-bearing, scrubbed on supervisor erasure)
-  notes          String?
+  notes                    String?
   /// computed: min(createdAt + 30d, promotedAt) — stored for query speed
-  editableUntil  DateTime
+  editableUntil            DateTime
   /// 'ASSIGNMENT' | 'SITE_SHIFT_REQ' | 'CHANGE_REQUEST' | null
-  promotedToKind String?
-  promotedToId   String?   @db.Uuid
-  promotedAt     DateTime?
+  promotedToKind           String?
+  promotedToId             String?   @db.Uuid
+  promotedAt               DateTime?
   /// Wave 1: stored when promoted to Assignment; Wave 2 hydrates real Assignment row from this.
   pendingAssignmentPayload Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -288,7 +289,8 @@ model Assignment {
 model ChatThread {
   id            String    @id @default(uuid()) @db.Uuid
   companyId     String    @db.Uuid
-  /// FK Membership.id (per-supervisor)
+  /// User.id of the supervisor (composite-keyed with companyId; NOT Membership.id).
+  /// See feedback_supervisor_id_is_user_id.md (panel-locked 2026-05-10).
   supervisorId  String    @db.Uuid
   createdAt     DateTime  @default(now())
   lastMessageAt DateTime?
@@ -427,28 +429,28 @@ model AuditEvent {
 /// @derives(ADR-0009) — outbox over Redis until measured pain
 /// @derives(panel-2026-05-08) — phase B.1 foundation lock
 model Outbox {
-  id          String    @id @default(uuid()) @db.Uuid
-  companyId   String    @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
+  companyId      String    @db.Uuid
   /// dotted topic name (gupshup.send, payroll.recompute, ai.verify, ...)
-  topic       String
+  topic          String
   /// payload the dispatcher hands to the topic's handler
-  payload     Json      @default("{}")
+  payload        Json      @default("{}")
   /// nullable until processed. Idempotent re-tries only run when
   /// processedAt is null AND nextRetryAt is in the past.
-  processedAt DateTime?
+  processedAt    DateTime?
   /// retry counter; >= 5 → quarantined (handler stops retrying)
-  failCount   Int       @default(0)
+  failCount      Int       @default(0)
   /// next time the dispatcher should attempt this row (for backoff)
-  nextRetryAt DateTime  @default(now())
+  nextRetryAt    DateTime  @default(now())
   /// last error message, for ops triage
-  lastError   String?
+  lastError      String?
   /// idempotency key for at-most-once enqueue (e.g. "${companyId}:budget_WARN:20260510").
   /// Partial unique index on (companyId, idempotencyKey) WHERE idempotencyKey IS NOT NULL
   /// enforces dedup at DB layer; existing rows with NULL key coexist freely.
   /// @derives(spec-2 §9.4) @derives(ADR-0009)
   idempotencyKey String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -573,7 +575,8 @@ model Complaint {
   id           String    @id @default(uuid()) @db.Uuid
   companyId    String    @db.Uuid
   siteId       String    @db.Uuid
-  /// UUID of supervisor who logged the complaint
+  /// User.id of the supervisor who logged the complaint (composite-keyed
+  /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
   supervisorId String    @db.Uuid
   /// short complaint text — supervisor's words via voice or button flow
   text         String
@@ -607,7 +610,8 @@ model Complaint {
 model SwapRequest {
   id           String    @id @default(uuid()) @db.Uuid
   companyId    String    @db.Uuid
-  /// UUID of supervisor who initiated the swap
+  /// User.id of the supervisor who initiated the swap (composite-keyed
+  /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
   supervisorId String    @db.Uuid
   fromWorkerId String    @db.Uuid
   toWorkerId   String    @db.Uuid
@@ -653,6 +657,8 @@ model SwapRequest {
 model SupervisorDecision {
   id           String    @id @default(uuid()) @db.Uuid
   companyId    String    @db.Uuid
+  /// User.id of the supervisor who made the decision (composite-keyed
+  /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
   supervisorId String    @db.Uuid
   /// MARK_ABSENT | APPROVE_LEAVE | LOG_COMPLAINT | SWAP_WORKER | ...
   kind         String
@@ -695,25 +701,27 @@ model SupervisorDecision {
 /// @derives(spec-2 §6 — extraction paths)
 /// @derives(data-flow §8 — supervisor.context_load AI surface)
 model LivingDoc {
-  id                String    @id @default(uuid()) @db.Uuid
-  companyId         String    @db.Uuid
-  supervisorId      String    @db.Uuid
+  id                String   @id @default(uuid()) @db.Uuid
+  companyId         String   @db.Uuid
+  /// User.id of the supervisor whose living context this is (composite-keyed
+  /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
+  supervisorId      String   @db.Uuid
   /// JSON arrays of LivingDocRule per Spec 2 §3.5. Each rule:
   ///   { id, ruleText, description, visibility, scope, createdAt,
   ///     createdBy, state, decidedAt?, confidence?, source }
   /// Only state='ACTIVE' filtered into prompt context this wave.
   /// @derives(spec-2 §3.5)
-  siteRules         Json      @default("[]")
-  workerNotes       Json      @default("[]")
-  clientPreferences Json      @default("[]")
-  recurringTasks    Json      @default("[]")
-  freeNotes         Json      @default("[]")
+  siteRules         Json     @default("[]")
+  workerNotes       Json     @default("[]")
+  clientPreferences Json     @default("[]")
+  recurringTasks    Json     @default("[]")
+  freeNotes         Json     @default("[]")
   /// Bumped on every successful propose_living_doc_update apply. Used as
   /// part of OpenAI prompt_cache_key so cache busts when rules change.
   /// @derives(spec-2 §8.2)
-  version           Int       @default(0)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  version           Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
