@@ -17,7 +17,7 @@
 export const proposeLivingDocUpdateTool = {
   name: 'propose_living_doc_update',
   description:
-    'Codify a rule for the supervisor\'s LivingDoc so AI remembers it on future calls. Use when supervisor says "remember X", "always Y", "Mukesh tends to Z", or expresses a worker alias / site rule / client preference / recurring task / general note. AI proposes the rule; supervisor confirms via Apply.',
+    'Persist a rule for the supervisor\'s memory so AI uses it on future calls. Use when supervisor says "remember X", "always Y", "Mukesh tends to Z", or expresses a site rule / client preference / recurring task / worker alias / general note. AI proposes the rule; supervisor confirms via Apply. NOTE: worker aliases (e.g., "Mukesh is also called Bihari Suresh") use this same tool with section=\'worker_notes\' — there is no separate alias tool.',
   input_schema: {
     type: 'object' as const,
     properties: {
