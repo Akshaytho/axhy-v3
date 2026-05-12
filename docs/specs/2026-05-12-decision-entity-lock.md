@@ -274,6 +274,93 @@ All terminal states are end states; no further transitions. Enforced by an XStat
 - ON SHIFT candidate accepting + auto-emitting a swap/handoff decision — forward-coupling, separate spec when `propose_swap` / `propose_shift_handoff` are designed.
 - When `parentDecisionId` is set and the invite expires, does the parent `DecisionWorkspaceItem` get a `SYSTEM`-source follow-on decision row? **This is a follow-on effect, NOT part of `ReplacementInvite`'s core entity** (per advisor caution). Resolution deferred to whichever spec owns SYSTEM-source decision triggers.
 
+### 2.9 HR Updates: digest pattern (parent + child rule entries)
+
+**Resolved per Phase B revision 2026-05-12, contradiction #12 path A.**
+
+R6's HR Updates surface (`updates.jsx`) supports a **compliance digest** pattern: HR can post a bundle of N related rules (R6 demo: "5 RULES IN THIS SWEEP") that the supervisor acknowledges with a single 5+ word ack. This section specifies the schema shape that supports digest grouping while preserving per-rule auditability.
+
+**Critical principle (per advisor caution 2026-05-12):** child rule entries are individually addressable, queryable, and audit-traceable. They are NOT collapsed into an opaque JSON blob. One ack on the parent covers all children, but each child remains a first-class row.
+
+**Minimum shape (full HR Updates spec deferred — this section locks only the digest shape that unblocks the spec):**
+
+```
+HRUpdate                                      HRUpdateRule
+  id              UUID PK                       id              UUID PK
+  companyId       UUID FK Company               companyId       UUID FK Company
+  postedAt        TIMESTAMPTZ                   hrUpdateId      UUID FK HRUpdate
+  title           TEXT                          order           INT (1, 2, 3, ...)
+  body            TEXT nullable                 title           TEXT
+  ackRequired     BOOLEAN default true          body            TEXT
+  ackedAt         TIMESTAMPTZ nullable          createdAt       TIMESTAMPTZ
+  ackText         TEXT nullable
+  createdAt       TIMESTAMPTZ
+```
+
+(Other HR-specific fields — supervisor/audience scoping, channel, severity, etc. — are owed to the future HR Updates spec.)
+
+**Illustrative indexes:**
+
+- `HRUpdate(companyId, postedAt DESC)` — supervisor inbox
+- `HRUpdate(companyId, ackedAt) WHERE ackedAt IS NULL` — pending ack list
+- `HRUpdateRule(hrUpdateId, order)` — fetch a digest's rules in order
+- `HRUpdateRule(companyId, hrUpdateId)` — tenant-scoped per-rule lookups
+
+**Semantics (three shapes for HRUpdate):**
+
+| HRUpdate shape                                                          | Meaning                                                                                                                                               |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `body` populated, **no** child `HRUpdateRule` rows                      | **Standalone update** — the single rule lives entirely in `body`. R6 renders without the digest list. Per Phase B pick: `body`-only.                  |
+| `body` may be NULL (or hold a summary), **N** child `HRUpdateRule` rows | **Digest** — N rules grouped. R6 renders the "N RULES IN THIS SWEEP" header + expandable per-rule list. Single parent ack covers all children.        |
+| `body` populated **AND** N children                                     | **Digest with summary** — `body` is the digest-level summary; children carry the rule detail. Supported. Single parent ack still covers all children. |
+
+**Ack flow (consistent with #6 parallel ack resolution):**
+
+- Supervisor submits ack via `POST /hr-updates/:id/ack` with an `ackText` body (5+ word validation, per `updates.jsx`).
+- Single tx: set `HRUpdate.ackedAt = now()`, `HRUpdate.ackText = $ackText`. Write `AuditEvent(kind = 'HR_UPDATE_ACKED')` linking the parent `HRUpdate`.
+- **All child `HRUpdateRule` rows are considered acked** by virtue of their parent's `ackedAt`. No per-child ack flag — computed: a child is acked iff `parent.ackedAt IS NOT NULL`.
+- No `DecisionWorkspaceItem` state transition (HR is direct-APPLIED per #6).
+
+**Immutability (per Phase B revision pick — append-only):**
+
+- `HRUpdate` and `HRUpdateRule` rows are **append-only** after creation. HR cannot mutate a rule's `title` or `body` after posting.
+- If HR needs to "retract" or "correct" a rule, they post a new HRUpdate (or new digest) that supersedes the old one. The old HRUpdate remains in audit history with its original `ackedAt` (if acked) preserved.
+- No `updatedAt` field needed. Subsequent changes to a row are limited to `ackedAt + ackText` on the parent `HRUpdate` only — and once set, those are not changed.
+
+**Audit story:**
+
+- Per-rule referenceable: `HRUpdateRule.id` is a stable identifier.
+- Compliance query "did supervisor see rule #3 of digest D?" → `SELECT * FROM HRUpdateRule WHERE hrUpdateId = D AND order = 3`; check parent's `HRUpdate.ackedAt IS NOT NULL`.
+- Cross-rule queries: standard SQL on `HRUpdateRule`, indexable.
+- No JSONB path queries needed.
+
+**Audit-event kinds (proposed; full enum locked in HR Updates spec):**
+
+- `HR_UPDATE_POSTED` — fired when an `HRUpdate` (with or without children) is created
+- `HR_UPDATE_ACKED` — fired when supervisor acks (per #6 resolution)
+- `HR_UPDATE_RULE_VIEWED` (optional, deferred) — if per-rule "did supervisor expand rule X" granularity becomes a compliance requirement
+
+**Path 1 trigger risk: none.** This addition stays entirely in the HR sub-schema. `DecisionWorkspaceItem` is untouched. No new actor types, no lifecycle complexity added to existing entities.
+
+**How this unblocks #11 (HR Updates 5+ word prose ack):**
+
+The HR Updates spec (referenced by #6 as "not yet written") now has clear inputs:
+
+- `HRUpdate` is the ackable unit, with optional child `HRUpdateRule` rows.
+- `ackedAt + ackText` live on `HRUpdate` and cover all children.
+- The ack route validates 5+ word prose (per `updates.jsx` UX).
+- Audit-event kinds and routes can now be specified without ambiguity about digest shape.
+
+The full HR Updates spec remains owed but is no longer blocked by the digest shape question.
+
+**What this section does NOT cover (out of scope for #12):**
+
+- **Mixed-tier digests** (e.g., 4 OPERATIONAL rules + 1 EMPLOYMENT rule): three viable resolutions exist (forbid mixing, escalate ack tier to highest, per-rule ack). **Deferred to the future HR Updates spec** — not a contract decision the digest shape alone can make.
+- **Notification fan-out** (one push per digest vs per-rule vs combined) — product/UX decision; out of scope.
+- **Per-rule "viewed" tracking** — deferred until compliance requirement is explicit.
+- **Max rules per digest** — no schema constraint at launch. R6 demo shows 5; real HR posts may be 10+.
+- **Mutation/retraction flows** — append-only at launch. New posts supersede; old posts remain in audit history.
+
 ## 3. Acceptance criteria (from external advisor review, 2026-05-12)
 
 Path 2 is acceptable ONLY if all 5 hold:
