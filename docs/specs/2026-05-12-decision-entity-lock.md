@@ -179,6 +179,101 @@ Both `BAD_INPUT` (malformed token, unknown kind) and `TENANT_CONTEXT_MISMATCH` (
 
 - The AI tool-use loop may, in a separate code path, resolve specific past decisions when the supervisor's utterance EXPLICITLY references one (e.g., "undo yesterday's leave for Bipul"). That is an AI-level reference resolution distinct from the intent-token path. To be specified when the corresponding `propose_undo_*` tool surface is designed — out of scope for this lock.
 
+### 2.8 ReplacementInvite (separate entity)
+
+**Resolved per Phase B revision 2026-05-12, contradiction #13 path A.**
+
+When a supervisor invokes the Replacement Picker (R6 `replacement-picker.jsx`) and sends an invite to a candidate worker, the system creates a `ReplacementInvite` row. This is a **separate top-level entity, NOT a `DecisionWorkspaceItem`**. Three reasons it stays separate:
+
+1. **Actor model differs** — candidate is the responder; for `DecisionWorkspaceItem`, the supervisor is.
+2. **TTL differs** — 2 minutes vs 24 hours.
+3. **Status semantics differ** — `REJECTED` (candidate-rejected) is meaningfully distinct from `DISMISSED` (supervisor-dismissed).
+
+**Critical principle (per advisor caution 2026-05-12):** `ReplacementInvite` is intentionally separate. If acceptance, rejection, or expiry later emits a `DecisionWorkspaceItem` row, an AuditEvent referenced elsewhere, or any other side-effect, those are **follow-on effects** of the invite's terminal state — never part of the core entity itself. The entity's own lifecycle is just: `SENT → ACCEPTED | REJECTED | EXPIRED | CANCELLED`. Keep the coupling minimal.
+
+**Minimum shape (full schema deferred to implementation phase):**
+
+| Field                                 | Notes                                                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `id`                                  | UUID PK                                                                                              |
+| `companyId`                           | UUID FK Company — tenant boundary                                                                    |
+| `supervisorId`                        | UUID FK User — who initiated the invite (User.id per May-10 lock)                                    |
+| `parentDecisionId`                    | UUID nullable — optional `DecisionWorkspaceItem.id` that triggered the search (the absence decision) |
+| `candidateWorkerId`                   | UUID FK Worker — who got invited                                                                     |
+| `replacingWorkerId`                   | UUID FK Worker nullable — the absent worker being replaced, if known                                 |
+| `forSiteId`, `shiftStart`, `shiftEnd` | what the candidate is being invited to                                                               |
+| `status`                              | Enum: `SENT \| ACCEPTED \| REJECTED \| EXPIRED \| CANCELLED`                                         |
+| `sentAt`                              | TIMESTAMPTZ — when invite was sent                                                                   |
+| `expiresAt`                           | TIMESTAMPTZ — computed at send as `sentAt + INTERVAL '2 minutes'`                                    |
+| `respondedAt`                         | TIMESTAMPTZ nullable — when candidate accepted or rejected (NULL if expired or still SENT)           |
+| `cancelledAt`                         | TIMESTAMPTZ nullable — when supervisor cancelled (if applicable)                                     |
+| `notificationChannel`                 | enum/string nullable — WhatsApp / SMS / push (specific channel choice deferred to product)           |
+
+**Indexes:**
+
+- `(companyId, supervisorId, status, createdAt DESC)` — supervisor's invite history
+- `(companyId, status, expiresAt) WHERE status = 'SENT'` — cron expiry sweep
+- `(candidateWorkerId, status) WHERE status = 'SENT'` — candidate-side lookup
+
+**Lifecycle state machine:**
+
+```
+   ┌────────┐    ┌──────────┐
+   │        │───▶│ ACCEPTED │
+   │        │    └──────────┘
+   │        │    ┌──────────┐
+   │        │───▶│ REJECTED │
+   │  SENT  │    └──────────┘
+   │        │    ┌──────────┐
+   │        │───▶│ EXPIRED  │   (cron sweep)
+   │        │    └──────────┘
+   │        │    ┌──────────┐
+   │        │───▶│CANCELLED │   (supervisor cancels mid-2-min)
+   └────────┘    └──────────┘
+```
+
+All terminal states are end states; no further transitions. Enforced by an XState machine in `packages/state-machines/src/replacement-invite.ts` (consistent with Visit + Worker + DecisionWorkspaceItem machines per ADR-0006).
+
+**TTL enforcement — two layers (BOTH required):**
+
+1. **Route-level check on candidate accept:** `POST /replacement-invites/:id/accept` validates `now() - sentAt <= INTERVAL '2 minutes'`. If past, rejects with typed failure `INVITE_EXPIRED`. Prevents stale accepts that slip past the cron window. **Hard reject — no grace window** (per Phase B revision pick).
+2. **Cron sweep for unaccepted invites:** every 30 seconds, query `SELECT id FROM ReplacementInvite WHERE companyId = X AND status = 'SENT' AND expiresAt <= now()`. For each row: transition to `EXPIRED`, write `AuditEvent(kind = 'REPLACEMENT_INVITE_EXPIRED')`, fire outbox topic `replacement_invite.expired`. Supervisor receives notification via dispatcher.
+
+**Why cron is required here (different from D.1 undo, where cron was dropped):** with undo, the supervisor is the actor and knows whether they undid. With invites, the candidate is the actor; the supervisor needs prompt feedback when the candidate doesn't respond so they can pick another. Route-check-only would leave the supervisor uninformed.
+
+**Routes (shape specified; implementation deferred):**
+
+- `POST /replacement-invites` — supervisor sends; creates `SENT` row + fires notification outbox
+- `POST /replacement-invites/:id/accept` — candidate accepts; transitions `SENT → ACCEPTED`; idempotent (re-accept returns cached success)
+- `POST /replacement-invites/:id/reject` — candidate rejects; transitions `SENT → REJECTED`
+- `POST /replacement-invites/:id/cancel` — supervisor cancels mid-2-min; transitions `SENT → CANCELLED`
+- `GET /replacement-invites?status=SENT&supervisor=me` — supervisor's pending invites
+- Cron (internal): expiry sweep
+
+**Audit-event kinds emitted (new — separate from `DecisionWorkspaceItem` audit kinds):**
+
+- `REPLACEMENT_INVITE_SENT`
+- `REPLACEMENT_INVITE_ACCEPTED`
+- `REPLACEMENT_INVITE_REJECTED`
+- `REPLACEMENT_INVITE_EXPIRED` (cron-emitted, `actorId = NULL`)
+- `REPLACEMENT_INVITE_CANCELLED`
+
+**ReplacementInvite-specific failure reasons (separate enum, distinct from `DecisionWorkspaceItem.failureReason`):**
+
+- `INVITE_EXPIRED` — accept attempted past 2-min window
+- `INVITE_ALREADY_RESPONDED` — accept/reject attempted on a row already in terminal state
+- `INVITE_CANCELLED_BY_SUPERVISOR` — accept attempted on a cancelled invite
+
+**Path 1 trigger risk: none.** `ReplacementInvite` is a separate entity with its own actor model, lifecycle, and TTL. `DecisionWorkspaceItem` is untouched. Path 2 stays clean (see §4 trigger analysis).
+
+**What this section does NOT cover (out of scope for #13):**
+
+- Notification channel choice (WhatsApp / SMS / push) — product decision, deferred.
+- **Multiple parallel invites for the same slot** — deferred per Phase B revision. Spec assumes serial invites at launch (one active `SENT` per supervisor per absence). Locking parallel-invite semantics is deferred until product explicitly asks.
+- Real-time supervisor UI during 2-min wait — design decision, not contract.
+- ON SHIFT candidate accepting + auto-emitting a swap/handoff decision — forward-coupling, separate spec when `propose_swap` / `propose_shift_handoff` are designed.
+- When `parentDecisionId` is set and the invite expires, does the parent `DecisionWorkspaceItem` get a `SYSTEM`-source follow-on decision row? **This is a follow-on effect, NOT part of `ReplacementInvite`'s core entity** (per advisor caution). Resolution deferred to whichever spec owns SYSTEM-source decision triggers.
+
 ## 3. Acceptance criteria (from external advisor review, 2026-05-12)
 
 Path 2 is acceptable ONLY if all 5 hold:
