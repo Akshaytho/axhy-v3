@@ -29,6 +29,14 @@ External references (outside `axhy-v3/`) are listed in a separate section at the
 
 ---
 
+## Draft
+
+| Doc                                        | One-line rationale                                                                                                                                                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/specs/2026-05-13-product-framing.md` | Product-framing under review. Names the supervisor operating brain principle, three layers of truth, AI memory model, consequence-awareness contract, agent invocation discipline, and surface restraint. Draft 2026-05-13; not yet Active. |
+
+---
+
 ## Active
 
 | Doc                                                    | One-line rationale                                                                                                                                                                                                                                                                           |
