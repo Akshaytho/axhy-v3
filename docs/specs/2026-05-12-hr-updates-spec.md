@@ -1,14 +1,14 @@
 ---
-Status: Draft
+Status: Active
 Last validated against code: 2026-05-12
 Validated branch: feat/phase-c-wave-4b-chat-completion
-Validated commit: f6145b8
+Validated commit: 9ff6e26
 Primary owner: founder (Akshay Thota)
 Replaces: nothing — first-version
-Replaced by: nothing — current Draft
+Replaced by: nothing — current Active
 ---
 
-> **DRAFT.** This spec specifies the HR Updates route surface, notification fan-out, audience model, and launch policy decisions. The underlying schema (`HRUpdate`, `HRUpdateRule`, `ackedAt`, `ackText`) is locked in the Decision entity lock spec D.1 §2.9; this spec references it but does not re-derive. Status flips to **Active** after founder + advisor review. Contradiction #11 from the R6 spec catalogue is addressed by this Draft (not yet Resolved — that flip waits for this spec to itself flip Active).
+> **Active 2026-05-12 (Stage 2 of Draft → Active promotion).** Launch policy is locked: push-only notifications, audience = all supervisors in `companyId`, mixed-tier digests forbidden, no reminder/escalation, no per-rule viewed tracking, soft cap 10 child rules with warning header (no hard reject). Schema source (`HRUpdate`, `HRUpdateRule`, `ackedAt`, `ackText`) is D.1 §2.9. Contradiction #11 from R6 §4 is now **Resolved** by this Active spec. Classified **Active but contract-incomplete** in `canonical-truth.md` — 10+ launch gaps named in §10 out-of-scope list.
 
 # HR Updates Spec (companion to D.1 §2.5 + §2.9)
 
