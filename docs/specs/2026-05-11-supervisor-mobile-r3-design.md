@@ -1,3 +1,15 @@
+---
+Status: Superseded
+Last validated against code: 2026-05-12
+Validated branch: feat/phase-c-wave-4b-chat-completion
+Validated commit: cfd0891
+Primary owner: founder (Akshay Thota)
+Replaces: nothing — first-version
+Replaced by: docs/specs/2026-05-12-supervisor-mobile-r6-design.md
+---
+
+> **Superseded 2026-05-12 by R6.** Iterated R3 → R4 → R5 → R6 in `claude.ai/design`; final R6 export landed in repo per doc-discipline protocol. The canonical product surface design for the supervisor app is now `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` (Active). This R3 file is preserved verbatim for historical traceability; **do not use for current implementation decisions.** See `docs/index/canonical-truth.md` (In-repo historical section) for the supersession record.
+
 # Supervisor mobile — r3 design pass
 
 **Date:** 2026-05-11
