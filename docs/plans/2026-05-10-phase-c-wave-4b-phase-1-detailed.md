@@ -1,3 +1,15 @@
+---
+Status: Historical
+Last validated against code: 2026-05-12
+Validated branch: feat/phase-c-wave-4b-chat-completion
+Validated commit: 49bc079
+Primary owner: founder (Akshay Thota)
+Replaces: nothing — first-version
+Replaced by: nothing — historical record only
+---
+
+> **Historical record.** Preserved for traceability. Do not use for current implementation decisions. See `docs/index/canonical-truth.md` for the active doc tree.
+
 # Wave 4b — Phase 1: Cost Protection (Detailed Sub-Task Plan)
 
 **Date:** 2026-05-10
