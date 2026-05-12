@@ -2,7 +2,7 @@
 Status: Active
 Last validated against code: 2026-05-12
 Validated branch: feat/phase-c-wave-4b-chat-completion
-Validated commit: 9ff6e26
+Validated commit: cfd0891
 Primary owner: founder (Akshay Thota)
 Replaces: nothing — first-version
 ---
@@ -31,10 +31,11 @@ External references (outside `axhy-v3/`) are listed in a separate section at the
 
 ## Active
 
-| Doc                                                    | One-line rationale                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs/protocols/doc-discipline.md`                     | 19-rule meta-protocol governing how all docs in this tree are written, marked stale, and indexed. Read first before producing any doc.                                                                                                                                                                                                                |
-| `docs/specs/2026-05-11-supervisor-mobile-r3-design.md` | Canonical product surface design for the supervisor app (Today / Decisions / Activity / Chat / Profile, three-layer hierarchy). Backend/data contracts still incomplete and must be locked separately. **Successor under review:** `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` (Draft) — after R6 review approves, R3 flips to Superseded. |
+| Doc                                                    | One-line rationale                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/protocols/doc-discipline.md`                     | 19-rule meta-protocol governing how all docs in this tree are written, marked stale, and indexed. Read first before producing any doc.                                                                                                                                                       |
+| `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` | Canonical product surface design for the supervisor app (Today / Decisions / Activity / Chat / Profile + 2 secondary surfaces + 5 sub-screens). Active 2026-05-12 (Stage 3 of Draft → Active promotion). All 15 §4 contradictions Resolved. Supersedes R3. Frozen prototype companion below. |
+| `docs/prototypes/supervisor-mobile-r6/`                | Frozen design prototype bundle companion to the R6 spec (16 JSX/CSS/HTML/data files + README + IMPLEMENTATION_WARNING). Do not import into `apps/*`. Implementation builds match the visual output, not the JSX structure.                                                                   |
 
 ## Active but contract-incomplete
 
@@ -45,15 +46,6 @@ External references (outside `axhy-v3/`) are listed in a separate section at the
 | `docs/plans/2026-05-10-phase-c-wave-4b-chat-completion.md` | Wave 4b plan; Phases 1+2+2.5 shipped and valid as historical record of those phases.                                                                                                                                                                                                       | Phases 3 and 4 need re-scope under the ops-first frame in r3 design.                                                                                                                                                                                                                                                                                                                                        |
 | `docs/specs/2026-05-12-decision-entity-lock.md`            | Phase D lock #1 — `DecisionWorkspaceItem` model, lifecycle, 14 resolved R6 §4 contradictions. Authoritative schema source for v3.0 launch. Active 2026-05-12 (Stage 1 of Draft → Active promotion).                                                                                        | Multiple deferred sub-items: mixed-tier HR digest behavior (§2.9), parallel replacement invites (§2.8), retention timing for WORKING_NOTE (§2.10), `payload.options[]` strict validation (§2.11), `resolutionMode` enum unification refactor (§2.11), AI tool surface details (§2.7, §2.11).                                                                                                                |
 | `docs/specs/2026-05-12-hr-updates-spec.md`                 | HR Updates route surface, notification fan-out (push-only), audience model (all supervisors in `companyId`), and launch policy (forbid mixed-tier digests, no reminder/escalation, skip per-rule viewed tracking, soft cap 10). Companion to D.1 §2.5 + §2.9. Active 2026-05-12 (Stage 2). | 10+ deferred items per spec §10: WhatsApp / SMS / email channels, scoped audience filtering, reminder/escalation logic, per-rule "viewed" event tracking, mixed-tier digest beyond forbidding, hard digest size limits, admin-web HR portal UI, optional HRUpdate fields (severity / category / deadline / attribution), cross-supervisor ack visibility, HRUpdate retraction beyond append-only supersede. |
-
-## Draft (under review)
-
-Specs landed in repo but not yet promoted to Active. Implementation should not begin from these until they flip Status to Active. Items here should flip Active or be rejected within 14 days of landing — otherwise re-evaluate the adoption decision.
-
-| Doc                                                    | Reviewing                                                                                  | Rationale                                                                                                                   |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` | Awaiting evidence-grounded review (iteration trail: r3 → r4 → r5 → r6 in claude.ai/design) | When Active, supersedes R3. Catalogues 15 contradictions vs Decision entity lock; resolution is a separate planning step.   |
-| `docs/prototypes/supervisor-mobile-r6/`                | Companion artifact to the Draft R6 spec                                                    | Frozen design prototype bundle (16 JSX/CSS/HTML/data files + README + IMPLEMENTATION_WARNING). Do not import into `apps/*`. |
 
 ## Unaudited — needs Phase B status pass
 
@@ -90,13 +82,14 @@ All 23 numbered ADRs in `docs/decisions/0001-*.md` through `docs/decisions/0023-
 
 Audited and tagged Historical under doc-discipline protocol §9 + §13. Preserved for traceability; do not cite as current truth.
 
-| Doc                                                         | Tagged Historical      | Note                                                                                            |
-| ----------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------- |
-| `docs/plans/2026-05-09-phase-c-wave-1-calendar.md`          | Phase B.1 (2026-05-12) | Wave 1 shipped + merged; no successor                                                           |
-| `docs/plans/2026-05-09-phase-c-wave-2a-vertical-slice.md`   | Phase B.1 (2026-05-12) | Wave 2a shipped + merged; no successor                                                          |
-| `docs/plans/2026-05-09-phase-c-wave-4a-mobile-chat-plan.md` | Phase B.1 (2026-05-12) | Replaced by `docs/plans/2026-05-09-phase-c-wave-4a-pro-plan.md` within Wave 4a era              |
-| `docs/plans/2026-05-09-phase-c-wave-4a-pro-plan.md`         | Phase B.1 (2026-05-12) | Replaces `docs/plans/2026-05-09-phase-c-wave-4a-mobile-chat-plan.md`; Wave 4a-PRO shipped       |
-| `docs/plans/2026-05-10-phase-c-wave-4b-phase-1-detailed.md` | Phase B.1 (2026-05-12) | Sub-plan of `docs/plans/2026-05-10-phase-c-wave-4b-chat-completion.md`; Phase 1 commits shipped |
+| Doc                                                         | Tagged Historical                            | Note                                                                                                                                                                                                  |
+| ----------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/plans/2026-05-09-phase-c-wave-1-calendar.md`          | Phase B.1 (2026-05-12)                       | Wave 1 shipped + merged; no successor                                                                                                                                                                 |
+| `docs/plans/2026-05-09-phase-c-wave-2a-vertical-slice.md`   | Phase B.1 (2026-05-12)                       | Wave 2a shipped + merged; no successor                                                                                                                                                                |
+| `docs/plans/2026-05-09-phase-c-wave-4a-mobile-chat-plan.md` | Phase B.1 (2026-05-12)                       | Replaced by `docs/plans/2026-05-09-phase-c-wave-4a-pro-plan.md` within Wave 4a era                                                                                                                    |
+| `docs/plans/2026-05-09-phase-c-wave-4a-pro-plan.md`         | Phase B.1 (2026-05-12)                       | Replaces `docs/plans/2026-05-09-phase-c-wave-4a-mobile-chat-plan.md`; Wave 4a-PRO shipped                                                                                                             |
+| `docs/plans/2026-05-10-phase-c-wave-4b-phase-1-detailed.md` | Phase B.1 (2026-05-12)                       | Sub-plan of `docs/plans/2026-05-10-phase-c-wave-4b-chat-completion.md`; Phase 1 commits shipped                                                                                                       |
+| `docs/specs/2026-05-11-supervisor-mobile-r3-design.md`      | **Superseded** by R6 on 2026-05-12 (Stage 3) | Iterated R3 → R4 → R5 → R6 in `claude.ai/design`. Canonical surface design is now `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` (Active). R3 preserved verbatim for historical traceability. |
 
 ---
 

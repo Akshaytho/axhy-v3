@@ -1,14 +1,14 @@
 ---
-Status: Draft
+Status: Active
 Last validated against code: 2026-05-12
 Validated branch: feat/phase-c-wave-4b-chat-completion
-Validated commit: 63c1dbe
+Validated commit: cfd0891
 Primary owner: founder (Akshay Thota)
-Replaces: nothing yet — R3 currently still Active pending review of this Draft
-Replaced by: nothing — current Draft
+Replaces: docs/specs/2026-05-11-supervisor-mobile-r3-design.md
+Replaced by: nothing — current Active
 ---
 
-> **DRAFT.** This spec was grounded from a full read of the R6 prototype JSX bundle in `docs/prototypes/supervisor-mobile-r6/` on 2026-05-12. R3 remains the Active spec until this Draft is reviewed. Supersession of R3 follows in a separate commit after founder + advisor approval. The 15 contradictions in §4 are NOT resolved by this spec — they are catalogued for the next planning cycle.
+> **Active 2026-05-12 (Stage 3 of Draft → Active promotion).** R6 is the canonical product surface design for the supervisor app. Supersedes R3 (`docs/specs/2026-05-11-supervisor-mobile-r3-design.md`, now Superseded). Frozen design prototype companion: `docs/prototypes/supervisor-mobile-r6/`. All 15 contradictions in §4 are Resolved (#11 resolved per Stage 2's HR Updates Active flip). Implementation work matches the visual output of the prototype; does not import its JSX.
 
 # Phase C — Supervisor Mobile R6 Design (Draft, canonical-pending-review)
 
