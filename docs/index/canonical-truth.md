@@ -31,10 +31,10 @@ External references (outside `axhy-v3/`) are listed in a separate section at the
 
 ## Active
 
-| Doc                                                    | One-line rationale                                                                                                                                                                                     |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `docs/protocols/doc-discipline.md`                     | 19-rule meta-protocol governing how all docs in this tree are written, marked stale, and indexed. Read first before producing any doc.                                                                 |
-| `docs/specs/2026-05-11-supervisor-mobile-r3-design.md` | Canonical product surface design for the supervisor app (Today / Decisions / Activity / Chat / Profile, three-layer hierarchy). Backend/data contracts still incomplete and must be locked separately. |
+| Doc                                                    | One-line rationale                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/protocols/doc-discipline.md`                     | 19-rule meta-protocol governing how all docs in this tree are written, marked stale, and indexed. Read first before producing any doc.                                                                                                                                                                                                                |
+| `docs/specs/2026-05-11-supervisor-mobile-r3-design.md` | Canonical product surface design for the supervisor app (Today / Decisions / Activity / Chat / Profile, three-layer hierarchy). Backend/data contracts still incomplete and must be locked separately. **Successor under review:** `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` (Draft) — after R6 review approves, R3 flips to Superseded. |
 
 ## Active but contract-incomplete
 
@@ -43,6 +43,16 @@ External references (outside `axhy-v3/`) are listed in a separate section at the
 | `docs/specs/2026-05-09-phase-c-spec-2-ai-chat-design.md`   | AI chat schema, idempotency, tool-loop contract, LivingDoc moat, cost-ceiling enforcement. | Chat-as-primary-surface framing obsolete (r3 replaces it); cost-cap monthly-vs-daily coupling unresolved; tools 9-15 not implemented. |
 | `docs/specs/2026-05-09-phase-c-assignment-design.md`       | Assignment, Visit, CalendarEntry, Attendance table shapes and state machines.              | `routes/visits.ts:30,74` writes phantom `STARTED`/`ENDED` states the machine doesn't recognise; Attendance writer set incomplete.     |
 | `docs/plans/2026-05-10-phase-c-wave-4b-chat-completion.md` | Wave 4b plan; Phases 1+2+2.5 shipped and valid as historical record of those phases.       | Phases 3 and 4 need re-scope under the ops-first frame in r3 design.                                                                  |
+
+## Draft (under review)
+
+Specs landed in repo but not yet promoted to Active. Implementation should not begin from these until they flip Status to Active. Items here should flip Active or be rejected within 14 days of landing — otherwise re-evaluate the adoption decision.
+
+| Doc                                                    | Reviewing                                                                                                | Rationale                                                                                                                                                              |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/specs/2026-05-12-decision-entity-lock.md`        | Awaiting external advisor + panel approval (pressure-tested 2026-05-12, revised through multiple rounds) | Path 2 Decision entity model + lifecycle. When Active, becomes Phase D lock #1. R6 contradictions catalogue (see R6 spec §4) provides 15 inputs for the next revision. |
+| `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` | Awaiting evidence-grounded review (iteration trail: r3 → r4 → r5 → r6 in claude.ai/design)               | When Active, supersedes R3. Catalogues 15 contradictions vs Decision entity lock; resolution is a separate planning step.                                              |
+| `docs/prototypes/supervisor-mobile-r6/`                | Companion artifact to the Draft R6 spec                                                                  | Frozen design prototype bundle (16 JSX/CSS/HTML/data files + README + IMPLEMENTATION_WARNING). Do not import into `apps/*`.                                            |
 
 ## Unaudited — needs Phase B status pass
 
