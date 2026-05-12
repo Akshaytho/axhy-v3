@@ -16,7 +16,7 @@ Replaced by: nothing — current Draft
 
 This spec specifies the HR Updates **route surface, notification fan-out, audience model, and launch policy decisions** for the supervisor-facing HR Updates tab (R6 prototype `updates.jsx`).
 
-**Already locked in `docs/specs/2026-05-12-decision-entity-lock.md` (Draft):**
+**Already locked in `docs/specs/2026-05-12-decision-entity-lock.md` (Active):**
 
 - §2.5 HR row: HR is direct APPLIED in `DecisionWorkspaceItem`; ack is a parallel lifecycle (no DWI state transition)
 - §2.9: parent `HRUpdate` + child `HRUpdateRule` schema; three update shapes (standalone body-only, digest, digest-with-summary); append-only/immutable; `ackedAt + ackText` on `HRUpdate`; single ack covers all child rules

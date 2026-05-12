@@ -79,7 +79,7 @@ Replaced by: nothing — current Draft
 - **r5:** Decisions tier-grouped sections (URGENT / ROUTINE / FAILED); Chat older bubbles dimmed 55% opacity
 - **r6:** Decisions body text 60 → 40 chars; Decisions worker/site meta line dropped from urgent cards
 
-## 4. Contradictions with Decision entity lock spec (Draft)
+## 4. Contradictions with Decision entity lock spec (Active)
 
 The Decision entity lock spec at [`docs/specs/2026-05-12-decision-entity-lock.md`](2026-05-12-decision-entity-lock.md) is itself currently Draft. The 15 items below are gaps surfaced by reading the R6 prototype against that Draft. **None are resolved by this spec.** They are inputs for the next D.1 revision plan.
 
