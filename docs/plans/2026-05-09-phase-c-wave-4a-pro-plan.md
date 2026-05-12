@@ -1,3 +1,15 @@
+---
+Status: Historical
+Last validated against code: 2026-05-12
+Validated branch: feat/phase-c-wave-4b-chat-completion
+Validated commit: 49bc079
+Primary owner: founder (Akshay Thota)
+Replaces: docs/plans/2026-05-09-phase-c-wave-4a-mobile-chat-plan.md
+Replaced by: nothing — historical record only
+---
+
+> **Historical record.** Preserved for traceability. Do not use for current implementation decisions. See `docs/index/canonical-truth.md` for the active doc tree.
+
 # Phase C Wave 4a-PRO — Chat + Assignment world-domination — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Per `feedback_expo_fast_refresh_plus_playwright.md`: keep Expo dev + persistent browser tab open during all UI iteration; use Playwright headed mode for systematic capture.

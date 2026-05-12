@@ -2,7 +2,7 @@
 Status: Active
 Last validated against code: 2026-05-12
 Validated branch: feat/phase-c-wave-4b-chat-completion
-Validated commit: adcb484
+Validated commit: 49bc079
 Primary owner: founder (Akshay Thota)
 Replaces: nothing — first-version
 ---
@@ -56,16 +56,6 @@ Do NOT treat as authoritative until a §9 status header is added.
 | `docs/specs/2026-05-09-phase-c-spec-4-wave-4a-pro-chat-domination.md` | Strong supersede candidate (title is from chat-first era; thesis overturned by r3) |
 | `docs/specs/2026-05-09-phase-c-vision-narrative.md`                   | Needs rewrite or supersede — vignettes are chat-led                                |
 
-### Plans
-
-| Doc                                                         | Suspected disposition                                          |
-| ----------------------------------------------------------- | -------------------------------------------------------------- |
-| `docs/plans/2026-05-09-phase-c-wave-1-calendar.md`          | Historical (Wave 1 shipped)                                    |
-| `docs/plans/2026-05-09-phase-c-wave-2a-vertical-slice.md`   | Historical (Wave 2a shipped + merged)                          |
-| `docs/plans/2026-05-09-phase-c-wave-4a-mobile-chat-plan.md` | Historical (superseded by Wave 4a-PRO plan within its own era) |
-| `docs/plans/2026-05-09-phase-c-wave-4a-pro-plan.md`         | Historical (Wave 4a-PRO shipped)                               |
-| `docs/plans/2026-05-10-phase-c-wave-4b-phase-1-detailed.md` | Historical sub-plan of Wave 4b Phase 1                         |
-
 ### Architectural Decision Records
 
 All 23 numbered ADRs in `docs/decisions/0001-*.md` through `docs/decisions/0023-*.md`, plus `docs/decisions/README.md` and `docs/decisions/_template.md`. Foundational decisions from the Apr 29 era. Some are likely still load-bearing (e.g. `0006-xstate-v5`, `0008-pure-function-rules`, `0010-ai-thin-boundary`, `0023-ai-model-policy`). Others may be superseded by later work. Audit one-by-one in Phase B.
@@ -82,6 +72,20 @@ All 23 numbered ADRs in `docs/decisions/0001-*.md` through `docs/decisions/0023-
 | `docs/runbooks/`     | `README.md`, `runaway-claude-agents.md` | Operational runbooks                                                     |
 | `docs/security/`     | `README.md`                             | Security overview                                                        |
 | `docs/workflows/`    | `README.md`                             | Workflow patterns                                                        |
+
+---
+
+## In-repo historical
+
+Audited and tagged Historical under doc-discipline protocol §9 + §13. Preserved for traceability; do not cite as current truth.
+
+| Doc                                                         | Tagged Historical      | Note                                                                                            |
+| ----------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------- |
+| `docs/plans/2026-05-09-phase-c-wave-1-calendar.md`          | Phase B.1 (2026-05-12) | Wave 1 shipped + merged; no successor                                                           |
+| `docs/plans/2026-05-09-phase-c-wave-2a-vertical-slice.md`   | Phase B.1 (2026-05-12) | Wave 2a shipped + merged; no successor                                                          |
+| `docs/plans/2026-05-09-phase-c-wave-4a-mobile-chat-plan.md` | Phase B.1 (2026-05-12) | Replaced by `docs/plans/2026-05-09-phase-c-wave-4a-pro-plan.md` within Wave 4a era              |
+| `docs/plans/2026-05-09-phase-c-wave-4a-pro-plan.md`         | Phase B.1 (2026-05-12) | Replaces `docs/plans/2026-05-09-phase-c-wave-4a-mobile-chat-plan.md`; Wave 4a-PRO shipped       |
+| `docs/plans/2026-05-10-phase-c-wave-4b-phase-1-detailed.md` | Phase B.1 (2026-05-12) | Sub-plan of `docs/plans/2026-05-10-phase-c-wave-4b-chat-completion.md`; Phase 1 commits shipped |
 
 ---
 

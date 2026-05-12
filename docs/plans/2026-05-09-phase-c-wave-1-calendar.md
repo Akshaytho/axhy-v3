@@ -1,3 +1,15 @@
+---
+Status: Historical
+Last validated against code: 2026-05-12
+Validated branch: feat/phase-c-wave-4b-chat-completion
+Validated commit: 49bc079
+Primary owner: founder (Akshay Thota)
+Replaces: nothing — first-version
+Replaced by: nothing — historical record only
+---
+
+> **Historical record.** Preserved for traceability. Do not use for current implementation decisions. See `docs/index/canonical-truth.md` for the active doc tree.
+
 # Phase C Wave 1 — CalendarEntry vertical slice — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -1591,12 +1603,10 @@
         return;
       }
       if (out.kind === 'NOT_IMPLEMENTED') {
-        reply
-          .code(501)
-          .send({
-            error: 'NOT_IMPLEMENTED',
-            message: 'Only assignment target supported in Wave 1',
-          });
+        reply.code(501).send({
+          error: 'NOT_IMPLEMENTED',
+          message: 'Only assignment target supported in Wave 1',
+        });
         return;
       }
       reply.code(200).send({

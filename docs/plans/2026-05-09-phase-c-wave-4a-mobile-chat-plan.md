@@ -1,3 +1,15 @@
+---
+Status: Historical
+Last validated against code: 2026-05-12
+Validated branch: feat/phase-c-wave-4b-chat-completion
+Validated commit: 49bc079
+Primary owner: founder (Akshay Thota)
+Replaces: nothing — first-version
+Replaced by: docs/plans/2026-05-09-phase-c-wave-4a-pro-plan.md
+---
+
+> **Historical record.** Preserved for traceability. Do not use for current implementation decisions. See `docs/index/canonical-truth.md` for the active doc tree.
+
 # Phase C Wave 4a — Supervisor mobile chat tab MVP — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
