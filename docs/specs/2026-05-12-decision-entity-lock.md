@@ -1,14 +1,14 @@
 ---
-Status: Draft
+Status: Active
 Last validated against code: 2026-05-12
 Validated branch: feat/phase-c-wave-4b-chat-completion
-Validated commit: 63c1dbe
+Validated commit: 2cd82c8
 Primary owner: founder (Akshay Thota)
 Replaces: nothing — first-version
-Replaced by: nothing — current draft
+Replaced by: nothing — current Active
 ---
 
-> **DRAFT.** This spec is pending pressure-test review by the external advisor and panel critique. Do not implement yet. Status flips to **Active** once review is complete and founder approves.
+> **Active 2026-05-12.** Locked after the Phase B revision arc (multi-round advisor pressure-test + 5-voice panel critiques). Lifecycle, schema, and 14 resolved R6 §4 contradictions are authoritative for v3.0 launch. Implementation work (P1 schema migration onward) gated on Phase D approval per project workflow. Listed as **Active but contract-incomplete** in `docs/index/canonical-truth.md` — several launch gaps named in §2.7, §2.8, §2.9, §2.10, §2.11 out-of-scope sections.
 
 # Phase D Lock #1 — Decision Entity Model
 
