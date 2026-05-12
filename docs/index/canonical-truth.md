@@ -53,6 +53,7 @@ Specs landed in repo but not yet promoted to Active. Implementation should not b
 | `docs/specs/2026-05-12-decision-entity-lock.md`        | Awaiting external advisor + panel approval (pressure-tested 2026-05-12, revised through multiple rounds) | Path 2 Decision entity model + lifecycle. When Active, becomes Phase D lock #1. R6 contradictions catalogue (see R6 spec §4) provides 15 inputs for the next revision. |
 | `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` | Awaiting evidence-grounded review (iteration trail: r3 → r4 → r5 → r6 in claude.ai/design)               | When Active, supersedes R3. Catalogues 15 contradictions vs Decision entity lock; resolution is a separate planning step.                                              |
 | `docs/prototypes/supervisor-mobile-r6/`                | Companion artifact to the Draft R6 spec                                                                  | Frozen design prototype bundle (16 JSX/CSS/HTML/data files + README + IMPLEMENTATION_WARNING). Do not import into `apps/*`.                                            |
+| `docs/specs/2026-05-12-hr-updates-spec.md`             | Awaiting external advisor + panel approval (drafted 2026-05-12 from R6 contradiction #11)                | HR Updates route surface + notification fan-out + audience model + launch policy. Companion to D.1 §2.5 + §2.9. When Active, addresses R6 §4 row #11 fully.            |
 
 ## Unaudited — needs Phase B status pass
 
