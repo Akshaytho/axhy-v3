@@ -255,6 +255,7 @@ No per-rule view event tracking at launch. Audit log only emits:
 - Doc discipline: `docs/protocols/doc-discipline.md`
 - Canonical index: `docs/index/canonical-truth.md`
 - R6 contradiction #11 (which this Draft addresses; full Resolution waits on this spec flipping Active)
+- Product framing (Draft): `docs/specs/2026-05-13-product-framing.md` §13 — clarifying product-framing under review on HR ack as primarily operational attention / context-loading (compliance evidence secondary). Does not yet govern this spec; ack semantics here remain authoritative until that Draft is promoted to Active.
 
 ## 10. Out-of-scope / known launch gaps
 

@@ -139,6 +139,7 @@ R6 design surfaces a **strong case to CUT Phase D lock #6** (`Membership.delegat
 - Decision entity lock (Draft, needs revision per §4 contradictions): [`docs/specs/2026-05-12-decision-entity-lock.md`](2026-05-12-decision-entity-lock.md)
 - Prototype bundle: [`docs/prototypes/supervisor-mobile-r6/`](../prototypes/supervisor-mobile-r6/)
 - R3 (still Active pending review of this Draft): [`docs/specs/2026-05-11-supervisor-mobile-r3-design.md`](2026-05-11-supervisor-mobile-r3-design.md)
+- Product framing (Draft): [`docs/specs/2026-05-13-product-framing.md`](2026-05-13-product-framing.md) — clarifying product-framing under review (supervisor operating brain, three layers of truth, low-UI rule). Does not yet govern this spec; surface-expression of today/tomorrow/week capabilities is captured there as a framing gap, not as a new R6 §4 contradiction.
 - ADR-0006 (XState v5): governs Decision entity lifecycle machine
 - ADR-0021 (single mobile app): basis for Android variant drop
 - 2026-05-08 founder-lock: backup-supervisor mode removed (no formal ADR yet — should be written if lock #6 is cut)

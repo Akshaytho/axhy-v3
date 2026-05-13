@@ -182,6 +182,8 @@ Both `BAD_INPUT` (malformed token, unknown kind) and `TENANT_CONTEXT_MISMATCH` (
 
 - The AI tool-use loop may, in a separate code path, resolve specific past decisions when the supervisor's utterance EXPLICITLY references one (e.g., "undo yesterday's leave for Bipul"). That is an AI-level reference resolution distinct from the intent-token path. To be specified when the corresponding `propose_undo_*` tool surface is designed — out of scope for this lock.
 
+See `docs/specs/2026-05-13-product-framing.md` §6 (Draft) for clarifying product-framing on the consequence-awareness contract for `propose_*` tools (`consequences[]` emission, `refs[]` grounding). That Draft does not yet govern this spec.
+
 ### 2.8 ReplacementInvite (separate entity)
 
 **Resolved per Phase B revision 2026-05-12, contradiction #13 path A.**
@@ -276,6 +278,8 @@ All terminal states are end states; no further transitions. Enforced by an XStat
 - Real-time supervisor UI during 2-min wait — design decision, not contract.
 - ON SHIFT candidate accepting + auto-emitting a swap/handoff decision — forward-coupling, separate spec when `propose_swap` / `propose_shift_handoff` are designed.
 - When `parentDecisionId` is set and the invite expires, does the parent `DecisionWorkspaceItem` get a `SYSTEM`-source follow-on decision row? **This is a follow-on effect, NOT part of `ReplacementInvite`'s core entity** (per advisor caution). Resolution deferred to whichever spec owns SYSTEM-source decision triggers.
+
+See `docs/specs/2026-05-13-product-framing.md` §14 (Draft) for clarifying product-framing on serial-invite-only as an intentional launch simplification with a named revisit trigger (median replacement time > 6 minutes sustained for 2+ weeks across 5+ tenants). That Draft does not yet govern this spec.
 
 ### 2.9 HR Updates: digest pattern (parent + child rule entries)
 
@@ -504,6 +508,8 @@ R6's grouping condition (`tier === 'employment' || tier === 'review_required'`) 
 - **`payload.options[]` strict schema validation** beyond minimum (≥2 options, each with `id + label + optional subPayload`) — implementation enforces.
 - **AI tool surface** for emitting `needsReview` decisions (specific tool definitions like `propose_disambiguate_worker`) — part of the chat tool inventory work, not this lock.
 - **Sequential `needsReview → ackRequired` flow** for ambiguous EMPLOYMENT cases — described as a HOW above; the actual state-machine sequencing/automation is a future spec.
+
+See `docs/specs/2026-05-13-product-framing.md` (Draft) for clarifying product-framing on option-picker decisions as part of the broader Decision lifecycle and AI tool surface. That Draft does not yet govern this spec.
 
 ## 3. Acceptance criteria (from external advisor review, 2026-05-12)
 
