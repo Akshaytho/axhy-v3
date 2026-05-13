@@ -1,5 +1,5 @@
 ---
-Status: Draft
+Status: Active
 Last validated against code: 2026-05-13
 Validated branch: feat/phase-c-wave-4b-chat-completion
 Validated commit: c11fb68
@@ -11,15 +11,23 @@ Replaces: nothing — first-version
 
 This document captures the binding product interpretation that all v3 supervisor-app implementation work must anchor against. It exists to prevent implementation drift away from the product as it has been understood across the R3 → R6 design arc and the D.1 / HR Updates / Wave-4b chat lock-in.
 
-While this doc is **Draft**, downstream Active specs (D.1, R6, HR Updates) MAY reference it for clarification but MUST NOT be considered subordinate to it. Conflicts during Draft are resolved in favour of the Active spec. After promotion to Active, the framing becomes binding and Active specs will be cross-referenced explicitly.
+This doc is **Active but contract-incomplete** (per `docs/index/canonical-truth.md`). It governs product framing across the supervisor app: downstream specs MUST align with the principles named here unless a principle is explicitly relocked by a later spec.
+
+This framing does **not** replace the authority of downstream specs over their own domains:
+
+- `docs/specs/2026-05-12-decision-entity-lock.md` (D.1) still owns the decision-entity contract shape, schema, lifecycle, and writers.
+- `docs/specs/2026-05-12-supervisor-mobile-r6-design.md` (R6) still owns the supervisor mobile surface design (5 tabs, 2 secondary surfaces, 5 sub-screens, contradiction catalogue).
+- `docs/specs/2026-05-12-hr-updates-spec.md` (HR Updates) still owns the HR route surface, notification fan-out, audience model, and HR-launch policy details.
+
+The framing governs principles; downstream specs govern contracts. Where a principle and a contract appear to conflict, consult the contract spec first to clarify scope before assuming the framing has been violated.
 
 ## §1 Status
 
-Draft. Lifecycle:
+**Active but contract-incomplete** (per `docs/index/canonical-truth.md`). Promoted 2026-05-13 after panel review of all 20 sections.
 
-1. Draft 1 (this commit) — full text, including embedded mandatory sections for the 5 weaknesses surfaced in panel review on 2026-05-13.
-2. Review pass — separate session; resolve any panel-raised clarifications.
-3. Promotion to Active — separate atomic commit propagating cross-references into D.1 / R6 / HR Updates.
+Core principles (§§3–§18) are authoritative. §20 names deferred implementation/detail follow-ups that do NOT reopen the core principles.
+
+Existing soft cross-references in D.1 / R6 / HR Updates (commit `d48dafb`) remain soft and informational. Tightening or rewriting those references is a separate downstream decision; this promotion does not propagate stronger language into Active specs.
 
 ## §2 Why this doc exists
 
@@ -322,7 +330,9 @@ For any future spec / plan / R-version touching the supervisor app, panel must a
 
 ## §20 Open / deferred
 
-Items raised in panel review on 2026-05-13 that need explicit decisions but do not block Draft 1:
+**These deferred items do not reopen the core product principles in §§3–§18.** They are implementation/detail follow-ups under the framing — not reasons to weaken the framing itself.
+
+Items raised in panel review on 2026-05-13 that need explicit decisions but do not block Active promotion:
 
 - **Cache invalidation contract for Layer B.** Allowed but unspecified. Need explicit "every Layer A write of kind X invalidates Layer B keys Y, Z" mapping before Wave 4c.
 - **Anti-coercion clause for HR ack quality.** Initial 5+ word gate; revisit at 30-day usage review. Specify measurement (content entropy? word overlap with rule body?).
