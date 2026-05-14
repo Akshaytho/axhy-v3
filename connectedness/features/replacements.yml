@@ -1,0 +1,49 @@
+feature: replacements
+status: active-but-contract-incomplete
+description: ReplacementInvite serial-invite flow — one invite at a time, 2-min TTL, retry same/next worker.
+
+owns:
+  tables:
+    - ReplacementInvite # new in P1
+  state_machines:
+    live: []
+    planned:
+      - packages/state-machines/src/replacement-invite.ts # P2 per D.1 §2.8
+
+routes:
+  live: []
+  planned:
+    - POST /replacement-invites # supervisor sends invite
+    - POST /replacement-invites/:id/accept # candidate accepts (TTL check + idempotent)
+    - POST /replacement-invites/:id/reject # candidate rejects
+    - POST /replacement-invites/:id/cancel # supervisor cancels mid-2-min
+    - GET /replacement-invites # supervisor's pending invites
+
+ui:
+  surfaces:
+    - Today # site card menu trigger ("Find replacement" → ReplacementPicker)
+    - Decisions # row-level trigger (absent worker → spawn invite)
+  prototypes:
+    - docs/prototypes/supervisor-mobile-r6/project/src/replacement-picker.jsx
+
+packages:
+  - packages/shared-schema
+  - packages/state-machines
+
+specs:
+  - docs/specs/2026-05-12-decision-entity-lock.md # D.1 §2.8 — ReplacementInvite separate entity
+  - docs/specs/2026-05-13-product-framing.md # §14 — serial replacement as intentional simplification
+
+tests:
+  live: []
+  planned:
+    - apps/backend/test/schema/phase-d-p1.test.ts # P1 schema-safety tests
+    - apps/backend/test/replacement-invites/**/*.test.ts # P2 route tests
+
+affects:
+  # Invite outcomes cascade into:
+  - decisions # accept/reject/expire emit follow-on Decision rows per D.1 §2.8
+  - audit # REPLACEMENT_INVITE_SENT/ACCEPTED/REJECTED/EXPIRED/CANCELLED audit events
+  - notifications # candidate-notification fan-out + 2-min TTL cron sweep (P3) via Outbox
+
+external_references: []
