@@ -134,6 +134,8 @@ All terminal states (APPLIED-then-UNDONE, FAILED, DISMISSED, EXPIRED) are end st
 
 **FAILED transitions** can originate from any apply attempt (`CHAT`, `HR`, `SYSTEM`, `MANUAL`) — when domain validation rejects, the writer route catches the rejection and updates the row to `FAILED` with the typed `failureReason`.
 
+**Supervisor responsibility (cross-ref).** When a writer stamps `supervisorId` on a new DWI row, the value is derived from the active `SiteSupervisorBinding` per `docs/specs/2026-05-14-supervisor-responsibility-model.md` (Active but contract-incomplete). Two concerns separated in that model: (1) origin attribution — the supervisor at row-creation time, written here and immutable; (2) current responsibility routing for open `PROPOSED` rows — computed read-time via JOIN against the binding table, not stored. See that model §7(ii.a) and §5.4.
+
 ### 2.6 Reads
 
 | Surface                 | Query                                                                                                                                                                                                                                                                                                                                                                                                              |
