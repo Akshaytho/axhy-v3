@@ -302,6 +302,8 @@ The following are binding once this framing is Active. Listed here for visibilit
 9. No new tabs without panel + founder approval.
 10. Agent invocations capped per supervisor per day with idempotency keys.
 
+**Supervisor responsibility (cross-ref).** Supervisor identity vs site responsibility is governed by `docs/specs/2026-05-14-supervisor-responsibility-model.md` (Active but contract-incomplete). That model's locked picks — Option A single-table `SiteSupervisorBinding`, read-time routing computation, admin-web HR control plane — are binding on any feature touching supervisor routing. Account sharing as an absence workaround is forbidden (see that model §6).
+
 ## §18 Anti-patterns
 
 Refuse these in code review and panel:
