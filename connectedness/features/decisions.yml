@@ -1,0 +1,66 @@
+feature: decisions
+status: active-but-contract-incomplete
+description: Decision Workspace lifecycle — the launch decision entity for every supervisor-facing decision.
+
+owns:
+  tables:
+    - DecisionWorkspaceItem # new in P1
+  state_machines:
+    live: []
+    planned:
+      - packages/state-machines/src/decision-workspace-item.ts # P2 per D.1 §2.4
+
+routes:
+  live: []
+  planned:
+    - POST /decisions/:id/apply
+    - POST /decisions/:id/dismiss
+    - GET /decisions
+    - GET /activity # joins DWI + AuditEvent via (companyId, targetType, targetId) per D.1 §2.6
+
+ui:
+  surfaces:
+    - Today # urgency banner + worker-row amend flow
+    - Decisions # primary tab; tier-grouped sections + option picker + typed-phrase ack
+    - Activity # terminal states (UNDONE / DISMISSED / FAILED / EXPIRED)
+    - Chat # decisions emitted from chat-extraction writer
+  prototypes:
+    - docs/prototypes/supervisor-mobile-r6/project/src/today.jsx
+    - docs/prototypes/supervisor-mobile-r6/project/src/decisions.jsx
+    - docs/prototypes/supervisor-mobile-r6/project/src/activity.jsx
+    - docs/prototypes/supervisor-mobile-r6/project/src/chat.jsx
+    - docs/prototypes/supervisor-mobile-r6/project/src/termination-screen.jsx
+    - docs/prototypes/supervisor-mobile-r6/project/src/multi-day-leave-screen.jsx
+
+packages:
+  - packages/shared-schema
+  - packages/state-machines
+  - packages/ai-tools
+
+specs:
+  - docs/specs/2026-05-12-decision-entity-lock.md # D.1 (Active but contract-incomplete)
+  - docs/specs/2026-05-12-supervisor-mobile-r6-design.md # R6 surface
+  - docs/specs/2026-05-13-product-framing.md # supervisor operating brain (Active but contract-incomplete)
+
+tests:
+  live: []
+  planned:
+    - apps/backend/test/schema/phase-d-p1.test.ts # P1 schema-safety tests (lands with P1 migration)
+    - apps/backend/test/decisions/**/*.test.ts # P2 route tests
+
+affects:
+  # Accepting a decision causally writes rows in these features:
+  - attendance # MARK_ABSENT decisions write Attendance via accept
+  - replacements # decisions can spawn ReplacementInvite
+  - audit # every DWI state transition writes AuditEvent
+
+external_references:
+  - name: leaves
+    why: APPROVE_LEAVE decisions write LeaveRequest via accept route (P2)
+    iteration: 3
+  - name: swaps
+    why: INITIATE_SWAP decisions write SwapRequest via accept route (P2)
+    iteration: 3
+  - name: living-doc
+    why: UPDATE_LIVING_DOC decisions write LivingDoc via accept route (P2)
+    iteration: 3

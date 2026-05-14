@@ -1,0 +1,49 @@
+feature: notifications
+status: active-but-contract-incomplete
+description: Outbox-based dispatch substrate — push tokens, fan-out for HR + replacements + payroll + AI verification.
+
+owns:
+  tables:
+    - Outbox # transactional outbox table — every side-effect intent enqueues here
+    - Device # per-User push subscription tokens (used for HR + invite push at launch)
+  state_machines:
+    live: []
+    planned: []
+
+routes:
+  live: []
+  planned: []
+  # No HTTP routes today; notifications is a server-internal dispatch substrate.
+  # `apps/backend/src/lib/outbox.ts` is the enqueue helper used inside other
+  # features' transactions; `apps/backend/src/dispatcher/` is the drain process.
+  # Future admin-web visibility into queued/failed jobs lands as planned routes
+  # when that feature is built (Iteration 3+).
+
+ui:
+  surfaces: []
+  prototypes: []
+
+packages:
+  - packages/shared-schema
+
+specs:
+  - docs/specs/2026-05-12-hr-updates-spec.md # §3 fan-out semantics (push-only at launch)
+  - docs/specs/2026-05-12-decision-entity-lock.md # §2.8 ReplacementInvite TTL + dispatcher cron
+
+tests:
+  live:
+    - apps/backend/test/outbox-dispatcher.test.ts # moved from audit.yml — Outbox dispatch behaviour
+    - apps/backend/test/owner-budget-outbox.test.ts # moved from audit.yml — owner-budget alert via Outbox
+  planned: []
+
+affects:
+  # Notification writes (dispatch attempts, retries) emit audit events.
+  - audit
+
+external_references:
+  - name: gupshup
+    why: WhatsApp send via Gupshup dispatcher handler (apps/backend/src/dispatcher/handlers/gupshup.ts) — external SaaS integration, not a manifest-mapped feature
+    iteration: 3
+  - name: payroll
+    why: Payroll recompute is a dispatcher consumer of Outbox topics (apps/backend/src/dispatcher/handlers/payroll.ts); no payroll.yml manifest yet
+    iteration: 3

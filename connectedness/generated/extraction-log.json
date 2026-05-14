@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-05-14T10:09:40.395Z",
+  "extractors": [
+    {
+      "name": "prisma-fields",
+      "nodeCount": 335,
+      "edgeCount": 312,
+      "warnings": []
+    },
+    {
+      "name": "fastify-routes",
+      "nodeCount": 15,
+      "edgeCount": 0,
+      "warnings": []
+    },
+    {
+      "name": "edges-reads-writes",
+      "nodeCount": 0,
+      "edgeCount": 273,
+      "warnings": []
+    },
+    {
+      "name": "migrations",
+      "nodeCount": 7,
+      "edgeCount": 36,
+      "warnings": []
+    },
+    {
+      "name": "manifests",
+      "nodeCount": 10,
+      "edgeCount": 70,
+      "warnings": []
+    }
+  ]
+}

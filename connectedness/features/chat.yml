@@ -1,0 +1,60 @@
+feature: chat
+status: active-but-contract-incomplete
+description: AI chat surface — message capture, extraction, tool-loop, cost-ceiling enforcement.
+
+owns:
+  tables:
+    - ChatThread
+    - ChatMessage
+    - ChatRequestLog
+  state_machines:
+    live: []
+    planned: []
+
+routes:
+  live:
+    - POST /chat/messages # supervisor sends a chat turn
+    - POST /chat/apply # legacy: apply a chat-emitted DecisionCard (pre-DWI; P2 reshapes around DWI)
+  planned: []
+
+ui:
+  surfaces:
+    - Chat # primary tab; voice + messy input
+  prototypes:
+    - docs/prototypes/supervisor-mobile-r6/project/src/chat.jsx
+
+packages:
+  - packages/shared-schema
+  - packages/ai-tools # tool-loop + propose_* tool definitions live here
+
+specs:
+  - docs/specs/2026-05-09-phase-c-spec-2-ai-chat-design.md # Active but contract-incomplete; chat-as-primary framing obsolete
+  - docs/specs/2026-05-12-supervisor-mobile-r6-design.md # R6 chat tab
+  - docs/specs/2026-05-13-product-framing.md # §6 consequences contract; §10 grounding rule; §8 agent budget
+
+tests:
+  live:
+    - apps/backend/test/chat-create-message.test.ts
+    - apps/backend/test/chat-tool-loop.test.ts
+    - apps/backend/test/chat-batch.test.ts
+    - apps/backend/test/chat-conflict.test.ts
+    - apps/backend/test/chat-cost-ceiling.test.ts
+    - apps/backend/test/chat-leave.test.ts
+    - apps/backend/test/chat-mark-absent.test.ts
+    - apps/backend/test/chat-swap.test.ts
+    - apps/backend/test/chat-termination.test.ts
+    - apps/backend/test/cross-tenant-chat.test.ts
+  planned: []
+
+affects:
+  # Chat writes cascade into:
+  - decisions # CHAT is one of 4 writer kinds for DecisionWorkspaceItem (D.1 §2.5)
+  - audit # CHAT_TURN audit events
+
+external_references:
+  - name: complaints
+    why: Chat may surface complaints (e.g., "log a complaint about Site X") which write to Complaint table
+    iteration: 3
+  - name: living-doc
+    why: UPDATE_LIVING_DOC decisions emitted from chat write to LivingDoc
+    iteration: 3

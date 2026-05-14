@@ -13,6 +13,8 @@ export type {
   NodeKind,
   EdgeKind,
   Metadata,
+  NodeRecord,
+  EdgeRecord,
   ExtractorOutput,
   ExtractorContext,
   Extractor,

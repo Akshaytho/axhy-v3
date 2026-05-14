@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-05-14T10:09:40.394Z",
+  "claimed": {
+    "Assignment": {
+      "owner": "assignments",
+      "provisional": false
+    },
+    "CalendarEntry": {
+      "owner": "assignments",
+      "provisional": false
+    },
+    "Attendance": {
+      "owner": "attendance",
+      "provisional": false
+    },
+    "AuditEvent": {
+      "owner": "audit",
+      "provisional": false
+    },
+    "ChatThread": {
+      "owner": "chat",
+      "provisional": false
+    },
+    "ChatMessage": {
+      "owner": "chat",
+      "provisional": false
+    },
+    "ChatRequestLog": {
+      "owner": "chat",
+      "provisional": false
+    },
+    "DecisionWorkspaceItem": {
+      "owner": "decisions",
+      "provisional": false
+    },
+    "HRUpdate": {
+      "owner": "hr-updates",
+      "provisional": false
+    },
+    "HRUpdateRule": {
+      "owner": "hr-updates",
+      "provisional": false
+    },
+    "User": {
+      "owner": "identity",
+      "provisional": false
+    },
+    "Membership": {
+      "owner": "identity",
+      "provisional": false
+    },
+    "Worker": {
+      "owner": "identity",
+      "provisional": false
+    },
+    "Site": {
+      "owner": "identity",
+      "provisional": false
+    },
+    "Outbox": {
+      "owner": "notifications",
+      "provisional": false
+    },
+    "Device": {
+      "owner": "notifications",
+      "provisional": false
+    },
+    "ReplacementInvite": {
+      "owner": "replacements",
+      "provisional": false
+    },
+    "Company": {
+      "owner": "tenancy",
+      "provisional": false
+    }
+  },
+  "orphans": [
+    "Complaint",
+    "LeaveRequest",
+    "LivingDoc",
+    "OtpAttempt",
+    "SupervisorDecision",
+    "SwapRequest",
+    "Visit",
+    "VisitPhoto"
+  ],
+  "provisional": []
+}
