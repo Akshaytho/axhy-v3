@@ -20,24 +20,26 @@
 
 ## Currently awaiting approval
 
-### Slice: `chat-writes-proposed-decisions` (F-002 — round-3 fixes complete) — AWAITING_APPROVAL 2026-05-16
+### Slice: `same-day-supervisor-freeze` (S-001 — spec lock decision) — AWAITING_SPEC_LOCK 2026-05-16
 
-**Problem in simple English:** chat path accepted invalid input the direct route rejected (P1) + the stale-auth proof was writer-level not route-level (P2).
+**Problem in simple English:** HR can switch a site's supervisor at any moment of the day. F-002 round-2 + round-3 had to engineer around the resulting stale-authority race (atomic preCheck + service + commitApply re-check inside one tx + deterministic test hook). All of that complexity exists only because responsibility can change mid-day — a rare operational edge case.
 
-**Simplest business solution:** chat uses same Zod schemas as direct routes (single source). Stale-auth race tested deterministically via a test-only hook (no production impact).
+**Simplest business rule:** Once the day starts, today's supervisor ownership is frozen. HR cannot change today's supervisor in the system. Any supervisor change starts tomorrow at tenant-local midnight. Same-day emergencies are handled operationally (phone, WhatsApp, the existing acting cover relationship), not by mutating system ownership for today. No account sharing.
 
-**Code fix:**
+**Code (only after spec lock):** one Zod refine in the HR binding-create service rejecting `effectiveFrom < tomorrow-midnight-tenant-local` with 400 BAD_INPUT. Same check on `reassignPermanentBinding`. Two tests (HR same-day → 400; existing routing unchanged for permanent + future-dated bindings).
 
-- `5972881` — R3.1: re-add strict Zod parsing in `/chat/apply` for mark_absent / leave / swap. New `chat-apply-validation.test.ts` with 4 regression-prevention cases (incl. the headline self-swap case friend flagged).
-- `990b96e` — R3.2-a: test-only hook `__setCommitApplyTestHook` in `commitApply` (env-gated on `NODE_ENV === 'test'`; production no-op). New `chat-apply-stale-auth-route.test.ts` with 2 cases (race scenario via `app.inject` + control case proving the hook is opt-in).
+**Why this matters before code:** the rule lands in TWO specs (responsibility model + closure spec). Once specs are locked, the code is small and obvious. Per rule 25: simplify the business rule first, engineer the simpler system second. F-002's atomicity + auth re-check stay as defense-in-depth (cost nothing now, remain correct if the policy ever loosens).
 
-**Why this code is necessary:** without R3.1, chat path and direct route disagreed on the same input — rule-25 violation. Without R3.2-a, the route-level proof of stale-auth safety was claimed but unproven.
+**Specs that need locking:**
 
-**Verification:** REAL_DB on fresh local Postgres 16, all 12 migrations. **15/15 test files green · 75/75 cases pass** in one sweep. Reproduction snippet in `active-slice.md`.
+- `axhy-v3/docs/specs/2026-05-14-supervisor-responsibility-model.md` — new pick alongside the existing 9.
+- `axhy-v3/docs/specs/2026-05-15-workflow-design-closure.md` — reflect the simplification (round-2 atomicity stays as defense-in-depth, not primary mechanism).
 
-**Round-3 commits:** `c8c34b3` (rule 25 lock + approval propagation, no code) · `5972881` (R3.1) · `990b96e` (R3.2-a).
+**Wording draft (single source for both specs):**
 
-**Decision needed:** APPROVED / CHANGES_REQUESTED / HOLD. If APPROVED → F-002 moves to APPROVED and S-001 becomes the next slice (spec lock first).
+> Same-day supervisor-freeze policy (S-001 lock, 2026-05-16). Once the day has started in the tenant's local timezone, the supervisor responsible for each site is frozen for the remainder of that day. HR can create or end SiteSupervisorBinding rows only with `effectiveFrom >= tomorrow-midnight-tenant-local`. Same-day emergencies are handled operationally (phone, WhatsApp, the existing acting cover relationship for absent supervisors), not by mutating system ownership for today. No account sharing. The atomicity + auth-re-check protections inside `/chat/apply` (F-002 round 2 + round 3) remain in place as defense-in-depth and are correct even if this policy is ever loosened.
+
+**Decision needed:** `SPEC LOCK APPROVED` / `CHANGES_REQUESTED on wording` / `HOLD`. If APPROVED → spec wording lands in both specs in one commit batch, then S-001 code (Zod refine + 2 tests) lands in a second commit.
 
 ---
 
@@ -379,6 +381,21 @@ _None._
 ---
 
 ## Recently approved (last 5)
+
+### Slice: `chat-writes-proposed-decisions` (F-002 — round-3 fixes) — APPROVED 2026-05-16
+
+- **Status:** `APPROVED`
+- **Branch:** `feat/layer-1-core-primitives`
+- **Last landed commit at approval:** `12c1df6` — `docs(handoff): F-002 round-3 fixes complete → AWAITING_APPROVAL (F-002.20, 15 files / 75 cases green)`
+- **Round-3 commits (oldest → newest):** `c8c34b3` (rule 25 lock + round-3 approval propagation) · `5972881` (R3.1 strict Zod parsing in /chat/apply + 4 validation regression tests) · `990b96e` (R3.2-a env-gated test-only hook in commitApply + deterministic route-level stale-auth proof + 2 tests).
+- **Approval received:** Friend's file-grounded verification pass at HEAD `12c1df6`. Verbatim: "I checked the actual repo at HEAD 12c1df6 · Round-3 closes the 2 smaller mistakes · I do not have any new blocking findings · P1 is really fixed · P2 is really fixed enough for approval · handoff/control state is consistent · Decision: APPROVED."
+- **Friend's verification limitation noted (not gating):** could not personally rerun the 2 new Vitest files in their verification shell because pnpm wasn't on PATH; code changes, tests, and control-surface state all line up.
+- **Friend's directive on approval:** mark F-002 APPROVED in canonical files · regenerate outputs · close F-002 · surface S-001 as a separate policy/spec slice · from next update onward, keep the format simple (Problem → Simplest business rule → Code only if needed → Why that code is necessary).
+- **Both findings closed:**
+  - **P1 (validation regression)** — R3.1 / `5972881`. Chat path imports + parses the same Zod schemas the direct routes use (`MarkAbsentInput`, `CreateLeaveRequestInput`, `CreateSwapRequestInput`). 4 regression cases incl. the headline self-swap → 400.
+  - **P2 (route-level stale-auth proof)** — R3.2-a / `990b96e`. Env-gated test-only hook in `commitApply` (production no-op) lets tests inject a binding change between preCheck and commit. Route-level 403 + row PROPOSED + no Attendance + no DWI_APPLIED.
+- **Verification at approval:** REAL_DB on fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432, all 12 migrations applied). 15/15 test files green · 75/75 cases pass in one sweep.
+- **Deferred (per friend's approval):** S-001 same-day-supervisor-freeze stays as a separate policy/spec slice (spec lock first, then code). F-002 closes here.
 
 ### Scope approval: `F-002` — APPROVED 2026-05-15 evening
 

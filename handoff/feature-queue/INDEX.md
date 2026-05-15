@@ -48,6 +48,18 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **expected verification gate:** `REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).
 - **status:** `APPROVED` (friend's file-grounded verification 2026-05-15 evening; WIP-split deviation accepted; ready to be marked DONE once branch merges to main).
 
+### S-001 — Same-day supervisor-freeze policy
+
+- **id:** S-001
+- **title:** Once-the-day-starts supervisor ownership is frozen; HR binding-create rejects same-day effectiveFrom
+- **why:** Eliminates the stale-authority race at the source rather than engineering around it (rule 25 — policy-first / no unnecessary complexity). F-002 round-2 + round-3 already cover the race as defense-in-depth; this slice makes the race impossible by construction.
+- **depends on:** F-002 (APPROVED 2026-05-16) — dependency met. Spec lock in `2026-05-14-supervisor-responsibility-model.md` + `2026-05-15-workflow-design-closure.md` must land before code.
+- **personas touched:** Kavitha (HR, gated at API layer), Ravi (originator, no behavior change for him), Lakshmi/Anjali (acting binding flows shift to next-day-effective).
+- **workflows touched:** F26 (acting binding create), F27 (permanent reassign).
+- **entities/routes/tables touched:** HR binding-create + `reassignPermanentBinding` services (Zod refine on `effectiveFrom` ≥ tomorrow-midnight-tenant-local). No schema change. No new entity.
+- **expected verification gate:** `REAL_DB` (2 new tests: HR same-day rejected → 400; existing routing unchanged for permanent + future-dated bindings).
+- **status:** `QUEUED` (dependency open: spec wording must be locked by owner + friend in both specs before any code; no code until both locks land). See `handoff/owner-input/active-slice.md` for the wording draft.
+
 ### F-002 — D17 SupervisorDecision writer
 
 - **id:** F-002
@@ -58,7 +70,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `AWAITING_APPROVAL` (round-3 fixes complete; R3.1 validation regression closed + R3.2-a deterministic route-level stale-auth proof landed; 15/15 test files green, 75/75 cases). S-001 same-day-freeze still deferred to separate next slice.
+- **status:** `APPROVED` (friend's file-grounded verification 2026-05-16 at HEAD `12c1df6`; round-3 fixes closed both P1 + P2; 15/15 test files green, 75/75 cases pass; ready to be marked DONE once branch merges to main).
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 

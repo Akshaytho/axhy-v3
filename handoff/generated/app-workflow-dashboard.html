@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T19:56:32.659Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>990b96e1</code></span>
+      <span>Generated <strong>2026-05-15T20:25:32.607Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>12c1df6f</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
-      <span>Active slice: <strong>chat-writes-proposed-decisions (F-002 — round-3 fixes, R3.1 + R3.2-a) · AWAITING_APPROVAL</strong></span>
+      <span>Active slice: <strong>same-day-supervisor-freeze (S-001) · PLANNED — AWAITING_SPEC_LOCK (owner + friend lock the policy in the two specs before any code lands)</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>chat-writes-proposed-decisions</code> (F-002 — round-3 fixes, R3.1 + R3.2-a)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>990b96e</code> — <code>test(chat): R3.2-a — deterministic route-level stale-auth proof (fixes P2)</code></td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>same-day-supervisor-freeze</code> (S-001)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">PLANNED — AWAITING_SPEC_LOCK (owner + friend lock the policy in the two specs before any code lands)</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code> (continues from F-002; S-001 lands on top)</td></tr><tr><th>Last landed commit</th><td><code>12c1df6</code> — <code>docs(handoff): F-002 round-3 fixes complete → AWAITING_APPROVAL (F-002.20, 15 files / 75 cases green)</code> (F-002 closed APPROVED)</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — no code in flight</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — spec phase</span></td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -152,7 +152,7 @@
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
     
       <div class="approval">
-        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>chat-writes-proposed-decisions</code></strong></div>
+        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>same-day-supervisor-freeze</code></strong></div>
         
         
         
@@ -190,7 +190,7 @@
       <details class="feature">
         <summary>
           <code>F-002</code>
-          <span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span>
+          <span class="badge" style="background:#1e8e3e;color:#fff;">APPROVED</span>
           <strong>D17 SupervisorDecision writer</strong>
         </summary>
         <div class="feature-body">
@@ -300,6 +300,13 @@
       <thead><tr><th>When</th><th>Slice</th><th>Transition</th><th>Commit</th><th>Note</th></tr></thead>
       <tbody>
     <tr>
+      <td class="small">2026-05-16</td>
+      <td><code>chat-writes-proposed-decisions</code></td>
+      <td><code>AWAITING_APPROVAL → APPROVED</code></td>
+      <td><code>n/a (friend's approval; no commit)</code></td>
+      <td class="small">Friend's file-grounded verification at HEAD <code>12c1df6</code> cleared with no blocking findings. Verbatim: &quot;P1 is really fixed · P2 is really fixed enough for approval · handoff/control state is consistent · APPROVED.&quot; Verification limitation acknowledged (pnpm not on PATH in friend's shell, could not personally rerun the 2 new Vitest files); not gating. Friend's directive: close F-002, surface S-001 as separate policy/spec slice. F-002 ready to be marked DONE once branch merges to main.</td>
+    </tr>
+    <tr>
       <td class="small">2026-05-15 evening</td>
       <td><code>chat-writes-proposed-decisions</code></td>
       <td><code>CHANGES_REQUESTED → AWAITING_APPROVAL</code></td>
@@ -361,13 +368,6 @@
       <td><code>AWAITING_APPROVAL → APPROVED</code></td>
       <td><code>`03a1c22`</code></td>
       <td class="small">Friend's 5th file-grounded verification pass at HEAD <code>091c2a6</code> declared the slice trustworthy enough to lock. Verbatim: &quot;the control-loop slice is now trustworthy enough to lock.&quot; Rule 23 (confidence-score-before-acting) added post-approval in <code>03a1c22</code>.</td>
-    </tr>
-    <tr>
-      <td class="small">2026-05-15 evening</td>
-      <td><code>handoff-control-loop</code></td>
-      <td><code>WIP → AWAITING_APPROVAL</code></td>
-      <td><code>`b35748e`</code></td>
-      <td class="small">Friend's 3 second-pass bugs fixed: commit-truth renamed to <code>generated_against_head</code> + drift note added; active-slice hash-naming pinned to landed commits only; pending-approvals split AWAITING_APPROVAL vs BLOCKED. Slice now in AWAITING_APPROVAL state.</td>
     </tr></tbody>
     </table>
     <p class="source-link small">Source: <a href="../owner-input/change-history.md">handoff/owner-input/change-history.md</a>.</p>
