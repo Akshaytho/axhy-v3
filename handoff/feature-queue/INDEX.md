@@ -58,7 +58,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `CHANGES_REQUESTED` (round 3, plan APPROVED 2026-05-16) → implementing R3.1 + R3.2-a. S-001 same-day-freeze deferred to separate next slice after F-002 closes.
+- **status:** `AWAITING_APPROVAL` (round-3 fixes complete; R3.1 validation regression closed + R3.2-a deterministic route-level stale-auth proof landed; 15/15 test files green, 75/75 cases). S-001 same-day-freeze still deferred to separate next slice.
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 

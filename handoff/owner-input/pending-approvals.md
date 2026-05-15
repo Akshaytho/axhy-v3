@@ -20,7 +20,28 @@
 
 ## Currently awaiting approval
 
-### Slice: `chat-writes-proposed-decisions` (F-002 — round 3 review) — CHANGES_REQUESTED 2026-05-16
+### Slice: `chat-writes-proposed-decisions` (F-002 — round-3 fixes complete) — AWAITING_APPROVAL 2026-05-16
+
+**Problem in simple English:** chat path accepted invalid input the direct route rejected (P1) + the stale-auth proof was writer-level not route-level (P2).
+
+**Simplest business solution:** chat uses same Zod schemas as direct routes (single source). Stale-auth race tested deterministically via a test-only hook (no production impact).
+
+**Code fix:**
+
+- `5972881` — R3.1: re-add strict Zod parsing in `/chat/apply` for mark_absent / leave / swap. New `chat-apply-validation.test.ts` with 4 regression-prevention cases (incl. the headline self-swap case friend flagged).
+- `990b96e` — R3.2-a: test-only hook `__setCommitApplyTestHook` in `commitApply` (env-gated on `NODE_ENV === 'test'`; production no-op). New `chat-apply-stale-auth-route.test.ts` with 2 cases (race scenario via `app.inject` + control case proving the hook is opt-in).
+
+**Why this code is necessary:** without R3.1, chat path and direct route disagreed on the same input — rule-25 violation. Without R3.2-a, the route-level proof of stale-auth safety was claimed but unproven.
+
+**Verification:** REAL_DB on fresh local Postgres 16, all 12 migrations. **15/15 test files green · 75/75 cases pass** in one sweep. Reproduction snippet in `active-slice.md`.
+
+**Round-3 commits:** `c8c34b3` (rule 25 lock + approval propagation, no code) · `5972881` (R3.1) · `990b96e` (R3.2-a).
+
+**Decision needed:** APPROVED / CHANGES_REQUESTED / HOLD. If APPROVED → F-002 moves to APPROVED and S-001 becomes the next slice (spec lock first).
+
+---
+
+### Slice: `chat-writes-proposed-decisions` (F-002 — round 3 review, original CHANGES_REQUESTED) — superseded by AWAITING_APPROVAL above
 
 - **Status:** `CHANGES_REQUESTED` (round 3). Friend's review of the round-2 AWAITING_APPROVAL packet at HEAD `fe927b2` found 2 smaller bugs introduced BY the round-2 refactor. Separately, owner has proposed a business-rule simplification (same-day supervisor freeze) that pairs with the fixes. Round-2's core transaction design is right; the cleanup is at the edges (validation on the new path + one test that's still writer-level).
 - **Branch:** `feat/layer-1-core-primitives`

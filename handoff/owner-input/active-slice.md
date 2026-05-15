@@ -2,51 +2,65 @@
 
 > Exactly one slice in flight at any time. This file is the single source of truth for the dashboard's "Current slice focus" callout AND the page-header active-slice banner.
 
+## In simple English (format per friend's 2026-05-16 directive)
+
+**Problem (round 3):** chat path was accepting invalid input the direct route would reject (P1, friend caught self-swap as the headline example), AND the stale-authority proof only existed at the writer level (P2, not `/chat/apply` route).
+
+**Simplest business solution:** chat path uses the SAME schemas as direct routes (single source of validation truth). Stale-auth race tested by injecting the race deterministically via a test-only hook.
+
+**Code fix:** 2 commits — R3.1 (re-add Zod parsing in `/chat/apply`) + R3.2-a (test-only hook in `commitApply`, env-gated, production no-op).
+
+**Why this code is necessary:** without R3.1, chat and direct route disagreed on the same input — rule 25 violation (single source). Without R3.2-a, "the route is proven race-safe" was an unproven claim — friend's P2.
+
 ## Current
 
-| Field                                   | Value                                                                                                                                                                                                                                                                                                                                                                               |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**                          | `chat-writes-proposed-decisions` (F-002 — round-2 R2b-iii remediation)                                                                                                                                                                                                                                                                                                              |
-| **Status**                              | `CHANGES_REQUESTED` (round 3, plan APPROVED 2026-05-16) → implementing R3.1 (validation fix) + R3.2-a (test-only hook + route-level stale-auth proof). S-001 deferred to separate next slice. No more architecture changes in this round.                                                                                                                                           |
-| **Branch**                              | `feat/layer-1-core-primitives`                                                                                                                                                                                                                                                                                                                                                      |
-| **Last landed commit**                  | `92294f3` — `test(chat): atomicity verification — domain failure rolls back lifecycle (F-002.16)`                                                                                                                                                                                                                                                                                   |
-| **Round-1 (pre-remediation) commits**   | `a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146` (kept in tree; F-002.4's apply-after-domain trade-off superseded by round 2)                                                                                                                                                                                                                                  |
-| **Round-1 remediation commits**         | `f2b2d74` · `ec01f62` · `38b9987` · `2e03315` · `4506b3d` · `2557e1f` (registry + CHECK + race-safe writer + apply-after-domain + required decisionId + read-side registry + tests; F-002.4 superseded)                                                                                                                                                                             |
-| **Round-2 control-surface cleanup**     | `75b56f8` (removed superseded apply-after-domain trade-off wording from active-slice + pending-approvals)                                                                                                                                                                                                                                                                           |
-| **Round-2 fix commits (oldest→newest)** | `a1f6a2d` (F-002.9 termination reorder) · `c63a163` (F-002.10 auth re-check in commitApply) · `d8b664b` (F-002.11 R3 route-level tests) · `0cbb8ed` (F-002.12 assignment service) · `6e4c677` (F-002.13 leave+attendance services) · `50a859c` (F-002.14 swap service) · `cb3ae13` (F-002.15 /chat/apply uses services in withTenantContext) · `92294f3` (F-002.16 atomicity tests) |
-| **Workflow IDs affected**               | `D17` · `D20` · `C11` · `E21` · `E22` · `E24`                                                                                                                                                                                                                                                                                                                                       |
-| **Tests status**                        | **13/13 test files green · 69/69 cases pass** on fresh local Postgres 16 with all 12 migrations. Round-2 added 8 new cases (4 route-level concurrency + 4 atomicity).                                                                                                                                                                                                               |
-| **Verification status**                 | `REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied (20260507 → 20260518). Full sweep in one run. Container left running for friend's spot-check.                                                                                                                                                                          |
+| Field                               | Value                                                                                                                                                                                                                                   |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**                      | `chat-writes-proposed-decisions` (F-002 — round-3 fixes, R3.1 + R3.2-a)                                                                                                                                                                 |
+| **Status**                          | `AWAITING_APPROVAL`                                                                                                                                                                                                                     |
+| **Branch**                          | `feat/layer-1-core-primitives`                                                                                                                                                                                                          |
+| **Last landed commit**              | `990b96e` — `test(chat): R3.2-a — deterministic route-level stale-auth proof (fixes P2)`                                                                                                                                                |
+| **Round-3 commits (oldest→newest)** | `c8c34b3` (rule 25 lock + round-3 approval propagation) · `5972881` (R3.1 strict Zod parsing in /chat/apply + 4 validation regression tests) · `990b96e` (R3.2-a test-only hook + deterministic route-level stale-auth proof + 2 tests) |
+| **Tests status**                    | **15/15 test files green · 75/75 cases pass** on fresh local Postgres 16. Round-3 added 6 new cases (4 validation regression + 2 stale-auth route-level).                                                                               |
+| **Verification status**             | `REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied. Full sweep in one run.                                                                                                    |
 
-## What R1 + R2a + R2b-iii + R3 delivered (vs the 3 round-2 findings G1/G2/G3)
+## How each round-3 finding is closed
 
-| Finding          | Concern                                                                                                                                                    | Resolution                                                                                                                                                                                                                                                                                                                 |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G1               | Termination tx committed `appliedAt` BEFORE worker validation; early-return sentinels let the tx commit with partial state.                                | **F-002.9** — reorder. Validate worker FIRST (tx.worker.findFirst + state guards); lifecycle SECOND (applyProposedDecision); worker.update THIRD. Early-returns happen BEFORE any state-changing write. If lifecycle OR worker.update throws, the whole tx rolls back. Verified by F-002.11's G1 test case.                |
-| G2 (lifecycle)   | `commitApply` did NOT re-check authorization; stale-auth between preCheckApply (tx 1) and commitApply (tx 2) let DWI_APPLIED record under the wrong actor. | **F-002.10** — re-check `isCallerAuthorized` INSIDE commitApply, BEFORE the conditional UPDATE. If authority changed, throws NOT_RESPONSIBLE; UPDATE never runs; no audit. Verified by F-002.11's R2a-verification test case.                                                                                              |
-| G2 (domain side) | Under apply-after-domain (F-002.4), the inject's domain effect could land BEFORE commitApply, then commitApply could reject — real-world behaviour drift.  | **F-002.15** (R2b-iii) — /chat/apply for the 4 ex-inject branches now wraps `preCheckApply + service + commitApply` in ONE `withTenantContext` transaction. Domain effect + lifecycle commit are atomic. F-002.12 + F-002.13 + F-002.14 extracted the 4 services. Verified by F-002.16's 4 atomicity tests.                |
-| G3               | Round-1 concurrency tests called the writer directly; the full route flow was not under test.                                                              | **F-002.11** — new `chat-apply-route-concurrency.test.ts` (4 cases): apply-vs-apply through /chat/apply, apply-vs-dismiss through HTTP routes, R2a stale-auth verification, G1 termination-invalid-worker verification. Plus **F-002.16** (4 atomicity cases proving service-failure rollback for all ex-inject branches). |
+| Finding | Status | Resolution                                                                                                                                                                                                                                                                                                          |
+| ------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1      | CLOSED | R3.1 (commit `5972881`) — chat path now imports `MarkAbsentInput`, `CreateLeaveRequestInput`, `CreateSwapRequestInput` from shared-schema and parses them BEFORE entering `withTenantContext`. Single validation source. Headline regression-prevention test: self-swap → 400 (in `chat-apply-validation.test.ts`). |
+| P2      | CLOSED | R3.2-a (commit `990b96e`) — test-only hook `__setCommitApplyTestHook` (env-gated, production no-op) lets tests inject a binding change between preCheck and commit. `chat-apply-stale-auth-route.test.ts`: forces the race via `app.inject`; asserts 403 + row PROPOSED + NO Attendance row + NO DWI_APPLIED audit. |
 
-## P10 failure matrix (post-round-2, all cells answered)
+## All round-1 → round-3 lineage (kept for audit)
 
-| Question                                                     | Answer                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| What invariants does this slice introduce?                   | (1) PROPOSED transitions to exactly one terminal state. (2) `appliedAt` + `dismissedAt` mutually exclusive (DB CHECK). (3) Transitions require currently-responsible (binding-routable) OR origin supervisor (origin-only), CHECKED AT COMMIT TIME. (4) Domain effect + lifecycle commit happen in ONE Prisma transaction — neither succeeds alone.   |
-| How is each invariant enforced?                              | (1) Conditional updateMany on every transition. (2) DB CHECK constraint (migration 20260518) + conditional WHERE. (3) `isCallerAuthorized` via DECISION_KIND_REGISTRY.routingMode at BOTH preCheckApply AND commitApply. (4) `/chat/apply` for all 5 branches wraps preCheckApply + service-or-domain-write + commitApply in ONE `withTenantContext`. |
-| What happens on failure of the domain effect?                | Tx rolls back. Lifecycle stays PROPOSED. No DWI_APPLIED audit. Caller sees the service's error code (404/400). No partial state on disk. Verified by F-002.16's 4 atomicity tests.                                                                                                                                                                    |
-| What happens on stale authority between preCheck and commit? | The whole flow runs in ONE tx; `isCallerAuthorized` is re-checked inside commitApply (F-002.10). If authority changed between preCheck and commit, commitApply throws NOT_RESPONSIBLE → tx rolls back → NO lifecycle change AND NO domain effect. Verified by F-002.11's R2a test case.                                                               |
-| What happens for retry / double-submit?                      | Conditional updateMany returns count=0 → discriminator query → throws ALREADY_APPLIED. Domain idempotency is each domain route's own concern (mark-absent.upsert by (workerId, date) already idempotent).                                                                                                                                             |
-| What happens under concurrent requests on the same row?      | PG row-lock + WHERE re-evaluation guarantee exactly one of N concurrent UPDATEs wins. DB CHECK rejects the impossible state. Audit reflects only the winner. Verified by F-002.7 + F-002.11's parallel app.inject tests.                                                                                                                              |
-| What happens for a stale client (old shape)?                 | 400 BAD_INPUT with `decisionId is required`. Row unaffected. Tested in `chat-apply-transitions-decision.test.ts`.                                                                                                                                                                                                                                     |
-| What is still intentionally deferred (with sunset)?          | Full state ENUM column (FAILED / EXPIRED / UNDONE) — needs concrete triggers (cron sweep etc.) in their own slices. **NO corruption windows remain for the PROPOSED → APPLIED/DISMISSED transitions this slice covers.**                                                                                                                              |
+- **Round-1 (pre-remediation) commits:** `a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146`
+- **Round-1 remediation commits:** `f2b2d74` · `ec01f62` · `38b9987` · `2e03315` · `4506b3d` · `2557e1f`
+- **Round-2 control-surface cleanup:** `75b56f8`
+- **Round-2 fix commits:** `a1f6a2d` (G1) · `c63a163` (G2 lifecycle, R2a) · `d8b664b` (R3 writer-level tests) · `0cbb8ed` (assignment service) · `6e4c677` (leave + attendance services) · `50a859c` (swap service) · `cb3ae13` (R2b-iii chat refactor) · `92294f3` (atomicity tests)
+- **Round-3 commits:** `c8c34b3` (rule 25 + approval propagation) · `5972881` (R3.1) · `990b96e` (R3.2-a)
 
-## Research sources cited per Rule P9
+## Workflow IDs affected
 
-- [Prisma interactive transactions](https://www.prisma.io/docs/orm/prisma-client/queries/transactions) — load-bearing: "all queries inside it have to be run on the same connection." Confirms inject cannot share a tx; R2b-iii's service extraction is the only correct path.
-- [Prisma `updateMany`](https://www.prisma.io/docs/orm/reference/prisma-client-reference#updatemany) — returns `BatchPayload { count }`.
-- [PostgreSQL transaction isolation](https://www.postgresql.org/docs/current/transaction-iso.html) — row-locking + WHERE re-evaluation guarantee exactly-one-wins for conditional UPDATE; READ COMMITTED inside one tx sees a fresh snapshot for each query (enables R2a auth re-check to see binding changes).
-- [PostgreSQL CHECK constraints](https://www.postgresql.org/docs/current/ddl-constraints.html) — per-row, evaluated at UPDATE time.
-- [PostgreSQL explicit locking](https://www.postgresql.org/docs/current/explicit-locking.html) — surveyed; not needed under R2b-iii because nothing spans a non-DB operation.
+`D17` · `D20` · `C11` · `E21` · `E22` · `E24`
+
+## P10 failure matrix (now PROVEN at route level)
+
+| Question                                                     | Answer                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What invariants does this slice introduce?                   | (1) PROPOSED transitions to exactly one terminal state. (2) `appliedAt` + `dismissedAt` mutually exclusive (DB CHECK). (3) Transitions require currently-responsible OR origin supervisor — CHECKED AT COMMIT TIME (R2a). (4) Domain effect + lifecycle commit happen in ONE Prisma transaction. (5) Chat path validation == direct route validation (R3.1, new). |
+| How is each invariant enforced?                              | (1) Conditional updateMany. (2) DB CHECK + conditional WHERE. (3) `isCallerAuthorized` at BOTH preCheckApply AND commitApply. (4) All 5 branches wrap preCheckApply + service + commitApply in ONE `withTenantContext`. (5) chat.ts imports + parses the same Zod schemas the direct routes use.                                                                  |
+| What happens on failure of the domain effect?                | Tx rolls back. Lifecycle stays PROPOSED. No DWI_APPLIED audit. Caller sees the service's error code (404/400). Verified by F-002.16's 4 atomicity tests.                                                                                                                                                                                                          |
+| What happens on stale authority between preCheck and commit? | Whole tx rolls back. Lifecycle stays PROPOSED AND domain row is also rolled back. NOW PROVEN AT ROUTE LEVEL by R3.2-a's deterministic test (`990b96e`).                                                                                                                                                                                                           |
+| What happens for retry / double-submit?                      | Conditional updateMany returns count=0 → discriminator → ALREADY_APPLIED. Domain idempotency is each domain route's concern.                                                                                                                                                                                                                                      |
+| What happens under concurrent requests on the same row?      | PG row-lock + WHERE re-evaluation guarantee exactly one of N wins. DB CHECK rejects the impossible state. Audit reflects winner only.                                                                                                                                                                                                                             |
+| What happens for invalid input on the chat path?             | 400 BAD_INPUT — same as the direct route. Verified by R3.1's 4 regression tests (self-swap, malformed effectiveAt, non-uuid workerId, malformed fromDate).                                                                                                                                                                                                        |
+| What happens for a stale client (no decisionId)?             | 400 BAD_INPUT (Zod rejects). Unchanged from F-002.5.                                                                                                                                                                                                                                                                                                              |
+| What is still intentionally deferred (with sunset)?          | Full state ENUM column (FAILED / EXPIRED / UNDONE). S-001 same-day-freeze policy (separate next slice after F-002 closes; spec lock first). **NO corruption windows remain for the PROPOSED → APPLIED/DISMISSED transitions this slice covers.**                                                                                                                  |
+
+## Round-3 test file inventory (new in this round)
+
+- `apps/backend/test/chat-apply-validation.test.ts` — R3.1 / P1 regression-prevention (4 cases).
+- `apps/backend/test/chat-apply-stale-auth-route.test.ts` — R3.2-a route-level stale-auth proof (2 cases: race + control).
 
 ## Reproduction (for friend's spot-check)
 
@@ -68,22 +82,17 @@ pnpm exec vitest run \
   test/supervisor-decision-concurrency.test.ts \
   test/supervisor-decision-new-kinds-routing.test.ts \
   test/chat-apply-route-concurrency.test.ts \
-  test/chat-apply-atomicity.test.ts
+  test/chat-apply-atomicity.test.ts \
+  test/chat-apply-validation.test.ts \
+  test/chat-apply-stale-auth-route.test.ts
 ```
 
-Expected: 13 files, 69 cases, all green.
+Expected: 15 files, 75 cases, all green.
+
+## Next slice (after F-002 approves)
+
+**S-001 — same-day supervisor freeze** (owner's 2026-05-16 directive). Separate slice. Spec lock first (responsibility-model + closure spec wording), then code (HR binding-create rejects same-day effectiveFrom). Rule 25 in action: simplifies the system by removing the operational edge case at the source rather than engineering around it. The current F-002 atomicity + auth re-check still stands as defense-in-depth even after the policy lands.
 
 ## Hash-truth convention
 
-The hash columns above name ONLY landed commit hashes. Under the auto-regen pre-commit hook the new commit's hash is created AFTER the file is written and staged, so at write-time we cannot know the hash that will contain this file. Convention:
-
-- List only commits already in `git log`.
-- After a commit lands, the NEXT edit to this file names that commit explicitly.
-- No "landing now", no "may land", no "next commit will be", no "in this commit" wording.
-
-## How to read this file
-
-- HTML dashboard auto-renders this content at the top of every page.
-- Header active-slice banner + Current Slice focus callout both read from here (single source).
-- Source of truth = this markdown. Generated HTML is derivative.
-- Update this file at every state transition (rule 19).
+Hash columns above name ONLY landed commit hashes. After a commit lands, the NEXT edit to this file names that commit explicitly. No "landing now", no "may land", no "next commit will be", no "in this commit" wording.

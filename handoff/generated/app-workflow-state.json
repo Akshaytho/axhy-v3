@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T19:41:51.958Z",
-    "generated_against_head": "dc0ae2df77b2c8ab6d3740dbeb85c52b7da2c485",
+    "last_updated_at": "2026-05-15T19:56:32.659Z",
+    "generated_against_head": "990b96e131cf9a2a2bfe302f2c45d354352338a4",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "dc0ae2df77b2c8ab6d3740dbeb85c52b7da2c485",
+    "last_canonical_commit_at_gen": "c8c34b345357a41eb1e8a796911ff8254150903f",
     "staleness_warning": null,
-    "active_slice": "chat-writes-proposed-decisions (F-002 — round-2 R2b-iii remediation) · CHANGES_REQUESTED (round 3, plan APPROVED 2026-05-16) → implementing R3.1 (validation fix) + R3.2-a (test-only hook + route-level stale-auth proof). S-001 deferred to separate next slice. No more architecture changes in this round.",
+    "active_slice": "chat-writes-proposed-decisions (F-002 — round-3 fixes, R3.1 + R3.2-a) · AWAITING_APPROVAL",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,26 +1183,19 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`chat-writes-proposed-decisions` (F-002 — round-2 R2b-iii remediation)",
-      "Status": "`CHANGES_REQUESTED` (round 3, plan APPROVED 2026-05-16) → implementing R3.1 (validation fix) + R3.2-a (test-only hook + route-level stale-auth proof). S-001 deferred to separate next slice. No more architecture changes in this round.",
+      "Slice name": "`chat-writes-proposed-decisions` (F-002 — round-3 fixes, R3.1 + R3.2-a)",
+      "Status": "`AWAITING_APPROVAL`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed commit": "`92294f3` — `test(chat): atomicity verification — domain failure rolls back lifecycle (F-002.16)`",
-      "Round-1 (pre-remediation) commits": "`a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146` (kept in tree; F-002.4's apply-after-domain trade-off superseded by round 2)",
-      "Round-1 remediation commits": "`f2b2d74` · `ec01f62` · `38b9987` · `2e03315` · `4506b3d` · `2557e1f` (registry + CHECK + race-safe writer + apply-after-domain + required decisionId + read-side registry + tests; F-002.4 superseded)",
-      "Round-2 control-surface cleanup": "`75b56f8` (removed superseded apply-after-domain trade-off wording from active-slice + pending-approvals)",
-      "Round-2 fix commits (oldest→newest)": "`a1f6a2d` (F-002.9 termination reorder) · `c63a163` (F-002.10 auth re-check in commitApply) · `d8b664b` (F-002.11 R3 route-level tests) · `0cbb8ed` (F-002.12 assignment service) · `6e4c677` (F-002.13 leave+attendance services) · `50a859c` (F-002.14 swap service) · `cb3ae13` (F-002.15 /chat/apply uses services in withTenantContext) · `92294f3` (F-002.16 atomicity tests)",
-      "Workflow IDs affected": "`D17` · `D20` · `C11` · `E21` · `E22` · `E24`",
-      "Tests status": "**13/13 test files green · 69/69 cases pass** on fresh local Postgres 16 with all 12 migrations. Round-2 added 8 new cases (4 route-level concurrency + 4 atomicity).",
-      "Verification status": "`REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied (20260507 → 20260518). Full sweep in one run. Container left running for friend's spot-check."
+      "Last landed commit": "`990b96e` — `test(chat): R3.2-a — deterministic route-level stale-auth proof (fixes P2)`"
     },
     "pending_approvals": [
       {
         "id": "chat-writes-proposed-decisions",
         "kind": "slice",
-        "status": "CHANGES_REQUESTED",
-        "branch": "feat/layer-1-core-primitives",
+        "status": "",
+        "branch": "",
         "wipCommit": "",
-        "lastLanded": "fe927b2",
+        "lastLanded": "",
         "workflowIds": "",
         "blocking": "",
         "built": "",
@@ -1244,7 +1237,7 @@
         "workflows": "D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).",
         "entities": "`apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.",
         "verification": "`REAL_DB`.",
-        "status": "CHANGES_REQUESTED"
+        "status": "AWAITING_APPROVAL"
       },
       {
         "id": "F-003",
