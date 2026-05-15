@@ -57,8 +57,13 @@ function git(cmd) {
     return '';
   }
 }
-const sourceCommit = git('rev-parse HEAD');
-const sourceBranch = git('rev-parse --abbrev-ref HEAD');
+// IMPORTANT: under the auto-regen pre-commit hook, `git rev-parse HEAD` returns
+// the PRIOR commit — the new commit hash does not exist yet at generation time.
+// So the values below describe "git state at generation time", which under the
+// auto-regen flow is one commit behind the commit that ultimately contains
+// these outputs. Field names + dashboard labels are explicit about this.
+const generatedAgainstHead = git('rev-parse HEAD');
+const generatedAgainstBranch = git('rev-parse --abbrev-ref HEAD');
 // Canonical = the markdown sources of truth (NOT the generated outputs).
 const CANONICAL_PATHS = 'handoff/execution-state handoff/workflow-maps handoff/owner-input handoff/feature-queue handoff/README.md handoff/STATUS.md handoff/NEXT_SESSION.md';
 const GENERATED_PATHS = 'handoff/generated';
@@ -473,24 +478,49 @@ function parsePendingNotes() {
   return { notes, byStatus };
 }
 
-/** Parse pending-approvals.md. Each `### Slice: \`<slice-id>\`` becomes an entry. */
+/** Parse pending-approvals.md.
+ *
+ *  Now splits AWAITING_APPROVAL items from BLOCKED items per friend's
+ *  2026-05-15 evening verification — they're distinct concepts.
+ *
+ *  Sections looked at:
+ *    "## Currently awaiting approval" → awaiting items
+ *    "## Currently blocked"           → blocked items
+ *  Each section contains `### Slice: \`<slice-id>\`` subsections.
+ */
 function parsePendingApprovals() {
-  const text = safeRead(resolve(ownerDir, 'pending-approvals.md'));
-  const sections = text.split(/\n###\s+Slice:\s*/).slice(1);
-  const items = [];
-  for (const s of sections) {
-    const id = (s.match(/^`([^`]+)`/) || [, ''])[1];
-    if (!id) continue;
-    const status = (s.match(/-\s*\*\*Status:\*\*\s*`?([A-Z_]+)`?/) || [, ''])[1];
-    const branch = (s.match(/-\s*\*\*Branch:\*\*\s*`?([^`\n]+)`?/) || [, ''])[1].trim();
-    const wipCommit = (s.match(/-\s*\*\*WIP commit:\*\*\s*`?([a-f0-9]{7,40})/) || [, ''])[1];
-    const workflowIds = (s.match(/-\s*\*\*Workflow IDs affected:\*\*\s*(.+)/) || [, ''])[1].trim();
-    const built = (s.match(/-\s*\*\*What was built:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
-    const notDone = (s.match(/-\s*\*\*What's NOT done:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
-    const ownerDecision = (s.match(/-\s*\*\*Owner decision:\*\*\s*(.+)/) || [, ''])[1].trim();
-    items.push({ id, status, branch, wipCommit, workflowIds, built, notDone, ownerDecision });
+  const text = stripCodeFences(safeRead(resolve(ownerDir, 'pending-approvals.md')));
+
+  function extractSlicesIn(sectionRe) {
+    const m = text.match(sectionRe);
+    if (!m) return [];
+    const body = m[0];
+    const subs = body.split(/\n###\s+Slice:\s*/).slice(1);
+    const out = [];
+    for (const s of subs) {
+      const id = (s.match(/^`([^`]+)`/) || [, ''])[1];
+      if (!id) continue;
+      const status = (s.match(/-\s*\*\*Status:\*\*\s*`?([A-Z_]+)`?/) || [, ''])[1];
+      const branch = (s.match(/-\s*\*\*Branch:\*\*\s*`?([^`\n]+)`?/) || [, ''])[1].trim();
+      const wipCommit = (s.match(/-\s*\*\*WIP commit:\*\*\s*`?([a-f0-9]{7,40})/) || [, ''])[1];
+      const lastLanded = (s.match(/-\s*\*\*Last landed commit:\*\*\s*`?([a-f0-9]{7,40})/) || [, ''])[1];
+      const workflowIds = (s.match(/-\s*\*\*Workflow IDs affected:\*\*\s*(.+)/) || [, ''])[1].trim();
+      const blocking = (s.match(/-\s*\*\*What's blocking:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
+      const built = (s.match(/-\s*\*\*What was built:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
+      const notDone = (s.match(/-\s*\*\*(?:What's NOT done|Remaining to finish slice):\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
+      const ownerDecision = (s.match(/-\s*\*\*Owner decision:\*\*\s*(.+)/) || [, ''])[1].trim();
+      out.push({ id, status, branch, wipCommit, lastLanded, workflowIds, blocking, built, notDone, ownerDecision });
+    }
+    return out;
   }
-  return items;
+
+  const awaiting = extractSlicesIn(
+    /##\s+Currently awaiting approval[\s\S]+?(?=\n##\s|\Z)/,
+  );
+  const blocked = extractSlicesIn(
+    /##\s+Currently blocked[\s\S]+?(?=\n##\s|\Z)/,
+  );
+  return { awaiting, blocked };
 }
 
 /** Parse active-slice.md — the top "## Current" table. */
@@ -562,12 +592,25 @@ const featureQueue = parseFeatureQueue();
 // JSON output
 // ---------------------------------------------------------------------------
 const json = {
-  schema_version: 2,
+  schema_version: 3,
   metadata: {
     last_updated_at: generatedAt,
-    source_commit: sourceCommit,
-    source_branch: sourceBranch,
-    last_canonical_commit: lastCanonicalCommit,
+    generated_against_head: generatedAgainstHead,
+    generated_against_branch: generatedAgainstBranch,
+    /**
+     * IMPORTANT — drift note (friend verification 2026-05-15 evening).
+     *
+     * Under the auto-regen pre-commit hook, the generator runs BEFORE the new
+     * commit is finalized, so `git rev-parse HEAD` returns the PRIOR commit.
+     * The commit hash above is therefore the commit immediately PRECEDING the
+     * one that contains this JSON file. Run `git log -1` to get the true
+     * containing commit.
+     *
+     * Manual `pnpm run handoff:build` outside a commit DOES write the true
+     * current HEAD (because no new commit is being created).
+     */
+    commit_truth_note: 'Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.',
+    last_canonical_commit_at_gen: lastCanonicalCommit,
     staleness_warning: isStale ? staleNote : null,
     active_slice: activeSlice(),
     generated_from: [
@@ -611,7 +654,8 @@ const json = {
   data_model_has_er: Boolean(dataModel.erDiagram),
   control_loop: {
     active_slice: activeSliceFields,
-    pending_approvals: pendingApprovals,
+    pending_approvals: pendingApprovals.awaiting,
+    blocked_items: pendingApprovals.blocked,
     pending_notes: {
       counts: {
         NEW: pendingNotes.byStatus.NEW.length,
@@ -753,28 +797,42 @@ function pendingNotesSection() {
   </section>`;
 }
 
+function renderApprovalCard(a, kind) {
+  return `
+      <div class="approval">
+        <div class="approval-head">${statusBadge(a.status)} <strong><code>${escape(a.id)}</code></strong></div>
+        ${a.branch ? `<p class="small"><strong>Branch:</strong> <code>${escape(a.branch)}</code></p>` : ''}
+        ${a.lastLanded ? `<p class="small"><strong>Last landed commit:</strong> <code>${escape(a.lastLanded)}</code></p>` : ''}
+        ${a.wipCommit ? `<p class="small"><strong>WIP commit:</strong> <code>${escape(a.wipCommit)}</code></p>` : ''}
+        ${a.workflowIds ? `<p class="small"><strong>Workflows affected:</strong> ${escape(a.workflowIds)}</p>` : ''}
+        ${a.blocking ? `<p><strong>What's blocking:</strong> ${renderInline(a.blocking)}</p>` : ''}
+        ${a.built ? `<p><strong>Built:</strong> ${renderInline(a.built)}</p>` : ''}
+        ${a.notDone ? `<p><strong>${kind === 'blocked' ? 'Remaining' : 'Not done'}:</strong> ${renderInline(a.notDone)}</p>` : ''}
+        ${a.ownerDecision ? `<p class="small"><strong>Owner decision:</strong> <em>${renderInline(a.ownerDecision)}</em></p>` : ''}
+      </div>`;
+}
+
 function approvalsSection() {
-  if (pendingApprovals.length === 0) {
-    return `
-    <section id="approvals" class="control-section">
-      <h2>✅ Approval gate</h2>
-      <p>No pending approvals.</p>
-    </section>`;
-  }
+  const { awaiting, blocked } = pendingApprovals;
+  const awaitingHtml = awaiting.length === 0
+    ? '<p>No items awaiting approval.</p>'
+    : awaiting.map((a) => renderApprovalCard(a, 'awaiting')).join('');
   return `
   <section id="approvals" class="control-section">
     <h2>✅ Approval gate</h2>
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
-    ${pendingApprovals.map((a) => `
-      <div class="approval">
-        <div class="approval-head">${statusBadge(a.status)} <strong><code>${escape(a.id)}</code></strong></div>
-        ${a.branch ? `<p class="small"><strong>Branch:</strong> <code>${escape(a.branch)}</code></p>` : ''}
-        ${a.wipCommit ? `<p class="small"><strong>WIP commit:</strong> <code>${escape(a.wipCommit)}</code></p>` : ''}
-        ${a.workflowIds ? `<p class="small"><strong>Workflows affected:</strong> ${escape(a.workflowIds)}</p>` : ''}
-        ${a.built ? `<p><strong>Built:</strong> ${renderInline(a.built)}</p>` : ''}
-        ${a.notDone ? `<p><strong>Not done:</strong> ${renderInline(a.notDone)}</p>` : ''}
-        ${a.ownerDecision ? `<p class="small"><strong>Owner decision:</strong> <em>${renderInline(a.ownerDecision)}</em></p>` : ''}
-      </div>`).join('')}
+    ${awaitingHtml}
+  </section>`;
+}
+
+function blockedSection() {
+  const { blocked } = pendingApprovals;
+  if (blocked.length === 0) return '';
+  return `
+  <section id="blocked" class="control-section">
+    <h2>⛔ Blocked items</h2>
+    <p class="small">Slices blocked by external dependency — <strong>not</strong> awaiting your decision. These resume automatically when their named blocker clears. Source: <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a>.</p>
+    ${blocked.map((a) => renderApprovalCard(a, 'blocked')).join('')}
   </section>`;
 }
 
@@ -1064,8 +1122,8 @@ const html = `<!DOCTYPE html>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
       <span>Generated <strong>${generatedAt}</strong></span>
-      <span>Commit <code>${sourceCommit.slice(0, 8)}</code></span>
-      <span>Branch <code>${sourceBranch}</code></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>${generatedAgainstHead.slice(0, 8)}</code></span>
+      <span>Branch <code>${generatedAgainstBranch}</code></span>
       <span>Active slice: <strong>${escape(activeSlice())}</strong></span>
       ${isStale ? `<span class="stale">⚠ STALE — re-run <code>pnpm run handoff:build</code></span>` : ''}
     </div>
@@ -1074,6 +1132,7 @@ const html = `<!DOCTYPE html>
     <a href="#active-slice" class="nav-control">🟦 Current slice</a>
     <a href="#owner-notes" class="nav-control">📝 Notes</a>
     <a href="#approvals" class="nav-control">✅ Approvals</a>
+    <a href="#blocked" class="nav-control">⛔ Blocked</a>
     <a href="#feature-queue" class="nav-control">📋 Queue</a>
     <a href="#change-history" class="nav-control">📜 History</a>
     <span class="nav-sep">·</span>
@@ -1086,6 +1145,7 @@ const html = `<!DOCTYPE html>
     ${activeSliceSection()}
     ${pendingNotesSection()}
     ${approvalsSection()}
+    ${blockedSection()}
     ${featureQueueSection()}
     ${changeHistorySection()}
 
@@ -1183,6 +1243,6 @@ console.log(distSummary);
 console.log(`combined sequences: ${sequences.length} (with diagram: ${sequences.filter((s) => s.diagram).length})`);
 console.log(`data-model ER diagram: ${dataModel.erDiagram ? 'yes' : 'no'}`);
 console.log(`total Mermaid diagrams embedded in HTML: ${totalDiagrams}`);
-console.log(`source commit: ${sourceCommit.slice(0, 8)} on ${sourceBranch}`);
+console.log(`generated against HEAD ${generatedAgainstHead.slice(0, 8)} on ${generatedAgainstBranch} (under auto-regen, true containing commit is one ahead)`);
 console.log(`active slice: ${activeSlice()}`);
 if (isStale) console.log('⚠ STALE — canonical sources newer than current HEAD');

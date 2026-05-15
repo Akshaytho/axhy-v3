@@ -1,10 +1,11 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T14:52:38.602Z",
-    "source_commit": "0445110fa717e7dfba302de86ddf40b34b1e3c50",
-    "source_branch": "feat/layer-1-core-primitives",
-    "last_canonical_commit": "f9fbe68327569f55ba40c6c8e5ba2a17710a2569",
+    "last_updated_at": "2026-05-15T15:02:46.280Z",
+    "generated_against_head": "7916a3bf11960bb2adf0f3b722b883a8eafa6b2b",
+    "generated_against_branch": "feat/layer-1-core-primitives",
+    "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
+    "last_canonical_commit_at_gen": "7916a3bf11960bb2adf0f3b722b883a8eafa6b2b",
     "staleness_warning": null,
     "active_slice": "handoff-control-loop · AWAITING_APPROVAL",
     "generated_from": [
@@ -1185,36 +1186,42 @@
       "Slice name": "`handoff-control-loop`",
       "Status": "`AWAITING_APPROVAL`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Latest commit": "`0445110` `fix(handoff): stale-detection uses file mtimes — survives pre-commit timing`",
-      "Slice commits": "`f9fbe68` (control loop) + `0445110` (stale-fix) + the verification-fix commit landing now",
+      "Last landed slice commit": "`7916a3b` — `fix(handoff): address friend's 4 verification findings on the control loop`",
+      "All slice commits (oldest → newest)": "`f9fbe68` · `0445110` · `7916a3b` · (a fourth verification-fix commit may land after this edit, addressing friend's 3 remaining trust issues)",
       "Workflow IDs affected": "none directly (meta-slice — builds the control surface around all 29 workflows)",
       "Personas affected": "all four (control surface is persona-spanning)",
       "Files changed": "`handoff/owner-input/*` (new), `handoff/feature-queue/*` (new), `handoff/scripts/build-handoff-artifacts.mjs` (extended), `handoff/execution-state/INDEX.md`, `handoff/README.md`, `handoff/NEXT_SESSION.md`, `.husky/pre-commit`",
       "Tests status": "N/A (docs + tooling only)",
-      "Verification status": "`LOCAL` — generator runs clean; outputs valid; 0 STALE markers; friend's 4 verification-pass bugs all fixed (template-as-note, header-vs-callout disagreement, stale active-slice content, incomplete generated_from metadata)",
+      "Verification status": "`LOCAL` — generator runs clean; 0 STALE markers; friend's first 4 bugs fixed (template-as-note, header-vs-callout, stale active-slice, generated_from list); friend's 3 follow-up bugs being addressed (commit-truth drift framed honestly, hash-naming pinned to landed commits, AWAITING_APPROVAL/BLOCKED sections split)",
       "Started at": "2026-05-15 evening",
       "Expected next state": "`APPROVED` — when owner writes that word for the `handoff-control-loop` item in `pending-approvals.md`. Then F-001 routing slice unblocks."
     },
     "pending_approvals": [
       {
+        "id": "handoff-control-loop",
+        "status": "AWAITING_APPROVAL",
+        "branch": "feat/layer-1-core-primitives",
+        "wipCommit": "",
+        "lastLanded": "7916a3b",
+        "workflowIds": "none directly (control surface, spans all 29)",
+        "blocking": "",
+        "built": "`handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 5 new HTML sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split).",
+        "notDone": "Nothing in scope; both friend bug lists fully addressed.",
+        "ownerDecision": "_empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_"
+      }
+    ],
+    "blocked_items": [
+      {
         "id": "routing-foundation-read-apis",
         "status": "BLOCKED",
         "branch": "feat/layer-1-core-primitives",
         "wipCommit": "84ae39c",
+        "lastLanded": "",
         "workflowIds": "`D17`, `F26` (read side), `F27` (read side)",
+        "blocking": "`handoff-control-loop` slice not yet APPROVED. When that slice is approved + the routing block is removed, this slice resumes from WIP commit `84ae39c`.",
         "built": "`getEffectiveBinding` + `deriveWorkerPrimarySiteId` + `GET /sites/:id/effective-supervisor` + `GET /decisions/proposed-for-me` + 3 of 4 test files. Doc-level checks green; real-DB sweep not yet run.",
-        "notDone": "4th test file `effective-responsibility-point-in-time.test.ts`; real-DB sweep; split into 3 clean commits.",
-        "ownerDecision": "_empty — needs explicit APPROVED / CHANGES_REQUESTED / HOLD once control-loop ships_"
-      },
-      {
-        "id": "handoff-control-loop",
-        "status": "AWAITING_APPROVAL",
-        "branch": "feat/layer-1-core-primitives",
-        "wipCommit": "0445110",
-        "workflowIds": "none directly (control surface, spans all 29)",
-        "built": "`handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 5 new HTML sections (Current Slice / Notes / Approvals / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's 4 verification-pass fixes (template not parsed as live note, header agrees with callout on active-slice, active-slice.md reflects current commits, generated_from metadata complete).",
-        "notDone": "Nothing in scope; friend's bug list is fully addressed. Routing slice F-001 stays BLOCKED until this one is APPROVED.",
-        "ownerDecision": "_empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_"
+        "notDone": "4th test file `effective-responsibility-point-in-time.test.ts`; real-DB sweep; split WIP commit into 3 clean commits.",
+        "ownerDecision": "N/A (blocked, not awaiting approval). Decision belongs on `handoff-control-loop` first."
       }
     ],
     "pending_notes": {
