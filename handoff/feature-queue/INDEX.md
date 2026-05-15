@@ -58,7 +58,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `CHANGES_REQUESTED` (round 2; friend's second production-grade pass found 3 orchestration-layer holes: termination commits APPLIED before worker validation throws-early, stale-authority window between preCheckApply and commitApply, route-level concurrency tests missing. Core writer state machine is now solid; the request orchestration around it is not yet production-safe).
+- **status:** `CHANGES_REQUESTED` (round 2, revised 2026-05-16; R2b-i rejected by friend, plan now commits to R2b-iii — refactor 4 inject-style routes into tx-callable service functions so the domain effect + lifecycle commit share one Prisma transaction. R1 + R2a + R3 unchanged. Awaiting plan approval; no fix code until then).
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 
