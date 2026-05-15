@@ -343,3 +343,29 @@ The deferred items listed in §10 of this spec are now answered by `docs/specs/2
 - **Cross-reference propagation into R6 / HR Updates / D.1 / product framing** → landed in this same 2026-05-15 promotion commit.
 
 Plus the HR pod model (closure §4) gives the operational coordination layer over the `SiteSupervisorBinding` table this spec locks. The HR-absent fallback (closure Decision 2 / G-1) closes one of the ops §12 open questions referenced here.
+
+---
+
+## 2026-05-16 Update — S-001 same-day supervisor-freeze policy (locked)
+
+Locked 2026-05-16. Triggered after F-002 (chat-writes-proposed-decisions) round 2 + round 3 had to engineer a stale-authority race around the possibility that responsibility can change mid-day (atomic preCheck + service + commitApply re-check inside one tx + deterministic test-only hook). The complexity existed only because of a rare operational edge case. Per the policy-first rule (rule 25 — `handoff/owner-input/production-grade-rulebook.md` companion section): simplify the business rule before engineering around it.
+
+**Lock wording (single source — same text used in the closure spec 2026-05-16 update):**
+
+> Same-day supervisor-freeze policy (S-001). Once the day has started in the tenant's local timezone, no supervisor responsibility change may take effect for that site until the next tenant-local midnight. This includes new acting cover, permanent reassignment, ending the current responsible binding, or any other binding mutation that would change who is officially responsible for today. Same-day emergencies are handled operationally outside ownership-change logic. No account sharing. F-002's atomicity and auth re-check protections remain in place as defense-in-depth.
+
+**How this interacts with the rest of this spec:**
+
+- **§3.1 (acting coverage)** — HR-initiated acting bindings now always start at tomorrow-local-midnight or later. Pick 6 (no default `effectiveUntil`) is unchanged. Pick 5 (push on start + end) is unchanged.
+- **§3.2 (permanent reassignment)** — both the new binding's `effectiveFrom` and the closed binding's `effectiveUntil` must be `>= tomorrow-midnight-tenant-local`.
+- **§4 (core principle)** — origin attribution at row-creation time, read-time current-responsibility routing — unchanged. The freeze applies at the HR mutation-write layer, not at any read or routing layer.
+- **§5 (operational questions)** — same-day emergencies (sickness during the workday, acute incident) are handled operationally: phone, WhatsApp, the existing acting cover relationship from earlier-dated bindings. They do not mutate today's system ownership.
+- **§7 (chosen schema)** — no schema change. `SiteSupervisorBinding` columns unchanged. The freeze is enforced at the API/service layer.
+- **§9 picks** — adds a 10th pick: same-day responsibility changes are forbidden; HR mutations affecting today's responsible supervisor are rejected with 400.
+- **§10 (what this doc does NOT do)** — unchanged. The freeze does not introduce new HR portal UX or new schema work; it constrains existing HR mutations.
+
+**Why the rule is framed in business terms, not field terms:** the rule says "no responsibility change may take effect today" — not "rows with `effectiveFrom` today are rejected." A future code path that mutates responsibility through a different field (or via a different table) cannot silently bypass the rule. The implementation is a single API-layer guard `assertNotChangingTodaysResponsibility(tenantTimeZone, mutation)` applied at every HR binding-mutation entry point.
+
+**F-002 protections remain in place as defense-in-depth.** Round-2 atomic tx (preCheck + service + commitApply inside one Prisma transaction) and round-3 auth re-check inside `commitApply` are not removed. They cost nothing now and remain correct if the policy is ever loosened.
+
+**Implementation locus:** S-001 code slice on branch `feat/layer-1-core-primitives`, surfaced 2026-05-16. See `handoff/owner-input/active-slice.md` for the slice body. Spec lock approved by friend at HEAD `9e137e4` on 2026-05-16 ("v2 wording is good · spec lock approved").
