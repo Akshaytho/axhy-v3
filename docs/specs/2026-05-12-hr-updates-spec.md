@@ -281,3 +281,15 @@ This spec flips Status: Draft → Active only after:
 3. Decision entity lock D.1 itself reaching at least review-confirmed status on the §2.9 schema shape (since this spec depends on those fields being stable)
 
 Until then, do not implement the route surface or fan-out infrastructure. R6 §4 row #11 is **addressed** (in this Draft) but not yet fully **Resolved** — that flip waits for this spec to itself flip Active.
+
+---
+
+## 2026-05-15 Update — Workflow Design Closure cross-reference
+
+§4.1 audience model — "every active supervisor in `companyId`" — is amended for pay-affecting updates by `docs/specs/2026-05-15-workflow-design-closure.md` (Active but contract-incomplete; promoted 2026-05-15). Specifically:
+
+- **Audience extension via Policy** → closure §7 + Decision 4. Pay-affecting HR Updates can opt-in to worker audience via Policy `audienceWorkers=true` on the posting. Default remains all-supervisors-in-companyId; the worker-extension is per-update opt-in at launch.
+- **HR Update ack during supervisor absence** (R6 §4 open question + this spec's §10 deferred item) → closure §7 audience rules + ops §12 #2 answer.
+- **Site-level routing (this spec's §10 deferred)** → closure §12 F-P-6 (founder pick on launch-time enablement: opt-in per-site routing vs company-wide-only at launch).
+
+The notification fan-out mechanism this spec specifies stays unchanged; closure spec adds the Policy-driven audience override + the `Notification` entity formalisation (closure §3.4) for delivery tracking.

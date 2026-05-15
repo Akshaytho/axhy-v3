@@ -606,3 +606,17 @@ This spec flips Status: Draft → Status: Active only after:
 3. Founder explicit approval
 
 Until then, no Phase P1 implementation. No schema migration. No code.
+
+---
+
+## 2026-05-15 Update — Workflow Design Closure cross-reference
+
+The EMPLOYMENT-tier HR-ack surface left open in §2.11 of this spec is now specified by `docs/specs/2026-05-15-workflow-design-closure.md` (Active but contract-incomplete; promoted 2026-05-15). Specifically:
+
+- **HR ack surface + decision-support panel** → closure Decision 7 + §5.3.9. HR ack screen shows `originContext` panel + worker history + supervisor's typed phrase + free-text HR-ack-notes field + typed-phrase ack input.
+- **`DecisionWorkspaceItem.originContext` JSON field** → closure §3.2 adds this column (immutable JSON snapshot at row creation containing originator's chat excerpt + worker history + supervisor identity).
+- **`DecisionWorkspaceItem.proposedDuringAbsence` boolean** → closure §3.2 adds this column (auto-set `true` when originator is inside an acting-coverage window at row creation).
+- **3-audience push routing on `TERMINATION_APPLIED`** → closure Decision 7 (originator + current-responsible + worker subject).
+- **Sick-author safeguard** → closure Decision 7 banner on receiving acting cover + HR review.
+
+Existing §2.5 supervisor-responsibility cross-ref (added 2026-05-14) is unchanged.
