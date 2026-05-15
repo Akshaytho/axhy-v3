@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Axhy v3 — Handoff Workflow Dashboard</title>
+  <title>Axhy v3 — Handoff Architecture Dashboard</title>
   <style>
     :root {
       --fg: #1c1c1c; --bg: #fafafa; --card: #fff; --border: #e0e0e0;
@@ -12,55 +12,91 @@
     @media (prefers-color-scheme: dark) {
       :root { --fg: #e0e0e0; --bg: #1c1c1c; --card: #2a2a2a; --border: #444; --muted: #aaa; }
     }
+    * { box-sizing: border-box; }
     body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
            color: var(--fg); background: var(--bg); margin: 0; padding: 0; }
-    header { padding: 16px 24px; background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
-    header h1 { margin: 0 0 8px; font-size: 20px; }
-    header .meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 12px; }
+    header { padding: 16px 24px; background: var(--card); border-bottom: 1px solid var(--border);
+             position: sticky; top: 0; z-index: 10; }
+    header h1 { margin: 0 0 8px; font-size: 18px; }
+    header .meta { font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 12px; }
     header .stale { color: #c62828; font-weight: 600; }
-    nav { padding: 8px 24px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; gap: 12px; flex-wrap: wrap; }
-    nav a { color: var(--accent); text-decoration: none; padding: 4px 12px; border-radius: 4px; }
+    nav { padding: 8px 24px; background: var(--card); border-bottom: 1px solid var(--border);
+          display: flex; gap: 8px; flex-wrap: wrap; overflow-x: auto; }
+    nav a { color: var(--accent); text-decoration: none; padding: 4px 12px; border-radius: 4px;
+            white-space: nowrap; font-size: 13px; }
     nav a:hover { background: var(--bg); }
     main { padding: 24px; max-width: 1400px; margin: 0 auto; }
-    .persona { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
-    .persona h2 small { color: var(--muted); font-size: 14px; font-weight: normal; }
-    .scope, .surfaces { color: var(--muted); margin: 4px 0; }
-    .dist { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 8px; }
-    .dist-chip { padding: 4px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; font-size: 12px; }
-    h3 { margin-top: 16px; margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
-    .cell-narrow { max-width: 320px; }
-    .summary { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
-    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    h2 { margin: 0 0 8px; font-size: 22px; }
+    h2 small { color: var(--muted); font-size: 14px; font-weight: normal; }
+    h3 { margin: 16px 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    p { margin: 4px 0; }
+    .small { font-size: 12px; color: var(--muted); }
+    .empty { font-style: italic; color: var(--muted); }
+    .persona { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+               padding: 20px; margin-bottom: 24px; }
+    .dist { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+    .dist-chip { padding: 4px 10px; background: var(--bg); border: 1px solid var(--border);
+                 border-radius: 12px; font-size: 11px; }
+    .dist-BUILT { border-color: #1e8e3e; }
+    .dist-PARTIAL { border-color: #f5b400; }
+    .dist-WIP { border-color: #1a73e8; }
+    .dist-NOT_STARTED { border-color: #e53935; }
+    .dist-BLOCKED { border-color: #8e24aa; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px;
+             font-weight: 700; letter-spacing: 0.5px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 12px 0; }
     .summary-cell { padding: 16px; background: var(--bg); border-radius: 6px; text-align: center; }
     .summary-cell .value { font-size: 28px; font-weight: 700; }
-    .summary-cell .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .footer-note { font-size: 12px; color: var(--muted); padding: 16px 24px; }
-    .footer-note code { background: var(--bg); padding: 2px 6px; border-radius: 3px; }
+    .summary-cell .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .diagram { margin: 12px 0; padding: 16px; background: var(--bg); border-radius: 6px;
+               border: 1px solid var(--border); overflow-x: auto; }
+    .diagram figcaption { font-size: 11px; color: var(--muted); margin-bottom: 8px;
+                          text-transform: uppercase; letter-spacing: 0.5px; }
+    .mermaid { background: transparent; }
+    details.journey { margin: 8px 0; padding: 12px; background: var(--bg); border-radius: 6px;
+                      border: 1px solid var(--border); }
+    details.journey summary { cursor: pointer; font-size: 14px; padding: 4px 0; }
+    details.journey[open] summary { margin-bottom: 8px; }
+    .journey-notes { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .current-slice { background: rgba(26,115,232,0.08); border-left: 4px solid #1a73e8;
+                     padding: 12px 16px; margin: 12px 0; border-radius: 4px; }
+    .current-slice h3 { margin-top: 0; color: #1a73e8; }
+    .workflow-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+    .workflow-table th, .workflow-table td { text-align: left; padding: 6px 10px;
+                                             border-bottom: 1px solid var(--border); vertical-align: top; }
+    .workflow-table th { font-weight: 600; color: var(--muted); font-size: 10px;
+                         text-transform: uppercase; letter-spacing: 0.5px; }
+    .cell-narrow { max-width: 320px; }
+    .source-link { font-size: 11px; color: var(--muted); margin-top: 12px; }
+    .source-link a { color: var(--accent); }
+    code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table th, table td { text-align: left; padding: 6px 10px;
+                         border-bottom: 1px solid var(--border); vertical-align: top; }
+    table th { font-weight: 600; color: var(--muted); font-size: 10px;
+               text-transform: uppercase; letter-spacing: 0.5px; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Axhy v3 — Handoff Workflow Dashboard</h1>
+    <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T13:18:09.698Z</strong></span>
-      <span>Commit <code>03d33dd4</code></span>
+      <span>Generated <strong>2026-05-15T13:33:07.632Z</strong></span>
+      <span>Commit <code>e222a221</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
       <span>Active slice: <strong>Layer 1 implementation — routing slice paused for execution-state tracker</strong></span>
-      
+      <span class="stale">⚠ STALE — re-run <code>pnpm run handoff:build</code></span>
     </div>
   </header>
   <nav>
     <a href="#summary">Summary</a>
-    <a href="#persona-supervisor">Ravi</a><a href="#persona-worker">Suresh</a><a href="#persona-hr">Kavitha</a><a href="#persona-owner">Reddy</a>
-    <a href="#combined">Combined / cross-persona</a>
+    <a href="#persona-supervisor">Ravi (Supervisor)</a><a href="#persona-worker">Suresh (Worker)</a><a href="#persona-hr">Kavitha (HR)</a><a href="#persona-owner">Reddy (Owner)</a>
+    <a href="#combined">Cross-persona</a>
+    <a href="#data-model">Data model</a>
   </nav>
   <main>
-    <section id="summary" class="summary">
-      <h2>Combined tally (29 workflows total)</h2>
+    <section id="summary" class="persona">
+      <h2>Build-state summary (29 workflows)</h2>
       <div class="summary-grid">
         
           <div class="summary-cell">
@@ -88,694 +124,2258 @@
             <div class="label">NOT STARTED</div>
           </div>
       </div>
-      <h3>Cross-persona sequence diagrams (in workflow-maps/combined-system.md)</h3>
-      <ol><li>F26 Acting cover (Ravi sick, Lakshmi covers for 7 days)</li><li>F27 Permanent reassignment (future-dated handoff)</li><li>D17 Decision apply (the missing-middle)</li><li>E21 Leave request end-to-end</li><li>E24 Worker termination end-to-end</li><li>Overlap stress scene (audit Round 5 combined)</li></ol>
+
+      <h3>Per-persona state distribution</h3>
+      
+        <div class="dist">
+          <strong style="min-width:140px;">Ravi (Supervisor):</strong>
+          <span class="dist-chip dist-BUILT">BUILT: <strong>4</strong></span><span class="dist-chip dist-PARTIAL">PARTIAL: <strong>19</strong></span><span class="dist-chip dist-WIP">WIP: <strong>0</strong></span><span class="dist-chip dist-STUBBED">STUBBED: <strong>0</strong></span><span class="dist-chip dist-NOT_STARTED">NOT_STARTED: <strong>5</strong></span><span class="dist-chip dist-BLOCKED">BLOCKED: <strong>0</strong></span>
+        </div>
+        <div class="dist">
+          <strong style="min-width:140px;">Suresh (Worker):</strong>
+          <span class="dist-chip dist-BUILT">BUILT: <strong>0</strong></span><span class="dist-chip dist-PARTIAL">PARTIAL: <strong>0</strong></span><span class="dist-chip dist-WIP">WIP: <strong>0</strong></span><span class="dist-chip dist-STUBBED">STUBBED: <strong>0</strong></span><span class="dist-chip dist-NOT_STARTED">NOT_STARTED: <strong>18</strong></span><span class="dist-chip dist-BLOCKED">BLOCKED: <strong>0</strong></span>
+        </div>
+        <div class="dist">
+          <strong style="min-width:140px;">Kavitha (HR):</strong>
+          <span class="dist-chip dist-BUILT">BUILT: <strong>0</strong></span><span class="dist-chip dist-PARTIAL">PARTIAL: <strong>11</strong></span><span class="dist-chip dist-WIP">WIP: <strong>0</strong></span><span class="dist-chip dist-STUBBED">STUBBED: <strong>0</strong></span><span class="dist-chip dist-NOT_STARTED">NOT_STARTED: <strong>7</strong></span><span class="dist-chip dist-BLOCKED">BLOCKED: <strong>0</strong></span>
+        </div>
+        <div class="dist">
+          <strong style="min-width:140px;">Reddy (Owner):</strong>
+          <span class="dist-chip dist-BUILT">BUILT: <strong>0</strong></span><span class="dist-chip dist-PARTIAL">PARTIAL: <strong>2</strong></span><span class="dist-chip dist-WIP">WIP: <strong>0</strong></span><span class="dist-chip dist-STUBBED">STUBBED: <strong>0</strong></span><span class="dist-chip dist-NOT_STARTED">NOT_STARTED: <strong>9</strong></span><span class="dist-chip dist-BLOCKED">BLOCKED: <strong>1</strong></span>
+        </div>
+
+      <p class="source-link small">
+        Sources:
+        <a href="../execution-state/INDEX.md">execution-state/INDEX.md</a>
+        ·
+        <a href="../workflow-maps/INDEX.md">workflow-maps/INDEX.md</a>
+        ·
+        <a href="../STATUS.md">handoff/STATUS.md</a>
+        ·
+        <a href="app-workflow-state.json">app-workflow-state.json</a> (machine-readable)
+      </p>
     </section>
 
     
   <section id="persona-supervisor" class="persona">
-    <h2>Ravi <small>(28 workflows)</small></h2>
-    <p class="scope">O.3 Ravi — supervisor at Surya Cleaning. Manages ~40 workers across ~8 sites at launch (envelope: 25–60 workers / 5–12 sites). Daily product user; spends most time inside the supervisor mobile app (`apps/mobile/`). Telugu first, Hindi second, basic English. ₹15K phone; relies on voice capture + clear cards. Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.3.</p>
-    <p class="surfaces">Backend routes in `apps/backend/src/routes/`; supervisor screens in `apps/mobile/app/(auth)/` + `apps/mobile/app/(supervisor)/`. **No** worker-mobile or admin-web-supervisor-portal — the supervisor surface is mobile-only.</p>
-    <div class="dist">
-      <span class="dist-chip">BUILT: <strong>4</strong></span><span class="dist-chip">PARTIAL: <strong>19</strong></span><span class="dist-chip">WIP: <strong>0</strong></span><span class="dist-chip">STUBBED: <strong>0</strong></span><span class="dist-chip">NOT_STARTED: <strong>5</strong></span><span class="dist-chip">BLOCKED: <strong>0</strong></span>
-    </div>
-    <h3>Journeys (from workflow-maps)</h3>
-    <ol><li>Worker no-show → mark absent → maybe replacement</li><li>Daily scheduling (calendar → assignment → visit)</li><li>Site complaint</li><li>Chat → DWI lifecycle (the missing-middle)</li><li>Ravi gets sick → Lakshmi covers (F26 from Ravi's seat)</li><li>Ravi hands sites to Anjali (F27 future-dated handoff from Ravi's seat)</li></ol>
-    <h3>Workflow rows</h3>
-    <table>
-      <thead><tr><th>ID</th><th>Name</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
+    <h2>Ravi (Supervisor) <small>(28 workflows)</small></h2>
+    <p class="scope small">O.3 Ravi — supervisor at Surya Cleaning. Manages ~40 workers across ~8 sites at launch (envelope: 25–60 workers / 5–12 sites). Daily product user; spends most time inside the supervisor mobile app (`apps/mobile/`). Telugu first, Hindi second, basic English. ₹15K phone; relies on voice capture + clear cards. Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.3.</p>
+    <p class="surfaces small">Backend routes in `apps/backend/src/routes/`; supervisor screens in `apps/mobile/app/(auth)/` + `apps/mobile/app/(supervisor)/`. **No** worker-mobile or admin-web-supervisor-portal — the supervisor surface is mobile-only.</p>
+    <div class="dist"><span class="dist-chip dist-BUILT">BUILT: <strong>4</strong></span><span class="dist-chip dist-PARTIAL">PARTIAL: <strong>19</strong></span><span class="dist-chip dist-WIP">WIP: <strong>0</strong></span><span class="dist-chip dist-STUBBED">STUBBED: <strong>0</strong></span><span class="dist-chip dist-NOT_STARTED">NOT_STARTED: <strong>5</strong></span><span class="dist-chip dist-BLOCKED">BLOCKED: <strong>0</strong></span></div>
+
+    
+    <figure class="diagram">
+      <figcaption>Overview — journey-level state</figcaption>
+      <pre class="mermaid">graph LR
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef wip fill:#1a73e8,stroke:#0b3d8a,color:#fff
+    classDef current fill:#fff176,stroke:#806e00,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    A[Chat extraction emits&lt;br/&gt;DecisionCard]:::built
+    A --&gt; B[Should write&lt;br/&gt;SupervisorDecision PROPOSED&lt;br/&gt;row D17]:::notstarted
+    B --&gt; C[Routing helper&lt;br/&gt;getEffectiveBinding&lt;br/&gt;+ derive primary site]:::current
+    C --&gt; D[GET /decisions/proposed-for-me&lt;br/&gt;returns rows for current responsible]:::current
+    D --&gt; E[Today tab consumes&lt;br/&gt;the read API]:::notstarted
+
+    H{{Implementation horizon —&lt;br/&gt;WIP 84ae39c&lt;br/&gt;4th test file unwritten&lt;br/&gt;real-DB run not yet executed}}:::horizon
+
+    C -.-&gt; H
+    H -.-&gt; D</pre>
+    </figure>
+    
+
+    <h3>Journey flowcharts</h3>
+    
+      <details class="journey" open>
+        <summary><strong>Journey 1 — Worker no-show → mark absent → maybe replacement</strong></summary>
+        <p class="small">The most-common daily flow. Ravi gets a phone call from Suresh-the-supervisor-of-record, or notices on the chat. Spec: data-flow §5; ops-workflow-model A.C11 + F28.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Worker Mukesh&lt;br/&gt;doesn't show up at 7am&quot;))
+    Start --&gt; Voice[Ravi voice-captures&lt;br/&gt;'Mukesh didn't come']:::built
+    Voice --&gt; Chat[POST /chat/messages — backend]:::built
+    Chat --&gt; Extract[AI extracts intent →&lt;br/&gt;DecisionCard MARK_ABSENT C11]:::built
+    Extract --&gt; Card[Card shown in mobile chat]:::built
+    Card --&gt; Apply[Ravi taps Apply]:::built
+
+    Apply --&gt; MarkRoute[POST /workers/:id/mark-absent]:::built
+    MarkRoute --&gt; AttRow[(Attendance row)]:::table
+    MarkRoute --&gt; AuditMA{{AuditEvent: WORKER_MARKED_ABSENT}}:::event
+    MarkRoute --&gt; Outbox[(Outbox: hr.attendance_marked)]:::table
+
+    Apply -.-&gt;|&quot;design intends&quot;| DwiPath[Write SupervisorDecision&lt;br/&gt;PROPOSED row + originContext]:::notstarted
+
+    H1{{Implementation horizon —&lt;br/&gt;DWI lifecycle skipped today;&lt;br/&gt;chat applies direct mutation}}:::horizon
+    DwiPath -.-&gt; H1
+
+    AttRow --&gt; Replace{Replacement&lt;br/&gt;needed?}
+    Replace --&gt;|&quot;yes — F28&quot;| InviteRoute[POST replacement-invite]:::notstarted
+    Replace --&gt;|&quot;no&quot;| End1((&quot;Suresh's pay deducted ₹500&quot;))
+
+    InviteRoute --&gt; InviteEvent{{AuditEvent: REPLACEMENT_INVITE_SENT}}:::event
+    InviteEvent --&gt; Wait[Wait for worker accept/reject]:::notstarted
+    Wait --&gt; End2((&quot;Replacement on site&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>What's intended but missing:</strong></p><p>- DWI lifecycle path (D17 row): the chat applies the mutation directly today, skipping PROPOSED → APPLIED. Every audit + analytics use case behind that lifecycle is gone.
+- Replacement invite (F28): no backend route, no UI, no worker-side response surface.</p><p><strong>What's load-bearing today:</strong> Attendance row + AuditEvent. Pay-deduct math works. The 1-of-3 surfaces that's fully <code>END_TO_END</code> for daily ops.</p><p>---</p></div>
+      </details>
+      <details class="journey" open>
+        <summary><strong>Journey 2 — Daily scheduling (calendar → assignment → visit)</strong></summary>
+        <p class="small">Ravi's recurring weekly rhythm. Spec: ops-workflow-model B.B7–B10 + C.C12; R6 §4.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Sunday evening — Ravi&lt;br/&gt;plans next week&quot;))
+    Start --&gt; CalCreate[Create CalendarEntry&lt;br/&gt;for Mon-Sat]:::partial
+    CalCreate --&gt; CalRow[(CalendarEntry row)]:::table
+    CalCreate --&gt; CalEvt{{AuditEvent: CALENDAR_ENTRY_CREATED}}:::event
+
+    H1{{No mobile UI today — backend only.&lt;br/&gt;Today/Summary tabs are 'Coming soon' stubs}}:::horizon
+    CalRow -.-&gt; H1
+
+    CalRow --&gt; Promote[Promote to Assignment&lt;br/&gt;POST /calendar/:id/promote]:::partial
+    Promote --&gt; AssignRow[(Assignment row)]:::table
+    Promote --&gt; Conflict{Conflict&lt;br/&gt;detected?}
+    Conflict --&gt;|&quot;yes (B10)&quot;| Reject[Reject with details]:::built
+    Conflict --&gt;|&quot;no&quot;| AssignEvt{{AuditEvent: ASSIGNMENT_CREATED}}:::event
+
+    AssignRow --&gt; ShiftStart[Worker starts shift]:::notstarted
+    ShiftStart --&gt; VisitRow[(Visit row, state=IN_PROGRESS)]:::table
+    VisitRow --&gt; WorkerEnd[Worker submits photos + ends]:::notstarted
+    WorkerEnd --&gt; EndRoute[POST /visits/:id/end]:::built
+    EndRoute --&gt; VisitEnd[(Visit row, state=ENDED)]:::table
+    EndRoute --&gt; EndEvt{{AuditEvent: VISIT_ENDED}}:::event
+    EndRoute --&gt; VerifyOutbox[(Outbox: ai.verify)]:::table
+
+    H2{{Mid-flight horizon —&lt;br/&gt;worker app doesn't exist;&lt;br/&gt;visits stay SCHEDULED with no trigger}}:::horizon
+    ShiftStart -.-&gt; H2
+
+    VerifyOutbox --&gt; AIDispatch[AI verification dispatcher]:::notstarted
+    AIDispatch --&gt; Flagged{Flagged?}
+    Flagged --&gt;|&quot;yes&quot;| FlagSheet[Ravi reviews FlaggedReviewSheet]:::notstarted
+    Flagged --&gt;|&quot;no&quot;| End1((&quot;Visit completed — billable&quot;))
+    FlagSheet --&gt; ResolveFlag[Resolve or escalate]:::notstarted
+    ResolveFlag --&gt; End1</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>What's intended but missing:</strong> worker mobile app blocks the entire middle. Backend handles the start + end transitions, but no human can trigger them from Suresh's side today. AI verification dispatcher is Phase C.</p><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 3 — Site complaint</strong></summary>
+        <p class="small">Ravi logs a complaint about a site (client called, area unclean, equipment missing). Spec: data-flow §5; ops-workflow-model C13.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Client phones —&lt;br/&gt;'second floor was missed'&quot;))
+    Start --&gt; Voice[Voice or button: 'Complaint at Lakeview']:::partial
+    Voice --&gt; Route[POST /sites/:id/complaints]:::built
+    Route --&gt; ComRow[(Complaint row&lt;br/&gt;severity=LOW)]:::table
+    Route --&gt; ComEvt{{AuditEvent: SITE_COMPLAINT_LOGGED}}:::event
+    Route --&gt; ComOutbox[(Outbox: hr.complaint_persisted)]:::table
+
+    H1{{No supervisor mobile UI today —&lt;br/&gt;only chat-driven extraction}}:::horizon
+    Voice -.-&gt; H1
+
+    ComRow --&gt; Count{3+ complaints&lt;br/&gt;in 24h?}
+    Count --&gt;|&quot;yes&quot;| Cascade[SiteState → FLAGGED]:::notstarted
+    Count --&gt;|&quot;no&quot;| HRReview[HR reviews]:::notstarted
+
+    Cascade --&gt; CascadeEvt{{AuditEvent: SITE_STATE_CHANGED}}:::event
+    CascadeEvt --&gt; WorkerPush[Push to workers + supervisor&lt;br/&gt;'site flagged']:::notstarted
+
+    H2{{Site state machine not wired —&lt;br/&gt;14 states named in schema, 0 transitions enforced}}:::horizon
+    Cascade -.-&gt; H2
+
+    HRReview --&gt; End1((&quot;Complaint resolved or dismissed&quot;))
+    WorkerPush --&gt; End2((&quot;Crew aware site flagged&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>What's intended but missing:</strong> SiteState machine is a placeholder string today. The cascade to FLAGGED + worker push is closure Decision 5 unbuilt.</p><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 4 — Chat → DWI lifecycle (the missing-middle)</strong></summary>
+        <p class="small">The headline gap. Closure spec mandates a PROPOSED-row intermediate for every supervisor-initiated decision. Chat MVP currently skips it.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef wip fill:#1a73e8,stroke:#0b3d8a,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Ravi voice-captures&lt;br/&gt;any intent in chat&quot;))
+    Start --&gt; Chat[POST /chat/messages]:::built
+    Chat --&gt; Extract[AI extraction → DecisionCard]:::built
+    Extract --&gt; CardShown[Card visible in mobile chat]:::built
+
+    Extract -.-&gt;|&quot;intended&quot;| DwiWrite[Write SupervisorDecision&lt;br/&gt;PROPOSED row&lt;br/&gt;+ originContext snapshot]:::notstarted
+    DwiWrite --&gt; DwiRow[(SupervisorDecision row&lt;br/&gt;appliedAt=NULL)]:::table
+    DwiWrite --&gt; DwiEvt{{AuditEvent: DWI_PROPOSED}}:::event
+
+    H1{{IMPLEMENTATION HORIZON —&lt;br/&gt;grep -r supervisorDecision.create = 0 matches.&lt;br/&gt;The DWI lifecycle has no writer code today.}}:::horizon
+    DwiWrite -.-&gt; H1
+
+    DwiRow --&gt; Read[GET /decisions/proposed-for-me]:::wip
+    Read --&gt; Route[Route by current responsibility:&lt;br/&gt;getEffectiveBinding +&lt;br/&gt;deriveWorkerPrimarySiteId]:::wip
+    Route --&gt; CurrentTab[Today / Decisions tab consumes]:::notstarted
+
+    CurrentTab --&gt; ApplyTap[Supervisor taps Apply]:::notstarted
+    ApplyTap --&gt; ApplyRoute[POST /decisions/:id/apply]:::notstarted
+    ApplyRoute --&gt; Flip[Set appliedAt = now]:::notstarted
+    ApplyRoute --&gt; ExecuteDomain[Execute domain mutation&lt;br/&gt;e.g., Attendance create]:::notstarted
+    ApplyRoute --&gt; AppliedEvt{{AuditEvent: DWI_APPLIED}}:::event
+
+    ExecuteDomain --&gt; End1((&quot;Decision applied&quot;))
+
+    CardShown -.-&gt;|&quot;workaround today&quot;| DirectApply[Direct domain mutation&lt;br/&gt;e.g., POST /workers/:id/mark-absent]:::built
+    DirectApply --&gt; End2((&quot;Decision applied —&lt;br/&gt;but no DWI audit row&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>Why this matters:</strong> every cross-cutting feature (acting cover routing, EMPLOYMENT-tier HR ack, decision-dismiss, undo) rides on the DWI lifecycle existing. Without it, those features have no rows to read.</p><p><strong>Current slice (routing) does the read side.</strong> The writer side is a separate slice.</p><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 5 — Ravi gets sick → Lakshmi covers (F26 from Ravi's seat)</strong></summary>
+        <p class="small">The headline P1.5 workflow. Spec: responsibility-model §5–7; closure Decision 4.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef wip fill:#1a73e8,stroke:#0b3d8a,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Ravi calls Kavitha sick —&lt;br/&gt;'can't work next 7 days'&quot;))
+    Start --&gt; HRCreate[Kavitha creates acting binding&lt;br/&gt;Lakshmi acts for Ravi]:::notstarted
+    HRCreate --&gt; Binding[(SiteSupervisorBinding&lt;br/&gt;actingForUserId=Ravi)]:::table
+    HRCreate --&gt; BindEvt{{AuditEvent: BINDING_CREATED}}:::event
+
+    H1{{No HR portal UI today —&lt;br/&gt;HR can only create bindings via raw DB / tests}}:::horizon
+    HRCreate -.-&gt; H1
+
+    HRCreate --&gt; NotifyLakshmi[Push: 'You're acting for Ravi']:::notstarted
+    HRCreate --&gt; NotifyRavi[Push: 'Lakshmi is covering you']:::notstarted
+    HRCreate --&gt; NotifyWorkers[Push to all workers on Ravi's sites:&lt;br/&gt;'Your supervisor is Lakshmi this week']:::notstarted
+
+    Binding --&gt; ReadAPI[GET /sites/:id/effective-supervisor&lt;br/&gt;returns Lakshmi, kind=ACTING]:::wip
+
+    H2{{Routing slice WIP @84ae39c —&lt;br/&gt;read API works in tests; real-DB sweep pending}}:::horizon
+    ReadAPI -.-&gt; H2
+
+    ReadAPI --&gt; RaviToday[Ravi opens app during sick week]:::partial
+    RaviToday --&gt; EmptyToday[Today tab empty / 'covered']:::notstarted
+
+    Binding --&gt; WindowEnd[7 days pass — endedAt set OR&lt;br/&gt;effectiveUntil reached]:::notstarted
+    WindowEnd --&gt; ExpireCron[binding-expire-sweep cron]:::notstarted
+    WindowEnd --&gt; Digest[While-You-Were-Out digest&lt;br/&gt;posted to Ravi]:::notstarted
+
+    H3{{Cron framework + digest composer&lt;br/&gt;both NOT_STARTED}}:::horizon
+    WindowEnd -.-&gt; H3
+
+    Digest --&gt; RaviReturn[Ravi returns Monday]:::partial
+    RaviReturn --&gt; ReadHistorical[Activity tab — see what Lakshmi did]:::notstarted
+    ReadHistorical --&gt; End1((&quot;Coverage transition complete&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>What's built:</strong> the binding table + EXCLUDE invariant + audit-emit helpers + reassignPermanentBinding service helper + the routing read API (WIP @84ae39c).</p><p><strong>Five surfaces gating end-to-end:</strong> (1) HR portal create-binding form, (2) Lakshmi push, (3) Ravi push, (4) worker push (W-1), (5) while-you-were-out digest. None built.</p><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 6 — Ravi hands sites to Anjali (F27 future-dated handoff from Ravi's seat)</strong></summary>
+        <p class="small">Future-dated permanent reassignment. The P1.5 fix made this work mechanically. Spec: responsibility-model §7 + §9; closure §4.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef wip fill:#1a73e8,stroke:#0b3d8a,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Q3 rebalance —&lt;br/&gt;Anjali takes 3 of Ravi's sites Mon&quot;))
+    Start --&gt; HRReassign[HR uses&lt;br/&gt;reassignPermanentBinding helper]:::built
+    HRReassign --&gt; OldRow[(Old SiteSupervisorBinding&lt;br/&gt;effectiveUntil set to Mon)]:::table
+    HRReassign --&gt; NewRow[(New SiteSupervisorBinding&lt;br/&gt;effectiveFrom=Mon)]:::table
+    HRReassign --&gt; SupersededEvt{{AuditEvent: BINDING_ENDED_SUPERSEDED_BY_PERMANENT}}:::event
+    HRReassign --&gt; CreatedEvt{{AuditEvent: BINDING_CREATED}}:::event
+
+    H1{{HR portal UI absent —&lt;br/&gt;helper only callable from test or future code}}:::horizon
+    HRReassign -.-&gt; H1
+
+    OldRow --&gt; BeforeQuery[Before cutover:&lt;br/&gt;getEffectiveBinding returns Ravi]:::wip
+    NewRow --&gt; AfterQuery[After cutover Mon+1min:&lt;br/&gt;getEffectiveBinding returns Anjali]:::wip
+
+    BeforeQuery --&gt; RaviPortfolio[Ravi sees site in his list this week]:::notstarted
+    AfterQuery --&gt; AnjaliPortfolio[Anjali sees site in her list next week]:::notstarted
+
+    Start -.-&gt;|&quot;intended&quot;| DeltaDigest[Ravi receives 'shrinking portfolio'&lt;br/&gt;digest tomorrow morning]:::notstarted
+    Start -.-&gt;|&quot;intended&quot;| WorkerNotify[Workers on the 3 sites:&lt;br/&gt;'Your supervisor changes Monday W-3']:::notstarted
+
+    H2{{Portfolio-delta digest + worker W-3 push&lt;br/&gt;both NOT_STARTED}}:::horizon
+    DeltaDigest -.-&gt; H2
+
+    RaviPortfolio --&gt; End1((&quot;Monday — site routes to Anjali&quot;))
+    AnjaliPortfolio --&gt; End1</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>What's built:</strong> the mechanism (binding rows + audit events + future-dated cutover via effectiveUntil — the P1.5 fix 44a453d).</p><p><strong>What's not:</strong> HR portal write surface, supervisor portfolio-delta digest (audit Month 9/11 named this as MISSING), worker W-3 push.</p><p>---</p></div>
+      </details>
+
+    <h3>Workflow build-state table</h3>
+    
+    <table class="workflow-table">
+      <thead><tr><th>ID</th><th>Workflow</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
       <tbody>
     <tr>
       <td><strong>A1</strong></td>
       <td>Phone OTP login</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">BUILT</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">— (only if launch flips dev → prod SMS)</td>
+      <td class="cell-narrow small">— (only if launch flips dev → prod SMS)</td>
     </tr>
     <tr>
       <td><strong>A2</strong></td>
       <td>JWT refresh + role select</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">BUILT</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">—</td>
+      <td class="cell-narrow small">—</td>
     </tr>
     <tr>
       <td><strong>A3</strong></td>
       <td>Worker invitation → activation (Ravi acknowledges new worker)</td>
-      <td>WORKS (per ops-workflow-model)</td>
+      <td class="small">WORKS (per ops-workflow-model)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Layer 2 — supervisor Today tab to surface new-worker events from outbox.</td>
+      <td class="cell-narrow small">Layer 2 — supervisor Today tab to surface new-worker events from outbox.</td>
     </tr>
     <tr>
       <td><strong>A4</strong></td>
       <td>Worker doc collection → ACTIVE (Ravi reminds)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Layer 2 — supervisor surface + worker app activation.</td>
+      <td class="cell-narrow small">Layer 2 — supervisor surface + worker app activation.</td>
     </tr>
     <tr>
       <td><strong>B5</strong></td>
       <td>Site creation (Ravi views)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Layer 2 — supervisor sites overview tab.</td>
+      <td class="cell-narrow small">Layer 2 — supervisor sites overview tab.</td>
     </tr>
     <tr>
       <td><strong>B6</strong></td>
       <td>Site state transitions (Ravi sees in tab)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">State-machine implementation + push notification on cascade (Closure Decision 5 worker-side).</td>
+      <td class="cell-narrow small">State-machine implementation + push notification on cascade (Closure Decision 5 worker-side).</td>
     </tr>
     <tr>
       <td><strong>B7</strong></td>
       <td>Calendar entry creation (Ravi daily)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Layer 2 — calendar entry creation UI.</td>
+      <td class="cell-narrow small">Layer 2 — calendar entry creation UI.</td>
     </tr>
     <tr>
       <td><strong>B8</strong></td>
       <td>Calendar → Assignment promotion (Ravi daily)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Layer 2 — promote button in supervisor calendar surface.</td>
+      <td class="cell-narrow small">Layer 2 — promote button in supervisor calendar surface.</td>
     </tr>
     <tr>
       <td><strong>B9</strong></td>
       <td>Direct assignment creation (Ravi daily)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Layer 2 — direct assignment screen, OR fold into chat extraction (D16).</td>
+      <td class="cell-narrow small">Layer 2 — direct assignment screen, OR fold into chat extraction (D16).</td>
     </tr>
     <tr>
       <td><strong>B10</strong></td>
       <td>Conflict detection at assignment (Ravi catches conflicts)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">BUILT</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">—</td>
+      <td class="cell-narrow small">—</td>
     </tr>
     <tr>
       <td><strong>C11</strong></td>
       <td>Mark worker absent (Ravi daily)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Layer 2 — Today tab mark-absent button + chat extraction for the kind (extractor work is D16/D17).</td>
+      <td class="cell-narrow small">Layer 2 — Today tab mark-absent button + chat extraction for the kind (extractor work is D16/D17).</td>
     </tr>
     <tr>
       <td><strong>C12</strong></td>
       <td>Visit lifecycle (Ravi reviews flagged)</td>
-      <td>WORKS for happy path; CONFUSING for mid-visit flag (per audits §5.4)</td>
+      <td class="small">WORKS for happy path; CONFUSING for mid-visit flag (per audits §5.4)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Layer 2 — worker app start/end + supervisor flagged-review surface.</td>
+      <td class="cell-narrow small">Layer 2 — worker app start/end + supervisor flagged-review surface.</td>
     </tr>
     <tr>
       <td><strong>C13</strong></td>
       <td>Site complaint logging (Ravi logs them)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Layer 2 — complaint-log button on supervisor site detail surface OR chat extraction wiring.</td>
+      <td class="cell-narrow small">Layer 2 — complaint-log button on supervisor site detail surface OR chat extraction wiring.</td>
     </tr>
     <tr>
       <td><strong>C14</strong></td>
       <td>Visit photo verification (Ravi resolves flags)</td>
-      <td>WORKS for post-visit; MISSING for mid-visit (audit §5.4)</td>
+      <td class="small">WORKS for post-visit; MISSING for mid-visit (audit §5.4)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Phase C wave 5 — AI verify dispatcher + supervisor flagged-review surface.</td>
+      <td class="cell-narrow small">Phase C wave 5 — AI verify dispatcher + supervisor flagged-review surface.</td>
     </tr>
     <tr>
       <td><strong>C15</strong></td>
       <td>Audit reversal (30-min undo)</td>
-      <td>DRIFT (R6 vs D.1 specs disagree on 30 vs 5 min — F-P-4 founder pick pending per closure §12)</td>
+      <td class="small">DRIFT (R6 vs D.1 specs disagree on 30 vs 5 min — F-P-4 founder pick pending per closure §12)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Founder pick on reverse window (F-P-4) → backend reversal route → mobile undo affordance.</td>
+      <td class="cell-narrow small">Founder pick on reverse window (F-P-4) → backend reversal route → mobile undo affordance.</td>
     </tr>
     <tr>
       <td><strong>D16</strong></td>
       <td>AI chat → decision extraction (Ravi daily)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">BUILT</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">—</td>
+      <td class="cell-narrow small">—</td>
     </tr>
     <tr>
       <td><strong>D17</strong></td>
       <td>Decision apply (PROPOSED → APPLIED)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">(a) finish routing slice (resume); (b) separate slice: chat extractor writes SupervisorDecision PROPOSED rows; (c) Apply endpoint flips appliedAt + executes domain mutation.</td>
+      <td class="cell-narrow small">(a) finish routing slice (resume); (b) separate slice: chat extractor writes SupervisorDecision PROPOSED rows; (c) Apply endpoint flips appliedAt + executes domain mutation.</td>
     </tr>
     <tr>
       <td><strong>D18</strong></td>
       <td>Decision dismiss / undo</td>
-      <td>MISSING (dismiss has no reason capture per audit)</td>
+      <td class="small">MISSING (dismiss has no reason capture per audit)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">After D17 writer lands — add dismiss endpoint + reason capture.</td>
+      <td class="cell-narrow small">After D17 writer lands — add dismiss endpoint + reason capture.</td>
     </tr>
     <tr>
       <td><strong>D19</strong></td>
       <td>Option-picker decision</td>
-      <td>CONFUSING (design hides reasoning per audit)</td>
+      <td class="small">CONFUSING (design hides reasoning per audit)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">After D17 — extend DWI payload schema + add picker UI.</td>
+      <td class="cell-narrow small">After D17 — extend DWI payload schema + add picker UI.</td>
     </tr>
     <tr>
       <td><strong>D20</strong></td>
       <td>EMPLOYMENT-tier ack (Ravi proposes)</td>
-      <td>WORKS (closure §5.3.9 + Decision 7) — author-side; HR ack gate is Kavitha's row</td>
+      <td class="small">WORKS (closure §5.3.9 + Decision 7) — author-side; HR ack gate is Kavitha's row</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">D17 writer slice + HR ack surface (Kavitha side).</td>
+      <td class="cell-narrow small">D17 writer slice + HR ack surface (Kavitha side).</td>
     </tr>
     <tr>
       <td><strong>E21</strong></td>
       <td>Leave request workflow (Ravi sees cascade)</td>
-      <td>BROKEN at scale (HR queue overload — audit Month 6)</td>
+      <td class="small">BROKEN at scale (HR queue overload — audit Month 6)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Layer 2 — supervisor cascade surface; SLA wiring (Layer 2 also).</td>
+      <td class="cell-narrow small">Layer 2 — supervisor cascade surface; SLA wiring (Layer 2 also).</td>
     </tr>
     <tr>
       <td><strong>E22</strong></td>
       <td>Worker swap request (Ravi initiates)</td>
-      <td>MISSING (bilateral acceptance not designed per audit)</td>
+      <td class="small">MISSING (bilateral acceptance not designed per audit)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Founder/friend design pass on bilateral acceptance + worker app.</td>
+      <td class="cell-narrow small">Founder/friend design pass on bilateral acceptance + worker app.</td>
     </tr>
     <tr>
       <td><strong>E23</strong></td>
       <td>HR Update post (Ravi acks)</td>
-      <td>WORKS (5-word ack workflow) — but BROKEN at 5K scale (audit Week 3 — feed noise)</td>
+      <td class="small">WORKS (5-word ack workflow) — but BROKEN at 5K scale (audit Week 3 — feed noise)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Layer 2 — supervisor Updates tab UI + finish backend POST route.</td>
+      <td class="cell-narrow small">Layer 2 — supervisor Updates tab UI + finish backend POST route.</td>
     </tr>
     <tr>
       <td><strong>E24</strong></td>
       <td>Worker termination (Ravi proposes)</td>
-      <td>MISSING (proposer-side wait visibility per audit Month 7)</td>
+      <td class="small">MISSING (proposer-side wait visibility per audit Month 7)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Pick the SupervisorDecision kind name for termination → D17 writer → HR ack flow → proposer-wait surface.</td>
+      <td class="cell-narrow small">Pick the SupervisorDecision kind name for termination → D17 writer → HR ack flow → proposer-wait surface.</td>
     </tr>
     <tr>
       <td><strong>E25</strong></td>
       <td>Worker suspension / block (Ravi proposes)</td>
-      <td>MISSING (suspension return-date not surfaced — audit Month 6.5)</td>
+      <td class="small">MISSING (suspension return-date not surfaced — audit Month 6.5)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Spec gap — design the suspension lifecycle first (return date, audience).</td>
+      <td class="cell-narrow small">Spec gap — design the suspension lifecycle first (return date, audience).</td>
     </tr>
     <tr>
       <td><strong>F26</strong></td>
       <td>Acting supervisor coverage (Ravi gets sick, Lakshmi covers)</td>
-      <td>WORKS (Decision 4 — closure spec)</td>
+      <td class="small">WORKS (Decision 4 — closure spec)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Finish routing slice → HR portal slice (Kavitha) → worker notification (worker app).</td>
+      <td class="cell-narrow small">Finish routing slice → HR portal slice (Kavitha) → worker notification (worker app).</td>
     </tr>
     <tr>
       <td><strong>F27</strong></td>
       <td>Permanent portfolio reassignment (Ravi hands sites to Anjali)</td>
-      <td>MISSING (portfolio-delta surface absent — audit Month 9/11)</td>
+      <td class="small">MISSING (portfolio-delta surface absent — audit Month 9/11)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">HR write surface + supervisor portfolio-delta digest.</td>
+      <td class="cell-narrow small">HR write surface + supervisor portfolio-delta digest.</td>
     </tr>
     <tr>
       <td><strong>F28</strong></td>
       <td>Replacement invite (Ravi initiates daily)</td>
-      <td>WORKS (lifecycle locked in D.1 + ops §7.9)</td>
+      <td class="small">WORKS (lifecycle locked in D.1 + ops §7.9)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Design wave 5 — replacement invite flow (worker-app dependent).</td>
+      <td class="cell-narrow small">Design wave 5 — replacement invite flow (worker-app dependent).</td>
     </tr></tbody>
     </table>
+    
+
+    <p class="source-link small">
+      Sources:
+      <a href="../execution-state/supervisor-ravi.md">execution-state/supervisor-ravi.md</a>
+      ·
+      <a href="../workflow-maps/supervisor-ravi.md">workflow-maps/supervisor-ravi.md</a>
+    </p>
   </section>
   <section id="persona-worker" class="persona">
-    <h2>Suresh <small>(18 workflows)</small></h2>
-    <p class="scope">O.4 Suresh — Bihar migrant worker at Surya Cleaning's Lakeview site. Hindi-first; basic English; Telugu near-zero. ₹6K Realme phone, 80% storage full. Earns ~₹14K/month. Persona fears: late pay, false accusation, firing without notice. Daily user (when worker app exists). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.4.</p>
-    <p class="surfaces">Backend routes write `Worker` / `Visit` / `Assignment` / `LeaveRequest` / `Attendance` rows but **no worker mobile app exists in the repo today.** `find apps -maxdepth 2 -name &quot;worker-mobile&quot;` returns nothing. Every Suresh-side workflow has Implementation state = `NOT_STARTED` from his seat, even when the backend is `BUILT`. This is the headline finding of his audit (`docs/audits/2026-05-14-1yr-sim-worker-suresh.md`): the worker is currently **structurally invisible** to himself.</p>
-    <div class="dist">
-      <span class="dist-chip">BUILT: <strong>0</strong></span><span class="dist-chip">PARTIAL: <strong>0</strong></span><span class="dist-chip">WIP: <strong>0</strong></span><span class="dist-chip">STUBBED: <strong>0</strong></span><span class="dist-chip">NOT_STARTED: <strong>18</strong></span><span class="dist-chip">BLOCKED: <strong>0</strong></span>
-    </div>
-    <h3>Journeys (from workflow-maps)</h3>
-    <ol><li>First activation (A3 + A4)</li><li>Marked absent (C11 subject view)</li><li>Suresh requests leave (E21 worker-initiated)</li><li>Supervisor change notification (W-1 + W-2 + W-3 + W-7)</li><li>Suresh is terminated (E24 / W-4 subject view)</li></ol>
-    <h3>Workflow rows</h3>
-    <table>
-      <thead><tr><th>ID</th><th>Name</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
+    <h2>Suresh (Worker) <small>(18 workflows)</small></h2>
+    <p class="scope small">O.4 Suresh — Bihar migrant worker at Surya Cleaning's Lakeview site. Hindi-first; basic English; Telugu near-zero. ₹6K Realme phone, 80% storage full. Earns ~₹14K/month. Persona fears: late pay, false accusation, firing without notice. Daily user (when worker app exists). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.4.</p>
+    <p class="surfaces small">Backend routes write `Worker` / `Visit` / `Assignment` / `LeaveRequest` / `Attendance` rows but **no worker mobile app exists in the repo today.** `find apps -maxdepth 2 -name &quot;worker-mobile&quot;` returns nothing. Every Suresh-side workflow has Implementation state = `NOT_STARTED` from his seat, even when the backend is `BUILT`. This is the headline finding of his audit (`docs/audits/2026-05-14-1yr-sim-worker-suresh.md`): the worker is currently **structurally invisible** to himself.</p>
+    <div class="dist"><span class="dist-chip dist-BUILT">BUILT: <strong>0</strong></span><span class="dist-chip dist-PARTIAL">PARTIAL: <strong>0</strong></span><span class="dist-chip dist-WIP">WIP: <strong>0</strong></span><span class="dist-chip dist-STUBBED">STUBBED: <strong>0</strong></span><span class="dist-chip dist-NOT_STARTED">NOT_STARTED: <strong>18</strong></span><span class="dist-chip dist-BLOCKED">BLOCKED: <strong>0</strong></span></div>
+
+    
+    <figure class="diagram">
+      <figcaption>Overview — journey-level state</figcaption>
+      <pre class="mermaid">graph LR
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    A[Backend: Worker, Attendance,&lt;br/&gt;LeaveRequest, Visit, Notification]:::built
+    A --&gt; H{{IMPLEMENTATION HORIZON —&lt;br/&gt;No apps/worker-mobile/ folder exists.&lt;br/&gt;Zero Suresh-facing surfaces today.}}:::horizon
+    H --&gt; B[Worker mobile app:&lt;br/&gt;auth · home · schedule · leave ·&lt;br/&gt;notifications · appeals · records]:::notstarted</pre>
+    </figure>
+    
+
+    <h3>Journey flowcharts</h3>
+    
+      <details class="journey" open>
+        <summary><strong>Journey 1 — First activation (A3 + A4)</strong></summary>
+        <p class="small">How Suresh experiences day 1 when the worker app exists.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Kavitha sends activation SMS&lt;br/&gt;after onboarding paperwork&quot;))
+    Start --&gt; SMS[Worker receives SMS link]:::notstarted
+    SMS --&gt; AppOpen[Suresh opens worker app first time]:::notstarted
+    AppOpen --&gt; OTP[OTP login screen]:::notstarted
+    OTP --&gt; AuthBE[POST /auth/otp + verify — backend reuse]:::built
+    AuthBE --&gt; Home[Home screen&lt;br/&gt;'Welcome Suresh' + pending docs]:::notstarted
+
+    Home --&gt; DocsList[Doc upload list:&lt;br/&gt;Aadhaar, bank passbook, photo]:::notstarted
+    DocsList --&gt; UploadRoute[POST /workers/:id/docs]:::notstarted
+    UploadRoute --&gt; WorkerRow[(Worker.state =&lt;br/&gt;DOC_PENDING → DOCS_SUBMITTED)]:::table
+
+    H1{{No upload route or worker-app screen today}}:::horizon
+    UploadRoute -.-&gt; H1
+
+    WorkerRow --&gt; HRReview[Kavitha reviews docs]:::notstarted
+    HRReview --&gt; Approve[POST /workers/:id/activate]:::notstarted
+    Approve --&gt; WorkerActive[(Worker.state = ACTIVE)]:::table
+    Approve --&gt; ActivateEvt{{AuditEvent: WORKER_ACTIVATED}}:::event
+    Approve --&gt; NotifySuresh[Push: 'You're active — first shift tomorrow']:::notstarted
+
+    NotifySuresh --&gt; End1((&quot;Suresh can see schedule&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" open>
+        <summary><strong>Journey 2 — Marked absent (C11 subject view)</strong></summary>
+        <p class="small">Suresh wakes up sick; supervisor marks him absent; Suresh wants to know what happened.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Ravi marks Suresh absent in chat&quot;))
+    Start --&gt; AttRow[(Attendance row&lt;br/&gt;status=ABSENT_NO_CALL)]:::table
+    Start --&gt; Deduct[payDeductPaise computed]:::built
+    AttRow --&gt; Notify[Push to Suresh:&lt;br/&gt;'Marked absent — ₹500 deducted']:::notstarted
+
+    H1{{No worker-side notification surface;&lt;br/&gt;no NOTIFY → Suresh learns via WhatsApp from a peer}}:::horizon
+    Notify -.-&gt; H1
+
+    Notify --&gt; AttendanceCard[Attendance history card in worker app]:::notstarted
+    AttendanceCard --&gt; DisputeButton[Dispute button — 'I was present']:::notstarted
+    DisputeButton --&gt; DisputeRoute[POST /attendance/:id/dispute]:::notstarted
+    DisputeRoute --&gt; DisputeRow[(WorkerDispute row&lt;br/&gt;NOT YET MODELLED)]:::table
+    DisputeRoute --&gt; DisputeEvt{{AuditEvent: WORKER_DISPUTE_FILED}}:::event
+
+    H2{{Audit kind catalogued but no row schema,&lt;br/&gt;no route, no surface — audit Day 3 MISSING}}:::horizon
+    DisputeRow -.-&gt; H2
+
+    DisputeEvt --&gt; HRResolve[HR reviews dispute]:::notstarted
+    HRResolve --&gt; Resolution{Decision}
+    Resolution --&gt;|&quot;upheld&quot;| End1((&quot;Marking stands&quot;))
+    Resolution --&gt;|&quot;reversed&quot;| Reverse[POST /attendance/:id/reverse]:::notstarted
+    Reverse --&gt; End2((&quot;Pay restored&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 3 — Suresh requests leave (E21 worker-initiated)</strong></summary>
+        <p class="small">He has a family wedding, wants 2 days off.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;'Family wedding' — needs 2 days&quot;))
+    Start --&gt; AppForm[Worker app: 'Request leave']:::notstarted
+    AppForm --&gt; Submit[Submit dates + reason]:::notstarted
+    Submit --&gt; Route[POST /leave-requests by-worker]:::notstarted
+
+    H1{{Route exists supervisor-shaped today;&lt;br/&gt;worker-initiated path absent}}:::horizon
+    Route -.-&gt; H1
+
+    Route --&gt; LRRow[(LeaveRequest row&lt;br/&gt;state=REQUESTED&lt;br/&gt;workerInitiated=true)]:::table
+    Route --&gt; LREvt{{AuditEvent: LEAVE_REQUESTED}}:::event
+    Route --&gt; Queue[Routes to HR queue&lt;br/&gt;via QueueItem view]:::partial
+
+    Queue --&gt; HRApprove[Kavitha sees URGENT/STANDARD&lt;br/&gt;tier per closure Decision 3]:::notstarted
+    HRApprove --&gt; Decide{HR decides}
+    Decide --&gt;|&quot;approve&quot;| Approved[POST /leave-requests/:id/approve]:::built
+    Decide --&gt;|&quot;reject&quot;| Rejected[POST /leave-requests/:id/reject]:::built
+
+    Approved --&gt; ApprovedEvt{{AuditEvent: LEAVE_APPROVED}}:::event
+    Approved --&gt; NotifyApprove[Push to Suresh:&lt;br/&gt;'Approved for May 18-19']:::notstarted
+
+    Rejected --&gt; RejectedEvt{{AuditEvent: LEAVE_REJECTED}}:::event
+    Rejected --&gt; NotifyReject[Push to Suresh:&lt;br/&gt;'Rejected — reason: X']:::notstarted
+
+    NotifyApprove --&gt; End1((&quot;Suresh sees Approved status&quot;))
+    NotifyReject --&gt; End2((&quot;Suresh sees rejection + reason&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 4 — Supervisor change notification (W-1 + W-2 + W-3 + W-7)</strong></summary>
+        <p class="small">The headline Suresh case. Closure Decision 4 mandates this; nothing exists today.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;HR creates acting binding&lt;br/&gt;OR permanent reassignment for Suresh's site&quot;))
+    Start --&gt; Binding[(SiteSupervisorBinding row inserted&lt;br/&gt;or effectiveUntil updated)]:::table
+    Start --&gt; BindEvt{{AuditEvent: BINDING_CREATED&lt;br/&gt;or BINDING_ENDED_SUPERSEDED_BY_PERMANENT}}:::event
+
+    BindEvt --&gt; Trigger[Notification emitter&lt;br/&gt;worker-supervisor-change]:::notstarted
+    Trigger --&gt; Notif[(Notification row&lt;br/&gt;audienceWorkerId=Suresh&lt;br/&gt;kind=supervisor_change)]:::table
+
+    H1{{Closure Decision 4 mandates this whole branch.&lt;br/&gt;Zero notification emitters wired for binding lifecycle.&lt;br/&gt;AuditEvent kind WORKER_SUPERVISOR_CHANGE_NOTIFIED catalogued, no emitter.}}:::horizon
+    Trigger -.-&gt; H1
+
+    Trigger --&gt; Dispatch[Outbox dispatcher → channels]:::notstarted
+    Dispatch --&gt; Push[Push: 'Your supervisor is now Lakshmi (acting for Ravi until May 22)']:::notstarted
+    Dispatch --&gt; Banner[In-app banner on worker home]:::notstarted
+    Dispatch --&gt; SMSFallback[SMS fallback if push fails]:::notstarted
+
+    Push --&gt; Localised{Suresh's&lt;br/&gt;preferredLanguage}
+    Localised --&gt;|&quot;hi&quot;| HiText[Hindi text content]:::notstarted
+    Localised --&gt;|&quot;en&quot;| EnText[English text content]:::notstarted
+    Localised --&gt;|&quot;te/bn/ta&quot;| OtherLang[Other locale per Worker.preferredLanguage column]:::notstarted
+
+    HiText --&gt; End1((&quot;Suresh knows who to call this week&quot;))
+    EnText --&gt; End1
+    OtherLang --&gt; End1</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>Note:</strong> <code>Worker.preferredLanguage</code> column shipped in P1.5 (commit <code>095c766</code>) with <code>'hi'</code> default per closure §5.1. The column exists — the emitter doesn't.</p><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 5 — Suresh is terminated (E24 / W-4 subject view)</strong></summary>
+        <p class="small">The most consequential moment for Suresh. Closure Decision 5: in-app push + 7-day appeal + records export.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Ravi proposes termination via chat&quot;))
+    Start --&gt; ChatEvt[AuditEvent: WORKER_TERMINATION_REQUESTED]:::built
+    ChatEvt --&gt; WorkerPending[(Worker.state = TERMINATION_PENDING)]:::table
+
+    H1{{Today the chat-driven path emits an AuditEvent and&lt;br/&gt;transitions Worker.state to TERMINATION_PENDING.&lt;br/&gt;No SupervisorDecision row, no HR ack gate, no worker push.}}:::horizon
+    WorkerPending -.-&gt; H1
+
+    ChatEvt -.-&gt;|&quot;intended&quot;| Dwi[Write SupervisorDecision&lt;br/&gt;tier=EMPLOYMENT&lt;br/&gt;+ originContext snapshot]:::notstarted
+    Dwi --&gt; DwiRow[(SupervisorDecision row&lt;br/&gt;tier=EMPLOYMENT&lt;br/&gt;ackRequired=true)]:::table
+
+    DwiRow --&gt; HRAck[Kavitha types confirmation phrase]:::notstarted
+    HRAck --&gt; AckedRow[(DWI ackedAt set)]:::table
+    HRAck --&gt; AppliedRoute[POST /decisions/:id/apply]:::notstarted
+    AppliedRoute --&gt; WorkerTerminated[(Worker.state = TERMINATED)]:::table
+    AppliedRoute --&gt; TermEvt{{AuditEvent: TERMINATION_APPLIED}}:::event
+
+    TermEvt --&gt; ThreeAudiencePush[3-audience push:&lt;br/&gt;originator + current responsible + Suresh]:::notstarted
+    ThreeAudiencePush --&gt; SureshNotif[(Notification row&lt;br/&gt;kind=termination_notified_to_subject)]:::table
+    ThreeAudiencePush --&gt; SureshEvt{{AuditEvent: TERMINATION_NOTIFIED_TO_SUBJECT}}:::event
+
+    SureshNotif --&gt; SureshScreen[Worker app: 'You've been terminated effective today']:::notstarted
+    SureshScreen --&gt; Reason[Plain-language reason shown]:::notstarted
+    SureshScreen --&gt; Appeal[Appeal button — 7 day window]:::notstarted
+
+    H2{{Worker app + appeal form NOT_STARTED}}:::horizon
+    SureshScreen -.-&gt; H2
+
+    Appeal --&gt; AppealRoute[POST /termination-appeals]:::notstarted
+    AppealRoute --&gt; AppealEvt{{AuditEvent: TERMINATION_APPEAL_FILED}}:::event
+    AppealEvt --&gt; HRResolve[HR resolves appeal]:::notstarted
+
+    SureshScreen --&gt; RecordsExport[Records export button]:::notstarted
+    RecordsExport --&gt; ExportRoute[GET /workers/:id/records-export]:::notstarted
+    ExportRoute --&gt; PDF[(PDF: attendance + pay + complaints + leaves)]:::notstarted
+
+    HRResolve --&gt; End1((&quot;Appeal upheld OR original stands&quot;))
+    PDF --&gt; End2((&quot;Suresh keeps employment record&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>Audit verdict:</strong> <code>BROKEN</code> design today — the worker's most consequential moment is fully offline (no app, no push, no appeal). The fix is closure Decision 5 implementation in full.</p><p>---</p></div>
+      </details>
+
+    <h3>Workflow build-state table</h3>
+    
+    <table class="workflow-table">
+      <thead><tr><th>ID</th><th>Workflow</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
       <tbody>
     <tr>
       <td><strong>A1</strong></td>
       <td>Phone OTP login (worker-app login)</td>
-      <td>WORKS (backend) — `MISSING` for worker because the worker login surface doesn't exist</td>
+      <td class="small">WORKS (backend) — `MISSING` for worker because the worker login surface doesn't exist</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker mobile app scaffolding (new app folder `apps/worker-mobile/`).</td>
+      <td class="cell-narrow small">Worker mobile app scaffolding (new app folder `apps/worker-mobile/`).</td>
     </tr>
     <tr>
       <td><strong>A3</strong></td>
       <td>Worker invitation → activation (Suresh's lived experience)</td>
-      <td>MISSING from Suresh's side (audit Day 1 — &quot;blank home&quot;)</td>
+      <td class="small">MISSING from Suresh's side (audit Day 1 — &quot;blank home&quot;)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app design pass + scaffolding.</td>
+      <td class="cell-narrow small">Worker app design pass + scaffolding.</td>
     </tr>
     <tr>
       <td><strong>A4</strong></td>
       <td>Worker doc collection → ACTIVE</td>
-      <td>MISSING (no signal that activation happened)</td>
+      <td class="small">MISSING (no signal that activation happened)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app + doc upload UI + activation notification.</td>
+      <td class="cell-narrow small">Worker app + doc upload UI + activation notification.</td>
     </tr>
     <tr>
       <td><strong>B9</strong></td>
       <td>Direct assignment (Suresh as subject)</td>
-      <td>MISSING from Suresh's side</td>
+      <td class="small">MISSING from Suresh's side</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app schedule screen.</td>
+      <td class="cell-narrow small">Worker app schedule screen.</td>
     </tr>
     <tr>
       <td><strong>C11</strong></td>
       <td>Mark worker absent (Suresh's experience as subject)</td>
-      <td>MISSING (no dispute path — audit Day 3)</td>
+      <td class="small">MISSING (no dispute path — audit Day 3)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Design pass on worker dispute path + worker app surface for attendance visibility.</td>
+      <td class="cell-narrow small">Design pass on worker dispute path + worker app surface for attendance visibility.</td>
     </tr>
     <tr>
       <td><strong>C12</strong></td>
       <td>Visit lifecycle (Suresh starts/ends visits)</td>
-      <td>MISSING (SCHEDULED → IN_PROGRESS trigger not locked — audit Day 2)</td>
+      <td class="small">MISSING (SCHEDULED → IN_PROGRESS trigger not locked — audit Day 2)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Design pass on visit-start trigger + worker visit surface.</td>
+      <td class="cell-narrow small">Design pass on visit-start trigger + worker visit surface.</td>
     </tr>
     <tr>
       <td><strong>C14</strong></td>
       <td>Visit photo verification (Suresh's subject experience)</td>
-      <td>MISSING (subject-side visibility — audit Day 4)</td>
+      <td class="small">MISSING (subject-side visibility — audit Day 4)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker flag-visibility surface (deferred until worker app + AI dispatcher land).</td>
+      <td class="cell-narrow small">Worker flag-visibility surface (deferred until worker app + AI dispatcher land).</td>
     </tr>
     <tr>
       <td><strong>C15</strong></td>
       <td>Audit reversal (Suresh's subject view)</td>
-      <td>DRIFT (R6 vs D.1 window mismatch — F-P-4 pending)</td>
+      <td class="small">DRIFT (R6 vs D.1 window mismatch — F-P-4 pending)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">F-P-4 founder pick → reversal route → worker notification.</td>
+      <td class="cell-narrow small">F-P-4 founder pick → reversal route → worker notification.</td>
     </tr>
     <tr>
       <td><strong>D17</strong></td>
       <td>Decision apply (Suresh as decision subject)</td>
-      <td>MISSING from Suresh's side</td>
+      <td class="small">MISSING from Suresh's side</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app + notification surface.</td>
+      <td class="cell-narrow small">Worker app + notification surface.</td>
     </tr>
     <tr>
       <td><strong>D20</strong></td>
       <td>EMPLOYMENT-tier ack (Suresh as termination subject)</td>
-      <td>BROKEN (worker's most consequential moment is fully offline — audit Month 11)</td>
+      <td class="small">BROKEN (worker's most consequential moment is fully offline — audit Month 11)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app + closure Decision 5 surface (in-app + appeal window + records export).</td>
+      <td class="cell-narrow small">Worker app + closure Decision 5 surface (in-app + appeal window + records export).</td>
     </tr>
     <tr>
       <td><strong>E21</strong></td>
       <td>Leave request (Suresh initiates)</td>
-      <td>BROKEN at worker-self-initiative (design assumes supervisor-on-behalf — audit Week 2)</td>
+      <td class="small">BROKEN at worker-self-initiative (design assumes supervisor-on-behalf — audit Week 2)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app leave-request form + backend acceptance of worker-initiated requests.</td>
+      <td class="cell-narrow small">Worker app leave-request form + backend acceptance of worker-initiated requests.</td>
     </tr>
     <tr>
       <td><strong>E22</strong></td>
       <td>Worker swap accept/reject (Suresh as B side)</td>
-      <td>MISSING (bilateral acceptance not designed — audit Month 6.5)</td>
+      <td class="small">MISSING (bilateral acceptance not designed — audit Month 6.5)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Design pass on bilateral swap + worker app.</td>
+      <td class="cell-narrow small">Design pass on bilateral swap + worker app.</td>
     </tr>
     <tr>
       <td><strong>E23</strong></td>
       <td>HR Update (if audience extended to workers)</td>
-      <td>BROKEN at scale (audience-model excludes workers per closure §7 audience amendment for pay-affecting only — telephone via supervisor WhatsApp)</td>
+      <td class="small">BROKEN at scale (audience-model excludes workers per closure §7 audience amendment for pay-affecting only — telephone via supervisor WhatsApp)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app HR-update feed + Policy gate.</td>
+      <td class="cell-narrow small">Worker app HR-update feed + Policy gate.</td>
     </tr>
     <tr>
       <td><strong>E24</strong></td>
       <td>Worker termination (Suresh as subject)</td>
-      <td>BROKEN (most consequential moment fully offline — audit Month 11)</td>
+      <td class="small">BROKEN (most consequential moment fully offline — audit Month 11)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Closure Decision 5 implementation — worker app + termination surface + appeal flow + records export.</td>
+      <td class="cell-narrow small">Closure Decision 5 implementation — worker app + termination surface + appeal flow + records export.</td>
     </tr>
     <tr>
       <td><strong>E25</strong></td>
       <td>Worker suspension (Suresh as subject)</td>
-      <td>MISSING (no return-date surface — audit Month 7)</td>
+      <td class="small">MISSING (no return-date surface — audit Month 7)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Design pass.</td>
+      <td class="cell-narrow small">Design pass.</td>
     </tr>
     <tr>
       <td><strong>F26</strong></td>
       <td>Acting supervisor coverage (W-1 + W-2 + W-7 — Suresh sees new face)</td>
-      <td>MISSING (spec silent on worker-side notification — audit Month 8, headline Suresh case)</td>
+      <td class="small">MISSING (spec silent on worker-side notification — audit Month 8, headline Suresh case)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app + emitter + Closure Decision 4 surface.</td>
+      <td class="cell-narrow small">Worker app + emitter + Closure Decision 4 surface.</td>
     </tr>
     <tr>
       <td><strong>F27</strong></td>
       <td>Permanent portfolio reassignment (W-3 — Suresh sees new permanent supervisor)</td>
-      <td>MISSING</td>
+      <td class="small">MISSING</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Same as F26.</td>
+      <td class="cell-narrow small">Same as F26.</td>
     </tr>
     <tr>
       <td><strong>F28</strong></td>
       <td>Replacement invite (Suresh accepts/rejects)</td>
-      <td>MISSING (R6 surface supervisor-only; worker surface unmapped — audit Day 7 / W-6)</td>
+      <td class="small">MISSING (R6 surface supervisor-only; worker surface unmapped — audit Day 7 / W-6)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Worker app + accept/reject surface.</td>
+      <td class="cell-narrow small">Worker app + accept/reject surface.</td>
     </tr></tbody>
     </table>
+    
+
+    <p class="source-link small">
+      Sources:
+      <a href="../execution-state/worker-suresh.md">execution-state/worker-suresh.md</a>
+      ·
+      <a href="../workflow-maps/worker-suresh.md">workflow-maps/worker-suresh.md</a>
+    </p>
   </section>
   <section id="persona-hr" class="persona">
-    <h2>Kavitha <small>(18 workflows)</small></h2>
-    <p class="scope">O.2 Kavitha — HR control plane operator at Surya Cleaning. Currently runs payroll + HR via 3 Excel sheets + Tally + Gmail + WhatsApp. Reddy's sister-in-law; high relational stake. Multi-HR-user team at 5K-scale (Kavitha + Anita + Vikram + Priya + Deepak). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.2. Audit: `docs/audits/2026-05-15-1yr-sim-hr-kavitha.md` (H-1 through H-9 switching scope).</p>
-    <p class="surfaces">HR control plane lives in `apps/admin-web/` — but the HR portal **does not exist yet**. `ls apps/admin-web/app/` shows: about / api / contact / login / owner / pricing / privacy / system / terms — **no HR route**. The closure spec §4 HR pod model is locked in schema but the admin-web HR portal is the largest unbuilt surface in the system.</p>
-    <div class="dist">
-      <span class="dist-chip">BUILT: <strong>0</strong></span><span class="dist-chip">PARTIAL: <strong>11</strong></span><span class="dist-chip">WIP: <strong>0</strong></span><span class="dist-chip">STUBBED: <strong>0</strong></span><span class="dist-chip">NOT_STARTED: <strong>7</strong></span><span class="dist-chip">BLOCKED: <strong>0</strong></span>
-    </div>
-    <h3>Journeys (from workflow-maps)</h3>
-    <ol><li>Bootstrap seed review (H-6, pick 8)</li><li>Create acting cover (H-1, F26 orchestration)</li><li>Permanent reassignment + portfolio liquidation (H-2 + H-4)</li><li>EMPLOYMENT-tier final ack gate (H-7, D20 HR side)</li><li>HR queue + leave approval (E21 HR side, SLA-tiered)</li><li>HR-absent fallback (H-5, G-1, closure Decision 2)</li></ol>
-    <h3>Workflow rows</h3>
-    <table>
-      <thead><tr><th>ID</th><th>Name</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
+    <h2>Kavitha (HR) <small>(18 workflows)</small></h2>
+    <p class="scope small">O.2 Kavitha — HR control plane operator at Surya Cleaning. Currently runs payroll + HR via 3 Excel sheets + Tally + Gmail + WhatsApp. Reddy's sister-in-law; high relational stake. Multi-HR-user team at 5K-scale (Kavitha + Anita + Vikram + Priya + Deepak). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.2. Audit: `docs/audits/2026-05-15-1yr-sim-hr-kavitha.md` (H-1 through H-9 switching scope).</p>
+    <p class="surfaces small">HR control plane lives in `apps/admin-web/` — but the HR portal **does not exist yet**. `ls apps/admin-web/app/` shows: about / api / contact / login / owner / pricing / privacy / system / terms — **no HR route**. The closure spec §4 HR pod model is locked in schema but the admin-web HR portal is the largest unbuilt surface in the system.</p>
+    <div class="dist"><span class="dist-chip dist-BUILT">BUILT: <strong>0</strong></span><span class="dist-chip dist-PARTIAL">PARTIAL: <strong>11</strong></span><span class="dist-chip dist-WIP">WIP: <strong>0</strong></span><span class="dist-chip dist-STUBBED">STUBBED: <strong>0</strong></span><span class="dist-chip dist-NOT_STARTED">NOT_STARTED: <strong>7</strong></span><span class="dist-chip dist-BLOCKED">BLOCKED: <strong>0</strong></span></div>
+
+    
+    <figure class="diagram">
+      <figcaption>Overview — journey-level state</figcaption>
+      <pre class="mermaid">graph LR
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    A[Backend tables + helpers shipped:&lt;br/&gt;SiteSupervisorBinding · HRPod · Policy ·&lt;br/&gt;Notification · Digest · audit helpers]:::partial
+    A --&gt; H{{IMPLEMENTATION HORIZON —&lt;br/&gt;apps/admin-web/app/hr/ does not exist.&lt;br/&gt;HR can only operate via raw DB / tests today.}}:::horizon
+    H --&gt; B[admin-web HR portal:&lt;br/&gt;queue · bindings · pods · policy ·&lt;br/&gt;seed-review · ack screen · audit-chain timeline]:::notstarted</pre>
+    </figure>
+    
+
+    <h3>Journey flowcharts</h3>
+    
+      <details class="journey" open>
+        <summary><strong>Journey 1 — Bootstrap seed review (H-6, pick 8)</strong></summary>
+        <p class="small">The first thing Kavitha does at migration time. Per ops §8 + closure Decision 6.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Migration day —&lt;br/&gt;Surya's existing supervisors + sites imported&quot;))
+    Start --&gt; SeedScript[Seed script reads active Assignment rows]:::notstarted
+    SeedScript --&gt; InferBinding[Infer permanent binding per site&lt;br/&gt;actingForUserId=NULL&lt;br/&gt;reason='BOOTSTRAP_SEED — pending HR review']:::notstarted
+    InferBinding --&gt; SeedRow[(SiteSupervisorBinding rows&lt;br/&gt;marked BOOTSTRAP_SEED)]:::table
+
+    H1{{No seed script exists yet — closure Decision 6 +&lt;br/&gt;responsibility-model pick 8 + audit H-6}}:::horizon
+    SeedScript -.-&gt; H1
+
+    SeedRow --&gt; KavithaPortal[Kavitha opens&lt;br/&gt;admin-web/hr/seed-review]:::notstarted
+    KavithaPortal --&gt; ListInferred[List of inferred bindings&lt;br/&gt;highlighted as pending review]:::notstarted
+    ListInferred --&gt; PerRow{Per-row&lt;br/&gt;decision}
+
+    PerRow --&gt;|&quot;Confirm&quot;| ConfirmRoute[POST /hr/bindings/:id/confirm-seed]:::notstarted
+    PerRow --&gt;|&quot;Reassign&quot;| ReassignRoute[Use reassignPermanentBinding helper]:::built
+    PerRow --&gt;|&quot;Bulk-confirm&quot;| BulkRoute[POST /hr/bindings/bulk-confirm-seed]:::notstarted
+
+    ConfirmRoute --&gt; ConfirmEvt{{AuditEvent: BOOTSTRAP_SEED_CONFIRMED}}:::event
+    ReassignRoute --&gt; ReassignEvt{{AuditEvent: BOOTSTRAP_SEED_REASSIGNED}}:::event
+    BulkRoute --&gt; BulkEvts{{N × AuditEvent: BOOTSTRAP_SEED_CONFIRMED}}:::event
+
+    ConfirmEvt --&gt; End1((&quot;Binding marked verified —&lt;br/&gt;reason field cleared&quot;))
+    ReassignEvt --&gt; End2((&quot;Old binding superseded — new permanent active&quot;))
+    BulkEvts --&gt; End3((&quot;Pod's seeds confirmed in batch&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" open>
+        <summary><strong>Journey 2 — Create acting cover (H-1, F26 orchestration)</strong></summary>
+        <p class="small">Kavitha gets a call: Ravi is sick. She needs to bind Lakshmi as acting for Ravi's sites.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Ravi calls Kavitha sick&quot;))
+    Start --&gt; Portal[admin-web/hr/bindings/new&lt;br/&gt;acting-coverage form]:::notstarted
+    Portal --&gt; CapacityPanel[See capacity context:&lt;br/&gt;Lakshmi current sites + recent decisions]:::notstarted
+    CapacityPanel --&gt; Pick[Pick acting userId = Lakshmi&lt;br/&gt;+ effectiveUntil = +7 days]:::notstarted
+
+    H1{{Admin-web HR portal absent —&lt;br/&gt;closure §4 capacity-context panel + acting-window form}}:::horizon
+    Pick -.-&gt; H1
+
+    Pick --&gt; Route[POST /hr/site-supervisor-bindings]:::notstarted
+    Route --&gt; BindRow[(SiteSupervisorBinding row&lt;br/&gt;actingForUserId=Ravi&lt;br/&gt;effectiveUntil=+7d)]:::table
+    Route --&gt; CheckExclusion{Postgres EXCLUDE&lt;br/&gt;constraint check}
+
+    CheckExclusion --&gt;|&quot;overlap detected&quot;| Reject[Reject — show 'this site already has acting binding by X']:::built
+    CheckExclusion --&gt;|&quot;ok&quot;| BindEvt{{AuditEvent: BINDING_CREATED}}:::event
+
+    BindEvt --&gt; Outbox[(Outbox: worker_supervisor_change&lt;br/&gt;+ acting_window_start)]:::table
+    Outbox --&gt; Dispatcher[Outbox dispatcher]:::notstarted
+
+    Dispatcher --&gt; NotifyLakshmi[Push: 'You're acting for Ravi]:::notstarted
+    Dispatcher --&gt; NotifyRavi[Push: 'Lakshmi covers you']:::notstarted
+    Dispatcher --&gt; NotifyWorkers[Workers on Ravi's sites:&lt;br/&gt;push + banner + SMS + localised]:::notstarted
+
+    H2{{Outbox dispatcher + push channel absent}}:::horizon
+    Dispatcher -.-&gt; H2
+
+    NotifyLakshmi --&gt; End1((&quot;Acting window live&quot;))
+    NotifyRavi --&gt; End1
+    NotifyWorkers --&gt; End1</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 3 — Permanent reassignment + portfolio liquidation (H-2 + H-4)</strong></summary>
+        <p class="small">Q3 rebalance: Anjali takes 3 sites from Ravi. Or a supervisor quits and his portfolio liquidates.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Q3 rebalance OR&lt;br/&gt;supervisor quits&quot;))
+    Start --&gt; Portal[admin-web/hr/bindings/reassign&lt;br/&gt;'switch all sites' bulk form]:::notstarted
+    Portal --&gt; Pick[Pick sites + new supervisor +&lt;br/&gt;cutover date]:::notstarted
+
+    H1{{HR portal absent — closure §4 'switch all sites'&lt;br/&gt;convenience UI named but unbuilt}}:::horizon
+    Pick -.-&gt; H1
+
+    Pick --&gt; Loop{For each site}
+    Loop --&gt; CallHelper[reassignPermanentBinding helper]:::built
+    CallHelper --&gt; OldRow[(Old binding&lt;br/&gt;effectiveUntil=cutover)]:::table
+    CallHelper --&gt; NewRow[(New binding&lt;br/&gt;effectiveFrom=cutover)]:::table
+    CallHelper --&gt; SupersededEvt{{AuditEvent: BINDING_ENDED_SUPERSEDED_BY_PERMANENT}}:::event
+    CallHelper --&gt; CreatedEvt{{AuditEvent: BINDING_CREATED}}:::event
+
+    Loop --&gt; NotifyOld[Push to losing supervisor:&lt;br/&gt;'portfolio shrinks by N']:::notstarted
+    Loop --&gt; NotifyNew[Push to gaining supervisor:&lt;br/&gt;'you now own N new sites']:::notstarted
+    Loop --&gt; NotifyWorkers[Workers on each site: W-3 push]:::notstarted
+
+    H2{{Portfolio-delta digest + worker W-3 push absent —&lt;br/&gt;audit Month 9/11 flagged this as MISSING}}:::horizon
+    NotifyOld -.-&gt; H2
+
+    NotifyOld --&gt; End1((&quot;Reassignment effective at cutover&quot;))
+    NotifyNew --&gt; End1
+    NotifyWorkers --&gt; End1</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 4 — EMPLOYMENT-tier final ack gate (H-7, D20 HR side)</strong></summary>
+        <p class="small">Ravi proposes terminating a worker. Kavitha is the ack gate.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Ravi proposes terminate in chat&quot;))
+    Start --&gt; Dwi[Write SupervisorDecision&lt;br/&gt;tier=EMPLOYMENT&lt;br/&gt;ackRequired=true&lt;br/&gt;+ originContext snapshot]:::notstarted
+    Dwi --&gt; DwiRow[(SupervisorDecision row&lt;br/&gt;+ originContext JSONB&lt;br/&gt;+ proposedDuringAbsence)]:::table
+
+    H1{{DWI writer NOT_STARTED.&lt;br/&gt;Schema columns BUILT (P1.5).&lt;br/&gt;Chat emits WORKER_TERMINATION_REQUESTED AuditEvent only.}}:::horizon
+    Dwi -.-&gt; H1
+
+    DwiRow --&gt; Queue[Routes to HR pod queue]:::notstarted
+    Queue --&gt; AckScreen[admin-web/hr/ack/:id&lt;br/&gt;typed-phrase capture]:::notstarted
+    AckScreen --&gt; DecisionPanel[Decision-support panel:&lt;br/&gt;originContext + worker history +&lt;br/&gt;recent decisions]:::notstarted
+
+    H2{{HR ack screen + decision-support panel absent}}:::horizon
+    AckScreen -.-&gt; H2
+
+    DecisionPanel --&gt; Type[Kavitha types exact phrase&lt;br/&gt;(per closure §5.3.9)]:::notstarted
+    Type --&gt; AckRoute[POST /decisions/:id/ack-employment]:::notstarted
+    AckRoute --&gt; Acked[(DWI ackedAt set)]:::table
+    AckRoute --&gt; AckEvt{{AuditEvent: TERMINATION_ACKED}}:::event
+
+    Acked --&gt; ApplyAfter[Auto-apply or queue for apply]:::notstarted
+    ApplyAfter --&gt; WorkerTerm[(Worker.state = TERMINATED)]:::table
+    ApplyAfter --&gt; AppliedEvt{{AuditEvent: TERMINATION_APPLIED}}:::event
+    AppliedEvt --&gt; ThreeAudience[3-audience push:&lt;br/&gt;originator + responsible + subject]:::notstarted
+
+    ThreeAudience --&gt; End1((&quot;Termination effective&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 5 — HR queue + leave approval (E21 HR side, SLA-tiered)</strong></summary>
+        <p class="small">Closure Decision 3: 3 tiers + age-escalation.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Worker / supervisor creates&lt;br/&gt;LeaveRequest&quot;))
+    Start --&gt; LRRow[(LeaveRequest row&lt;br/&gt;state=REQUESTED)]:::table
+    LRRow --&gt; QView[QueueItem view surfaces it]:::built
+
+    QView --&gt; Tier{Tier by Policy&lt;br/&gt;(closure Decision 3)}
+    Tier --&gt;|&quot;URGENT 2h SLA&quot;| Urgent[Top of queue]:::notstarted
+    Tier --&gt;|&quot;NEXT_DAY 24h SLA&quot;| NextDay[Mid queue]:::notstarted
+    Tier --&gt;|&quot;STANDARD 7d&quot;| Standard[Bottom]:::notstarted
+
+    H1{{Tier classification logic + Policy reads absent —&lt;br/&gt;Policy table exists, classifier code does not}}:::horizon
+    Tier -.-&gt; H1
+
+    Urgent --&gt; Lock[Pessimistic lock acquired]:::notstarted
+    Lock --&gt; LockEvt{{AuditEvent: HR_QUEUE_LOCK_ACQUIRED}}:::event
+    Lock --&gt; KavithaUI[admin-web HR queue UI]:::notstarted
+
+    KavithaUI --&gt; Decide{Decide}
+    Decide --&gt;|&quot;approve&quot;| Approve[POST /leave-requests/:id/approve]:::built
+    Decide --&gt;|&quot;reject&quot;| Reject[POST /leave-requests/:id/reject]:::built
+    Decide --&gt;|&quot;skip&quot;| SkipUnlock[Release lock]:::notstarted
+
+    Approve --&gt; LREvt{{AuditEvent: LEAVE_APPROVED}}:::event
+    Reject --&gt; RejectEvt{{AuditEvent: LEAVE_REJECTED}}:::event
+
+    LRRow --&gt; AgeWatch{Age &gt; SLA?}
+    AgeWatch --&gt;|&quot;yes&quot;| Escalate[Auto-escalate tier]:::notstarted
+    Escalate --&gt; EscEvt{{AuditEvent: HR_QUEUE_TIER_ESCALATED}}:::event
+
+    H2{{Age-escalation cron not built (Stream F)}}:::horizon
+    AgeWatch -.-&gt; H2
+
+    Approve --&gt; End1((&quot;Leave granted&quot;))
+    Reject --&gt; End2((&quot;Leave rejected with reason&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 6 — HR-absent fallback (H-5, G-1, closure Decision 2)</strong></summary>
+        <p class="small">What happens when Kavitha herself is on PTO for 3 days. Closure Decision 2: tiered fallback.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Kavitha takes 3-day PTO&quot;))
+    Start --&gt; Queue[(HR queue items pile up)]:::table
+    Queue --&gt; AgeCheck[Per-item age timer ticks]:::notstarted
+
+    AgeCheck --&gt; Tier1{Age &gt; 24h?}
+    Tier1 --&gt;|&quot;yes&quot;| InheritBackup[Backup pod owner inherits&lt;br/&gt;per HRPod.backupOwnerUserId]:::notstarted
+    InheritBackup --&gt; InheritEvt{{AuditEvent: HR_FALLBACK_INVOKED tier=1}}:::event
+    InheritBackup --&gt; NotifyBackup[Push to backup owner]:::notstarted
+
+    AgeCheck --&gt; Tier2{Age &gt; 48h?}
+    Tier2 --&gt;|&quot;yes&quot;| CrossPod[Any HR user can override&lt;br/&gt;via cross-pod override flow]:::notstarted
+    CrossPod --&gt; CrossEvt{{AuditEvent: HR_CROSS_POD_OVERRIDE_USED tier=2}}:::event
+
+    AgeCheck --&gt; Tier3{Age &gt; 72h?}
+    Tier3 --&gt;|&quot;yes&quot;| OwnerOverride[Owner emergency-override available&lt;br/&gt;(explicit invocation, NOT auto)]:::notstarted
+    OwnerOverride --&gt; OwnerNotify[Notify owner with severity]:::notstarted
+    OwnerNotify --&gt; OwnerInvoke[Owner explicitly invokes override]:::notstarted
+    OwnerInvoke --&gt; OverrideEvt{{AuditEvent: EMERGENCY_OVERRIDE_ACTIVATED tier=3}}:::event
+
+    H1{{All three fallback tiers NOT_STARTED.&lt;br/&gt;HRPod columns exist (primaryOwnerUserId + backupOwnerUserId)&lt;br/&gt;but the age-tracking cron + escalation logic absent}}:::horizon
+    Tier1 -.-&gt; H1
+
+    OverrideEvt --&gt; End1((&quot;Owner can take action on urgent items&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+
+    <h3>Workflow build-state table</h3>
+    
+    <table class="workflow-table">
+      <thead><tr><th>ID</th><th>Workflow</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
       <tbody>
     <tr>
       <td><strong>A1</strong></td>
       <td>Phone OTP login (Kavitha via admin-web)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Build `apps/admin-web/app/hr/` shell.</td>
+      <td class="cell-narrow small">Build `apps/admin-web/app/hr/` shell.</td>
     </tr>
     <tr>
       <td><strong>A3</strong></td>
       <td>Worker invitation (Kavitha initiates)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">HR portal worker-invite form.</td>
+      <td class="cell-narrow small">HR portal worker-invite form.</td>
     </tr>
     <tr>
       <td><strong>A4</strong></td>
       <td>Worker doc collection review (Kavitha)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">HR portal doc-review surface.</td>
+      <td class="cell-narrow small">HR portal doc-review surface.</td>
     </tr>
     <tr>
       <td><strong>B5</strong></td>
       <td>Site creation (Kavitha one-time setup)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">HR portal site management screen.</td>
+      <td class="cell-narrow small">HR portal site management screen.</td>
     </tr>
     <tr>
       <td><strong>B6</strong></td>
       <td>Site state transitions (Kavitha manual)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">State-machine code + HR surface.</td>
+      <td class="cell-narrow small">State-machine code + HR surface.</td>
     </tr>
     <tr>
       <td><strong>E21</strong></td>
       <td>Leave request approval (Kavitha approves/rejects)</td>
-      <td>BROKEN at scale (Month 6 audit — queue overload)</td>
+      <td class="small">BROKEN at scale (Month 6 audit — queue overload)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">HR queue UI + SLA wiring.</td>
+      <td class="cell-narrow small">HR queue UI + SLA wiring.</td>
     </tr>
     <tr>
       <td><strong>E23</strong></td>
       <td>HR Update post (Kavitha posts)</td>
-      <td>WORKS (post side) — audience model locked at launch</td>
+      <td class="small">WORKS (post side) — audience model locked at launch</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Finish POST route + HR portal composer.</td>
+      <td class="cell-narrow small">Finish POST route + HR portal composer.</td>
     </tr>
     <tr>
       <td><strong>E25</strong></td>
       <td>Worker suspension review (Kavitha)</td>
-      <td>MISSING (no return-date surface)</td>
+      <td class="small">MISSING (no return-date surface)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Design pass.</td>
+      <td class="cell-narrow small">Design pass.</td>
     </tr>
     <tr>
       <td><strong>H-1</strong></td>
       <td>Create acting-coverage binding (F26 orchestration)</td>
-      <td>WORKS (closure §4 + responsibility-model §5.7) — but admin-web HR portal absent</td>
+      <td class="small">WORKS (closure §4 + responsibility-model §5.7) — but admin-web HR portal absent</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">HR portal acting-window create form + capacity-context panel.</td>
+      <td class="cell-narrow small">HR portal acting-window create form + capacity-context panel.</td>
     </tr>
     <tr>
       <td><strong>H-2</strong></td>
       <td>Permanent reassignment (F27 orchestration)</td>
-      <td>WORKS (with the P1.5 future-dated fix `44a453d`)</td>
+      <td class="small">WORKS (with the P1.5 future-dated fix `44a453d`)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">HR portal permanent-reassign UI.</td>
+      <td class="cell-narrow small">HR portal permanent-reassign UI.</td>
     </tr>
     <tr>
       <td><strong>H-3</strong></td>
       <td>End a wrong binding (F26.11 correction)</td>
-      <td>WORKS (mechanism); UI deferred per responsibility-model §10</td>
+      <td class="small">WORKS (mechanism); UI deferred per responsibility-model §10</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">HR portal manual-end UI.</td>
+      <td class="cell-narrow small">HR portal manual-end UI.</td>
     </tr>
     <tr>
       <td><strong>H-4</strong></td>
       <td>Liquidate quitter portfolio</td>
-      <td>WORKS (via reassign per ops §8)</td>
+      <td class="small">WORKS (via reassign per ops §8)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">HR portal transfer-portfolio UI.</td>
+      <td class="cell-narrow small">HR portal transfer-portfolio UI.</td>
     </tr>
     <tr>
       <td><strong>H-5</strong></td>
       <td>HR-absent fallback (G-1)</td>
-      <td>WORKS (closure Decision 2 — tiered: backup 24h → cross-pod 48h → owner emergency 72h)</td>
+      <td class="small">WORKS (closure Decision 2 — tiered: backup 24h → cross-pod 48h → owner emergency 72h)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Implement fallback state machine + cron escalation.</td>
+      <td class="cell-narrow small">Implement fallback state machine + cron escalation.</td>
     </tr>
     <tr>
       <td><strong>H-6</strong></td>
       <td>Bootstrap-seed review (pick 8)</td>
-      <td>WORKS (closure Decision 6 — two surfaces)</td>
+      <td class="small">WORKS (closure Decision 6 — two surfaces)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Migration script + HR portal seed-review UI.</td>
+      <td class="cell-narrow small">Migration script + HR portal seed-review UI.</td>
     </tr>
     <tr>
       <td><strong>H-7</strong></td>
       <td>Acting picks fail (F26.10 / C-7.10)</td>
-      <td>WORKS (ops §7.10 — cancel + pick another)</td>
+      <td class="small">WORKS (ops §7.10 — cancel + pick another)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">HR portal cancel + repick flow.</td>
+      <td class="cell-narrow small">HR portal cancel + repick flow.</td>
     </tr>
     <tr>
       <td><strong>H-8</strong></td>
       <td>Audit-chain reconstruction (G-4)</td>
-      <td>WORKS (closure Decision 6 — audit-chain timeline view)</td>
+      <td class="small">WORKS (closure Decision 6 — audit-chain timeline view)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">HR portal audit-chain timeline UI.</td>
+      <td class="cell-narrow small">HR portal audit-chain timeline UI.</td>
     </tr>
     <tr>
       <td><strong>H-9</strong></td>
       <td>Multi-HR coordination</td>
-      <td>WORKS (closure Decision 1 — HR pod model + pessimistic per-row lock for HR queue items)</td>
+      <td class="small">WORKS (closure Decision 1 — HR pod model + pessimistic per-row lock for HR queue items)</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Queue lock columns + service code + HR portal queue UI.</td>
+      <td class="cell-narrow small">Queue lock columns + service code + HR portal queue UI.</td>
     </tr>
     <tr>
       <td><strong>D20 / E24</strong></td>
       <td>D20 / E24 — EMPLOYMENT-tier final ack gate (Kavitha)</td>
-      <td>WORKS (closure §5.3.9 + Decision 7)</td>
+      <td class="small">WORKS (closure §5.3.9 + Decision 7)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">HR portal ack-screen + typed-phrase + decision-support panel.</td>
+      <td class="cell-narrow small">HR portal ack-screen + typed-phrase + decision-support panel.</td>
     </tr></tbody>
     </table>
+    
+
+    <p class="source-link small">
+      Sources:
+      <a href="../execution-state/hr-kavitha.md">execution-state/hr-kavitha.md</a>
+      ·
+      <a href="../workflow-maps/hr-kavitha.md">workflow-maps/hr-kavitha.md</a>
+    </p>
   </section>
   <section id="persona-owner" class="persona">
-    <h2>Reddy <small>(12 workflows)</small></h2>
-    <p class="scope">O.1 Mr. Reddy — founder/owner of Surya Cleaning. Not a daily product user. Receives digests, approves bank changes, watches company KPIs, fields AI budget alerts. Telugu first; reads English. Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.1. Audit: `docs/audits/2026-05-15-1yr-sim-owner-reddy.md`.</p>
-    <p class="surfaces">Owner surfaces live in `apps/admin-web/app/owner/` (one `page.tsx` today) + WhatsApp digest delivery (off-app). Per closure Decision 10: 7 owner surfaces total — 4 admin-web + 3 off-app. Of those 7, **1** has any code today (`apps/admin-web/app/owner/page.tsx`).</p>
-    <div class="dist">
-      <span class="dist-chip">BUILT: <strong>0</strong></span><span class="dist-chip">PARTIAL: <strong>2</strong></span><span class="dist-chip">WIP: <strong>0</strong></span><span class="dist-chip">STUBBED: <strong>0</strong></span><span class="dist-chip">NOT_STARTED: <strong>9</strong></span><span class="dist-chip">BLOCKED: <strong>1</strong></span>
-    </div>
-    <h3>Journeys (from workflow-maps)</h3>
-    <ol><li>Monthly digest (O-1, closure Decision 10)</li><li>AI budget alert (G29, the only PARTIAL surface today)</li><li>Bank-authority change (O-4, 2-step OTP, sensitive)</li><li>Emergency override (closure Decision 2 tier 3)</li></ol>
-    <h3>Workflow rows</h3>
-    <table>
-      <thead><tr><th>ID</th><th>Name</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
+    <h2>Reddy (Owner) <small>(12 workflows)</small></h2>
+    <p class="scope small">O.1 Mr. Reddy — founder/owner of Surya Cleaning. Not a daily product user. Receives digests, approves bank changes, watches company KPIs, fields AI budget alerts. Telugu first; reads English. Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.1. Audit: `docs/audits/2026-05-15-1yr-sim-owner-reddy.md`.</p>
+    <p class="surfaces small">Owner surfaces live in `apps/admin-web/app/owner/` (one `page.tsx` today) + WhatsApp digest delivery (off-app). Per closure Decision 10: 7 owner surfaces total — 4 admin-web + 3 off-app. Of those 7, **1** has any code today (`apps/admin-web/app/owner/page.tsx`).</p>
+    <div class="dist"><span class="dist-chip dist-BUILT">BUILT: <strong>0</strong></span><span class="dist-chip dist-PARTIAL">PARTIAL: <strong>2</strong></span><span class="dist-chip dist-WIP">WIP: <strong>0</strong></span><span class="dist-chip dist-STUBBED">STUBBED: <strong>0</strong></span><span class="dist-chip dist-NOT_STARTED">NOT_STARTED: <strong>9</strong></span><span class="dist-chip dist-BLOCKED">BLOCKED: <strong>1</strong></span></div>
+
+    
+    <figure class="diagram">
+      <figcaption>Overview — journey-level state</figcaption>
+      <pre class="mermaid">graph LR
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    A[reset-ai-spend cron BUILT&lt;br/&gt;+ owner.budget_alert outbox topic]:::partial
+    A --&gt; H{{IMPLEMENTATION HORIZON —&lt;br/&gt;6 of 7 owner surfaces NOT_STARTED.&lt;br/&gt;Outbox dispatcher to WhatsApp/SMS partial.}}:::horizon
+    H --&gt; B[7 owner surfaces:&lt;br/&gt;monthly · annual · incident · bank · AI overage ·&lt;br/&gt;compliance · annual-review]:::notstarted</pre>
+    </figure>
+    
+
+    <h3>Journey flowcharts</h3>
+    
+      <details class="journey" open>
+        <summary><strong>Journey 1 — Monthly digest (O-1, closure Decision 10)</strong></summary>
+        
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;1st of month, UTC midnight cron&quot;))
+    Start --&gt; Compose[DigestComposer.compose owner_monthly]:::notstarted
+    Compose --&gt; Collect[Aggregate Attendance + Complaints +&lt;br/&gt;Terminations + payroll totals across tenant]:::notstarted
+    Collect --&gt; Body[Build body JSON +&lt;br/&gt;plain-text Telugu+English rendering]:::notstarted
+    Body --&gt; DigestRow[(Digest row&lt;br/&gt;kind=owner_monthly&lt;br/&gt;bodyText set)]:::table
+
+    H1{{DigestComposer service NOT_STARTED.&lt;br/&gt;Digest table schema BUILT (P1.5).}}:::horizon
+    Compose -.-&gt; H1
+
+    DigestRow --&gt; Outbox[(Outbox: owner_monthly_digest)]:::table
+    Outbox --&gt; Dispatcher[Outbox dispatcher]:::partial
+    Dispatcher --&gt; Channel{deliveryChannel}
+    Channel --&gt;|&quot;whatsapp_out&quot;| WA[WhatsApp summary +&lt;br/&gt;admin-web detail link]:::notstarted
+    Channel --&gt;|&quot;email&quot;| Email[Email PDF attachment]:::notstarted
+
+    H2{{WhatsApp/SMS adapter NOT_STARTED.&lt;br/&gt;MSG91 webhook deferred per launch checklist.}}:::horizon
+    WA -.-&gt; H2
+
+    WA --&gt; ReddyPhone[Reddy reads on phone]:::notstarted
+    ReddyPhone --&gt; TapDetail[Tap → admin-web/owner/digests/:id]:::notstarted
+    TapDetail --&gt; DetailUI[Detail page with KPIs + drill-down]:::notstarted
+    DetailUI --&gt; End1((&quot;Reddy has month-end snapshot&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" open>
+        <summary><strong>Journey 2 — AI budget alert (G29, the only PARTIAL surface today)</strong></summary>
+        
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Daily AI spend ticks against budget&quot;))
+    Start --&gt; Spend[Company.aiSpendDailyInr increments]:::built
+    Spend --&gt; Threshold{Cross threshold&lt;br/&gt;50% / 75% / 100%?}
+    Threshold --&gt;|&quot;yes&quot;| Outbox[(Outbox: owner.budget_alert)]:::built
+    Threshold --&gt;|&quot;no&quot;| Continue[Continue]:::built
+    Outbox --&gt; AlertEvt{{AuditEvent: OWNER_BUDGET_ALERT_DISPATCHED}}:::event
+
+    AlertEvt --&gt; Dispatcher[Outbox dispatcher]:::partial
+    Dispatcher --&gt; Format[Plain-English Telugu narrative]:::notstarted
+
+    H1{{Outbox dispatcher to WhatsApp NOT_STARTED.&lt;br/&gt;Plain-English narrative formatter NOT_STARTED.}}:::horizon
+    Dispatcher -.-&gt; H1
+
+    Format --&gt; ReddyAlert[Reddy receives:&lt;br/&gt;'AI spend at 75% today — ₹X used of ₹Y']:::notstarted
+    ReddyAlert --&gt; Action{Reddy&lt;br/&gt;response}
+    Action --&gt;|&quot;approve overage&quot;| OverageRoute[POST /owner/approve-overage]:::notstarted
+    Action --&gt;|&quot;throttle&quot;| ThrottleRoute[POST /owner/throttle-ai]:::notstarted
+    Action --&gt;|&quot;ignore&quot;| Continue2[No action]:::notstarted
+
+    OverageRoute --&gt; End1((&quot;Budget extended&quot;))
+    ThrottleRoute --&gt; End2((&quot;AI features throttled&quot;))
+
+    Start --&gt; MidnightCron[reset-ai-spend cron at UTC midnight]:::built
+    MidnightCron --&gt; ResetEvt{{AuditEvent: AI_SPEND_DAILY_RESET}}:::event
+    ResetEvt --&gt; End3((&quot;Counter resets, day continues&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 3 — Bank-authority change (O-4, 2-step OTP, sensitive)</strong></summary>
+        <p class="small">Reddy needs to update Surya's payroll bank account. Per closure Decision 10.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;Reddy: 'New bank account for payroll'&quot;))
+    Start --&gt; AdminAuth[admin-web /owner/bank login]:::notstarted
+    AdminAuth --&gt; OTP1[OTP step 1 — owner's phone]:::notstarted
+    OTP1 --&gt; Form[Enter new IFSC + account]:::notstarted
+    Form --&gt; OTP2[OTP step 2 — confirms change]:::notstarted
+    OTP2 --&gt; Route[POST /owner/bank-change]:::notstarted
+
+    H1{{No bank entity in schema.&lt;br/&gt;No 2-step OTP path.&lt;br/&gt;No owner UI.&lt;br/&gt;Sensitive surface — needs security review before ship.}}:::horizon
+    Route -.-&gt; H1
+
+    Route --&gt; BankRow[(BankAccount row&lt;br/&gt;NOT YET MODELLED)]:::table
+    Route --&gt; ChangeEvt{{AuditEvent: BANK_DETAILS_CHANGED}}:::event
+    Route --&gt; NotifyHR[Notify HR for visibility]:::notstarted
+    Route --&gt; NotifyOwner[Confirmation push to Reddy]:::notstarted
+
+    NotifyOwner --&gt; End1((&quot;Bank updated next payroll cycle&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p>---</p></div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Journey 4 — Emergency override (closure Decision 2 tier 3)</strong></summary>
+        <p class="small">The most consequential owner surface. HR is fully absent for 72h; system escalates to Reddy.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">graph TD
+    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+    classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef table fill:#e0f2f1,stroke:#00695c,color:#000
+    classDef event fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
+
+    Start((&quot;HR queue item ages &gt; 72h&quot;))
+    Start --&gt; EscalationCron[hr-availability-sweep cron]:::notstarted
+    EscalationCron --&gt; Tier3Notify[Push to Reddy:&lt;br/&gt;'URGENT — HR pod has not responded in 72h']:::notstarted
+
+    H1{{Cron framework absent.&lt;br/&gt;Tier-progression logic absent.&lt;br/&gt;Owner notification surface absent.}}:::horizon
+    EscalationCron -.-&gt; H1
+
+    Tier3Notify --&gt; ReddyUI[admin-web /owner/emergency-queue]:::notstarted
+    ReddyUI --&gt; Review[Review specific queue items]:::notstarted
+    Review --&gt; ExplicitInvoke[Tap 'Take over' — explicit invocation]:::notstarted
+    ExplicitInvoke --&gt; InvokeRoute[POST /owner/emergency-override/:queueItemId]:::notstarted
+
+    InvokeRoute --&gt; OverrideEvt{{AuditEvent: EMERGENCY_OVERRIDE_ACTIVATED}}:::event
+    InvokeRoute --&gt; ActOnItem[Owner now able to ack the item directly]:::notstarted
+
+    ActOnItem --&gt; ResolveItem[Approve / reject / reassign]:::notstarted
+    ResolveItem --&gt; NotifyHR[Notify HR pod: 'Owner took over X items']:::notstarted
+    NotifyHR --&gt; End1((&quot;Critical items unblocked&quot;))</pre>
+    </figure>
+        <div class="journey-notes"><p><strong>Explicit invocation rule (closure Decision 2):</strong> owner does NOT auto-inherit. Push notifies owner; owner must tap to take over. Prevents silent ownership transfer.</p><p>---</p></div>
+      </details>
+
+    <h3>Workflow build-state table</h3>
+    
+    <table class="workflow-table">
+      <thead><tr><th>ID</th><th>Workflow</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
       <tbody>
     <tr>
       <td><strong>A1</strong></td>
       <td>Phone OTP login (Reddy first login)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Closure Decision 10 — owner landing.</td>
+      <td class="cell-narrow small">Closure Decision 10 — owner landing.</td>
     </tr>
     <tr>
       <td><strong>B5</strong></td>
       <td>Site creation (Reddy one-time setup approval)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Decide whether owner has approval gate; if yes, design.</td>
+      <td class="cell-narrow small">Decide whether owner has approval gate; if yes, design.</td>
     </tr>
     <tr>
       <td><strong>O-1</strong></td>
       <td>Monthly digest (auto-composed, Telugu + English)</td>
-      <td>WORKS (closure Decision 10)</td>
+      <td class="small">WORKS (closure Decision 10)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">DigestComposer service + WhatsApp dispatcher + admin-web monthly view.</td>
+      <td class="cell-narrow small">DigestComposer service + WhatsApp dispatcher + admin-web monthly view.</td>
     </tr>
     <tr>
       <td><strong>O-2</strong></td>
       <td>Annual digest</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Same as O-1, scoped to annual.</td>
+      <td class="cell-narrow small">Same as O-1, scoped to annual.</td>
     </tr>
     <tr>
       <td><strong>O-3</strong></td>
       <td>Incident digest (e.g., spike-in-complaints)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Design trigger thresholds → composer + dispatch.</td>
+      <td class="cell-narrow small">Design trigger thresholds → composer + dispatch.</td>
     </tr>
     <tr>
       <td><strong>O-4</strong></td>
       <td>Bank-authority UI (2-step OTP)</td>
-      <td>WORKS (closure Decision 10)</td>
+      <td class="small">WORKS (closure Decision 10)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Schema + route + UI + security review before ship.</td>
+      <td class="cell-narrow small">Schema + route + UI + security review before ship.</td>
     </tr>
     <tr>
       <td><strong>O-5</strong></td>
       <td>AI overage approval (founder pick F-P-5 pending)</td>
-      <td>Founder pick required (F-P-5)</td>
+      <td class="small">Founder pick required (F-P-5)</td>
       <td><span class="badge" style="background:#8e24aa;color:#fff;">BLOCKED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Founder pick F-P-5.</td>
+      <td class="cell-narrow small">Founder pick F-P-5.</td>
     </tr>
     <tr>
       <td><strong>O-6</strong></td>
       <td>Compliance lookup by employee (legal events)</td>
-      <td>WORKS (closure Decision 10)</td>
+      <td class="small">WORKS (closure Decision 10)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Compliance UI + export formatter.</td>
+      <td class="cell-narrow small">Compliance UI + export formatter.</td>
     </tr>
     <tr>
       <td><strong>O-7</strong></td>
       <td>Annual review (auto-composed)</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Composer + UI.</td>
+      <td class="cell-narrow small">Composer + UI.</td>
     </tr>
     <tr>
       <td><strong>D20 / E24</strong></td>
       <td>D20 / E24 — Termination digest visibility</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Roll into O-1 monthly composer.</td>
+      <td class="cell-narrow small">Roll into O-1 monthly composer.</td>
     </tr>
     <tr>
       <td><strong>G29</strong></td>
       <td>AI budget alert recipient</td>
-      <td>WORKS</td>
+      <td class="small">WORKS</td>
       <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
       <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
-      <td class="cell-narrow">Outbox dispatcher → MSG91 / WhatsApp + Telugu narrative.</td>
+      <td class="cell-narrow small">Outbox dispatcher → MSG91 / WhatsApp + Telugu narrative.</td>
     </tr>
     <tr>
       <td><strong>Emergency override (closure Decision 2 tier 3</strong></td>
       <td>Emergency override (closure Decision 2 tier 3 — Owner inherits at 72h)</td>
-      <td>WORKS (explicit invocation, NOT auto-inheritance)</td>
+      <td class="small">WORKS (explicit invocation, NOT auto-inheritance)</td>
       <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
       <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
-      <td class="cell-narrow">Cron framework + owner explicit-invocation surface.</td>
+      <td class="cell-narrow small">Cron framework + owner explicit-invocation surface.</td>
     </tr></tbody>
     </table>
+    
+
+    <p class="source-link small">
+      Sources:
+      <a href="../execution-state/owner-reddy.md">execution-state/owner-reddy.md</a>
+      ·
+      <a href="../workflow-maps/owner-reddy.md">workflow-maps/owner-reddy.md</a>
+    </p>
   </section>
 
-    <section id="combined" class="summary">
-      <h2>Where to find more</h2>
-      <p>This dashboard is a generated read-only view. To edit any of this, edit the canonical markdown:</p>
-      <ul>
-        <li><code>handoff/execution-state/*.md</code> — build state per persona + combined.</li>
-        <li><code>handoff/workflow-maps/*.md</code> — journey flowcharts + cross-persona sequences + ER diagram.</li>
-        <li><code>handoff/execution-state/INDEX.md</code> — strict enums + 15 failure-mode rules.</li>
-      </ul>
-      <p>Regenerate with: <code>node handoff/scripts/build-handoff-artifacts.mjs</code></p>
+    
+  <section id="combined" class="persona">
+    <h2>Combined / Cross-persona end-to-end</h2>
+    <p class="scope small">Sequence diagrams for every cross-persona workflow. Each shows the implementation horizon — where the system stops working today.</p>
+
+    <div class="summary-grid">
+      
+        <div class="summary-cell">
+          <div class="value">3</div>
+          <div class="label">END TO END</div>
+        </div>
+        <div class="summary-cell">
+          <div class="value">17</div>
+          <div class="label">BACKEND READY</div>
+        </div>
+        <div class="summary-cell">
+          <div class="value">1</div>
+          <div class="label">SURFACES PARTIAL</div>
+        </div>
+        <div class="summary-cell">
+          <div class="value">4</div>
+          <div class="label">BLOCKED BY DESIGN</div>
+        </div>
+        <div class="summary-cell">
+          <div class="value">1</div>
+          <div class="label">BLOCKED BY POLICY</div>
+        </div>
+        <div class="summary-cell">
+          <div class="value">4</div>
+          <div class="label">NOT STARTED</div>
+        </div>
+    </div>
+
+    <h3>Cross-persona sequence diagrams</h3>
+    
+      <details class="journey" open>
+        <summary><strong>Sequence 1 — F26 Acting cover (Ravi sick, Lakshmi covers for 7 days)</strong></summary>
+        <p class="small">The headline P1.5 workflow. Friend's audit Month 8.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">sequenceDiagram
+    actor Ravi as Ravi (covered)
+    actor Kavitha as Kavitha (HR)
+    actor Lakshmi as Lakshmi (acting)
+    actor Suresh as Suresh (worker on Ravi's site)
+    participant Admin as admin-web HR portal
+    participant BE as backend
+    participant DB as Postgres
+    participant OBX as Outbox/dispatcher
+    participant WApp as Worker app
+
+    Note over Ravi,Kavitha: 🟢 Phone call works today&lt;br/&gt;(off-app)
+    Ravi-&gt;&gt;Kavitha: &quot;I'm sick — can't work for a week&quot;
+
+    Note over Kavitha,Admin: 🔴 admin-web HR portal doesn't exist
+    Kavitha--xAdmin: opens /hr/bindings/new (DOESN'T EXIST)
+
+    Note over Admin,BE: ⛔ IMPLEMENTATION STOPS HERE for HR creation flow
+
+    rect rgba(255,200,200,0.2)
+    Admin--&gt;&gt;BE: POST /hr/site-supervisor-bindings (acting Lakshmi → Ravi's sites)
+    BE--&gt;&gt;DB: 🟢 INSERT SiteSupervisorBinding row (P1.5 BUILT)
+    DB--&gt;&gt;BE: 🟢 EXCLUDE constraint passes
+    BE--&gt;&gt;DB: 🟢 emit BINDING_CREATED AuditEvent (helper BUILT)
+    BE--&gt;&gt;OBX: 🔴 enqueue worker_supervisor_change + acting_window_start
+    end
+
+    Note over OBX,Suresh: 🔴 outbox dispatcher to WhatsApp/SMS/push NOT_STARTED
+    OBX--&gt;&gt;WApp: 🔴 push to Suresh (W-1)
+    OBX--&gt;&gt;Lakshmi: 🔴 push &quot;You're acting&quot;
+    OBX--&gt;&gt;Ravi: 🔴 push &quot;Lakshmi covers&quot;
+
+    Note over Lakshmi,BE: 🔵 Read-side WIP this slice (commit 84ae39c)
+    Lakshmi-&gt;&gt;BE: GET /sites/:id/effective-supervisor
+    BE-&gt;&gt;DB: 🔵 getEffectiveBinding (WIP)
+    DB--&gt;&gt;BE: returns Lakshmi binding (kind=ACTING)
+    BE--&gt;&gt;Lakshmi: { userId: Lakshmi, kind: ACTING, ... }
+
+    Note over Ravi,WApp: 🔴 During sick week — supervisor app + worker app blind to handoff in UI
+    Ravi--&gt;&gt;BE: opens Today tab
+    BE--&gt;&gt;Ravi: stub &quot;Coming soon — Slice 2+&quot;
+
+    Note over Lakshmi,BE: 7 days pass — window expiry
+    BE--&gt;&gt;BE: 🔴 binding-expire-sweep cron (NOT_STARTED — Stream F)
+    BE--&gt;&gt;DB: 🔴 set endedAt OR effectiveUntil reached
+    BE--&gt;&gt;DB: 🔴 emit BINDING_ENDED_AUTO
+    BE--&gt;&gt;OBX: 🔴 compose while-you-were-out digest
+    OBX--&gt;&gt;Ravi: 🔴 digest delivered Mon morning</pre>
+    </figure>
+        <div class="journey-notes small"><strong>Where it really stops today:</strong> the helper + audit-emit layer is built and verified. Everything above the routing read API is unbuilt: HR portal, dispatcher, worker push, cron. 5 surfaces gate end-to-end.
+
+---</div>
+      </details>
+      <details class="journey" open>
+        <summary><strong>Sequence 2 — F27 Permanent reassignment (future-dated handoff)</strong></summary>
+        <p class="small">Q3 rebalance. Anjali takes 3 of Ravi's sites starting Monday.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">sequenceDiagram
+    actor Kavitha as Kavitha (HR)
+    actor Ravi as Ravi (losing)
+    actor Anjali as Anjali (gaining)
+    actor Suresh as Suresh (worker on site)
+    participant Admin as admin-web HR portal
+    participant BE as backend
+    participant DB as Postgres
+    participant OBX as Outbox/dispatcher
+
+    Note over Kavitha,Admin: 🔴 HR portal absent
+    Kavitha--xAdmin: opens /hr/bindings/reassign (DOESN'T EXIST)
+
+    Note over Admin,BE: ⛔ IMPLEMENTATION STOPS HERE for HR write
+    rect rgba(255,200,200,0.2)
+    Admin--&gt;&gt;BE: POST /hr/site-supervisor-bindings/reassign (cutover = Mon)
+    BE--&gt;&gt;BE: 🟢 reassignPermanentBinding helper (P1.5 BUILT, fix 44a453d)
+    BE--&gt;&gt;DB: 🟢 UPDATE old row effectiveUntil = Mon
+    BE--&gt;&gt;DB: 🟢 INSERT new row effectiveFrom = Mon
+    BE--&gt;&gt;DB: 🟢 emit BINDING_ENDED_SUPERSEDED_BY_PERMANENT + BINDING_CREATED
+    end
+
+    Note over Ravi,Anjali: BEFORE cutover (this week)
+    Ravi-&gt;&gt;BE: 🔵 GET /sites/:id/effective-supervisor (WIP)
+    BE--&gt;&gt;Ravi: { userId: Ravi } (still owns the site)
+    Anjali-&gt;&gt;BE: 🔵 GET /sites/:id/effective-supervisor (WIP)
+    BE--&gt;&gt;Anjali: { userId: Ravi } (Anjali doesn't see it yet)
+
+    Note over BE,OBX: 🔴 Notification + digest absent — audit Month 9/11 MISSING
+    BE--xOBX: 🔴 portfolio-delta digest to Ravi NOT_STARTED
+    BE--xOBX: 🔴 'you've gained 3 sites' push to Anjali NOT_STARTED
+    BE--xOBX: 🔴 worker W-3 push to Suresh NOT_STARTED
+
+    Note over Ravi,Anjali: AT cutover (Mon 00:00)
+    Ravi-&gt;&gt;BE: 🔵 GET /sites/:id/effective-supervisor
+    BE--&gt;&gt;Ravi: { userId: Anjali } (no longer his)
+    Anjali-&gt;&gt;BE: 🔵 GET /sites/:id/effective-supervisor
+    BE--&gt;&gt;Anjali: { userId: Anjali } (now hers)
+
+    Note over Suresh,OBX: 🔴 Suresh never gets told&lt;br/&gt;Learns via WhatsApp from a peer</pre>
+    </figure>
+        <div class="journey-notes small"><strong>Where it really stops today:</strong> mechanism BUILT (P1.5 fix is verified). Notification + digest surfaces NOT_STARTED.
+
+---</div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Sequence 3 — D17 Decision apply (the missing-middle)</strong></summary>
+        <p class="small">The chat MVP path works but skips the DWI lifecycle entirely. Closure spec requires it.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">sequenceDiagram
+    actor Ravi as Ravi (supervisor)
+    participant Mobile as mobile/chat.tsx
+    participant BE as backend
+    participant DB as Postgres
+
+    Note over Ravi,Mobile: 🟢 BUILT — Wave 4a chat MVP works end-to-end
+    Ravi-&gt;&gt;Mobile: voice &quot;Mukesh didn't come today&quot;
+    Mobile-&gt;&gt;BE: POST /chat/messages
+    BE-&gt;&gt;BE: 🟢 AI extracts intent
+    BE--&gt;&gt;Mobile: 🟢 DecisionCard { kind: MARK_ABSENT, workerId, ... }
+    Mobile-&gt;&gt;Ravi: shows card
+
+    Note over BE,DB: ⛔ IMPLEMENTATION STOPS HERE for DWI lifecycle&lt;br/&gt;(grep -r supervisorDecision.create = 0 matches in code)
+
+    rect rgba(255,200,200,0.2)
+    Mobile--&gt;&gt;BE: 🔴 (intended) POST /decisions (PROPOSED)
+    BE--&gt;&gt;DB: 🔴 INSERT SupervisorDecision row + originContext
+    BE--&gt;&gt;DB: 🔴 emit DWI_PROPOSED AuditEvent
+    Note over BE,DB: 🔵 Routing slice WIP @84ae39c covers READ side only
+    Ravi--&gt;&gt;BE: GET /decisions/proposed-for-me
+    BE--&gt;&gt;BE: 🔵 getEffectiveBinding + deriveWorkerPrimarySiteId
+    BE--&gt;&gt;Ravi: returns rows routed by current responsibility
+    end
+
+    Note over Ravi,Mobile: 🟢 Today's workaround: direct mutation skips the DWI lifecycle
+    Ravi-&gt;&gt;Mobile: tap &quot;Apply&quot;
+    Mobile-&gt;&gt;BE: 🟢 POST /workers/:id/mark-absent (DIRECT)
+    BE-&gt;&gt;DB: 🟢 INSERT Attendance + AuditEvent + Outbox
+    BE--&gt;&gt;Mobile: 🟢 success
+
+    Note over BE,DB: Consequence: ALL workflows that depend on the DWI lifecycle&lt;br/&gt;(EMPLOYMENT ack, originContext-across-binding, dismiss/undo, analytics)&lt;br/&gt;have no rows to read.</pre>
+    </figure>
+        <div class="journey-notes small"><strong>This is the largest single workflow gap.</strong> Schema BUILT; writer NOT_STARTED; routing read API WIP.
+
+---</div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Sequence 4 — E21 Leave request end-to-end</strong></summary>
+        <p class="small">Suresh → HR queue → approval → all parties notified.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">sequenceDiagram
+    actor Suresh as Suresh (worker)
+    actor Ravi as Ravi (supervisor)
+    actor Kavitha as Kavitha (HR)
+    actor Reddy as Reddy (owner — digest only)
+    participant WApp as Worker app
+    participant SApp as Supervisor mobile
+    participant Admin as admin-web HR portal
+    participant BE as backend
+    participant DB as Postgres
+    participant OBX as Outbox
+
+    Note over Suresh,WApp: ⛔ Worker app doesn't exist
+    Suresh--xWApp: tries to request leave (DOESN'T EXIST)
+
+    Note over Ravi,SApp: 🟡 Supervisor-on-behalf path partially works (route exists)
+    Ravi-&gt;&gt;SApp: voice &quot;Suresh wants 2 days off for wedding&quot;
+    SApp-&gt;&gt;BE: 🟢 POST /chat/messages → DecisionCard
+    SApp-&gt;&gt;BE: 🟢 POST /leave-requests (current backend shape)
+    BE-&gt;&gt;DB: 🟢 INSERT LeaveRequest row state=REQUESTED
+    BE-&gt;&gt;DB: 🟢 emit LEAVE_REQUESTED AuditEvent
+
+    Note over BE,DB: 🟢 QueueItem view surfaces it (P1.5)
+    BE-&gt;&gt;DB: SELECT FROM axhy.QueueItem WHERE companyId
+
+    Note over Kavitha,Admin: 🔴 HR queue UI absent
+    Kavitha--xAdmin: opens /hr/queue (DOESN'T EXIST)
+
+    Note over Admin,BE: ⛔ IMPLEMENTATION STOPS HERE for HR queue UI
+    rect rgba(255,200,200,0.2)
+    Admin--&gt;&gt;BE: GET /hr/queue (tier-classified)
+    BE--&gt;&gt;BE: 🔴 classify by Policy SLA tiers (closure Decision 3)
+    BE--&gt;&gt;Admin: queue items grouped URGENT/NEXT_DAY/STANDARD
+    Kavitha-&gt;&gt;Admin: tap &quot;Approve&quot; on Suresh's request
+    Admin--&gt;&gt;BE: POST /leave-requests/:id/approve
+    BE--&gt;&gt;DB: 🟢 UPDATE LeaveRequest state=APPROVED (route BUILT)
+    BE--&gt;&gt;DB: 🟢 emit LEAVE_APPROVED AuditEvent
+    BE--&gt;&gt;OBX: 🟢 enqueue worker.leave_approved (outbox topic BUILT)
+    end
+
+    Note over OBX,Suresh: 🔴 outbox dispatcher NOT_STARTED
+    OBX--&gt;&gt;Suresh: 🔴 push &quot;Approved for May 18-19&quot;
+    OBX--&gt;&gt;Ravi: 🔴 push &quot;Suresh leave approved — cascade scheduled&quot;
+    OBX--&gt;&gt;Reddy: 🔴 (monthly digest entry queued)
+
+    Note over Ravi,DB: 🔴 Cascade — find replacement / adjust assignments
+    Ravi--xBE: 🔴 NO automatic cascade today</pre>
+    </figure>
+        <div class="journey-notes small">---</div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Sequence 5 — E24 Worker termination end-to-end</strong></summary>
+        <p class="small">Ravi proposes → Kavitha types phrase → applied → Suresh notified.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">sequenceDiagram
+    actor Ravi as Ravi (supervisor)
+    actor Kavitha as Kavitha (HR)
+    actor Suresh as Suresh (terminated worker)
+    actor Reddy as Reddy (digest)
+    participant SApp as Supervisor mobile
+    participant Admin as admin-web HR portal
+    participant BE as backend
+    participant DB as Postgres
+    participant OBX as Outbox
+    participant WApp as Worker app
+
+    Note over Ravi,SApp: 🟢 Chat extraction works
+    Ravi-&gt;&gt;SApp: voice &quot;I want to terminate Mukesh — repeated no-shows&quot;
+    SApp-&gt;&gt;BE: 🟢 POST /chat/messages
+    BE--&gt;&gt;BE: 🟢 AI extraction
+    BE-&gt;&gt;DB: 🟢 emit WORKER_TERMINATION_REQUESTED AuditEvent
+    BE-&gt;&gt;DB: 🟢 UPDATE Worker.state = TERMINATION_PENDING
+
+    Note over BE,DB: ⛔ IMPLEMENTATION STOPS HERE for DWI + HR ack
+    rect rgba(255,200,200,0.2)
+    BE--&gt;&gt;DB: 🔴 INSERT SupervisorDecision row&lt;br/&gt;tier=EMPLOYMENT, ackRequired=true,&lt;br/&gt;originContext snapshot (closure Decision 7)
+    Kavitha-&gt;&gt;Admin: opens ack screen (NOT_STARTED)
+    Admin--&gt;&gt;BE: GET /hr/ack-queue
+    BE--&gt;&gt;Admin: list of pending EMPLOYMENT-tier DWIs
+    Kavitha-&gt;&gt;Admin: opens specific DWI — decision-support panel shows originContext + worker history
+    Admin-&gt;&gt;Kavitha: typed-phrase capture per closure §5.3.9
+    Admin--&gt;&gt;BE: POST /decisions/:id/ack-employment + phrase
+    BE--&gt;&gt;DB: 🔴 UPDATE DWI ackedAt
+    BE--&gt;&gt;DB: 🔴 UPDATE Worker.state = TERMINATED
+    BE--&gt;&gt;DB: 🔴 emit TERMINATION_APPLIED AuditEvent
+    BE--&gt;&gt;OBX: 🔴 3-audience push (originator + responsible + subject)
+    end
+
+    Note over OBX,Suresh: 🔴 Worker app + push absent
+    OBX--&gt;&gt;Ravi: 🔴 push confirmation
+    OBX--&gt;&gt;Kavitha: 🔴 push &quot;Termination applied&quot;
+    OBX--&gt;&gt;WApp: 🔴 push to Suresh — TERMINATION_NOTIFIED_TO_SUBJECT
+
+    Note over Suresh,WApp: 🔴 Worker app doesn't exist
+    Suresh--xWApp: opens app to see (DOESN'T EXIST)
+    Suresh--xWApp: appeal button (NOT_STARTED — closure Decision 5)
+    Suresh--xWApp: records export (NOT_STARTED)
+
+    OBX--&gt;&gt;Reddy: 🔴 monthly digest entry queued</pre>
+    </figure>
+        <div class="journey-notes small"><strong>Audit verdict:</strong> <code>BROKEN</code> — Suresh's most consequential moment is entirely offline.
+
+---</div>
+      </details>
+      <details class="journey" >
+        <summary><strong>Sequence 6 — Overlap stress scene (audit Round 5 combined)</strong></summary>
+        <p class="small">Multiple workflows fire the same morning. The classic &quot;monsoon Tuesday&quot; stress test.</p>
+        
+    <figure class="diagram">
+      
+      <pre class="mermaid">sequenceDiagram
+    actor Ravi as Ravi
+    actor Lakshmi as Lakshmi (acting for Anil — different supervisor)
+    actor Kavitha as Kavitha (HR)
+    participant BE as backend
+    participant DB as Postgres
+    participant OBX as Outbox
+
+    par 3 workers no-show simultaneously
+        Ravi-&gt;&gt;BE: 🟢 mark-absent Worker A
+        Ravi-&gt;&gt;BE: 🟢 mark-absent Worker B
+        Ravi-&gt;&gt;BE: 🟢 mark-absent Worker C
+    and Kavitha creates new acting binding for another supervisor
+        Kavitha-&gt;&gt;BE: 🔴 POST /hr/bindings (acting Lakshmi for Anil)
+        BE-&gt;&gt;DB: 🟢 INSERT binding (P1.5 EXCLUDE prevents overlap)
+    and Permanent reassignment cutover scheduled for tomorrow
+        BE-&gt;&gt;BE: 🟢 helper already wrote both rows; cutover tomorrow
+    end
+
+    Note over BE,DB: 🟢 EXCLUDE invariant holds across all 3 concurrent ops&lt;br/&gt;(P1.5 tests prove this)
+
+    Note over BE,OBX: ⛔ Burst handling — closure Decision 9 NOT_STARTED
+    rect rgba(255,200,200,0.2)
+    BE--&gt;&gt;OBX: 🔴 coalesce 3 mark-absent events into one supervisor digest
+    BE--&gt;&gt;BE: 🔴 AI backlog throttling chip ('Processing...')
+    BE--&gt;&gt;BE: 🔴 global busy banner if company-wide burst detected
+    end
+
+    Note over Lakshmi,BE: 🔵 Routing slice would handle this read side correctly
+    Lakshmi-&gt;&gt;BE: GET /decisions/proposed-for-me
+    BE--&gt;&gt;BE: 🔵 deriveWorkerPrimarySiteId for each worker
+    BE--&gt;&gt;BE: 🔵 getEffectiveBinding for each site
+    BE--&gt;&gt;Lakshmi: 🔵 only Anil's sites' decisions surface (correct routing)
+
+    Note over Kavitha,DB: 🟢 Concurrent HR writes by 2+ users — DB serializes
+    Note over Kavitha,DB: 🔴 But: queue lock + cross-pod override flow NOT_STARTED</pre>
+    </figure>
+        <div class="journey-notes small"><strong>What works under burst today:</strong> the DB-level invariants (EXCLUDE, CHECK constraints, FKs). What doesn't: coalescing, AI throttling, queue locks, multi-HR-user coordination.
+
+---</div>
+      </details>
+
+    <p class="source-link small">
+      Sources:
+      <a href="../execution-state/combined.md">execution-state/combined.md</a>
+      ·
+      <a href="../workflow-maps/combined-system.md">workflow-maps/combined-system.md</a>
+    </p>
+  </section>
+
+    
+  <section id="data-model" class="persona">
+    <h2>Data model — how the tables connect underneath</h2>
+    <p class="scope small">Entity-relationship diagram for the 23 axhy tables + workflow read/write/audit matrix + invariants + emitters.</p>
+
+    <h3>Entity-relationship diagram</h3>
+    
+    <figure class="diagram">
+      <figcaption>23 axhy tables + foreign keys + cascade rules</figcaption>
+      <pre class="mermaid">erDiagram
+    Company ||--o{ User : &quot;companyId, ON DELETE SET NULL&quot;
+    Company ||--o{ Membership : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ Site : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ Worker : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ Visit : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ LeaveRequest : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ Attendance : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ Complaint : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ SwapRequest : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ SupervisorDecision : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ Assignment : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ CalendarEntry : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ ChatThread : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ HRUpdate : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ LivingDoc : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ AuditEvent : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ Outbox : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ Device : &quot;companyId, ON DELETE CASCADE&quot;
+    Company ||--o{ HRPod : &quot;companyId, ON DELETE CASCADE (P1.5)&quot;
+    Company ||--o{ Policy : &quot;companyId, ON DELETE CASCADE (P1.5)&quot;
+    Company ||--o{ Notification : &quot;companyId, ON DELETE CASCADE (P1.5)&quot;
+    Company ||--o{ Digest : &quot;companyId, ON DELETE CASCADE (P1.5)&quot;
+    Company ||--o{ SiteSupervisorBinding : &quot;companyId, ON DELETE CASCADE (P1.5)&quot;
+
+    User ||--o{ Membership : &quot;userId, ON DELETE CASCADE&quot;
+    User ||--o{ Device : &quot;userId, ON DELETE CASCADE&quot;
+    User ||--o| Worker : &quot;userId (Worker.userId UNIQUE), nullable&quot;
+    User ||--o{ SiteSupervisorBinding : &quot;userId (responsible)&quot;
+    User ||--o{ SiteSupervisorBinding : &quot;actingForUserId (covered)&quot;
+    User ||--o{ HRPod : &quot;primaryOwnerUserId&quot;
+    User ||--o{ HRPod : &quot;backupOwnerUserId nullable&quot;
+
+    Membership }o--|| HRPod : &quot;podId nullable (HR pods only)&quot;
+
+    Site ||--o{ Visit : &quot;siteId, ON DELETE CASCADE&quot;
+    Site ||--o{ Complaint : &quot;siteId, ON DELETE CASCADE&quot;
+    Site ||--o{ SwapRequest : &quot;siteId, ON DELETE CASCADE&quot;
+    Site ||--o{ Assignment : &quot;siteId, ON DELETE CASCADE&quot;
+    Site ||--o{ SiteSupervisorBinding : &quot;siteId, ON DELETE CASCADE&quot;
+
+    Worker ||--o{ Visit : &quot;workerId, ON DELETE CASCADE&quot;
+    Worker ||--o{ LeaveRequest : &quot;workerId, ON DELETE CASCADE&quot;
+    Worker ||--o{ Attendance : &quot;workerId, ON DELETE CASCADE&quot;
+    Worker ||--o{ SwapRequest : &quot;fromWorkerId&quot;
+    Worker ||--o{ SwapRequest : &quot;toWorkerId&quot;
+    Worker ||--o{ Assignment : &quot;workerId, ON DELETE CASCADE&quot;
+
+    Visit ||--o{ VisitPhoto : &quot;visitId, ON DELETE CASCADE&quot;
+    Visit ||--o| Visit : &quot;correctsVisitId / originalVisitId (chain)&quot;
+
+    ChatThread ||--o{ ChatMessage : &quot;threadId&quot;
+    ChatMessage ||--o{ ChatRequestLog : &quot;messageId nullable&quot;
+
+    Company {
+        uuid id PK
+        string name
+        string slug UK
+        string ownerPhone
+        string ownerName
+        decimal aiSpendDailyInr
+    }
+    User {
+        uuid id PK
+        string phone UK
+        string locale
+        uuid companyId FK
+    }
+    Membership {
+        uuid id PK
+        uuid companyId FK
+        uuid userId FK
+        string role &quot;WORKER/SUPERVISOR/OWNER/HR/SUPER_ADMIN&quot;
+        uuid podId FK &quot;P1.5 HR-only&quot;
+    }
+    HRPod {
+        uuid id PK
+        uuid companyId FK
+        string name
+        uuid primaryOwnerUserId
+        uuid backupOwnerUserId
+    }
+    SiteSupervisorBinding {
+        uuid id PK
+        uuid companyId FK
+        uuid siteId FK
+        uuid userId FK &quot;responsible supervisor&quot;
+        uuid actingForUserId FK &quot;NULL=permanent, else acting&quot;
+        timestamptz effectiveFrom
+        timestamptz effectiveUntil &quot;nullable&quot;
+        timestamptz endedAt &quot;nullable, manual end only&quot;
+        string endedReason
+        jsonb handoffPackage &quot;P1.5 — composer in later slice&quot;
+    }
+    SupervisorDecision {
+        uuid id PK
+        uuid companyId FK
+        uuid supervisorId &quot;origin attribution, immutable&quot;
+        string kind
+        string tier &quot;NOTE/OPERATIONAL/PERSONNEL/EMPLOYMENT&quot;
+        string targetId
+        jsonb payload
+        timestamp appliedAt &quot;nullable, PROPOSED until set&quot;
+        bool ackRequired &quot;EMPLOYMENT tier&quot;
+        timestamp ackedAt
+        jsonb originContext &quot;P1.5 — closure Decision 7&quot;
+        bool proposedDuringAbsence &quot;P1.5&quot;
+    }
+    AuditEvent {
+        uuid id PK
+        uuid companyId FK
+        string kind &quot;open string, see audit-event.ts enum&quot;
+        uuid actorId
+        string targetId
+        jsonb payload
+    }
+    Policy {
+        uuid id PK
+        uuid companyId FK
+        string key
+        unknown value
+        uuid setBy
+        timestamp setAt
+        unknown previousValueSnapshot
+        string category &quot;sla/notification/worker/hr/ai/owner/handoff&quot;
+    }
+    Notification {
+        uuid id PK
+        uuid companyId FK
+        uuid audienceUserId &quot;XOR with audienceWorkerId — Zod refine, not DB CHECK&quot;
+        uuid audienceWorkerId
+        string kind
+        string channel
+        string priority &quot;URGENT/NEXT_DAY/STANDARD/DIGEST&quot;
+        jsonb payload
+    }
+    Digest {
+        uuid id PK
+        uuid companyId FK
+        uuid audienceUserId
+        string kind
+        timestamp periodStart
+        timestamp periodEnd
+        jsonb body
+        string bodyText
+        string deliveryChannel
+    }
+    Outbox {
+        uuid id PK
+        uuid companyId FK
+        string topic
+        jsonb payload
+        timestamp processedAt
+        string idempotencyKey
+    }</pre>
+    </figure>
+
+    <h3>Tables-by-workflow R/W/A matrix</h3>
+    <table><thead><tr><th>Workflow</th><th>Company</th><th>User</th><th>Membership</th><th>Site</th><th>Worker</th><th>Visit</th><th>Assignment</th><th>Attendance</th><th>LeaveRequest</th><th>Complaint</th><th>SwapRequest</th><th>SupervisorDecision</th><th>ChatThread/Msg</th><th>LivingDoc</th><th>HRUpdate</th><th>SiteSupervisorBinding</th><th>HRPod</th><th>Policy</th><th>Notification</th><th>Digest</th><th>Outbox</th><th>AuditEvent</th></tr></thead><tbody><tr><td>A1 OTP login</td><td>R</td><td>R/W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>A2 JWT refresh</td><td>R</td><td>R</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td>A3 Worker invite</td><td>R</td><td>—</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>A</td></tr><tr><td>A4 Worker doc / activate</td><td>R</td><td>—</td><td>—</td><td>—</td><td>R/W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>B5 Site create</td><td>R</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>B7 Calendar entry</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>B8 Calendar→Assignment</td><td>R</td><td>—</td><td>—</td><td>R</td><td>R</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>B9 Direct assignment</td><td>R</td><td>—</td><td>—</td><td>R</td><td>R</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>B10 Conflict guard</td><td>R</td><td>—</td><td>—</td><td>R</td><td>R</td><td>—</td><td>R (overlap-guard)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>C11 Mark absent</td><td>R</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>A</td></tr><tr><td>C12 Visit end</td><td>R</td><td>—</td><td>—</td><td>R</td><td>R</td><td>R/W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>A</td></tr><tr><td>C13 Site complaint</td><td>R</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>A</td></tr><tr><td>D16 Chat / extract</td><td>R</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>R</td><td>—</td><td>R</td><td>R</td><td>R</td><td>—</td><td>R/W</td><td>R/W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>E21 Leave request</td><td>R</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>A</td></tr><tr><td>E22 Swap request</td><td>R</td><td>—</td><td>—</td><td>R</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>E23 HR Update post</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>G29 AI budget alert</td><td>R/W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>A</td></tr><tr><td><strong>P1.5 helpers (BUILT)</strong></td></tr><tr><td>F26.create (acting binding)</td><td>R</td><td>R</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>F27.reassign permanent</td><td>R</td><td>R</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>R/W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>Policy upsert</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>W</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td>Membership pod assign</td><td>R</td><td>—</td><td>R/W</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>A</td></tr><tr><td><strong>Routing WIP (84ae39c)</strong></td></tr><tr><td>getEffectiveBinding</td><td>R</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td>deriveWorkerPrimarySiteId</td><td>R</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td>GET /sites/:id/effective-supervisor</td><td>R</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td>GET /decisions/proposed-for-me</td><td>R</td><td>—</td><td>—</td><td>R</td><td>R</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>R</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table>
+
+    <h3>Invariants the schema enforces (DB level)</h3>
+    <table><thead><tr><th>Invariant</th><th>Table</th><th>Mechanism</th></tr></thead><tbody><tr><td>Multi-tenant scoping</td><td>every table</td><td><code>companyId UUID NOT NULL</code> + tenant-context Postgres session var</td></tr><tr><td>Worker primary-site uniqueness</td><td>Worker</td><td><code>UNIQUE (companyId, phone)</code></td></tr><tr><td>Assignment conflict (overlap)</td><td>Assignment</td><td>application-layer overlap-guard (sprint 9/10)</td></tr><tr><td>Visit chain canonical</td><td>Visit</td><td><code>UNIQUE (originalVisitId) WHERE correctsVisitId IS NULL</code> partial index</td></tr><tr><td>Binding no-overlap of each kind per site</td><td>SiteSupervisorBinding</td><td><code>EXCLUDE USING gist (siteId, kind discriminator via CASE, tstzrange) WHERE endedAt IS NULL</code> (P1.5)</td></tr><tr><td>Acting binding requires effectiveUntil</td><td>SiteSupervisorBinding</td><td><code>CHECK actingForUserId IS NULL OR effectiveUntil IS NOT NULL</code></td></tr><tr><td>No self-acting</td><td>SiteSupervisorBinding</td><td><code>CHECK actingForUserId IS NULL OR actingForUserId &lt;&gt; userId</code></td></tr><tr><td>effectiveUntil &gt; effectiveFrom</td><td>SiteSupervisorBinding</td><td><code>CHECK effectiveUntil IS NULL OR effectiveUntil &gt; effectiveFrom</code></td></tr><tr><td>Cross-tenant cascade</td><td>every child table</td><td><code>ON DELETE CASCADE</code> per FK</td></tr><tr><td>User→Company nullable</td><td>User.companyId</td><td><code>ON DELETE SET NULL</code> (preserves identity history)</td></tr></tbody></table>
+
+    <h3>AuditEvent kinds emitted today</h3>
+    <table><thead><tr><th>Path</th><th>AuditEvent kinds emitted today</th></tr></thead><tbody><tr><td><code>apps/backend/src/routes/workers.ts</code></td><td><code>WORKER_MARKED_ABSENT</code></td></tr><tr><td><code>apps/backend/src/routes/visits.ts</code></td><td><code>VISIT_ENDED</code></td></tr><tr><td><code>apps/backend/src/routes/sites.ts</code></td><td><code>SITE_COMPLAINT_LOGGED</code></td></tr><tr><td><code>apps/backend/src/routes/leave-requests.ts</code></td><td><code>LEAVE_REQUESTED</code>, <code>LEAVE_APPROVED</code>, <code>LEAVE_REJECTED</code></td></tr><tr><td><code>apps/backend/src/routes/swap-requests.ts</code></td><td><code>SWAP_REQUEST_SENT</code></td></tr><tr><td><code>apps/backend/src/routes/calendar.ts</code></td><td><code>CALENDAR_ENTRY_CREATED</code>, <code>CALENDAR_ENTRY_PROMOTED</code></td></tr><tr><td><code>apps/backend/src/routes/assignments.ts</code></td><td><code>ASSIGNMENT_CREATED</code></td></tr><tr><td><code>apps/backend/src/routes/chat.ts</code></td><td><code>CHAT_MESSAGE_CREATED</code>, <code>WORKER_TERMINATION_REQUESTED</code> (transitional — pending DWI lifecycle)</td></tr><tr><td><code>apps/backend/src/jobs/reset-ai-spend.ts</code></td><td><code>OWNER_BUDGET_ALERT_DISPATCHED</code>, <code>AI_SPEND_DAILY_RESET</code></td></tr><tr><td><code>apps/backend/src/lib/audit-event.ts</code> (typed helpers — P1.5)</td><td><code>POLICY_CHANGED</code>, <code>MEMBERSHIP_POD_ASSIGNED</code>, <code>MEMBERSHIP_POD_REASSIGNED</code></td></tr><tr><td><code>apps/backend/src/lib/site-supervisor-binding.ts</code> (P1.5)</td><td><code>BINDING_CREATED</code>, <code>BINDING_ENDED_MANUAL</code>, <code>BINDING_ENDED_SUPERSEDED_BY_PERMANENT</code></td></tr><tr><td><strong>Catalogued but no emitter yet</strong></td><td><code>BINDING_ENDED_AUTO</code>, <code>BINDING_ENDED_SUPERSEDED_BY_CORRECTION</code>, all <code>HR_QUEUE_LOCK_*</code>, <code>HR_FALLBACK_INVOKED</code>, <code>HR_CROSS_POD_OVERRIDE_USED</code>, <code>HANDOFF_PACKAGE_GENERATED</code>, <code>WORKER_SUPERVISOR_CHANGE_NOTIFIED</code>, <code>TERMINATION_NOTIFIED_TO_SUBJECT</code>, <code>TERMINATION_APPEAL_FILED/_RESOLVED</code>, <code>WORKER_DISPUTE_FILED/_RESOLVED</code>, <code>BOOTSTRAP_SEED_CONFIRMED/_REASSIGNED</code>, <code>AI_BACKLOG_ESCALATED</code>, <code>EMERGENCY_OVERRIDE_ACTIVATED</code>, <code>DWI_PROPOSED/_APPLIED/_DISMISSED/_FAILED/_EXPIRED/_UNDONE</code>, etc.</td></tr></tbody></table>
+
+    <h3>Outbox topics emitted today</h3>
+    <table><thead><tr><th>Topic</th><th>Emitter route</th><th>Consumer status</th></tr></thead><tbody><tr><td><code>hr.attendance_marked</code></td><td><code>workers.ts mark-absent</code></td><td>Dispatcher Phase C</td></tr><tr><td><code>hr.complaint_persisted</code></td><td><code>sites.ts complaints</code></td><td>Dispatcher Phase C</td></tr><tr><td><code>ai.verify</code></td><td><code>visits.ts end</code></td><td>Phase C AI verify dispatcher (placeholder)</td></tr><tr><td><code>worker.leave_approved</code></td><td><code>leave-requests.ts approve</code></td><td>Dispatcher Phase C</td></tr><tr><td><code>owner.budget_alert</code></td><td><code>reset-ai-spend.ts</code> cron</td><td>Dispatcher Phase C</td></tr></tbody></table>
+
+    <h3>Migration timeline (chain order)</h3>
+    <table><thead><tr><th>#</th><th>Migration</th><th>Tables / changes</th></tr></thead><tbody><tr><td>1</td><td><code>20260507_phase_a_baseline_day3</code></td><td>Baseline — Company, User, Membership, Site, Worker, Visit, LeaveRequest, otp_attempts</td></tr><tr><td>2</td><td><code>20260508_phase_b_domain</code></td><td>Attendance, Complaint, SwapRequest, SupervisorDecision, SupervisorDailyContext (renamed LivingDoc), HRUpdate, VisitPhoto</td></tr><tr><td>3</td><td><code>20260508_phase_b_foundation</code></td><td>AuditEvent, Outbox, Device</td></tr><tr><td>4</td><td><code>20260509_phase_c_wave_1_calendar</code></td><td>CalendarEntry + Visit correction columns</td></tr><tr><td>5</td><td><code>20260510_phase_c_wave_2a</code></td><td>Assignment, ChatThread, ChatMessage</td></tr><tr><td>6</td><td><code>20260510_wave_4b_ai_spend_protection</code></td><td>Company.aiSpendDailyInr, Outbox.idempotencyKey</td></tr><tr><td>7</td><td><code>20260511_phase_c_wave_4b_phase_2</code></td><td>LivingDoc moat + cacheTokens + ai_cost_daily view</td></tr><tr><td>8</td><td><code>20260512_phase_c_wave_4b_phase_2_5_cleanup</code></td><td>LivingDoc dead column drops</td></tr><tr><td>9</td><td><code>20260515_layer_1_core_primitives</code></td><td><strong>HRPod, Policy, Notification, Digest</strong> + Membership.podId + Worker.preferredLanguage + SupervisorDecision.originContext / proposedDuringAbsence + QueueItem view</td></tr><tr><td>10</td><td><code>20260516_p1_5_site_supervisor_binding</code></td><td><strong>SiteSupervisorBinding</strong> + btree_gist + EXCLUDE + 3 CHECK constraints</td></tr></tbody></table>
+
+    <p class="source-link small">
+      Source: <a href="../workflow-maps/data-model.md">workflow-maps/data-model.md</a>
+    </p>
+  </section>
+
+    <section class="persona">
+      <h2>How this dashboard stays fresh</h2>
+      <p class="small">This file is regenerated from canonical markdown by <code>handoff/scripts/build-handoff-artifacts.mjs</code>. Per execution-state/INDEX.md rule 7: any time canonical sources change, re-run <code>pnpm run handoff:build</code>. Per rule 11: never hand-edit this HTML or the JSON — they are derived artifacts only.</p>
+      <p class="small">If you want to add or change a journey diagram, edit the matching <code>handoff/workflow-maps/&lt;persona&gt;.md</code> file. If you want to record a workflow build-state change, edit the matching <code>handoff/execution-state/&lt;persona&gt;.md</code> row. Then regenerate.</p>
     </section>
   </main>
-  <p class="footer-note">
-    Generated from <code>handoff/execution-state/</code> + <code>handoff/workflow-maps/</code> + git.
-    Never edit this file directly — it's a derived artifact (per failure-mode rule 6 in <code>execution-state/INDEX.md</code>).
-  </p>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: isDark ? 'dark' : 'default',
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+      sequence: { useMaxWidth: true, actorMargin: 60 },
+      er: { useMaxWidth: true },
+    });
+    // Re-render diagrams inside collapsed <details> when first opened.
+    document.querySelectorAll('details.journey').forEach((d) => {
+      d.addEventListener('toggle', () => {
+        if (d.open) {
+          const pre = d.querySelector('pre.mermaid');
+          if (pre && !pre.dataset.rendered) {
+            mermaid.run({ nodes: [pre] });
+            pre.dataset.rendered = '1';
+          }
+        }
+      }, { once: false });
+    });
+  </script>
 </body>
 </html>
