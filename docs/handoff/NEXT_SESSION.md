@@ -6,8 +6,9 @@
 
 ## Current state
 
-- **Active phase:** Layer 1 implementation kickoff — closure spec PROMOTED 2026-05-15; branch `feat/layer-1-core-primitives` ready to open; first PR is schema-only migrations.
-- **Last updated:** 2026-05-15 (promotion complete)
+- **Active phase:** Layer 1 implementation in progress. Closure spec PROMOTED Active 2026-05-15. Branch `feat/layer-1-core-primitives` OPEN. Working from Active closure spec.
+- **Current branch:** `feat/layer-1-core-primitives`
+- **Last updated:** 2026-05-15 (promotion + Layer 1 branch open)
 
 ## Approved vs Draft
 

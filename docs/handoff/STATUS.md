@@ -2,8 +2,8 @@
 
 > **Living document.** Update at every major phase shift (per the Mandatory Update Order in `README.md`).
 
-**Last updated:** 2026-05-15 (promotion complete)
-**Active phase:** Layer 1 implementation kickoff — closure spec PROMOTED; branch `feat/layer-1-core-primitives` ready to open.
+**Last updated:** 2026-05-15 (promotion + Layer 1 branch open)
+**Active phase:** Layer 1 implementation in progress. Closure spec PROMOTED Active. Branch `feat/layer-1-core-primitives` OPEN. First PR: schema-only migrations (PR 1 per kickoff memo §7). Building from Active closure spec.
 
 ## Authority Snapshot
 
