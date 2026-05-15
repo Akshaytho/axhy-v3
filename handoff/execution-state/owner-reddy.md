@@ -4,51 +4,26 @@
 
 **Surface mapping:** Owner surfaces live in `apps/admin-web/app/owner/` (one `page.tsx` today) + WhatsApp digest delivery (off-app). Per closure Decision 10: 7 owner surfaces total — 4 admin-web + 3 off-app. Of those 7, **1** has any code today (`apps/admin-web/app/owner/page.tsx`).
 
-## Mermaid overview (owner workflow build state from Reddy's seat)
+## Build-state summary (overview)
+
+> **Workflow execution diagrams live in `handoff/workflow-maps/owner-reddy.md`.** This file is the build-state ledger.
 
 ```mermaid
-graph TB
-    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+graph LR
     classDef partial fill:#f5b400,stroke:#8a6900,color:#000
-    classDef stubbed fill:#bdbdbd,stroke:#555,color:#000
     classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
 
-    subgraph "Identity"
-        A1[A1 First login]:::partial
-    end
-
-    subgraph "Setup"
-        B5[B5 Site setup approval]:::notstarted
-    end
-
-    subgraph "Digests / KPIs"
-        DIG_MO[O-1 Monthly digest]:::notstarted
-        DIG_AN[O-2 Annual digest]:::notstarted
-        DIG_IN[O-3 Incident digest]:::notstarted
-    end
-
-    subgraph "Approvals"
-        BANK[O-4 Bank-authority UI 2-step OTP]:::notstarted
-        D20[D20 Termination digest visibility]:::notstarted
-        E24[E24 Termination digest]:::notstarted
-    end
-
-    subgraph "AI budget"
-        G29[G29 AI budget alert recipient]:::partial
-        OVR[O-5 AI overage approval]:::notstarted
-    end
-
-    subgraph "Compliance"
-        COMP[O-6 Compliance lookup by employee]:::notstarted
-        REV[O-7 Annual review]:::notstarted
-    end
-
-    subgraph "Emergency override"
-        EMR[Closure Decision 2 tier 3 - Owner inherits at 72h]:::notstarted
-    end
+    H["IMPLEMENTATION HORIZON for Reddy:<br/>6 of 7 closure Decision 10 surfaces NOT_STARTED.<br/>Outbox dispatcher to WhatsApp/SMS PARTIAL."]:::horizon
+    H --> J1["Journey 1 — Monthly digest (O-1)"]:::notstarted
+    H --> J2["Journey 2 — AI budget alert (G29)"]:::partial
+    H --> J3["Journey 3 — Bank-authority change (O-4, 2-step OTP)"]:::notstarted
+    H --> J4["Journey 4 — Emergency override (closure Decision 2 tier 3)"]:::notstarted
 ```
 
-Legend: only the `apps/admin-web/app/owner/page.tsx` stub exists today. AI budget alert (G29) is backend-built (`reset-ai-spend` cron + Outbox `owner.budget_alert` topic) but Reddy's delivery surface (WhatsApp/SMS dispatch) is partial.
+Workflow tally for Reddy: 0 BUILT · 1 PARTIAL (G29 backend) · 11 NOT_STARTED. Only the `apps/admin-web/app/owner/page.tsx` stub exists.
+
+For actual journey diagrams: see `handoff/workflow-maps/owner-reddy.md`.
 
 ## Current active slice affecting Reddy
 

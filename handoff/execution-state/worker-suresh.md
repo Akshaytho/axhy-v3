@@ -4,50 +4,26 @@
 
 **Surface mapping:** Backend routes write `Worker` / `Visit` / `Assignment` / `LeaveRequest` / `Attendance` rows but **no worker mobile app exists in the repo today.** `find apps -maxdepth 2 -name "worker-mobile"` returns nothing. Every Suresh-side workflow has Implementation state = `NOT_STARTED` from his seat, even when the backend is `BUILT`. This is the headline finding of his audit (`docs/audits/2026-05-14-1yr-sim-worker-suresh.md`): the worker is currently **structurally invisible** to himself.
 
-## Mermaid overview (worker workflow build state from Suresh's seat)
+## Build-state summary (overview)
+
+> **Workflow execution diagrams live in `handoff/workflow-maps/worker-suresh.md`.** This file is the build-state ledger; the journey layer is in workflow-maps.
 
 ```mermaid
-graph TB
-    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
-    classDef partial fill:#f5b400,stroke:#8a6900,color:#000
+graph LR
     classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
-    classDef blocked fill:#8e24aa,stroke:#4a1361,color:#fff
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
 
-    subgraph "Identity (worker app does not exist)"
-        A1[A1 OTP login]:::notstarted
-        A3[A3 Activation experience]:::notstarted
-        A4[A4 Doc upload]:::notstarted
-    end
-
-    subgraph "Day-to-day work"
-        B9[B9 Sees own assignments]:::notstarted
-        C11[C11 Subject of MARK_ABSENT]:::notstarted
-        C12[C12 Visit lifecycle]:::notstarted
-        C14[C14 Photo verification UX]:::notstarted
-        C15[C15 Audit reversal subject-view]:::notstarted
-    end
-
-    subgraph "Self-service"
-        E21[E21 Leave request initiator]:::notstarted
-        E22[E22 Swap accept/reject]:::notstarted
-        F28[F28 Replacement invite respond]:::notstarted
-    end
-
-    subgraph "Notifications about Suresh"
-        D17[D17 Subject of decisions]:::notstarted
-        D20[D20 Termination subject]:::notstarted
-        E23[E23 HR Updates if worker audience]:::notstarted
-        E24[E24 Termination notification]:::notstarted
-        E25[E25 Suspension notification]:::notstarted
-    end
-
-    subgraph "Supervisor change awareness"
-        F26[F26 Acting cover - W-1/W-2/W-7]:::notstarted
-        F27[F27 Permanent reassignment - W-3]:::notstarted
-    end
+    H["IMPLEMENTATION HORIZON for Suresh:<br/>apps/worker-mobile/ folder does not exist.<br/>Backend can serve 12 worker-side workflows; surface count = 0."]:::horizon
+    H --> J1["Journey 1 — First activation (A3+A4)"]:::notstarted
+    H --> J2["Journey 2 — Marked-absent subject view (C11)"]:::notstarted
+    H --> J3["Journey 3 — Leave request init (E21 worker-initiated)"]:::notstarted
+    H --> J4["Journey 4 — Supervisor change push (F26/F27 W-1/W-2/W-3/W-7)"]:::notstarted
+    H --> J5["Journey 5 — Termination subject + appeal (E24/D20/W-4)"]:::notstarted
 ```
 
-Legend: every node is **red (NOT_STARTED) from Suresh's perspective** because the worker app does not exist. Many backends behind these nodes are BUILT or PARTIAL — see per-row "What works now (backend)" lines. The persona file's red colour is intentional and the friend's audit finding.
+Workflow tally for Suresh: 0 BUILT · 0 PARTIAL · 17 NOT_STARTED. The persona is structurally invisible to itself today — the friend's audit Round 2 finding.
+
+For actual journey diagrams: see `handoff/workflow-maps/worker-suresh.md`.
 
 ## Current active slice affecting Suresh
 

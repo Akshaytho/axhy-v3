@@ -22,6 +22,7 @@
     "connectedness:build": "turbo run connectedness:build",
     "connectedness:impact": "pnpm --filter @axhy-tools/connectedness connectedness:impact",
     "connectedness:check": "pnpm --filter @axhy-tools/connectedness connectedness:check",
+    "handoff:build": "node handoff/scripts/build-handoff-artifacts.mjs",
     "ai:eval": "turbo run ai:eval",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",

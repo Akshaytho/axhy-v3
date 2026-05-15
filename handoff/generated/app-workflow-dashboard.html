@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Axhy v3 — Handoff Workflow Dashboard</title>
+  <style>
+    :root {
+      --fg: #1c1c1c; --bg: #fafafa; --card: #fff; --border: #e0e0e0;
+      --muted: #666; --accent: #1a73e8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg: #e0e0e0; --bg: #1c1c1c; --card: #2a2a2a; --border: #444; --muted: #aaa; }
+    }
+    body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+           color: var(--fg); background: var(--bg); margin: 0; padding: 0; }
+    header { padding: 16px 24px; background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+    header h1 { margin: 0 0 8px; font-size: 20px; }
+    header .meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 12px; }
+    header .stale { color: #c62828; font-weight: 600; }
+    nav { padding: 8px 24px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; gap: 12px; flex-wrap: wrap; }
+    nav a { color: var(--accent); text-decoration: none; padding: 4px 12px; border-radius: 4px; }
+    nav a:hover { background: var(--bg); }
+    main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    .persona { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .persona h2 small { color: var(--muted); font-size: 14px; font-weight: normal; }
+    .scope, .surfaces { color: var(--muted); margin: 4px 0; }
+    .dist { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .dist-chip { padding: 4px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; font-size: 12px; }
+    h3 { margin-top: 16px; margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+    .cell-narrow { max-width: 320px; }
+    .summary { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .summary-cell { padding: 16px; background: var(--bg); border-radius: 6px; text-align: center; }
+    .summary-cell .value { font-size: 28px; font-weight: 700; }
+    .summary-cell .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .footer-note { font-size: 12px; color: var(--muted); padding: 16px 24px; }
+    .footer-note code { background: var(--bg); padding: 2px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Axhy v3 — Handoff Workflow Dashboard</h1>
+    <div class="meta">
+      <span>Generated <strong>2026-05-15T13:17:11.042Z</strong></span>
+      <span>Commit <code>d4bb4c84</code></span>
+      <span>Branch <code>feat/layer-1-core-primitives</code></span>
+      <span>Active slice: <strong>Layer 1 implementation — routing slice paused for execution-state tracker</strong></span>
+      
+    </div>
+  </header>
+  <nav>
+    <a href="#summary">Summary</a>
+    <a href="#persona-supervisor">Ravi</a><a href="#persona-worker">Suresh</a><a href="#persona-hr">Kavitha</a><a href="#persona-owner">Reddy</a>
+    <a href="#combined">Combined / cross-persona</a>
+  </nav>
+  <main>
+    <section id="summary" class="summary">
+      <h2>Combined tally (29 workflows total)</h2>
+      <div class="summary-grid">
+        
+          <div class="summary-cell">
+            <div class="value">3</div>
+            <div class="label">END TO END</div>
+          </div>
+          <div class="summary-cell">
+            <div class="value">17</div>
+            <div class="label">BACKEND READY</div>
+          </div>
+          <div class="summary-cell">
+            <div class="value">1</div>
+            <div class="label">SURFACES PARTIAL</div>
+          </div>
+          <div class="summary-cell">
+            <div class="value">4</div>
+            <div class="label">BLOCKED BY DESIGN</div>
+          </div>
+          <div class="summary-cell">
+            <div class="value">1</div>
+            <div class="label">BLOCKED BY POLICY</div>
+          </div>
+          <div class="summary-cell">
+            <div class="value">4</div>
+            <div class="label">NOT STARTED</div>
+          </div>
+      </div>
+      <h3>Cross-persona sequence diagrams (in workflow-maps/combined-system.md)</h3>
+      <ol><li>F26 Acting cover (Ravi sick, Lakshmi covers for 7 days)</li><li>F27 Permanent reassignment (future-dated handoff)</li><li>D17 Decision apply (the missing-middle)</li><li>E21 Leave request end-to-end</li><li>E24 Worker termination end-to-end</li><li>Overlap stress scene (audit Round 5 combined)</li></ol>
+    </section>
+
+    
+  <section id="persona-supervisor" class="persona">
+    <h2>Ravi <small>(28 workflows)</small></h2>
+    <p class="scope">O.3 Ravi — supervisor at Surya Cleaning. Manages ~40 workers across ~8 sites at launch (envelope: 25–60 workers / 5–12 sites). Daily product user; spends most time inside the supervisor mobile app (`apps/mobile/`). Telugu first, Hindi second, basic English. ₹15K phone; relies on voice capture + clear cards. Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.3.</p>
+    <p class="surfaces">Backend routes in `apps/backend/src/routes/`; supervisor screens in `apps/mobile/app/(auth)/` + `apps/mobile/app/(supervisor)/`. **No** worker-mobile or admin-web-supervisor-portal — the supervisor surface is mobile-only.</p>
+    <div class="dist">
+      <span class="dist-chip">BUILT: <strong>4</strong></span><span class="dist-chip">PARTIAL: <strong>19</strong></span><span class="dist-chip">WIP: <strong>0</strong></span><span class="dist-chip">STUBBED: <strong>0</strong></span><span class="dist-chip">NOT_STARTED: <strong>5</strong></span><span class="dist-chip">BLOCKED: <strong>0</strong></span>
+    </div>
+    <h3>Journeys (from workflow-maps)</h3>
+    <ol><li>Worker no-show → mark absent → maybe replacement</li><li>Daily scheduling (calendar → assignment → visit)</li><li>Site complaint</li><li>Chat → DWI lifecycle (the missing-middle)</li><li>Ravi gets sick → Lakshmi covers (F26 from Ravi's seat)</li><li>Ravi hands sites to Anjali (F27 future-dated handoff from Ravi's seat)</li></ol>
+    <h3>Workflow rows</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
+      <tbody>
+    <tr>
+      <td><strong>A1</strong></td>
+      <td>Phone OTP login</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">BUILT</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">— (only if launch flips dev → prod SMS)</td>
+    </tr>
+    <tr>
+      <td><strong>A2</strong></td>
+      <td>JWT refresh + role select</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">BUILT</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">—</td>
+    </tr>
+    <tr>
+      <td><strong>A3</strong></td>
+      <td>Worker invitation → activation (Ravi acknowledges new worker)</td>
+      <td>WORKS (per ops-workflow-model)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Layer 2 — supervisor Today tab to surface new-worker events from outbox.</td>
+    </tr>
+    <tr>
+      <td><strong>A4</strong></td>
+      <td>Worker doc collection → ACTIVE (Ravi reminds)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Layer 2 — supervisor surface + worker app activation.</td>
+    </tr>
+    <tr>
+      <td><strong>B5</strong></td>
+      <td>Site creation (Ravi views)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Layer 2 — supervisor sites overview tab.</td>
+    </tr>
+    <tr>
+      <td><strong>B6</strong></td>
+      <td>Site state transitions (Ravi sees in tab)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">State-machine implementation + push notification on cascade (Closure Decision 5 worker-side).</td>
+    </tr>
+    <tr>
+      <td><strong>B7</strong></td>
+      <td>Calendar entry creation (Ravi daily)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Layer 2 — calendar entry creation UI.</td>
+    </tr>
+    <tr>
+      <td><strong>B8</strong></td>
+      <td>Calendar → Assignment promotion (Ravi daily)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Layer 2 — promote button in supervisor calendar surface.</td>
+    </tr>
+    <tr>
+      <td><strong>B9</strong></td>
+      <td>Direct assignment creation (Ravi daily)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Layer 2 — direct assignment screen, OR fold into chat extraction (D16).</td>
+    </tr>
+    <tr>
+      <td><strong>B10</strong></td>
+      <td>Conflict detection at assignment (Ravi catches conflicts)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">BUILT</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">—</td>
+    </tr>
+    <tr>
+      <td><strong>C11</strong></td>
+      <td>Mark worker absent (Ravi daily)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Layer 2 — Today tab mark-absent button + chat extraction for the kind (extractor work is D16/D17).</td>
+    </tr>
+    <tr>
+      <td><strong>C12</strong></td>
+      <td>Visit lifecycle (Ravi reviews flagged)</td>
+      <td>WORKS for happy path; CONFUSING for mid-visit flag (per audits §5.4)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Layer 2 — worker app start/end + supervisor flagged-review surface.</td>
+    </tr>
+    <tr>
+      <td><strong>C13</strong></td>
+      <td>Site complaint logging (Ravi logs them)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Layer 2 — complaint-log button on supervisor site detail surface OR chat extraction wiring.</td>
+    </tr>
+    <tr>
+      <td><strong>C14</strong></td>
+      <td>Visit photo verification (Ravi resolves flags)</td>
+      <td>WORKS for post-visit; MISSING for mid-visit (audit §5.4)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Phase C wave 5 — AI verify dispatcher + supervisor flagged-review surface.</td>
+    </tr>
+    <tr>
+      <td><strong>C15</strong></td>
+      <td>Audit reversal (30-min undo)</td>
+      <td>DRIFT (R6 vs D.1 specs disagree on 30 vs 5 min — F-P-4 founder pick pending per closure §12)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Founder pick on reverse window (F-P-4) → backend reversal route → mobile undo affordance.</td>
+    </tr>
+    <tr>
+      <td><strong>D16</strong></td>
+      <td>AI chat → decision extraction (Ravi daily)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">BUILT</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">—</td>
+    </tr>
+    <tr>
+      <td><strong>D17</strong></td>
+      <td>Decision apply (PROPOSED → APPLIED)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">(a) finish routing slice (resume); (b) separate slice: chat extractor writes SupervisorDecision PROPOSED rows; (c) Apply endpoint flips appliedAt + executes domain mutation.</td>
+    </tr>
+    <tr>
+      <td><strong>D18</strong></td>
+      <td>Decision dismiss / undo</td>
+      <td>MISSING (dismiss has no reason capture per audit)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">After D17 writer lands — add dismiss endpoint + reason capture.</td>
+    </tr>
+    <tr>
+      <td><strong>D19</strong></td>
+      <td>Option-picker decision</td>
+      <td>CONFUSING (design hides reasoning per audit)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">After D17 — extend DWI payload schema + add picker UI.</td>
+    </tr>
+    <tr>
+      <td><strong>D20</strong></td>
+      <td>EMPLOYMENT-tier ack (Ravi proposes)</td>
+      <td>WORKS (closure §5.3.9 + Decision 7) — author-side; HR ack gate is Kavitha's row</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">D17 writer slice + HR ack surface (Kavitha side).</td>
+    </tr>
+    <tr>
+      <td><strong>E21</strong></td>
+      <td>Leave request workflow (Ravi sees cascade)</td>
+      <td>BROKEN at scale (HR queue overload — audit Month 6)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Layer 2 — supervisor cascade surface; SLA wiring (Layer 2 also).</td>
+    </tr>
+    <tr>
+      <td><strong>E22</strong></td>
+      <td>Worker swap request (Ravi initiates)</td>
+      <td>MISSING (bilateral acceptance not designed per audit)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Founder/friend design pass on bilateral acceptance + worker app.</td>
+    </tr>
+    <tr>
+      <td><strong>E23</strong></td>
+      <td>HR Update post (Ravi acks)</td>
+      <td>WORKS (5-word ack workflow) — but BROKEN at 5K scale (audit Week 3 — feed noise)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Layer 2 — supervisor Updates tab UI + finish backend POST route.</td>
+    </tr>
+    <tr>
+      <td><strong>E24</strong></td>
+      <td>Worker termination (Ravi proposes)</td>
+      <td>MISSING (proposer-side wait visibility per audit Month 7)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Pick the SupervisorDecision kind name for termination → D17 writer → HR ack flow → proposer-wait surface.</td>
+    </tr>
+    <tr>
+      <td><strong>E25</strong></td>
+      <td>Worker suspension / block (Ravi proposes)</td>
+      <td>MISSING (suspension return-date not surfaced — audit Month 6.5)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Spec gap — design the suspension lifecycle first (return date, audience).</td>
+    </tr>
+    <tr>
+      <td><strong>F26</strong></td>
+      <td>Acting supervisor coverage (Ravi gets sick, Lakshmi covers)</td>
+      <td>WORKS (Decision 4 — closure spec)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Finish routing slice → HR portal slice (Kavitha) → worker notification (worker app).</td>
+    </tr>
+    <tr>
+      <td><strong>F27</strong></td>
+      <td>Permanent portfolio reassignment (Ravi hands sites to Anjali)</td>
+      <td>MISSING (portfolio-delta surface absent — audit Month 9/11)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">HR write surface + supervisor portfolio-delta digest.</td>
+    </tr>
+    <tr>
+      <td><strong>F28</strong></td>
+      <td>Replacement invite (Ravi initiates daily)</td>
+      <td>WORKS (lifecycle locked in D.1 + ops §7.9)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Design wave 5 — replacement invite flow (worker-app dependent).</td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section id="persona-worker" class="persona">
+    <h2>Suresh <small>(18 workflows)</small></h2>
+    <p class="scope">O.4 Suresh — Bihar migrant worker at Surya Cleaning's Lakeview site. Hindi-first; basic English; Telugu near-zero. ₹6K Realme phone, 80% storage full. Earns ~₹14K/month. Persona fears: late pay, false accusation, firing without notice. Daily user (when worker app exists). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.4.</p>
+    <p class="surfaces">Backend routes write `Worker` / `Visit` / `Assignment` / `LeaveRequest` / `Attendance` rows but **no worker mobile app exists in the repo today.** `find apps -maxdepth 2 -name &quot;worker-mobile&quot;` returns nothing. Every Suresh-side workflow has Implementation state = `NOT_STARTED` from his seat, even when the backend is `BUILT`. This is the headline finding of his audit (`docs/audits/2026-05-14-1yr-sim-worker-suresh.md`): the worker is currently **structurally invisible** to himself.</p>
+    <div class="dist">
+      <span class="dist-chip">BUILT: <strong>0</strong></span><span class="dist-chip">PARTIAL: <strong>0</strong></span><span class="dist-chip">WIP: <strong>0</strong></span><span class="dist-chip">STUBBED: <strong>0</strong></span><span class="dist-chip">NOT_STARTED: <strong>18</strong></span><span class="dist-chip">BLOCKED: <strong>0</strong></span>
+    </div>
+    <h3>Journeys (from workflow-maps)</h3>
+    <ol><li>First activation (A3 + A4)</li><li>Marked absent (C11 subject view)</li><li>Suresh requests leave (E21 worker-initiated)</li><li>Supervisor change notification (W-1 + W-2 + W-3 + W-7)</li><li>Suresh is terminated (E24 / W-4 subject view)</li></ol>
+    <h3>Workflow rows</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
+      <tbody>
+    <tr>
+      <td><strong>A1</strong></td>
+      <td>Phone OTP login (worker-app login)</td>
+      <td>WORKS (backend) — `MISSING` for worker because the worker login surface doesn't exist</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker mobile app scaffolding (new app folder `apps/worker-mobile/`).</td>
+    </tr>
+    <tr>
+      <td><strong>A3</strong></td>
+      <td>Worker invitation → activation (Suresh's lived experience)</td>
+      <td>MISSING from Suresh's side (audit Day 1 — &quot;blank home&quot;)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app design pass + scaffolding.</td>
+    </tr>
+    <tr>
+      <td><strong>A4</strong></td>
+      <td>Worker doc collection → ACTIVE</td>
+      <td>MISSING (no signal that activation happened)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app + doc upload UI + activation notification.</td>
+    </tr>
+    <tr>
+      <td><strong>B9</strong></td>
+      <td>Direct assignment (Suresh as subject)</td>
+      <td>MISSING from Suresh's side</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app schedule screen.</td>
+    </tr>
+    <tr>
+      <td><strong>C11</strong></td>
+      <td>Mark worker absent (Suresh's experience as subject)</td>
+      <td>MISSING (no dispute path — audit Day 3)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Design pass on worker dispute path + worker app surface for attendance visibility.</td>
+    </tr>
+    <tr>
+      <td><strong>C12</strong></td>
+      <td>Visit lifecycle (Suresh starts/ends visits)</td>
+      <td>MISSING (SCHEDULED → IN_PROGRESS trigger not locked — audit Day 2)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Design pass on visit-start trigger + worker visit surface.</td>
+    </tr>
+    <tr>
+      <td><strong>C14</strong></td>
+      <td>Visit photo verification (Suresh's subject experience)</td>
+      <td>MISSING (subject-side visibility — audit Day 4)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker flag-visibility surface (deferred until worker app + AI dispatcher land).</td>
+    </tr>
+    <tr>
+      <td><strong>C15</strong></td>
+      <td>Audit reversal (Suresh's subject view)</td>
+      <td>DRIFT (R6 vs D.1 window mismatch — F-P-4 pending)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">F-P-4 founder pick → reversal route → worker notification.</td>
+    </tr>
+    <tr>
+      <td><strong>D17</strong></td>
+      <td>Decision apply (Suresh as decision subject)</td>
+      <td>MISSING from Suresh's side</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app + notification surface.</td>
+    </tr>
+    <tr>
+      <td><strong>D20</strong></td>
+      <td>EMPLOYMENT-tier ack (Suresh as termination subject)</td>
+      <td>BROKEN (worker's most consequential moment is fully offline — audit Month 11)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app + closure Decision 5 surface (in-app + appeal window + records export).</td>
+    </tr>
+    <tr>
+      <td><strong>E21</strong></td>
+      <td>Leave request (Suresh initiates)</td>
+      <td>BROKEN at worker-self-initiative (design assumes supervisor-on-behalf — audit Week 2)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app leave-request form + backend acceptance of worker-initiated requests.</td>
+    </tr>
+    <tr>
+      <td><strong>E22</strong></td>
+      <td>Worker swap accept/reject (Suresh as B side)</td>
+      <td>MISSING (bilateral acceptance not designed — audit Month 6.5)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Design pass on bilateral swap + worker app.</td>
+    </tr>
+    <tr>
+      <td><strong>E23</strong></td>
+      <td>HR Update (if audience extended to workers)</td>
+      <td>BROKEN at scale (audience-model excludes workers per closure §7 audience amendment for pay-affecting only — telephone via supervisor WhatsApp)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app HR-update feed + Policy gate.</td>
+    </tr>
+    <tr>
+      <td><strong>E24</strong></td>
+      <td>Worker termination (Suresh as subject)</td>
+      <td>BROKEN (most consequential moment fully offline — audit Month 11)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Closure Decision 5 implementation — worker app + termination surface + appeal flow + records export.</td>
+    </tr>
+    <tr>
+      <td><strong>E25</strong></td>
+      <td>Worker suspension (Suresh as subject)</td>
+      <td>MISSING (no return-date surface — audit Month 7)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Design pass.</td>
+    </tr>
+    <tr>
+      <td><strong>F26</strong></td>
+      <td>Acting supervisor coverage (W-1 + W-2 + W-7 — Suresh sees new face)</td>
+      <td>MISSING (spec silent on worker-side notification — audit Month 8, headline Suresh case)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app + emitter + Closure Decision 4 surface.</td>
+    </tr>
+    <tr>
+      <td><strong>F27</strong></td>
+      <td>Permanent portfolio reassignment (W-3 — Suresh sees new permanent supervisor)</td>
+      <td>MISSING</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Same as F26.</td>
+    </tr>
+    <tr>
+      <td><strong>F28</strong></td>
+      <td>Replacement invite (Suresh accepts/rejects)</td>
+      <td>MISSING (R6 surface supervisor-only; worker surface unmapped — audit Day 7 / W-6)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Worker app + accept/reject surface.</td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section id="persona-hr" class="persona">
+    <h2>Kavitha <small>(18 workflows)</small></h2>
+    <p class="scope">O.2 Kavitha — HR control plane operator at Surya Cleaning. Currently runs payroll + HR via 3 Excel sheets + Tally + Gmail + WhatsApp. Reddy's sister-in-law; high relational stake. Multi-HR-user team at 5K-scale (Kavitha + Anita + Vikram + Priya + Deepak). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.2. Audit: `docs/audits/2026-05-15-1yr-sim-hr-kavitha.md` (H-1 through H-9 switching scope).</p>
+    <p class="surfaces">HR control plane lives in `apps/admin-web/` — but the HR portal **does not exist yet**. `ls apps/admin-web/app/` shows: about / api / contact / login / owner / pricing / privacy / system / terms — **no HR route**. The closure spec §4 HR pod model is locked in schema but the admin-web HR portal is the largest unbuilt surface in the system.</p>
+    <div class="dist">
+      <span class="dist-chip">BUILT: <strong>0</strong></span><span class="dist-chip">PARTIAL: <strong>11</strong></span><span class="dist-chip">WIP: <strong>0</strong></span><span class="dist-chip">STUBBED: <strong>0</strong></span><span class="dist-chip">NOT_STARTED: <strong>7</strong></span><span class="dist-chip">BLOCKED: <strong>0</strong></span>
+    </div>
+    <h3>Journeys (from workflow-maps)</h3>
+    <ol><li>Bootstrap seed review (H-6, pick 8)</li><li>Create acting cover (H-1, F26 orchestration)</li><li>Permanent reassignment + portfolio liquidation (H-2 + H-4)</li><li>EMPLOYMENT-tier final ack gate (H-7, D20 HR side)</li><li>HR queue + leave approval (E21 HR side, SLA-tiered)</li><li>HR-absent fallback (H-5, G-1, closure Decision 2)</li></ol>
+    <h3>Workflow rows</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
+      <tbody>
+    <tr>
+      <td><strong>A1</strong></td>
+      <td>Phone OTP login (Kavitha via admin-web)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Build `apps/admin-web/app/hr/` shell.</td>
+    </tr>
+    <tr>
+      <td><strong>A3</strong></td>
+      <td>Worker invitation (Kavitha initiates)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">HR portal worker-invite form.</td>
+    </tr>
+    <tr>
+      <td><strong>A4</strong></td>
+      <td>Worker doc collection review (Kavitha)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">HR portal doc-review surface.</td>
+    </tr>
+    <tr>
+      <td><strong>B5</strong></td>
+      <td>Site creation (Kavitha one-time setup)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">HR portal site management screen.</td>
+    </tr>
+    <tr>
+      <td><strong>B6</strong></td>
+      <td>Site state transitions (Kavitha manual)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">State-machine code + HR surface.</td>
+    </tr>
+    <tr>
+      <td><strong>E21</strong></td>
+      <td>Leave request approval (Kavitha approves/rejects)</td>
+      <td>BROKEN at scale (Month 6 audit — queue overload)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">HR queue UI + SLA wiring.</td>
+    </tr>
+    <tr>
+      <td><strong>E23</strong></td>
+      <td>HR Update post (Kavitha posts)</td>
+      <td>WORKS (post side) — audience model locked at launch</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Finish POST route + HR portal composer.</td>
+    </tr>
+    <tr>
+      <td><strong>E25</strong></td>
+      <td>Worker suspension review (Kavitha)</td>
+      <td>MISSING (no return-date surface)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Design pass.</td>
+    </tr>
+    <tr>
+      <td><strong>H-1</strong></td>
+      <td>Create acting-coverage binding (F26 orchestration)</td>
+      <td>WORKS (closure §4 + responsibility-model §5.7) — but admin-web HR portal absent</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">HR portal acting-window create form + capacity-context panel.</td>
+    </tr>
+    <tr>
+      <td><strong>H-2</strong></td>
+      <td>Permanent reassignment (F27 orchestration)</td>
+      <td>WORKS (with the P1.5 future-dated fix `44a453d`)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">HR portal permanent-reassign UI.</td>
+    </tr>
+    <tr>
+      <td><strong>H-3</strong></td>
+      <td>End a wrong binding (F26.11 correction)</td>
+      <td>WORKS (mechanism); UI deferred per responsibility-model §10</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">HR portal manual-end UI.</td>
+    </tr>
+    <tr>
+      <td><strong>H-4</strong></td>
+      <td>Liquidate quitter portfolio</td>
+      <td>WORKS (via reassign per ops §8)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">HR portal transfer-portfolio UI.</td>
+    </tr>
+    <tr>
+      <td><strong>H-5</strong></td>
+      <td>HR-absent fallback (G-1)</td>
+      <td>WORKS (closure Decision 2 — tiered: backup 24h → cross-pod 48h → owner emergency 72h)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Implement fallback state machine + cron escalation.</td>
+    </tr>
+    <tr>
+      <td><strong>H-6</strong></td>
+      <td>Bootstrap-seed review (pick 8)</td>
+      <td>WORKS (closure Decision 6 — two surfaces)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Migration script + HR portal seed-review UI.</td>
+    </tr>
+    <tr>
+      <td><strong>H-7</strong></td>
+      <td>Acting picks fail (F26.10 / C-7.10)</td>
+      <td>WORKS (ops §7.10 — cancel + pick another)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">HR portal cancel + repick flow.</td>
+    </tr>
+    <tr>
+      <td><strong>H-8</strong></td>
+      <td>Audit-chain reconstruction (G-4)</td>
+      <td>WORKS (closure Decision 6 — audit-chain timeline view)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">HR portal audit-chain timeline UI.</td>
+    </tr>
+    <tr>
+      <td><strong>H-9</strong></td>
+      <td>Multi-HR coordination</td>
+      <td>WORKS (closure Decision 1 — HR pod model + pessimistic per-row lock for HR queue items)</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Queue lock columns + service code + HR portal queue UI.</td>
+    </tr>
+    <tr>
+      <td><strong>D20 / E24</strong></td>
+      <td>D20 / E24 — EMPLOYMENT-tier final ack gate (Kavitha)</td>
+      <td>WORKS (closure §5.3.9 + Decision 7)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">HR portal ack-screen + typed-phrase + decision-support panel.</td>
+    </tr></tbody>
+    </table>
+  </section>
+  <section id="persona-owner" class="persona">
+    <h2>Reddy <small>(12 workflows)</small></h2>
+    <p class="scope">O.1 Mr. Reddy — founder/owner of Surya Cleaning. Not a daily product user. Receives digests, approves bank changes, watches company KPIs, fields AI budget alerts. Telugu first; reads English. Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.1. Audit: `docs/audits/2026-05-15-1yr-sim-owner-reddy.md`.</p>
+    <p class="surfaces">Owner surfaces live in `apps/admin-web/app/owner/` (one `page.tsx` today) + WhatsApp digest delivery (off-app). Per closure Decision 10: 7 owner surfaces total — 4 admin-web + 3 off-app. Of those 7, **1** has any code today (`apps/admin-web/app/owner/page.tsx`).</p>
+    <div class="dist">
+      <span class="dist-chip">BUILT: <strong>0</strong></span><span class="dist-chip">PARTIAL: <strong>2</strong></span><span class="dist-chip">WIP: <strong>0</strong></span><span class="dist-chip">STUBBED: <strong>0</strong></span><span class="dist-chip">NOT_STARTED: <strong>9</strong></span><span class="dist-chip">BLOCKED: <strong>1</strong></span>
+    </div>
+    <h3>Journeys (from workflow-maps)</h3>
+    <ol><li>Monthly digest (O-1, closure Decision 10)</li><li>AI budget alert (G29, the only PARTIAL surface today)</li><li>Bank-authority change (O-4, 2-step OTP, sensitive)</li><li>Emergency override (closure Decision 2 tier 3)</li></ol>
+    <h3>Workflow rows</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Design</th><th>Impl</th><th>Verif</th><th>Next step</th></tr></thead>
+      <tbody>
+    <tr>
+      <td><strong>A1</strong></td>
+      <td>Phone OTP login (Reddy first login)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Closure Decision 10 — owner landing.</td>
+    </tr>
+    <tr>
+      <td><strong>B5</strong></td>
+      <td>Site creation (Reddy one-time setup approval)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Decide whether owner has approval gate; if yes, design.</td>
+    </tr>
+    <tr>
+      <td><strong>O-1</strong></td>
+      <td>Monthly digest (auto-composed, Telugu + English)</td>
+      <td>WORKS (closure Decision 10)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">DigestComposer service + WhatsApp dispatcher + admin-web monthly view.</td>
+    </tr>
+    <tr>
+      <td><strong>O-2</strong></td>
+      <td>Annual digest</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Same as O-1, scoped to annual.</td>
+    </tr>
+    <tr>
+      <td><strong>O-3</strong></td>
+      <td>Incident digest (e.g., spike-in-complaints)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Design trigger thresholds → composer + dispatch.</td>
+    </tr>
+    <tr>
+      <td><strong>O-4</strong></td>
+      <td>Bank-authority UI (2-step OTP)</td>
+      <td>WORKS (closure Decision 10)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Schema + route + UI + security review before ship.</td>
+    </tr>
+    <tr>
+      <td><strong>O-5</strong></td>
+      <td>AI overage approval (founder pick F-P-5 pending)</td>
+      <td>Founder pick required (F-P-5)</td>
+      <td><span class="badge" style="background:#8e24aa;color:#fff;">BLOCKED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Founder pick F-P-5.</td>
+    </tr>
+    <tr>
+      <td><strong>O-6</strong></td>
+      <td>Compliance lookup by employee (legal events)</td>
+      <td>WORKS (closure Decision 10)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Compliance UI + export formatter.</td>
+    </tr>
+    <tr>
+      <td><strong>O-7</strong></td>
+      <td>Annual review (auto-composed)</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Composer + UI.</td>
+    </tr>
+    <tr>
+      <td><strong>D20 / E24</strong></td>
+      <td>D20 / E24 — Termination digest visibility</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Roll into O-1 monthly composer.</td>
+    </tr>
+    <tr>
+      <td><strong>G29</strong></td>
+      <td>AI budget alert recipient</td>
+      <td>WORKS</td>
+      <td><span class="badge" style="background:#f5b400;color:#000;">PARTIAL</span></td>
+      <td><span class="badge" style="background:#1e8e3e;color:#fff;">REAL_DB</span></td>
+      <td class="cell-narrow">Outbox dispatcher → MSG91 / WhatsApp + Telugu narrative.</td>
+    </tr>
+    <tr>
+      <td><strong>Emergency override (closure Decision 2 tier 3</strong></td>
+      <td>Emergency override (closure Decision 2 tier 3 — Owner inherits at 72h)</td>
+      <td>WORKS (explicit invocation, NOT auto-inheritance)</td>
+      <td><span class="badge" style="background:#e53935;color:#fff;">NOT_STARTED</span></td>
+      <td><span class="badge" style="background:#999;color:#fff;">UNVERIFIED</span></td>
+      <td class="cell-narrow">Cron framework + owner explicit-invocation surface.</td>
+    </tr></tbody>
+    </table>
+  </section>
+
+    <section id="combined" class="summary">
+      <h2>Where to find more</h2>
+      <p>This dashboard is a generated read-only view. To edit any of this, edit the canonical markdown:</p>
+      <ul>
+        <li><code>handoff/execution-state/*.md</code> — build state per persona + combined.</li>
+        <li><code>handoff/workflow-maps/*.md</code> — journey flowcharts + cross-persona sequences + ER diagram.</li>
+        <li><code>handoff/execution-state/INDEX.md</code> — strict enums + 15 failure-mode rules.</li>
+      </ul>
+      <p>Regenerate with: <code>node handoff/scripts/build-handoff-artifacts.mjs</code></p>
+    </section>
+  </main>
+  <p class="footer-note">
+    Generated from <code>handoff/execution-state/</code> + <code>handoff/workflow-maps/</code> + git.
+    Never edit this file directly — it's a derived artifact (per failure-mode rule 6 in <code>execution-state/INDEX.md</code>).
+  </p>
+</body>
+</html>

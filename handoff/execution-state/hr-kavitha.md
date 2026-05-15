@@ -4,51 +4,28 @@
 
 **Surface mapping:** HR control plane lives in `apps/admin-web/` — but the HR portal **does not exist yet**. `ls apps/admin-web/app/` shows: about / api / contact / login / owner / pricing / privacy / system / terms — **no HR route**. The closure spec §4 HR pod model is locked in schema but the admin-web HR portal is the largest unbuilt surface in the system.
 
-## Mermaid overview (HR workflow build state from Kavitha's seat)
+## Build-state summary (overview)
+
+> **Workflow execution diagrams live in `handoff/workflow-maps/hr-kavitha.md`.** This file is the build-state ledger.
 
 ```mermaid
-graph TB
-    classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
+graph LR
     classDef partial fill:#f5b400,stroke:#8a6900,color:#000
     classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
-    classDef blocked fill:#8e24aa,stroke:#4a1361,color:#fff
+    classDef horizon fill:#fff,stroke:#e53935,stroke-dasharray: 5 5,color:#e53935
 
-    subgraph "Identity"
-        A1[A1 Login]:::partial
-        A3[A3 Invite workers]:::partial
-        A4[A4 Activate workers]:::partial
-    end
-
-    subgraph "Setup"
-        B5[B5 Site creation]:::partial
-        B6[B6 Site state transitions]:::notstarted
-    end
-
-    subgraph "Queue ops"
-        E21[E21 Approve leave]:::partial
-        E23[E23 Post HR Updates]:::partial
-        E25[E25 Suspension review]:::notstarted
-    end
-
-    subgraph "HR-owned switching"
-        H1[H-1 Create acting binding]:::partial
-        H2[H-2 Permanent reassign]:::partial
-        H3[H-3 End wrong binding]:::partial
-        H4[H-4 Liquidate quitter portfolio]:::partial
-        H5[H-5 HR-absent fallback G-1]:::notstarted
-        H6[H-6 Bootstrap-seed review]:::notstarted
-        H7[H-7 Acting picks fail]:::notstarted
-        H8[H-8 Audit-chain reconstruction]:::notstarted
-        H9[H-9 Multi-HR coordination]:::partial
-    end
-
-    subgraph "Termination"
-        D20[D20 EMPLOYMENT-tier final ack]:::notstarted
-        E24[E24 Termination ack gate]:::notstarted
-    end
+    H["IMPLEMENTATION HORIZON for Kavitha:<br/>apps/admin-web/app/hr/ does not exist.<br/>Backend primitives BUILT or PARTIAL; HR portal surface = 0."]:::horizon
+    H --> J1["Journey 1 — Bootstrap seed review (H-6, pick 8)"]:::notstarted
+    H --> J2["Journey 2 — Create acting cover (H-1)"]:::partial
+    H --> J3["Journey 3 — Permanent reassign + liquidation (H-2 + H-4)"]:::partial
+    H --> J4["Journey 4 — EMPLOYMENT-tier final ack (H-7, D20)"]:::notstarted
+    H --> J5["Journey 5 — HR queue + leave SLA (E21)"]:::partial
+    H --> J6["Journey 6 — HR-absent fallback (H-5, G-1)"]:::notstarted
 ```
 
-Legend: green/yellow/red as elsewhere. Backend-side primitives for many H-rows are PARTIAL (table + helpers exist); the admin-web HR portal surface to operate them is the universal red.
+Workflow tally for Kavitha: 0 BUILT · 11 PARTIAL · 8 NOT_STARTED.
+
+For actual journey diagrams: see `handoff/workflow-maps/hr-kavitha.md`.
 
 ## Current active slice affecting Kavitha
 
