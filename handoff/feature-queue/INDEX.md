@@ -41,12 +41,12 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **id:** F-001
 - **title:** Resume + finish foundation read APIs for routing
 - **why:** Closes the routing slice that was paused to build the control loop. Read API for "who is currently responsible" — consumed by every future routed surface.
-- **depends on:** `handoff-control-loop` slice committed + approved (this current slice).
+- **depends on:** `handoff-control-loop` slice (APPROVED 2026-05-15 evening at `03a1c22`).
 - **personas touched:** Ravi (read side), Lakshmi (acting), Anjali (gaining permanent).
 - **workflows touched:** D17, F26 (read), F27 (read).
 - **entities/routes/tables touched:** `apps/backend/src/lib/effective-responsibility.ts` (new), `apps/backend/src/routes/decisions.ts` (new), `apps/backend/src/routes/sites.ts` (+1 endpoint), `apps/backend/test/*` (+4 files).
 - **expected verification gate:** `REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).
-- **status:** `BLOCKED` (blocked by control-loop slice).
+- **status:** `WIP` (resumed from 84ae39c; active in `owner-input/active-slice.md`).
 
 ### F-002 — D17 SupervisorDecision writer
 

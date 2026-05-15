@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T15:36:13.150Z",
-    "generated_against_head": "091c2a681160f3bc0c87d0b086a55740c2abd169",
+    "last_updated_at": "2026-05-15T15:44:08.511Z",
+    "generated_against_head": "03a1c2244c1f9a2c61fa7a0eb8806d7c26e1fd50",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "091c2a681160f3bc0c87d0b086a55740c2abd169",
+    "last_canonical_commit_at_gen": "03a1c2244c1f9a2c61fa7a0eb8806d7c26e1fd50",
     "staleness_warning": null,
-    "active_slice": "handoff-control-loop · AWAITING_APPROVAL",
+    "active_slice": "routing-foundation-read-apis (F-001) · WIP",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,47 +1183,21 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`handoff-control-loop`",
-      "Status": "`AWAITING_APPROVAL`",
+      "Slice name": "`routing-foundation-read-apis` (F-001)",
+      "Status": "`WIP`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed slice commit": "`eefaf11` — `fix(handoff): purge future-placeholder wording + populate change-history`",
-      "All slice commits (oldest → newest)": "`f9fbe68` · `0445110` · `7916a3b` · `b35748e` · `eefaf11`",
-      "Workflow IDs affected": "none directly (meta-slice — builds the control surface around all 29 workflows)",
-      "Personas affected": "all four (control surface is persona-spanning)",
-      "Files changed": "`handoff/owner-input/*` (new), `handoff/feature-queue/*` (new), `handoff/scripts/build-handoff-artifacts.mjs` (extended), `handoff/execution-state/INDEX.md`, `handoff/README.md`, `handoff/NEXT_SESSION.md`, `.husky/pre-commit`",
-      "Tests status": "N/A (docs + tooling only)",
-      "Verification status": "`LOCAL` — generator runs clean; 0 STALE markers; friend's first 4 bugs fixed in `7916a3b` (template-as-note, header-vs-callout, stale active-slice, generated_from list); friend's 3 follow-up bugs fixed in `b35748e` (commit-truth drift framed honestly, hash-naming pinned to landed commits, AWAITING_APPROVAL/BLOCKED sections split). Friend's third-pass 3 trust issues fixed in `eefaf11` (future-placeholder wording purged from active-slice, pending-approvals refreshed, change-history populated).",
-      "Started at": "2026-05-15 evening",
-      "Expected next state": "`APPROVED` — when owner writes that word for the `handoff-control-loop` item in `pending-approvals.md`. Then F-001 routing slice unblocks."
+      "Last landed commit": "`03a1c22` — `docs(handoff): rule 23 — confidence-score-before-acting (Akshay directive)`",
+      "WIP commit (paused work to resume)": "`84ae39c` — `wip(routing): foundation read APIs — paused mid-slice for execution-state tracker`",
+      "Workflow IDs affected": "`D17` (read side), `F26` (read side), `F27` (read side)",
+      "Personas affected": "Supervisor (Ravi) primarily; HR + Worker indirectly via the binding-routed reads",
+      "Files being changed": "`apps/backend/src/lib/effective-responsibility.ts` (already in WIP), `apps/backend/src/routes/decisions.ts` (already in WIP), `apps/backend/src/routes/sites.ts` (+ GET endpoint, already in WIP), `apps/backend/src/server.ts` (wired), `apps/backend/test/effective-responsibility-helper.test.ts` (already in WIP), `apps/backend/test/sites-effective-supervisor-route.test.ts` (already in WIP), `apps/backend/test/decisions-proposed-for-me-route.test.ts` (already in WIP), `apps/backend/test/effective-responsibility-point-in-time.test.ts` (TO WRITE — 4th test file, friend's named remaining task)",
+      "Tests status": "3 of 4 test files written + green at doc-level; 4th to write; real-DB sweep to run",
+      "Verification status": "`UNVERIFIED` until real-DB sweep runs; doc-level checks (typecheck + lint) green at WIP time",
+      "Started at": "2026-05-15 afternoon (originally); paused for control-loop slice; resumed 2026-05-15 evening after friend approved `handoff-control-loop`.",
+      "Expected next state": "`AWAITING_APPROVAL` after 4th test written + real-DB sweep green + WIP commit split into 3 clean commits."
     },
-    "pending_approvals": [
-      {
-        "id": "handoff-control-loop",
-        "status": "AWAITING_APPROVAL",
-        "branch": "feat/layer-1-core-primitives",
-        "wipCommit": "",
-        "lastLanded": "eefaf11",
-        "workflowIds": "none directly (control surface, spans all 29)",
-        "blocking": "",
-        "built": "`handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in `7916a3b` (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in `b35748e` (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues fixed in `eefaf11` (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).",
-        "notDone": "Nothing in scope; all three friend bug lists fully addressed.",
-        "ownerDecision": "_empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_"
-      }
-    ],
-    "blocked_items": [
-      {
-        "id": "routing-foundation-read-apis",
-        "status": "BLOCKED",
-        "branch": "feat/layer-1-core-primitives",
-        "wipCommit": "84ae39c",
-        "lastLanded": "",
-        "workflowIds": "`D17`, `F26` (read side), `F27` (read side)",
-        "blocking": "`handoff-control-loop` slice not yet APPROVED. When that slice is approved, this slice resumes from WIP commit `84ae39c`.",
-        "built": "`getEffectiveBinding` + `deriveWorkerPrimarySiteId` + `GET /sites/:id/effective-supervisor` + `GET /decisions/proposed-for-me` + 3 of 4 test files. Doc-level checks green; real-DB sweep not yet run.",
-        "notDone": "4th test file `effective-responsibility-point-in-time.test.ts`; real-DB sweep; split WIP commit into 3 clean commits.",
-        "ownerDecision": "N/A (blocked, not awaiting decision). Decision belongs on `handoff-control-loop` first."
-      }
-    ],
+    "pending_approvals": [],
+    "blocked_items": [],
     "pending_notes": {
       "counts": {
         "NEW": 0,
@@ -1238,12 +1212,12 @@
         "id": "F-001",
         "title": "Resume routing slice from WIP `84ae39c`",
         "why": "Closes the routing slice that was paused to build the control loop. Read API for \"who is currently responsible\" — consumed by every future routed surface.",
-        "depends_on": "`handoff-control-loop` slice committed + approved (this current slice).",
+        "depends_on": "`handoff-control-loop` slice (APPROVED 2026-05-15 evening at `03a1c22`).",
         "personas": "Ravi (read side), Lakshmi (acting), Anjali (gaining permanent).",
         "workflows": "D17, F26 (read), F27 (read).",
         "entities": "`apps/backend/src/lib/effective-responsibility.ts` (new), `apps/backend/src/routes/decisions.ts` (new), `apps/backend/src/routes/sites.ts` (+1 endpoint), `apps/backend/test/*` (+4 files).",
         "verification": "`REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).",
-        "status": "BLOCKED"
+        "status": "WIP"
       },
       {
         "id": "F-002",
@@ -1326,6 +1300,20 @@
     "change_history": [
       {
         "when": "2026-05-15 evening",
+        "slice": "routing-foundation-read-apis",
+        "transition": "BLOCKED → WIP",
+        "commit": "`84ae39c`",
+        "note": "Resume after control-loop approval. Picks up from the original WIP commit; 4th routing test (point-in-time effective responsibility) + fresh-Postgres real-DB sweep + 3-way WIP-split (helpers / routes / tests) remain."
+      },
+      {
+        "when": "2026-05-15 evening",
+        "slice": "handoff-control-loop",
+        "transition": "AWAITING_APPROVAL → APPROVED",
+        "commit": "`03a1c22`",
+        "note": "Friend's 5th file-grounded verification pass at HEAD `091c2a6` declared the slice trustworthy enough to lock. Verbatim: \"the control-loop slice is now trustworthy enough to lock.\" Rule 23 (confidence-score-before-acting) added post-approval in `03a1c22`."
+      },
+      {
+        "when": "2026-05-15 evening",
         "slice": "handoff-control-loop",
         "transition": "WIP → AWAITING_APPROVAL",
         "commit": "`b35748e`",
@@ -1379,20 +1367,6 @@
         "transition": "WIP → APPROVED → DONE",
         "commit": "`f609749`, `ec40813`, `4bb9b2a`",
         "note": "3 typed audit helpers + 8 real-DB test files (29/29 green)."
-      },
-      {
-        "when": "2026-05-15",
-        "slice": "pr1-layer-1-schema",
-        "transition": "WIP → APPROVED → DONE",
-        "commit": "`095c766`, `0dca836`",
-        "note": "Layer 1 core primitives schema (HRPod, Policy, Notification, Digest)."
-      },
-      {
-        "when": "<ISO date or 'YYYY-MM-DD time-of-day'>",
-        "slice": "<slice-name>",
-        "transition": "<FROM_STATE> → <TO_STATE>",
-        "commit": "`<commit>`",
-        "note": "<one-line note>"
       }
     ]
   }
