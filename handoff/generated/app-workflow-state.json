@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T19:56:32.659Z",
-    "generated_against_head": "990b96e131cf9a2a2bfe302f2c45d354352338a4",
+    "last_updated_at": "2026-05-15T20:25:32.607Z",
+    "generated_against_head": "12c1df6f9f6d612a791a5a06499ad11de60718ee",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "c8c34b345357a41eb1e8a796911ff8254150903f",
+    "last_canonical_commit_at_gen": "12c1df6f9f6d612a791a5a06499ad11de60718ee",
     "staleness_warning": null,
-    "active_slice": "chat-writes-proposed-decisions (F-002 — round-3 fixes, R3.1 + R3.2-a) · AWAITING_APPROVAL",
+    "active_slice": "same-day-supervisor-freeze (S-001) · PLANNED — AWAITING_SPEC_LOCK (owner + friend lock the policy in the two specs before any code lands)",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,14 +1183,16 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`chat-writes-proposed-decisions` (F-002 — round-3 fixes, R3.1 + R3.2-a)",
-      "Status": "`AWAITING_APPROVAL`",
-      "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed commit": "`990b96e` — `test(chat): R3.2-a — deterministic route-level stale-auth proof (fixes P2)`"
+      "Slice name": "`same-day-supervisor-freeze` (S-001)",
+      "Status": "`PLANNED — AWAITING_SPEC_LOCK` (owner + friend lock the policy in the two specs before any code lands)",
+      "Branch": "`feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)",
+      "Last landed commit": "`12c1df6` — `docs(handoff): F-002 round-3 fixes complete → AWAITING_APPROVAL (F-002.20, 15 files / 75 cases green)` (F-002 closed APPROVED)",
+      "Tests status": "n/a — no code in flight",
+      "Verification status": "n/a — spec phase"
     },
     "pending_approvals": [
       {
-        "id": "chat-writes-proposed-decisions",
+        "id": "same-day-supervisor-freeze",
         "kind": "slice",
         "status": "",
         "branch": "",
@@ -1237,7 +1239,7 @@
         "workflows": "D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).",
         "entities": "`apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.",
         "verification": "`REAL_DB`.",
-        "status": "AWAITING_APPROVAL"
+        "status": "APPROVED"
       },
       {
         "id": "F-003",
@@ -1308,6 +1310,13 @@
     ],
     "change_history": [
       {
+        "when": "2026-05-16",
+        "slice": "chat-writes-proposed-decisions",
+        "transition": "AWAITING_APPROVAL → APPROVED",
+        "commit": "n/a (friend's approval; no commit)",
+        "note": "Friend's file-grounded verification at HEAD `12c1df6` cleared with no blocking findings. Verbatim: \"P1 is really fixed · P2 is really fixed enough for approval · handoff/control state is consistent · APPROVED.\" Verification limitation acknowledged (pnpm not on PATH in friend's shell, could not personally rerun the 2 new Vitest files); not gating. Friend's directive: close F-002, surface S-001 as separate policy/spec slice. F-002 ready to be marked DONE once branch merges to main."
+      },
+      {
         "when": "2026-05-15 evening",
         "slice": "chat-writes-proposed-decisions",
         "transition": "CHANGES_REQUESTED → AWAITING_APPROVAL",
@@ -1369,13 +1378,6 @@
         "transition": "AWAITING_APPROVAL → APPROVED",
         "commit": "`03a1c22`",
         "note": "Friend's 5th file-grounded verification pass at HEAD `091c2a6` declared the slice trustworthy enough to lock. Verbatim: \"the control-loop slice is now trustworthy enough to lock.\" Rule 23 (confidence-score-before-acting) added post-approval in `03a1c22`."
-      },
-      {
-        "when": "2026-05-15 evening",
-        "slice": "handoff-control-loop",
-        "transition": "WIP → AWAITING_APPROVAL",
-        "commit": "`b35748e`",
-        "note": "Friend's 3 second-pass bugs fixed: commit-truth renamed to `generated_against_head` + drift note added; active-slice hash-naming pinned to landed commits only; pending-approvals split AWAITING_APPROVAL vs BLOCKED. Slice now in AWAITING_APPROVAL state."
       }
     ]
   }
