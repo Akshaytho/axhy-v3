@@ -70,6 +70,19 @@ These extend the rules in `handoff/execution-state/INDEX.md` (1–15).
     - Skip the score for trivial mechanical edits (typo fix, rename a freshly-defined variable, refresh of a row I just wrote). Apply it everywhere else.
     - Format when surfacing: `Confidence: NN% — [own / research-improved / blocked]` then 1–3 bullets covering basis + risks + (if researched) the source URL.
 
+24. **Production-grade workflow rules (Akshay + friend rule, 2026-05-15 evening, locked after F-002 review).** Every workflow / lifecycle / multi-actor slice must meet the 10-rule production-grade bar before moving to `AWAITING_APPROVAL`. The full text lives in `handoff/owner-input/production-grade-rulebook.md`.
+    - **Documented limitation ≠ acceptable limitation.** If a limitation can corrupt business truth, produce duplicate effects, or misroute responsibility, surfacing it does NOT grant a pass (rule P7). Treat as blocker until owner explicitly accepts as non-corrupting.
+    - **Workflow invariants are enforced, not described.** DB-level CHECK constraints + conditional UPDATEs are required where state correctness is load-bearing (P1).
+    - **No check-then-act race windows** on shared state (P2). Conditional UPDATE with WHERE-precondition is the default pattern.
+    - **No final state before the real domain effect.** Three permitted shapes: truly atomic / intermediate state / apply-after-domain. "Lifecycle commits in tx 1, domain inject in tx 2" is banned without a sunset (P3).
+    - **Back-compat paths cannot leave orphan PROPOSED rows** or duplicate side effects (P4).
+    - **New decision kinds wire all 4 layers** (writer / routing / reader / audit / tests) in the same slice OR get explicit fall-back approval (P5).
+    - **Negative-path tests mandatory** for: unauthorized caller, cross-tenant, already-applied/dismissed, bad input, concurrent double-submit, partial failure, stale client (P6).
+    - **Real-life behavior under pressure** — retries, double-taps, concurrent actors, stale clients, partial failures, tenant boundaries (P8).
+    - **Research first** for concurrency / transaction / lifecycle-risk work; cite sources from PG docs, Prisma docs, OWASP, etc. (P9 — and Rule 23 raises the confidence bar accordingly).
+    - **Failure matrix required in every approval packet** (P10): what invariants, how enforced, what happens on failure, retry, concurrency, stale client, what's deferred.
+    - **Definition of done (production-grade):** design intent implemented + invariants enforced (code AND DB) + all layers agree + negative paths tested + real-DB green + control surface updated + failure matrix filled + remaining limitations non-corrupting AND explicitly accepted.
+
 ## Session-start read order (mandatory)
 
 When a new Claude session starts on Axhy v3 work:

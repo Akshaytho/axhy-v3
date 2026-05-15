@@ -58,7 +58,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `AWAITING_APPROVAL` (slice complete; 54/54 tests green on fresh local Postgres 16 with 11 migrations; surfaced in `owner-input/pending-approvals.md` for friend's review).
+- **status:** `CHANGES_REQUESTED` (friend's production-grade review surfaced 4 safety findings — orphan APPLIED, stale PROPOSED via optional decisionId, partial routing migration, check-then-act race. Remediation plan surfaced in `owner-input/pending-approvals.md`; no fix code until plan approved).
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 
