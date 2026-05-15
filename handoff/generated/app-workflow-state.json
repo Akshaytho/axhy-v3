@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T20:25:32.607Z",
-    "generated_against_head": "12c1df6f9f6d612a791a5a06499ad11de60718ee",
+    "last_updated_at": "2026-05-15T20:31:05.483Z",
+    "generated_against_head": "7e852df43cd55b9993ba166399be1489fbab3668",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "12c1df6f9f6d612a791a5a06499ad11de60718ee",
+    "last_canonical_commit_at_gen": "7e852df43cd55b9993ba166399be1489fbab3668",
     "staleness_warning": null,
-    "active_slice": "same-day-supervisor-freeze (S-001) · PLANNED — AWAITING_SPEC_LOCK (owner + friend lock the policy in the two specs before any code lands)",
+    "active_slice": "same-day-supervisor-freeze (S-001) · PLANNED — AWAITING_SPEC_LOCK (round-1 wording iteration — friend CHANGES_REQUESTED on wording 2026-05-16; reworded below; awaiting final SPEC LOCK APPROVED before code)",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,7 +1184,7 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`same-day-supervisor-freeze` (S-001)",
-      "Status": "`PLANNED — AWAITING_SPEC_LOCK` (owner + friend lock the policy in the two specs before any code lands)",
+      "Status": "`PLANNED — AWAITING_SPEC_LOCK` (round-1 wording iteration — friend CHANGES_REQUESTED on wording 2026-05-16; reworded below; awaiting final SPEC LOCK APPROVED before code)",
       "Branch": "`feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)",
       "Last landed commit": "`12c1df6` — `docs(handoff): F-002 round-3 fixes complete → AWAITING_APPROVAL (F-002.20, 15 files / 75 cases green)` (F-002 closed APPROVED)",
       "Tests status": "n/a — no code in flight",
