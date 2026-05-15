@@ -82,6 +82,35 @@ When a phase starts or ends, the handoff files MUST be updated in this exact ord
 
 This order is non-negotiable.
 
+## Verification discipline
+
+**Local verification is mandatory for each implementation slice before moving to the next.** Doc-level checks (`prisma format`, `prisma validate`, `prisma generate`, `pnpm typecheck`) are necessary but **not sufficient** — they pass on syntactically correct schemas that would fail against a real database. The migration-baseline gap surfaced 2026-05-15 (foundational tables missing CREATE statements in any migration) was a class of bug that only a real-DB apply would have caught.
+
+### The rule
+
+For every code-touching slice (PR, migration, schema change, generator change):
+
+1. **Doc-level checks pass** — `prisma format`, `prisma validate`, `prisma generate`, `pnpm typecheck`, `pnpm lint`.
+2. **Real-DB / real-service verification pass** — `prisma migrate deploy` (or `migrate dev`) against a local Postgres, plus a smoke query against the affected table(s) / RPC. If the slice touches outbox / cron / a downstream service, exercise it.
+3. **Verification status declared explicitly** in the commit message or PR description: `verified locally`, `verified against real DB/service`, or `not yet verified — <reason>`. Never silent.
+
+A slice that passes (1) but not (2) is **not done**. It compiles; it does not necessarily work.
+
+### Why
+
+- `prisma migrate diff` on production-tagged DBs is harness-blocked. Local Postgres is the path.
+- Production migrations have failed silently because the local CI matrix did not include a fresh-DB apply step (the baseline-recovery investigation is the canonical example).
+- "Compiles + types check" is the bar for code quality, not the bar for shippability. Shippability requires the underlying system actually accepting the change.
+
+### How to apply
+
+- **First slice of any new layer**: stand up a local Postgres (Docker or native), run `prisma migrate deploy` from fresh, confirm green.
+- **Every subsequent slice in the same layer**: apply just the new migration to the existing local DB and run a smoke query.
+- **If you cannot run real-DB verification** (no docker available, can't bring up a local Postgres, etc.): mark the slice `not yet verified — <reason>` and **do not** present it as ready for merge. Surface to founder and pause.
+- **Failure during real-DB verification is a finding, not a noise event.** Investigate root cause; do not paper over with a quick patch.
+
+This discipline is per-slice, not per-PR — a PR that contains 3 slices needs 3 verification statements.
+
 ## `done/` archive template
 
 Every file under `done/` MUST use this template so old phases are scannable:
