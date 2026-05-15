@@ -16,14 +16,15 @@
 
 ## Current
 
-| Field                   | Value                                                                                                                                                                                                                  |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**          | `same-day-supervisor-freeze` (S-001)                                                                                                                                                                                   |
-| **Status**              | `SPEC_LOCKED — READY FOR CODE` (v2 wording landed in both specs 2026-05-16; friend `SPEC LOCK APPROVED` at HEAD `9e137e4`; stale control-file line cleaned in the same spec-lock commit; S-001 code slice starts next) |
-| **Branch**              | `feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)                                                                                                                                              |
-| **Last landed commit**  | `12c1df6` — `docs(handoff): F-002 round-3 fixes complete → AWAITING_APPROVAL (F-002.20, 15 files / 75 cases green)` (F-002 closed APPROVED)                                                                            |
-| **Tests status**        | n/a — no code in flight                                                                                                                                                                                                |
-| **Verification status** | n/a — spec phase                                                                                                                                                                                                       |
+| Field                             | Value                                                                                                                                                                 |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**                    | `same-day-supervisor-freeze` (S-001)                                                                                                                                  |
+| **Status**                        | `AWAITING_APPROVAL` (S-001 code slice complete; helper + wire + 5 new tests + 4 adapted; 17/17 files, 84/84 cases green; stop for review per friend's execution rule) |
+| **Branch**                        | `feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)                                                                                             |
+| **Last landed commit**            | `d234e77` — `feat(s-001): assertNotChangingTodaysResponsibility guard + wire into reassignPermanentBinding (S-001.1, 5 new tests / 4 adapted)`                        |
+| **S-001 commits (oldest→newest)** | `2835e84` (spec lock — wording v2 landed in both specs + stale control-file line cleaned) · `d234e77` (helper + wire + 5 new tests + 4 adapted)                       |
+| **Tests status**                  | **17/17 test files green · 84/84 cases pass** on fresh local Postgres 16 (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).                               |
+| **Verification status**           | `REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied. Full sweep in one run.                                  |
 
 ## Spec lock — what needs to land before code
 
@@ -78,7 +79,16 @@ F-002 (`chat-writes-proposed-decisions`) was approved by friend at HEAD `12c1df6
 - **Workflow IDs affected:** `D17` · `D20` · `C11` · `E21` · `E22` · `E24`
 - **Verification at approval:** 15/15 test files green · 75/75 cases pass on fresh local Postgres 16 (all 12 migrations applied). Reproduction snippet below for any future replay.
 
-## Reproduction (F-002 baseline — applies until S-001 lands new tests)
+## How each S-001 test case maps to friend's plan
+
+| Test case (from spec)                                                                                             | Status | Resolution                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1. HR cannot create a same-day acting binding (rejected with 400)                                                 | CLOSED | `same-day-supervisor-freeze.test.ts` case 1 — helper rejects same-day `effectiveFrom` with `SameDayFreezeError(code='SAME_DAY_FREEZE')`. Helper-level because the HR binding-create HTTP route lands in F-005 (admin-web HR portal). The guard is exported and ready to wire in when that route ships. |
+| 2. HR cannot end the current responsible binding effective today (rejected with 400)                              | CLOSED | `same-day-supervisor-freeze.test.ts` case 2 — helper rejects same-day `effectiveUntil` with `SameDayFreezeError`. Same F-005 deferral reason. Proves the guard covers `effectiveUntil`-only mutations, not just `effectiveFrom`.                                                                       |
+| 3. `reassignPermanentBinding` with same-day boundary is rejected (rejected with 400)                              | CLOSED | `same-day-supervisor-freeze.test.ts` case 3 — real-DB test against the service helper; rejects with `SameDayFreezeError` BEFORE the prior-find runs. Seed remains intact; no `BINDING_CREATED` or `BINDING_ENDED_SUPERSEDED_BY_PERMANENT` audit emitted.                                               |
+| 4. Supervisor-app routing behavior is unchanged for any day's current binding (already permanent or pre-tomorrow) | CLOSED | `same-day-supervisor-freeze.test.ts` case 4 — `getEffectiveBinding` returns userA right now (before cutover) and userB at a post-cutover instant. Direct-Prisma seeding bypasses the API guard by design (F-002 baseline pattern, called out in the closure spec's 2026-05-16 update).                 |
+
+## Reproduction (full S-001 + F-002 baseline sweep)
 
 ```
 docker exec axhy-test-pg pg_isready -U postgres
@@ -100,10 +110,25 @@ pnpm exec vitest run \
   test/chat-apply-route-concurrency.test.ts \
   test/chat-apply-atomicity.test.ts \
   test/chat-apply-validation.test.ts \
-  test/chat-apply-stale-auth-route.test.ts
+  test/chat-apply-stale-auth-route.test.ts \
+  test/binding-permanent-reassignment-basics.test.ts \
+  test/same-day-supervisor-freeze.test.ts
 ```
 
-Expected: 15 files, 75 cases, all green (F-002 baseline).
+Expected: 17 files, 84 cases, all green (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).
+
+## P10 failure matrix for S-001
+
+| Question                                              | Answer                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What invariants does this slice introduce?            | (1) No supervisor responsibility change may take effect today. (2) Every HR-driven binding mutation that would change today's responsible supervisor is rejected with 400.                                                                                                        |
+| How is each invariant enforced?                       | (1) Shared `assertNotChangingTodaysResponsibility` helper rejects same-day `effectiveFrom` / `effectiveUntil`. (2) `reassignPermanentBinding` calls the helper before doing any DB work. Future HR binding-create / binding-end routes (F-005) will call the helper the same way. |
+| What happens on a same-day mutation attempt?          | `SameDayFreezeError` thrown (code `SAME_DAY_FREEZE`) before any write. No state change, no audit, no partial commit. HTTP route layer maps to 400 BAD_INPUT.                                                                                                                      |
+| What happens for tomorrow-or-later mutations?         | Pass through unaffected. `reassignPermanentBinding` still performs its full supersession (bound old row's `effectiveUntil` + insert new row + emit BINDING_ENDED_SUPERSEDED_BY_PERMANENT + BINDING_CREATED).                                                                      |
+| What happens for direct-Prisma seed/migration writes? | Bypasses the guard by design — the policy is at the API layer (per the spec). Bootstrap-seed migration (pick 8) and test seed paths can still write same-day rows where appropriate.                                                                                              |
+| What happens to F-002's stale-authority protections?  | Unchanged. Round-2 atomic preCheck + service + commitApply tx and round-3 auth re-check in commitApply both remain. They cost nothing now and remain correct if the policy is ever loosened.                                                                                      |
+| What happens for DST transitions?                     | `tomorrowMidnightInTimeZone` samples the tz offset at the candidate instant via `Intl.DateTimeFormat`, so spring-forward and fall-back are handled correctly. Asia/Kolkata has no DST so this is theoretical for launch; the helper still does the right thing in other tz.       |
+| What is still deferred?                               | HR binding-create + binding-end HTTP routes (F-005 admin-web HR portal). When those land, they call the helper exported here. `Company.timeZone` schema field also deferred; the helper accepts the override now, so the wiring is a one-line change when the column ships.       |
 
 ## Decision needed (owner + friend, before any S-001 code)
 

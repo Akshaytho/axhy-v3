@@ -58,7 +58,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** F26 (acting binding create), F27 (permanent reassign).
 - **entities/routes/tables touched:** HR binding-create + `reassignPermanentBinding` services (Zod refine on `effectiveFrom` ≥ tomorrow-midnight-tenant-local). No schema change. No new entity.
 - **expected verification gate:** `REAL_DB` (2 new tests: HR same-day rejected → 400; existing routing unchanged for permanent + future-dated bindings).
-- **status:** `QUEUED` (dependency open: spec wording must be locked by owner + friend in both specs before any code; no code until both locks land). See `handoff/owner-input/active-slice.md` for the wording draft.
+- **status:** `AWAITING_APPROVAL` (spec lock landed at `2835e84`; code landed at `d234e77` — helper `assertNotChangingTodaysResponsibility` + wire into `reassignPermanentBinding` + 5 new tests + 4 adapted tests; 17/17 test files green, 84/84 cases pass on fresh local Postgres 16).
 
 ### F-002 — D17 SupervisorDecision writer
 

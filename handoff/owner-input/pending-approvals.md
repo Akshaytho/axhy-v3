@@ -20,9 +20,32 @@
 
 ## Currently awaiting approval
 
-_None awaiting approval at this moment._
+### Slice: `same-day-supervisor-freeze` (S-001 — code slice) — AWAITING_APPROVAL 2026-05-16
 
-(S-001 spec lock was APPROVED 2026-05-16 — see "Recently approved" below. S-001 code slice will surface here when the slice body lands at AWAITING_APPROVAL.)
+**Problem in simple English:** the spec lock said "no supervisor responsibility change may take effect for that site until the next tenant-local midnight." Without code, that statement is a description, not an invariant — any HR mutation path can still write a same-day binding.
+
+**Simplest business solution:** one shared helper at the API/service layer that rejects every mutation which would change today's responsible supervisor. Framed around the business rule, not around any one field, so a future binding-mutation route can't silently bypass it.
+
+**Code fix (one commit, `d234e77`):**
+
+- New `apps/backend/src/lib/same-day-freeze.ts` — pure helper module exporting `assertNotChangingTodaysResponsibility({ now?, tenantTimeZone?, effectiveFrom?, effectiveUntil? })`. Throws `SameDayFreezeError` (code `SAME_DAY_FREEZE`) on same-day timestamps. `DEFAULT_TENANT_TIME_ZONE = 'Asia/Kolkata'` (India-market product). `tomorrowMidnightInTimeZone(now, tz)` handles DST correctly by sampling the offset at the candidate instant.
+- `apps/backend/src/lib/site-supervisor-binding.ts` — `reassignPermanentBinding` calls the guard BEFORE the prior-find. `ReassignPermanentBindingInput` gains optional `tenantTimeZone`.
+- New `apps/backend/test/same-day-supervisor-freeze.test.ts` — 5 cases (4 from the slice plan + 1 helper sanity).
+- `apps/backend/test/binding-permanent-reassignment-basics.test.ts` — 3 cases adapted to use tomorrow-or-later cutovers (the only correct shape under S-001). One renamed.
+
+**Why this code is necessary:** without the helper the spec is words; with the helper any HR mutation that would change today's responsible supervisor is rejected by construction. The guard is in the service layer, not in the schema, so seed/migration paths (bootstrap-seed per responsibility-model pick 8, F-002 test seeds) continue to work — the policy is at the API layer per the spec.
+
+**What is NOT in this slice:**
+
+- No HTTP routes for HR binding-create / binding-end — those are F-005 (admin-web HR portal) scope. The exported guard is ready to be called from those routes when they ship.
+- No `Company.timeZone` schema column — the helper accepts the override parameter now, so wiring is a one-line change when the column ships.
+- No removal of F-002's round-2 atomicity or round-3 auth re-check. Both stay as defense-in-depth.
+
+**Verification:** REAL_DB on fresh local Postgres 16, all 12 migrations. **17/17 test files green · 84/84 cases pass** in one sweep (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new). Reproduction snippet in `active-slice.md`.
+
+**S-001 commits:** `2835e84` (spec lock + stale control-file line cleanup) · `d234e77` (helper + wire + 5 new tests + 4 adapted).
+
+**Decision needed:** `APPROVED` / `CHANGES_REQUESTED` / `HOLD`. If APPROVED → S-001 moves to APPROVED and the branch is ready to merge to main (once F-002 + S-001 both APPROVED).
 
 ---
 

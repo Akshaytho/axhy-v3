@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T20:39:22.416Z",
-    "generated_against_head": "9e137e49efe89edcb9c32ef060a114724242a544",
+    "last_updated_at": "2026-05-15T20:52:24.087Z",
+    "generated_against_head": "d234e7775ada56c3d3ef05ac57a25fd023e7caa2",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "9e137e49efe89edcb9c32ef060a114724242a544",
+    "last_canonical_commit_at_gen": "2835e84b65fead9cb03be099fb57ae9257cd53c6",
     "staleness_warning": null,
-    "active_slice": "same-day-supervisor-freeze (S-001) · SPEC_LOCKED — READY FOR CODE (v2 wording landed in both specs 2026-05-16; friend SPEC LOCK APPROVED at HEAD 9e137e4; stale control-file line cleaned in the same spec-lock commit; S-001 code slice starts next)",
+    "active_slice": "same-day-supervisor-freeze (S-001) · AWAITING_APPROVAL (S-001 code slice complete; helper + wire + 5 new tests + 4 adapted; 17/17 files, 84/84 cases green; stop for review per friend's execution rule)",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,20 +1184,21 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`same-day-supervisor-freeze` (S-001)",
-      "Status": "`SPEC_LOCKED — READY FOR CODE` (v2 wording landed in both specs 2026-05-16; friend `SPEC LOCK APPROVED` at HEAD `9e137e4`; stale control-file line cleaned in the same spec-lock commit; S-001 code slice starts next)",
+      "Status": "`AWAITING_APPROVAL` (S-001 code slice complete; helper + wire + 5 new tests + 4 adapted; 17/17 files, 84/84 cases green; stop for review per friend's execution rule)",
       "Branch": "`feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)",
-      "Last landed commit": "`12c1df6` — `docs(handoff): F-002 round-3 fixes complete → AWAITING_APPROVAL (F-002.20, 15 files / 75 cases green)` (F-002 closed APPROVED)",
-      "Tests status": "n/a — no code in flight",
-      "Verification status": "n/a — spec phase"
+      "Last landed commit": "`d234e77` — `feat(s-001): assertNotChangingTodaysResponsibility guard + wire into reassignPermanentBinding (S-001.1, 5 new tests / 4 adapted)`",
+      "S-001 commits (oldest→newest)": "`2835e84` (spec lock — wording v2 landed in both specs + stale control-file line cleaned) · `d234e77` (helper + wire + 5 new tests + 4 adapted)",
+      "Tests status": "**17/17 test files green · 84/84 cases pass** on fresh local Postgres 16 (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).",
+      "Verification status": "`REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied. Full sweep in one run."
     },
     "pending_approvals": [
       {
-        "id": "chat-writes-proposed-decisions",
+        "id": "same-day-supervisor-freeze",
         "kind": "slice",
-        "status": "CHANGES_REQUESTED",
-        "branch": "feat/layer-1-core-primitives",
+        "status": "",
+        "branch": "",
         "wipCommit": "",
-        "lastLanded": "fe927b2",
+        "lastLanded": "",
         "workflowIds": "",
         "blocking": "",
         "built": "",
