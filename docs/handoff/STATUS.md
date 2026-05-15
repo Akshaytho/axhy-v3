@@ -2,8 +2,8 @@
 
 > **Living document.** Update at every major phase shift (per the Mandatory Update Order in `README.md`).
 
-**Last updated:** 2026-05-15 (PR 2 accepted + locally real-DB verified; next slice is P1.5 SiteSupervisorBinding)
-**Active phase:** **Layer 1 implementation — PR 1 + PR 2 accepted + locally real-DB verified.** PR 2 added 3 typed audit-emit helpers (recordPolicyChanged, recordMembershipPodAssigned, recordMembershipPodReassigned) + 8 real-DB integration test files (29/29 tests green against fresh Postgres 16). No schema churn, no routes, no Layer 2 drift. Migration is **NOT** yet applied to Railway prod — prod apply remains a later supervised step. Next slice: **P1.5 SiteSupervisorBinding** — single table for both ACTING and PERMANENT bindings, BINDING\_\* audit helpers, real-DB lifecycle tests (creation, no-overlap invariant, acting window basics, permanent reassignment basics). Narrow scope, no surfaces.
+**Last updated:** 2026-05-15 (execution-state tracker built; routing slice paused at WIP commit `84ae39c`)
+**Active phase:** **Layer 1 implementation — routing slice paused for execution-state tracker.** PR 1 + PR 2 + P1.5 all accepted and locally real-DB verified. Routing slice (foundation read APIs — `getEffectiveBinding`, `deriveWorkerPrimarySiteId`, `GET /sites/:id/effective-supervisor`, `GET /decisions/proposed-for-me`) started, then paused mid-way at WIP commit `84ae39c` so the durable execution-state tracker could be built. **Workflow-truth surface now lives at `docs/handoff/execution-state/`** (INDEX + 4 personas + combined). Resume routing slice after friend approves the tracker. Migration is **NOT** yet applied to Railway prod.
 
 ## Authority Snapshot
 
@@ -15,6 +15,7 @@ Scan this in 20 seconds. Answers: what governs design? what governs build? what 
 | **Current layer sequencing authority**               | `docs/plans/2026-05-15-implementation-kickoff-layer-1.md` | **Draft kickoff memo.** Authoritative for Layer 1 sequencing. PR 1 (schema-only) + PR 2 (audit-emit helpers + real-DB tests) both locally real-DB verified 2026-05-15. Next slice: P1.5 SiteSupervisorBinding. |
 | **Migration baseline recovery (implemented)**        | `docs/plans/2026-05-15-migration-baseline-recovery.md`    | **Implemented 2026-05-15** on parent `feat/phase-c-wave-4b-chat-completion` at `1dbf951`. Day-3 era foundational tables baselined; fresh local replay verified. Prod apply deferred to later supervised step.  |
 | **Canonical binding docs today**                     | `docs/index/canonical-truth.md`                           | The authoritative list of Active docs. Closure-spec row added 2026-05-15.                                                                                                                                      |
+| **Workflow-truth surface (execution state)**         | `docs/handoff/execution-state/INDEX.md`                   | **NEW 2026-05-15.** Per-workflow build state across all 4 personas + combined. Mandatory entry point for every coding slice. Strict enums (Design verdict / Implementation state / Verification state).        |
 | **Finished audit artifacts (Round 1–5)**             | `done/2026-05-15-audit-phase.md`                          | All 5 audits locked as `Audit draft`; reviewable artifacts, not governing specs.                                                                                                                               |
 | **Active workflow specs (7 now, including closure)** | `docs/specs/2026-05-1{2,3,4,5}-*.md`                      | All Active. The 6 prior Active specs now carry 2026-05-15 cross-refs pointing to the closure spec.                                                                                                             |
 
