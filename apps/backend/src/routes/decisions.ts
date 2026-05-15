@@ -30,6 +30,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { routingModeFor } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
@@ -51,11 +52,9 @@ const DismissDecisionBody = z
   })
   .strict();
 
-// Kinds whose targetId is a Worker; siteId derived via §5.9 primary-site rule.
-const WORKER_TARGETED_KINDS: ReadonlySet<string> = new Set(['MARK_ABSENT', 'APPROVE_LEAVE']);
-
-// Kinds whose targetId is a Site; use directly.
-const SITE_TARGETED_KINDS: ReadonlySet<string> = new Set(['LOG_COMPLAINT']);
+// F-002.6: kind-routing now driven by DECISION_KIND_REGISTRY. Adding a new
+// kind in shared-schema/zod/supervisor-decision-kinds.ts wires it through
+// here automatically. No parallel sets that can drift.
 
 /**
  * Register /decisions read-time-routing routes.
@@ -217,8 +216,15 @@ async function isRoutedToCaller(
   },
 ): Promise<boolean> {
   const { companyId, callerUserId, dwi, now } = args;
+  const mode = routingModeFor(dwi.kind);
 
-  if (WORKER_TARGETED_KINDS.has(dwi.kind) && dwi.targetId) {
+  // F-002.6 — routingMode is the discriminator. Pre-remediation this was two
+  // parallel constant sets (WORKER_TARGETED_KINDS + SITE_TARGETED_KINDS) that
+  // drifted from TOOL_TO_DWI in supervisor-decision-writer.ts. Unifying via
+  // DECISION_KIND_REGISTRY removes the drift. Adding SWAP_WORKER /
+  // TERMINATE_WORKER / CREATE_ASSIGNMENT to the registry automatically picks
+  // them up here.
+  if (mode === 'worker-targeted' && dwi.targetId) {
     const siteId = await deriveWorkerPrimarySiteId(tx, {
       companyId,
       workerId: dwi.targetId,
@@ -232,7 +238,7 @@ async function isRoutedToCaller(
     return responsible === callerUserId;
   }
 
-  if (SITE_TARGETED_KINDS.has(dwi.kind) && dwi.targetId) {
+  if (mode === 'site-targeted' && dwi.targetId) {
     const responsible = await getEffectiveResponsibleUserId(tx, {
       companyId,
       siteId: dwi.targetId,
@@ -241,6 +247,7 @@ async function isRoutedToCaller(
     return responsible === callerUserId;
   }
 
-  // Unsupported kind: origin-supervisor fallback.
+  // 'origin-only' (registry-explicit) OR no targetId on a binding-routable kind:
+  // fall back to origin supervisor.
   return dwi.supervisorId === callerUserId;
 }
