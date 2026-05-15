@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T15:44:08.511Z",
-    "generated_against_head": "03a1c2244c1f9a2c61fa7a0eb8806d7c26e1fd50",
+    "last_updated_at": "2026-05-15T15:58:43.532Z",
+    "generated_against_head": "7e07a2433468bfb64a863efcdc2bc47a93a1e630",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "03a1c2244c1f9a2c61fa7a0eb8806d7c26e1fd50",
+    "last_canonical_commit_at_gen": "0b2e234530be9dddde7f7d2f2b9250b46b744338",
     "staleness_warning": null,
-    "active_slice": "routing-foundation-read-apis (F-001) · WIP",
+    "active_slice": "routing-foundation-read-apis (F-001) · AWAITING_APPROVAL",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,19 +1184,33 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`routing-foundation-read-apis` (F-001)",
-      "Status": "`WIP`",
+      "Status": "`AWAITING_APPROVAL`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed commit": "`03a1c22` — `docs(handoff): rule 23 — confidence-score-before-acting (Akshay directive)`",
-      "WIP commit (paused work to resume)": "`84ae39c` — `wip(routing): foundation read APIs — paused mid-slice for execution-state tracker`",
+      "Last landed commit": "`7e07a24` — `test(routing): point-in-time effective-responsibility (4th test file)`",
+      "Slice commits (oldest → newest)": "`84ae39c` (WIP: helpers + routes + 3 of 4 tests) · `429886d` (fix: issueAccessToken await + availableRoles + locale in 2 route tests) · `7e07a24` (test: 4th test file — point-in-time, 3 cases)",
       "Workflow IDs affected": "`D17` (read side), `F26` (read side), `F27` (read side)",
       "Personas affected": "Supervisor (Ravi) primarily; HR + Worker indirectly via the binding-routed reads",
-      "Files being changed": "`apps/backend/src/lib/effective-responsibility.ts` (already in WIP), `apps/backend/src/routes/decisions.ts` (already in WIP), `apps/backend/src/routes/sites.ts` (+ GET endpoint, already in WIP), `apps/backend/src/server.ts` (wired), `apps/backend/test/effective-responsibility-helper.test.ts` (already in WIP), `apps/backend/test/sites-effective-supervisor-route.test.ts` (already in WIP), `apps/backend/test/decisions-proposed-for-me-route.test.ts` (already in WIP), `apps/backend/test/effective-responsibility-point-in-time.test.ts` (TO WRITE — 4th test file, friend's named remaining task)",
-      "Tests status": "3 of 4 test files written + green at doc-level; 4th to write; real-DB sweep to run",
-      "Verification status": "`UNVERIFIED` until real-DB sweep runs; doc-level checks (typecheck + lint) green at WIP time",
+      "Files in slice": "`apps/backend/src/lib/effective-responsibility.ts` · `apps/backend/src/routes/decisions.ts` · `apps/backend/src/routes/sites.ts` (+ GET endpoint) · `apps/backend/src/server.ts` (wired) · 4 test files in `apps/backend/test/`",
+      "Tests status": "4 of 4 test files written; 23 of 23 cases green",
+      "Verification status": "`REAL_DB` — fresh local Postgres 16 (Docker), all 10 migrations applied (20260507 → 20260516), all 23 tests green in one run. Test DB connection: `postgres://postgres:test@localhost:55432/axhy_test?schema=axhy`. Container `axhy-test-pg` still running for friend's spot-check.",
       "Started at": "2026-05-15 afternoon (originally); paused for control-loop slice; resumed 2026-05-15 evening after friend approved `handoff-control-loop`.",
-      "Expected next state": "`AWAITING_APPROVAL` after 4th test written + real-DB sweep green + WIP commit split into 3 clean commits."
+      "Completed at": "2026-05-15 evening — 4th test landed; real-DB sweep green; awaiting friend's approval word.",
+      "Deviation from directive (transparent)": "Friend's directive said \"split WIP commit `84ae39c` into 3 clean commits (helpers / routes / tests)\". An interactive rebase to split would have rewritten ~12 commit hashes already referenced in `change-history.md` + `pending-approvals.md` (the just-approved control-loop slice). Instead, the WIP `84ae39c` is preserved as-is and the completion landed as 2 additive commits on top (`429886d` + `7e07a24`). The slice is now in 3 commits total — not the prescribed grouping, but cleanly separable for review. If friend prefers a true rebase-split, surfacing now before approval is cheap to redo."
     },
-    "pending_approvals": [],
+    "pending_approvals": [
+      {
+        "id": "routing-foundation-read-apis",
+        "status": "AWAITING_APPROVAL",
+        "branch": "feat/layer-1-core-primitives",
+        "wipCommit": "",
+        "lastLanded": "7e07a24",
+        "workflowIds": "D17 (read side), F26 (read side), F27 (read side)",
+        "blocking": "",
+        "built": "",
+        "notDone": "",
+        "ownerDecision": ""
+      }
+    ],
     "blocked_items": [],
     "pending_notes": {
       "counts": {
@@ -1217,7 +1231,7 @@
         "workflows": "D17, F26 (read), F27 (read).",
         "entities": "`apps/backend/src/lib/effective-responsibility.ts` (new), `apps/backend/src/routes/decisions.ts` (new), `apps/backend/src/routes/sites.ts` (+1 endpoint), `apps/backend/test/*` (+4 files).",
         "verification": "`REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).",
-        "status": "WIP"
+        "status": "AWAITING_APPROVAL"
       },
       {
         "id": "F-002",
@@ -1301,6 +1315,13 @@
       {
         "when": "2026-05-15 evening",
         "slice": "routing-foundation-read-apis",
+        "transition": "WIP → AWAITING_APPROVAL",
+        "commit": "`7e07a24`",
+        "note": "4th test landed + real-DB sweep green (23/23 across 4 files on fresh local Postgres 16 with all 10 migrations). Slice complete; awaiting friend's approval word. WIP-split deviation surfaced in `active-slice.md` for friend's call."
+      },
+      {
+        "when": "2026-05-15 evening",
+        "slice": "routing-foundation-read-apis",
         "transition": "BLOCKED → WIP",
         "commit": "`84ae39c`",
         "note": "Resume after control-loop approval. Picks up from the original WIP commit; 4th routing test (point-in-time effective responsibility) + fresh-Postgres real-DB sweep + 3-way WIP-split (helpers / routes / tests) remain."
@@ -1360,13 +1381,6 @@
         "transition": "WIP → APPROVED → DONE",
         "commit": "`9c0b3d8`, `a8eed8b`, `fe0f6f4`",
         "note": "SiteSupervisorBinding table + helpers + 17 real-DB tests green."
-      },
-      {
-        "when": "2026-05-15",
-        "slice": "pr2-audit-emit-helpers",
-        "transition": "WIP → APPROVED → DONE",
-        "commit": "`f609749`, `ec40813`, `4bb9b2a`",
-        "note": "3 typed audit helpers + 8 real-DB test files (29/29 green)."
       }
     ]
   }

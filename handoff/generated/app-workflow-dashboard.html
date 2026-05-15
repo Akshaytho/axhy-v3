@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T15:44:08.511Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>03a1c224</code></span>
+      <span>Generated <strong>2026-05-15T15:58:43.532Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>7e07a243</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
-      <span>Active slice: <strong>routing-foundation-read-apis (F-001) · WIP</strong></span>
+      <span>Active slice: <strong>routing-foundation-read-apis (F-001) · AWAITING_APPROVAL</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>routing-foundation-read-apis</code> (F-001)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#1a73e8;color:#fff;">WIP</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>03a1c22</code> — <code>docs(handoff): rule 23 — confidence-score-before-acting (Akshay directive)</code></td></tr><tr><th>WIP commit (paused work to resume)</th><td><code>84ae39c</code> — <code>wip(routing): foundation read APIs — paused mid-slice for execution-state tracker</code></td></tr><tr><th>Workflow IDs affected</th><td><code>D17</code> (read side), <code>F26</code> (read side), <code>F27</code> (read side)</td></tr><tr><th>Personas affected</th><td>Supervisor (Ravi) primarily; HR + Worker indirectly via the binding-routed reads</td></tr><tr><th>Files being changed</th><td><code>apps/backend/src/lib/effective-responsibility.ts</code> (already in WIP), <code>apps/backend/src/routes/decisions.ts</code> (already in WIP), <code>apps/backend/src/routes/sites.ts</code> (+ GET endpoint, already in WIP), <code>apps/backend/src/server.ts</code> (wired), <code>apps/backend/test/effective-responsibility-helper.test.ts</code> (already in WIP), <code>apps/backend/test/sites-effective-supervisor-route.test.ts</code> (already in WIP), <code>apps/backend/test/decisions-proposed-for-me-route.test.ts</code> (already in WIP), <code>apps/backend/test/effective-responsibility-point-in-time.test.ts</code> (TO WRITE — 4th test file, friend's named remaining task)</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">3 of 4 test files written + green at doc-level; 4th to write; real-DB sweep to run</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">UNVERIFIED until real-DB sweep runs; doc-level checks (typecheck + lint) green at WIP time</span></td></tr><tr><th>Started at</th><td>2026-05-15 afternoon (originally); paused for control-loop slice; resumed 2026-05-15 evening after friend approved <code>handoff-control-loop</code>.</td></tr><tr><th>Expected next state</th><td><code>AWAITING_APPROVAL</code> after 4th test written + real-DB sweep green + WIP commit split into 3 clean commits.</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>routing-foundation-read-apis</code> (F-001)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>7e07a24</code> — <code>test(routing): point-in-time effective-responsibility (4th test file)</code></td></tr><tr><th>Slice commits (oldest → newest)</th><td><code>84ae39c</code> (WIP: helpers + routes + 3 of 4 tests) · <code>429886d</code> (fix: issueAccessToken await + availableRoles + locale in 2 route tests) · <code>7e07a24</code> (test: 4th test file — point-in-time, 3 cases)</td></tr><tr><th>Workflow IDs affected</th><td><code>D17</code> (read side), <code>F26</code> (read side), <code>F27</code> (read side)</td></tr><tr><th>Personas affected</th><td>Supervisor (Ravi) primarily; HR + Worker indirectly via the binding-routed reads</td></tr><tr><th>Files in slice</th><td><code>apps/backend/src/lib/effective-responsibility.ts</code> · <code>apps/backend/src/routes/decisions.ts</code> · <code>apps/backend/src/routes/sites.ts</code> (+ GET endpoint) · <code>apps/backend/src/server.ts</code> (wired) · 4 test files in <code>apps/backend/test/</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">4 of 4 test files written; 23 of 23 cases green</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">REAL_DB — fresh local Postgres 16 (Docker), all 10 migrations applied (20260507 → 20260516), all 23 tests green in one run. Test DB connection: postgres://postgres:test@localhost:55432/axhy_test?schema=axhy. Container axhy-test-pg still running for friend's spot-check.</span></td></tr><tr><th>Started at</th><td>2026-05-15 afternoon (originally); paused for control-loop slice; resumed 2026-05-15 evening after friend approved <code>handoff-control-loop</code>.</td></tr><tr><th>Completed at</th><td>2026-05-15 evening — 4th test landed; real-DB sweep green; awaiting friend's approval word.</td></tr><tr><th>Deviation from directive (transparent)</th><td>Friend's directive said &quot;split WIP commit <code>84ae39c</code> into 3 clean commits (helpers / routes / tests)&quot;. An interactive rebase to split would have rewritten ~12 commit hashes already referenced in <code>change-history.md</code> + <code>pending-approvals.md</code> (the just-approved control-loop slice). Instead, the WIP <code>84ae39c</code> is preserved as-is and the completion landed as 2 additive commits on top (<code>429886d</code> + <code>7e07a24</code>). The slice is now in 3 commits total — not the prescribed grouping, but cleanly separable for review. If friend prefers a true rebase-split, surfacing now before approval is cheap to redo.</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -150,7 +150,18 @@
   <section id="approvals" class="control-section">
     <h2>✅ Approval gate</h2>
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
-    <p>No items awaiting approval.</p>
+    
+      <div class="approval">
+        <div class="approval-head"><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span> <strong><code>routing-foundation-read-apis</code></strong></div>
+        <p class="small"><strong>Branch:</strong> <code>feat/layer-1-core-primitives</code></p>
+        <p class="small"><strong>Last landed commit:</strong> <code>7e07a24</code></p>
+        
+        <p class="small"><strong>Workflows affected:</strong> D17 (read side), F26 (read side), F27 (read side)</p>
+        
+        
+        
+        
+      </div>
   </section>
     
     
@@ -161,7 +172,7 @@
       <details class="feature">
         <summary>
           <code>F-001</code>
-          <span class="badge" style="background:#1a73e8;color:#fff;">WIP</span>
+          <span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span>
           <strong>Resume routing slice from WIP `84ae39c`</strong>
         </summary>
         <div class="feature-body">
@@ -288,6 +299,13 @@
     <tr>
       <td class="small">2026-05-15 evening</td>
       <td><code>routing-foundation-read-apis</code></td>
+      <td><code>WIP → AWAITING_APPROVAL</code></td>
+      <td><code>`7e07a24`</code></td>
+      <td class="small">4th test landed + real-DB sweep green (23/23 across 4 files on fresh local Postgres 16 with all 10 migrations). Slice complete; awaiting friend's approval word. WIP-split deviation surfaced in <code>active-slice.md</code> for friend's call.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 evening</td>
+      <td><code>routing-foundation-read-apis</code></td>
       <td><code>BLOCKED → WIP</code></td>
       <td><code>`84ae39c`</code></td>
       <td class="small">Resume after control-loop approval. Picks up from the original WIP commit; 4th routing test (point-in-time effective responsibility) + fresh-Postgres real-DB sweep + 3-way WIP-split (helpers / routes / tests) remain.</td>
@@ -347,13 +365,6 @@
       <td><code>WIP → APPROVED → DONE</code></td>
       <td><code>`9c0b3d8`, `a8eed8b`, `fe0f6f4`</code></td>
       <td class="small">SiteSupervisorBinding table + helpers + 17 real-DB tests green.</td>
-    </tr>
-    <tr>
-      <td class="small">2026-05-15</td>
-      <td><code>pr2-audit-emit-helpers</code></td>
-      <td><code>WIP → APPROVED → DONE</code></td>
-      <td><code>`f609749`, `ec40813`, `4bb9b2a`</code></td>
-      <td class="small">3 typed audit helpers + 8 real-DB test files (29/29 green).</td>
     </tr></tbody>
     </table>
     <p class="source-link small">Source: <a href="../owner-input/change-history.md">handoff/owner-input/change-history.md</a>.</p>
