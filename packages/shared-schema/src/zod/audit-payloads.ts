@@ -142,6 +142,13 @@ export type BindingEndedManualPayload = z.infer<typeof BindingEndedManualPayload
  * replaces it (e.g., HR reassigns the portfolio). Carries the new binding's
  * id so the audit chain can be reconstructed in either direction.
  *
+ * `supersededAt` is the cutover instant — the moment the new binding becomes
+ * effective and the old binding stops being effective. Mechanically this
+ * equals the old row's new `effectiveUntil` AND the new row's
+ * `effectiveFrom`. It is NOT the old row's `endedAt` — supersession via
+ * permanent reassignment uses `effectiveUntil` to bound the planned end;
+ * `endedAt` is reserved for manual early termination / correction.
+ *
  * @derives(ADR-0003)
  * @derives(workflow-design-closure §9)
  * @derives(supervisor-responsibility-model §5.8 precedence)
@@ -152,7 +159,7 @@ export const BindingEndedSupersededByPermanentPayloadSchema = z.object({
   previousUserId: z.string().uuid(),
   newBindingId: z.string().uuid(),
   newUserId: z.string().uuid(),
-  endedAt: z.string().datetime(),
+  supersededAt: z.string().datetime(),
   reassignedBy: z.string().uuid(),
   reason: z.string().min(1).max(1000),
 });
