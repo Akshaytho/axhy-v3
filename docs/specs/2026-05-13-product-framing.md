@@ -345,3 +345,16 @@ Items raised in panel review on 2026-05-13 that need explicit decisions but do n
 ---
 
 _This Draft was authored 2026-05-13 under doc-discipline protocol §9 and §11. Promotion to Active requires a separate review pass and a separate atomic commit that propagates cross-references into D.1 / R6 / HR Updates._
+
+---
+
+## 2026-05-15 Update — Workflow Design Closure cross-reference
+
+The HR control-plane scope, worker app scope, owner digest scope, and the operational surfaces that turn the three-layer architecture into a workable product are all specified by `docs/specs/2026-05-15-workflow-design-closure.md` (Active but contract-incomplete; promoted 2026-05-15). Specifically:
+
+- **HR pod model + HR control-plane surfaces** → closure §4 + §5.3 (11 HR surfaces). Binding on any feature touching HR experience.
+- **Worker app surfaces (12)** → closure §5.1. The three-layer architecture's worker-side is specified here for the first time.
+- **Owner digest + KPI + bank-authority + compliance** → closure §5.4 + Decision 10. Reddy-persona surfaces specified.
+- **Cross-cutting picks that bind product framing** → closure §2 Decisions 1–10. Particularly: HR-absent fallback (Decision 2) extends framing's HR-ack discipline; worker supervisor-change notification (Decision 4) extends framing's continuity model; AI backlog visibility (Decision 9) is framing's consequence-awareness contract under burst.
+
+Existing §17 supervisor-responsibility cross-ref (added 2026-05-14) is unchanged. The closure spec does not modify any of the 11 product principles in §3–§18; it specifies the surfaces that operationalise them.

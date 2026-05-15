@@ -330,3 +330,16 @@ Standing rules (now binding, not pending):
 - Doc discipline protocol: `docs/protocols/doc-discipline.md`.
 - Canonical index: `docs/index/canonical-truth.md`.
 - Multi-tenant invariant: `docs/invariants/multi-tenant.md`.
+
+---
+
+## 2026-05-15 Update — Workflow Design Closure cross-reference
+
+The deferred items listed in §10 of this spec are now answered by `docs/specs/2026-05-15-workflow-design-closure.md` (Active but contract-incomplete; promoted 2026-05-15). Specifically:
+
+- **HR control-plane admin-web UI design** → closure spec §5.3 (11 HR surfaces).
+- **Bootstrap-seed migration script + admin-web seed-review affordance** → closure spec Decision 6 + §5.3.7 (bootstrap-seed review UI) + §5.3.8 (audit-chain reconstruction).
+- **"While you were out" digest UX** → closure spec §5.2.6 + §3.5 (Digest entity).
+- **Cross-reference propagation into R6 / HR Updates / D.1 / product framing** → landed in this same 2026-05-15 promotion commit.
+
+Plus the HR pod model (closure §4) gives the operational coordination layer over the `SiteSupervisorBinding` table this spec locks. The HR-absent fallback (closure Decision 2 / G-1) closes one of the ops §12 open questions referenced here.

@@ -155,3 +155,21 @@ This spec flips Status: Draft → Active only after:
 5. Founder explicitly approves OR rejects the candidate cut of Phase D lock #6 (`Membership.delegated`)
 
 Until all 5 conditions hold, R3 remains Active and this Draft cannot guide implementation.
+
+---
+
+## 2026-05-15 Update — Workflow Design Closure cross-reference
+
+Several deferred items raised by R6's design pass are now answered by `docs/specs/2026-05-15-workflow-design-closure.md` (Active but contract-incomplete; promoted 2026-05-15):
+
+- **§4 contradiction #1 reverse window (30-min vs 5-min)** → closure §12 F-P-4 proposed pick: 5-minute hard reverse + 30-minute soft-flag path (audit signal only, not reversal). Final founder pick pending.
+- **Activity tab actor + worker filters** → closure §5.2.3 R6 Activity extension specifies actor filter chip + worker filter chip + binding-event row separator.
+- **Today portfolio-delta surface** → closure §5.2.7 (banner showing "since last opened: +N sites, −M sites").
+- **HR-pending visibility section in Decisions** → closure §5.2.4.
+- **Absence mode banner + sick-author "Continue / Save as draft" prompt** → closure §5.2.5 (closes the Ravi 8c `[BROKEN]` design gap).
+- **"While you were out" digest on first open after absence** → closure §5.2.6 + §3.5 (Digest entity).
+- **Site handoff context panel on newly-bound site cards** → closure §5.2.8 + §3.7 (HandoffPackage).
+- **Batch grouping rendering on Decisions tab** → closure §5.2.9.
+- **Originator-vs-actor rendering in Activity rows** → closure §5.2.10.
+
+The new surfaces extend R6's existing tabs (Today / Decisions / Activity / Chat / Updates / Summary); they do not replace R6's locked tab order or sub-screen design.

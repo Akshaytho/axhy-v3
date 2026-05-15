@@ -738,3 +738,21 @@ Standing rules now binding:
 - 23 ADRs: `docs/decisions/0001-*.md` through `0023-*.md`
 - P1 schema migration plan: `/Users/thotaakshay/.claude/plans/tranquil-crunching-plum.md` (outside repo)
 - Connectedness manifests: `connectedness/features/*.yml` (10 manifests)
+
+---
+
+## 2026-05-15 Update — Workflow Design Closure cross-reference
+
+7 of the 10 open questions in §12 are now answered by `docs/specs/2026-05-15-workflow-design-closure.md` (Active but contract-incomplete; promoted 2026-05-15):
+
+- **§12 #1 HR absence fallback (G-1)** → closure Decision 2 (tiered: backup 24h → cross-pod 48h → owner emergency 72h).
+- **§12 #2 HR Update ack during supervisor absence** → closure §7 audience rules + Policy `audienceWorkers`.
+- **§12 #3 DWI EXPIRED cron threshold** → closure §10 `decision-expire-sweep` + Policy thresholds per SLA tier.
+- **§12 #4 FLAGGED visit auto-escalation** → closure §10 `flagged-visit-auto-escalate`.
+- **§12 #5 HR portal admin-web routes** → closure §5.3 (11 HR surfaces specified).
+- **§12 #6 worker app surface** → closure §5.1 (12 worker surfaces specified).
+- **§12 #8 site-level HR Update ack routing** → closure §7 + §12 F-P-6 (founder pick on launch-time enablement).
+
+3 remaining genuinely deferred under separate tracks: §12 #7 cross-supervisor portfolio visibility, #9 payroll handler, #10 worker cross-tenant transfer.
+
+§8 exception-matrix rows additionally addressed: HR-error wrong-reassignment → closure Decision 6 + §5.3.4 + §5.3.8; acting-supervisor refuses/absent → closure Decision 2 + §5.3.4; multi-HR collision → closure Decision 1 + §4 HR pod model + §8 queue locking.
