@@ -1,16 +1,24 @@
 {
   "schema_version": 2,
   "metadata": {
-    "last_updated_at": "2026-05-15T14:36:32.918Z",
-    "source_commit": "f9fbe68327569f55ba40c6c8e5ba2a17710a2569",
+    "last_updated_at": "2026-05-15T14:52:38.602Z",
+    "source_commit": "0445110fa717e7dfba302de86ddf40b34b1e3c50",
     "source_branch": "feat/layer-1-core-primitives",
     "last_canonical_commit": "f9fbe68327569f55ba40c6c8e5ba2a17710a2569",
     "staleness_warning": null,
-    "active_slice": "Layer 1 implementation — routing slice paused for execution-state tracker",
+    "active_slice": "handoff-control-loop · AWAITING_APPROVAL",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
-      "handoff/STATUS.md"
+      "handoff/owner-input/INDEX.md",
+      "handoff/owner-input/pending-notes.md",
+      "handoff/owner-input/pending-approvals.md",
+      "handoff/owner-input/active-slice.md",
+      "handoff/owner-input/change-history.md",
+      "handoff/feature-queue/INDEX.md",
+      "handoff/STATUS.md",
+      "handoff/NEXT_SESSION.md",
+      "handoff/README.md"
     ]
   },
   "personas": {
@@ -1175,16 +1183,17 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`handoff-control-loop`",
-      "Status": "`WIP`",
+      "Status": "`AWAITING_APPROVAL`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Latest commit": "(pending — this slice not yet committed)",
+      "Latest commit": "`0445110` `fix(handoff): stale-detection uses file mtimes — survives pre-commit timing`",
+      "Slice commits": "`f9fbe68` (control loop) + `0445110` (stale-fix) + the verification-fix commit landing now",
       "Workflow IDs affected": "none directly (meta-slice — builds the control surface around all 29 workflows)",
       "Personas affected": "all four (control surface is persona-spanning)",
-      "Files being changed": "`handoff/owner-input/*` (new), `handoff/feature-queue/*` (new), `handoff/scripts/build-handoff-artifacts.mjs` (extended), `handoff/execution-state/INDEX.md`, `handoff/README.md`, `handoff/NEXT_SESSION.md`, `.husky/pre-commit`",
+      "Files changed": "`handoff/owner-input/*` (new), `handoff/feature-queue/*` (new), `handoff/scripts/build-handoff-artifacts.mjs` (extended), `handoff/execution-state/INDEX.md`, `handoff/README.md`, `handoff/NEXT_SESSION.md`, `.husky/pre-commit`",
       "Tests status": "N/A (docs + tooling only)",
-      "Verification status": "`LOCAL` (generator runs; outputs valid)",
+      "Verification status": "`LOCAL` — generator runs clean; outputs valid; 0 STALE markers; friend's 4 verification-pass bugs all fixed (template-as-note, header-vs-callout disagreement, stale active-slice content, incomplete generated_from metadata)",
       "Started at": "2026-05-15 evening",
-      "Expected next state": "`AWAITING_APPROVAL` after surface"
+      "Expected next state": "`APPROVED` — when owner writes that word for the `handoff-control-loop` item in `pending-approvals.md`. Then F-001 routing slice unblocks."
     },
     "pending_approvals": [
       {
@@ -1199,31 +1208,23 @@
       },
       {
         "id": "handoff-control-loop",
-        "status": "WIP",
+        "status": "AWAITING_APPROVAL",
         "branch": "feat/layer-1-core-primitives",
-        "wipCommit": "",
-        "workflowIds": "",
-        "built": "",
-        "notDone": "",
-        "ownerDecision": "_empty — will move to AWAITING_APPROVAL after surface_"
+        "wipCommit": "0445110",
+        "workflowIds": "none directly (control surface, spans all 29)",
+        "built": "`handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 5 new HTML sections (Current Slice / Notes / Approvals / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's 4 verification-pass fixes (template not parsed as live note, header agrees with callout on active-slice, active-slice.md reflects current commits, generated_from metadata complete).",
+        "notDone": "Nothing in scope; friend's bug list is fully addressed. Routing slice F-001 stays BLOCKED until this one is APPROVED.",
+        "ownerDecision": "_empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_"
       }
     ],
     "pending_notes": {
       "counts": {
-        "NEW": 1,
+        "NEW": 0,
         "ACKNOWLEDGED": 0,
         "APPLIED": 0,
         "DEFERRED": 0
       },
-      "notes": [
-        {
-          "title": "YYYY-MM-DD HH:MM — Short title",
-          "status": "NEW",
-          "affects": "workflow IDs / personas / slice names",
-          "note": "(free-form — what you want, what bothers you, what to change)",
-          "next": "(optional — what you'd want Claude to do)"
-        }
-      ]
+      "notes": []
     },
     "feature_queue": [
       {
