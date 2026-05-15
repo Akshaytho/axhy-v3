@@ -62,6 +62,14 @@ These extend the rules in `handoff/execution-state/INDEX.md` (1–15).
 21. **Owner notes are read every session start.** Even if there are no NEW notes, claude scans the file and confirms "0 NEW notes" before coding.
 22. **No vector-DB authority.** Owner truth + workflow truth + approval state must remain plain markdown files in git. (Closure spec rule, per friend 2026-05-15 evening.) Vector search is an optional later layer, not authority.
 
+23. **Confidence-score-before-acting (Akshay rule, 2026-05-15 evening).** Before any non-trivial action (architectural choice, new pattern, code design, product decision, debug hypothesis, anywhere I'd otherwise hedge with "suggestion" / "low confidence"), state a confidence score 0–100%.
+    - **≥90% with own approach** → execute. Briefly state the basis for the confidence.
+    - **<90% with own approach** → STOP. Search the internet first. Find how others have solved this problem (libraries, blog posts, RFCs, repos). Analyse what they did + why. Compare to mine. Either improve mine to ≥90% confidence, OR adopt theirs (improved) to ≥95% confidence.
+    - **≥95% required when adopting an internet-derived approach** — because I'm supposed to be analysing + adapting, not blindly copying. Cite the source.
+    - **Below threshold even after research** → surface to the owner with the gap named explicitly, don't pretend confidence.
+    - Skip the score for trivial mechanical edits (typo fix, rename a freshly-defined variable, refresh of a row I just wrote). Apply it everywhere else.
+    - Format when surfacing: `Confidence: NN% — [own / research-improved / blocked]` then 1–3 bullets covering basis + risks + (if researched) the source URL.
+
 ## Session-start read order (mandatory)
 
 When a new Claude session starts on Axhy v3 work:

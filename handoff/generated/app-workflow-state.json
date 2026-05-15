@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T15:24:55.720Z",
-    "generated_against_head": "eefaf11a7857953120944eb0fced90272629c47e",
+    "last_updated_at": "2026-05-15T15:36:13.150Z",
+    "generated_against_head": "091c2a681160f3bc0c87d0b086a55740c2abd169",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "eefaf11a7857953120944eb0fced90272629c47e",
+    "last_canonical_commit_at_gen": "091c2a681160f3bc0c87d0b086a55740c2abd169",
     "staleness_warning": null,
     "active_slice": "handoff-control-loop · AWAITING_APPROVAL",
     "generated_from": [
