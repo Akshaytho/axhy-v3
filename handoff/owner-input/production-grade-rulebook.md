@@ -274,3 +274,46 @@ the exact risk, propose the safer shape, and wait.
 >
 > If it is safe under retries, concurrency, stale clients, and failure, then it is production-grade.
 > If it only works on the happy path, it is not.
+
+## Companion rule (Akshay, 2026-05-16, locked after F-002 round-3 review) — Policy-first / no unnecessary complexity
+
+> If a complexity exists ONLY because of a rare operational edge case, FIRST ask whether we should simplify the rule
+> instead of building a complex system around it. Real problems need real solutions, but real solutions are often
+> simpler than technical over-design.
+
+This rule sits ALONGSIDE the 10 production-grade rules above. It does NOT override them. It does NOT lower the bar
+on necessary complexity. It governs the question of whether the complexity should exist at all.
+
+**Decision flow for new complexity:**
+
+1. Does this complexity exist because of a rare operational edge case (mid-day reassignment, account-handoff scenarios,
+   etc.)? If no → engineer it correctly under P1–P10.
+2. If yes → can a product / operational rule eliminate the edge case at the source? Surface to owner BEFORE writing
+   code.
+3. If owner adopts the policy → engineer the simpler system. If not → engineer the complex one with full P1–P10.
+
+**F-002 worked example:**
+
+- The round-1 → round-2 → round-3 escalation of stale-authority complexity was driven by "HR might change supervisor
+  mid-day."
+- Three engineering rounds (apply-after-domain → race-safe writer → tx-callable services) addressed the symptom.
+- Owner's same-day-freeze policy proposal (S-001 candidate) eliminates the edge case at the source: HR cannot change
+  today's supervisor; changes start tomorrow.
+- The engineering still has value (defense-in-depth: retry safety, double-tap safety, atomicity for domain-failure
+  rollback). But the load-bearing protection moves from code to policy.
+- Lesson: had the policy question been asked in round-1 scoping, two engineering rounds could have been replaced by
+  one short spec slice.
+
+**How to apply during scoping:**
+
+When writing a scope artifact (e.g. `handoff/feature-queue/scopes/F-XXX.md`), add a section titled "Edge cases driving
+this complexity" that lists the operational scenarios the slice exists to handle. If any of them is "an edge case the
+owner could choose to disallow operationally," surface that as an explicit choice in the scope's open-questions list.
+
+**What this rule does NOT mean:**
+
+- It does NOT mean skip defense-in-depth where the edge case can't be policy-eliminated.
+- It does NOT mean over-trust the policy and skip rule 24 / P1–P10 (the engineering bar still applies for any
+  complexity that remains).
+- It does NOT mean adopt a policy that's hard to operationally enforce (e.g. "never have concurrent users" is not a
+  real policy). The policy has to be sustainable in the field.
