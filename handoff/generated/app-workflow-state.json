@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T15:02:46.280Z",
-    "generated_against_head": "7916a3bf11960bb2adf0f3b722b883a8eafa6b2b",
+    "last_updated_at": "2026-05-15T15:14:44.870Z",
+    "generated_against_head": "b35748e18e245b8715020144f7ddcb271ce5d566",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "7916a3bf11960bb2adf0f3b722b883a8eafa6b2b",
+    "last_canonical_commit_at_gen": "b35748e18e245b8715020144f7ddcb271ce5d566",
     "staleness_warning": null,
     "active_slice": "handoff-control-loop · AWAITING_APPROVAL",
     "generated_from": [
@@ -1186,13 +1186,13 @@
       "Slice name": "`handoff-control-loop`",
       "Status": "`AWAITING_APPROVAL`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed slice commit": "`7916a3b` — `fix(handoff): address friend's 4 verification findings on the control loop`",
-      "All slice commits (oldest → newest)": "`f9fbe68` · `0445110` · `7916a3b` · (a fourth verification-fix commit may land after this edit, addressing friend's 3 remaining trust issues)",
+      "Last landed slice commit": "`b35748e` — `fix(handoff): address friend's 3 remaining trust issues — commit-truth, hash-naming, approval/blocked split`",
+      "All slice commits (oldest → newest)": "`f9fbe68` · `0445110` · `7916a3b` · `b35748e`",
       "Workflow IDs affected": "none directly (meta-slice — builds the control surface around all 29 workflows)",
       "Personas affected": "all four (control surface is persona-spanning)",
       "Files changed": "`handoff/owner-input/*` (new), `handoff/feature-queue/*` (new), `handoff/scripts/build-handoff-artifacts.mjs` (extended), `handoff/execution-state/INDEX.md`, `handoff/README.md`, `handoff/NEXT_SESSION.md`, `.husky/pre-commit`",
       "Tests status": "N/A (docs + tooling only)",
-      "Verification status": "`LOCAL` — generator runs clean; 0 STALE markers; friend's first 4 bugs fixed (template-as-note, header-vs-callout, stale active-slice, generated_from list); friend's 3 follow-up bugs being addressed (commit-truth drift framed honestly, hash-naming pinned to landed commits, AWAITING_APPROVAL/BLOCKED sections split)",
+      "Verification status": "`LOCAL` — generator runs clean; 0 STALE markers; friend's first 4 bugs fixed in `7916a3b` (template-as-note, header-vs-callout, stale active-slice, generated_from list); friend's 3 follow-up bugs fixed in `b35748e` (commit-truth drift framed honestly, hash-naming pinned to landed commits, AWAITING_APPROVAL/BLOCKED sections split). Friend's third-pass 3 trust issues are addressed by the contents of this file + `pending-approvals.md` + `change-history.md` right now; the landing commit will appear in the next row of `change-history.md` once committed.",
       "Started at": "2026-05-15 evening",
       "Expected next state": "`APPROVED` — when owner writes that word for the `handoff-control-loop` item in `pending-approvals.md`. Then F-001 routing slice unblocks."
     },
@@ -1202,11 +1202,11 @@
         "status": "AWAITING_APPROVAL",
         "branch": "feat/layer-1-core-primitives",
         "wipCommit": "",
-        "lastLanded": "7916a3b",
+        "lastLanded": "b35748e",
         "workflowIds": "none directly (control surface, spans all 29)",
         "blocking": "",
-        "built": "`handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 5 new HTML sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split).",
-        "notDone": "Nothing in scope; both friend bug lists fully addressed.",
+        "built": "`handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in `7916a3b` (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in `b35748e` (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues addressed in the follow-up commit (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).",
+        "notDone": "Nothing in scope; all three friend bug lists fully addressed.",
         "ownerDecision": "_empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_"
       }
     ],
@@ -1218,10 +1218,10 @@
         "wipCommit": "84ae39c",
         "lastLanded": "",
         "workflowIds": "`D17`, `F26` (read side), `F27` (read side)",
-        "blocking": "`handoff-control-loop` slice not yet APPROVED. When that slice is approved + the routing block is removed, this slice resumes from WIP commit `84ae39c`.",
+        "blocking": "`handoff-control-loop` slice not yet APPROVED. When that slice is approved, this slice resumes from WIP commit `84ae39c`.",
         "built": "`getEffectiveBinding` + `deriveWorkerPrimarySiteId` + `GET /sites/:id/effective-supervisor` + `GET /decisions/proposed-for-me` + 3 of 4 test files. Doc-level checks green; real-DB sweep not yet run.",
         "notDone": "4th test file `effective-responsibility-point-in-time.test.ts`; real-DB sweep; split WIP commit into 3 clean commits.",
-        "ownerDecision": "N/A (blocked, not awaiting approval). Decision belongs on `handoff-control-loop` first."
+        "ownerDecision": "N/A (blocked, not awaiting decision). Decision belongs on `handoff-control-loop` first."
       }
     ],
     "pending_notes": {
@@ -1327,51 +1327,44 @@
       {
         "when": "2026-05-15 evening",
         "slice": "handoff-control-loop",
+        "transition": "WIP → AWAITING_APPROVAL",
+        "commit": "`b35748e`",
+        "note": "Friend's 3 second-pass bugs fixed: commit-truth renamed to `generated_against_head` + drift note added; active-slice hash-naming pinned to landed commits only; pending-approvals split AWAITING_APPROVAL vs BLOCKED. Slice now in AWAITING_APPROVAL state."
+      },
+      {
+        "when": "2026-05-15 evening",
+        "slice": "handoff-control-loop",
         "transition": "PLANNED → WIP",
-        "commit": "_pending_",
-        "note": "This slice builds owner-input + feature-queue + generator extension."
+        "commit": "n/a (transition before first commit)",
+        "note": "Akshay's \"take it one level further\" directive started this slice. Built into the file system before the first commit (f9fbe68)."
       },
       {
-        "when": "2026-05-15 evening",
+        "when": "2026-05-15 afternoon",
         "slice": "dashboard-embed-diagrams",
-        "transition": "WIP → DONE",
+        "transition": "AWAITING_APPROVAL → APPROVED → DONE",
         "commit": "`8f11d89`",
-        "note": "Embedded 32 Mermaid diagrams into the HTML dashboard."
-      },
-      {
-        "when": "2026-05-15 evening",
-        "slice": "dashboard-embed-diagrams",
-        "transition": "AWAITING_APPROVAL → APPROVED",
-        "commit": "`8f11d89`",
-        "note": "Friend's verification: structural claims real; 2 corrections noted."
+        "note": "32 Mermaid diagrams embedded into the HTML dashboard via Mermaid CDN. Friend approved with 2 corrections noted (carried into handoff-control-loop)."
       },
       {
         "when": "2026-05-15 afternoon",
         "slice": "tracker-3-layer-system",
-        "transition": "WIP → DONE",
-        "commit": "`03d33dd`, `e222a22`",
-        "note": "Built execution-state + workflow-maps + generated + folder move."
-      },
-      {
-        "when": "2026-05-15 afternoon",
-        "slice": "tracker-3-layer-system",
-        "transition": "AWAITING_APPROVAL → APPROVED",
-        "commit": "n/a",
-        "note": "Friend: \"much better and directionally correct\"."
+        "transition": "AWAITING_APPROVAL → APPROVED → DONE",
+        "commit": "`e222a22`, `03d33dd`, `d4bb4c8`",
+        "note": "Built execution-state + workflow-maps + generated layers. Folder moved to top-level `handoff/`. Friend: \"much better and directionally correct\"."
       },
       {
         "when": "2026-05-15 afternoon",
         "slice": "routing-foundation-read-apis",
         "transition": "WIP → BLOCKED",
         "commit": "`84ae39c`",
-        "note": "Paused mid-flight to build tracker. 4th test + real-DB sweep remaining."
+        "note": "Paused mid-flight to build tracker. 4th test file + real-DB sweep remaining. Now blocked by handoff-control-loop approval."
       },
       {
         "when": "2026-05-15",
         "slice": "p1.5-future-dated-fix",
         "transition": "WIP → APPROVED → DONE",
         "commit": "`44a453d`",
-        "note": "Friend caught the endedAt-vs-effectiveUntil bug; fixed + verified."
+        "note": "Friend caught the endedAt-vs-effectiveUntil bug in reassignPermanentBinding; fixed + verified."
       },
       {
         "when": "2026-05-15",
@@ -1393,6 +1386,13 @@
         "transition": "WIP → APPROVED → DONE",
         "commit": "`095c766`, `0dca836`",
         "note": "Layer 1 core primitives schema (HRPod, Policy, Notification, Digest)."
+      },
+      {
+        "when": "<ISO date or 'YYYY-MM-DD time-of-day'>",
+        "slice": "<slice-name>",
+        "transition": "<FROM_STATE> → <TO_STATE>",
+        "commit": "`<commit>`",
+        "note": "<one-line note>"
       }
     ]
   }

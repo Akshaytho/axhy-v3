@@ -106,8 +106,8 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T15:02:46.280Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>7916a3bf</code></span>
+      <span>Generated <strong>2026-05-15T15:14:44.870Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>b35748e1</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
       <span>Active slice: <strong>handoff-control-loop · AWAITING_APPROVAL</strong></span>
       
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>handoff-control-loop</code></td></tr><tr><th>Status</th><td><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed slice commit</th><td><code>7916a3b</code> — <code>fix(handoff): address friend's 4 verification findings on the control loop</code></td></tr><tr><th>All slice commits (oldest → newest)</th><td><code>f9fbe68</code> · <code>0445110</code> · <code>7916a3b</code> · (a fourth verification-fix commit may land after this edit, addressing friend's 3 remaining trust issues)</td></tr><tr><th>Workflow IDs affected</th><td>none directly (meta-slice — builds the control surface around all 29 workflows)</td></tr><tr><th>Personas affected</th><td>all four (control surface is persona-spanning)</td></tr><tr><th>Files changed</th><td><code>handoff/owner-input/*</code> (new), <code>handoff/feature-queue/*</code> (new), <code>handoff/scripts/build-handoff-artifacts.mjs</code> (extended), <code>handoff/execution-state/INDEX.md</code>, <code>handoff/README.md</code>, <code>handoff/NEXT_SESSION.md</code>, <code>.husky/pre-commit</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">N/A (docs + tooling only)</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">LOCAL — generator runs clean; 0 STALE markers; friend's first 4 bugs fixed (template-as-note, header-vs-callout, stale active-slice, generated_from list); friend's 3 follow-up bugs being addressed (commit-truth drift framed honestly, hash-naming pinned to landed commits, AWAITING_APPROVAL/BLOCKED sections split)</span></td></tr><tr><th>Started at</th><td>2026-05-15 evening</td></tr><tr><th>Expected next state</th><td><code>APPROVED</code> — when owner writes that word for the <code>handoff-control-loop</code> item in <code>pending-approvals.md</code>. Then F-001 routing slice unblocks.</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>handoff-control-loop</code></td></tr><tr><th>Status</th><td><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed slice commit</th><td><code>b35748e</code> — <code>fix(handoff): address friend's 3 remaining trust issues — commit-truth, hash-naming, approval/blocked split</code></td></tr><tr><th>All slice commits (oldest → newest)</th><td><code>f9fbe68</code> · <code>0445110</code> · <code>7916a3b</code> · <code>b35748e</code></td></tr><tr><th>Workflow IDs affected</th><td>none directly (meta-slice — builds the control surface around all 29 workflows)</td></tr><tr><th>Personas affected</th><td>all four (control surface is persona-spanning)</td></tr><tr><th>Files changed</th><td><code>handoff/owner-input/*</code> (new), <code>handoff/feature-queue/*</code> (new), <code>handoff/scripts/build-handoff-artifacts.mjs</code> (extended), <code>handoff/execution-state/INDEX.md</code>, <code>handoff/README.md</code>, <code>handoff/NEXT_SESSION.md</code>, <code>.husky/pre-commit</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">N/A (docs + tooling only)</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">LOCAL — generator runs clean; 0 STALE markers; friend's first 4 bugs fixed in 7916a3b (template-as-note, header-vs-callout, stale active-slice, generated_from list); friend's 3 follow-up bugs fixed in b35748e (commit-truth drift framed honestly, hash-naming pinned to landed commits, AWAITING_APPROVAL/BLOCKED sections split). Friend's third-pass 3 trust issues are addressed by the contents of this file + pending-approvals.md + change-history.md right now; the landing commit will appear in the next row of change-history.md once committed.</span></td></tr><tr><th>Started at</th><td>2026-05-15 evening</td></tr><tr><th>Expected next state</th><td><code>APPROVED</code> — when owner writes that word for the <code>handoff-control-loop</code> item in <code>pending-approvals.md</code>. Then F-001 routing slice unblocks.</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -154,12 +154,12 @@
       <div class="approval">
         <div class="approval-head"><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span> <strong><code>handoff-control-loop</code></strong></div>
         <p class="small"><strong>Branch:</strong> <code>feat/layer-1-core-primitives</code></p>
-        <p class="small"><strong>Last landed commit:</strong> <code>7916a3b</code></p>
+        <p class="small"><strong>Last landed commit:</strong> <code>b35748e</code></p>
         
         <p class="small"><strong>Workflows affected:</strong> none directly (control surface, spans all 29)</p>
         
-        <p><strong>Built:</strong> <code>handoff/owner-input/</code> (6 files) + <code>handoff/feature-queue/INDEX.md</code> + generator parses + renders 5 new HTML sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split).</p>
-        <p><strong>Not done:</strong> Nothing in scope; both friend bug lists fully addressed.</p>
+        <p><strong>Built:</strong> <code>handoff/owner-input/</code> (6 files) + <code>handoff/feature-queue/INDEX.md</code> + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in <code>7916a3b</code> (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in <code>b35748e</code> (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues addressed in the follow-up commit (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).</p>
+        <p><strong>Not done:</strong> Nothing in scope; all three friend bug lists fully addressed.</p>
         <p class="small"><strong>Owner decision:</strong> <em>_empty — write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code>_</em></p>
       </div>
   </section>
@@ -174,10 +174,10 @@
         
         <p class="small"><strong>WIP commit:</strong> <code>84ae39c</code></p>
         <p class="small"><strong>Workflows affected:</strong> `D17`, `F26` (read side), `F27` (read side)</p>
-        <p><strong>What's blocking:</strong> <code>handoff-control-loop</code> slice not yet APPROVED. When that slice is approved + the routing block is removed, this slice resumes from WIP commit <code>84ae39c</code>.</p>
+        <p><strong>What's blocking:</strong> <code>handoff-control-loop</code> slice not yet APPROVED. When that slice is approved, this slice resumes from WIP commit <code>84ae39c</code>.</p>
         <p><strong>Built:</strong> <code>getEffectiveBinding</code> + <code>deriveWorkerPrimarySiteId</code> + <code>GET /sites/:id/effective-supervisor</code> + <code>GET /decisions/proposed-for-me</code> + 3 of 4 test files. Doc-level checks green; real-DB sweep not yet run.</p>
         <p><strong>Remaining:</strong> 4th test file <code>effective-responsibility-point-in-time.test.ts</code>; real-DB sweep; split WIP commit into 3 clean commits.</p>
-        <p class="small"><strong>Owner decision:</strong> <em>N/A (blocked, not awaiting approval). Decision belongs on <code>handoff-control-loop</code> first.</em></p>
+        <p class="small"><strong>Owner decision:</strong> <em>N/A (blocked, not awaiting decision). Decision belongs on <code>handoff-control-loop</code> first.</em></p>
       </div>
   </section>
     
@@ -315,51 +315,44 @@
     <tr>
       <td class="small">2026-05-15 evening</td>
       <td><code>handoff-control-loop</code></td>
+      <td><code>WIP → AWAITING_APPROVAL</code></td>
+      <td><code>`b35748e`</code></td>
+      <td class="small">Friend's 3 second-pass bugs fixed: commit-truth renamed to <code>generated_against_head</code> + drift note added; active-slice hash-naming pinned to landed commits only; pending-approvals split AWAITING_APPROVAL vs BLOCKED. Slice now in AWAITING_APPROVAL state.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 evening</td>
+      <td><code>handoff-control-loop</code></td>
       <td><code>PLANNED → WIP</code></td>
-      <td><code>_pending_</code></td>
-      <td class="small">This slice builds owner-input + feature-queue + generator extension.</td>
+      <td><code>n/a (transition before first commit)</code></td>
+      <td class="small">Akshay's &quot;take it one level further&quot; directive started this slice. Built into the file system before the first commit (f9fbe68).</td>
     </tr>
     <tr>
-      <td class="small">2026-05-15 evening</td>
+      <td class="small">2026-05-15 afternoon</td>
       <td><code>dashboard-embed-diagrams</code></td>
-      <td><code>WIP → DONE</code></td>
+      <td><code>AWAITING_APPROVAL → APPROVED → DONE</code></td>
       <td><code>`8f11d89`</code></td>
-      <td class="small">Embedded 32 Mermaid diagrams into the HTML dashboard.</td>
-    </tr>
-    <tr>
-      <td class="small">2026-05-15 evening</td>
-      <td><code>dashboard-embed-diagrams</code></td>
-      <td><code>AWAITING_APPROVAL → APPROVED</code></td>
-      <td><code>`8f11d89`</code></td>
-      <td class="small">Friend's verification: structural claims real; 2 corrections noted.</td>
+      <td class="small">32 Mermaid diagrams embedded into the HTML dashboard via Mermaid CDN. Friend approved with 2 corrections noted (carried into handoff-control-loop).</td>
     </tr>
     <tr>
       <td class="small">2026-05-15 afternoon</td>
       <td><code>tracker-3-layer-system</code></td>
-      <td><code>WIP → DONE</code></td>
-      <td><code>`03d33dd`, `e222a22`</code></td>
-      <td class="small">Built execution-state + workflow-maps + generated + folder move.</td>
-    </tr>
-    <tr>
-      <td class="small">2026-05-15 afternoon</td>
-      <td><code>tracker-3-layer-system</code></td>
-      <td><code>AWAITING_APPROVAL → APPROVED</code></td>
-      <td><code>n/a</code></td>
-      <td class="small">Friend: &quot;much better and directionally correct&quot;.</td>
+      <td><code>AWAITING_APPROVAL → APPROVED → DONE</code></td>
+      <td><code>`e222a22`, `03d33dd`, `d4bb4c8`</code></td>
+      <td class="small">Built execution-state + workflow-maps + generated layers. Folder moved to top-level <code>handoff/</code>. Friend: &quot;much better and directionally correct&quot;.</td>
     </tr>
     <tr>
       <td class="small">2026-05-15 afternoon</td>
       <td><code>routing-foundation-read-apis</code></td>
       <td><code>WIP → BLOCKED</code></td>
       <td><code>`84ae39c`</code></td>
-      <td class="small">Paused mid-flight to build tracker. 4th test + real-DB sweep remaining.</td>
+      <td class="small">Paused mid-flight to build tracker. 4th test file + real-DB sweep remaining. Now blocked by handoff-control-loop approval.</td>
     </tr>
     <tr>
       <td class="small">2026-05-15</td>
       <td><code>p1.5-future-dated-fix</code></td>
       <td><code>WIP → APPROVED → DONE</code></td>
       <td><code>`44a453d`</code></td>
-      <td class="small">Friend caught the endedAt-vs-effectiveUntil bug; fixed + verified.</td>
+      <td class="small">Friend caught the endedAt-vs-effectiveUntil bug in reassignPermanentBinding; fixed + verified.</td>
     </tr>
     <tr>
       <td class="small">2026-05-15</td>
@@ -381,6 +374,13 @@
       <td><code>WIP → APPROVED → DONE</code></td>
       <td><code>`095c766`, `0dca836`</code></td>
       <td class="small">Layer 1 core primitives schema (HRPod, Policy, Notification, Digest).</td>
+    </tr>
+    <tr>
+      <td class="small">&lt;ISO date or 'YYYY-MM-DD time-of-day'&gt;</td>
+      <td><code>&lt;slice-name&gt;</code></td>
+      <td><code>&lt;FROM_STATE&gt; → &lt;TO_STATE&gt;</code></td>
+      <td><code>`&lt;commit&gt;`</code></td>
+      <td class="small">&lt;one-line note&gt;</td>
     </tr></tbody>
     </table>
     <p class="source-link small">Source: <a href="../owner-input/change-history.md">handoff/owner-input/change-history.md</a>.</p>
