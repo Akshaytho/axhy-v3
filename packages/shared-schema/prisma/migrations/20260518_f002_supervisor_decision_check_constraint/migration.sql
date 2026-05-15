@@ -1,0 +1,42 @@
+-- F-002.2 — DB-level invariant: SupervisorDecision.appliedAt and .dismissedAt
+-- are mutually exclusive. A row is in exactly one of {PROPOSED, APPLIED,
+-- DISMISSED} at any time; the impossible APPLIED-AND-DISMISSED state is
+-- rejected by the database, not just by the application layer.
+--
+-- Source of truth: F-002 remediation plan §Fix 4 (rule P1: "invariants
+-- enforced, not described") + friend's required addition 1 success condition
+-- "DB state stays valid" under concurrent apply/dismiss.
+--
+-- @derives(F-002.2 — DB-level apply/dismiss exclusivity)
+-- @derives(workflow-design-closure §3.2 — SupervisorDecision lifecycle)
+-- @derives(production-grade-rulebook P1)
+--
+-- Research per Rule P9:
+--   PG CHECK constraint behaviour — checked per-row at UPDATE time, not
+--   deferred to commit, and rejects the update if the predicate evaluates
+--   FALSE for the new row values. Source:
+--     https://www.postgresql.org/docs/current/ddl-constraints.html
+--   Verified: "if a user attempts to store data in a column that would
+--   violate a constraint, an error is raised."
+--
+-- Defence in depth:
+--   1. App layer (F-002.3): conditional updateMany with
+--      `WHERE appliedAt IS NULL AND dismissedAt IS NULL` prevents the
+--      impossible state from being attempted under normal flow.
+--   2. DB layer (this migration): if the app guard is ever bypassed (raw SQL,
+--      a future writer that skips the conditional, a bug), the database
+--      rejects the UPDATE with a constraint violation.
+--
+-- Backfill expectation:
+--   Existing rows must already satisfy the predicate. Pre-F-002.2, only
+--   appliedAt was settable (dismissedAt didn't exist until F-002.1's
+--   migration 20260517). All existing rows have either:
+--     - appliedAt NULL + dismissedAt NULL (PROPOSED)
+--     - appliedAt NOT NULL + dismissedAt NULL (APPLIED, set by old code)
+--     - appliedAt NULL + dismissedAt NOT NULL (DISMISSED — only F-002 path)
+--   The impossible state is not currently producible. ADD CONSTRAINT will
+--   succeed without a backfill.
+
+ALTER TABLE "axhy"."SupervisorDecision"
+    ADD CONSTRAINT "SupervisorDecision_apply_dismiss_exclusive"
+    CHECK (NOT ("appliedAt" IS NOT NULL AND "dismissedAt" IS NOT NULL));
