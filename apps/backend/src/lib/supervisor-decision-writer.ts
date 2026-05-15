@@ -405,6 +405,32 @@ export async function commitApply(
   tx: Prisma.TransactionClient,
   input: ApplyProposedDecisionInput & { preCheck: ApplyPreCheckResult },
 ): Promise<{ appliedAt: Date }> {
+  // F-002.10 (R2a): re-check authorization at commit time, not just at
+  // preCheck time. The auth state could have changed between preCheckApply
+  // (tx 1) and commitApply (tx 2 — for the apply-after-domain path used by
+  // round-1 F-002.4) OR within a long-running tx where another connection
+  // committed a SiteSupervisorBinding change. Under R2b-iii (round 2) all
+  // three steps share ONE tx, so the binding read here sees a fresh snapshot
+  // — and any stale-auth case rolls back the entire tx (including the
+  // domain service call that already ran inside it).
+  //
+  // Lesson L2 in memory: when authorization is checked in tx 1 and state is
+  // committed in tx 2, the authority can change between the two. Always
+  // re-check inside the commit tx.
+  const authorized = await isCallerAuthorized(
+    tx,
+    {
+      kind: input.preCheck.kind,
+      supervisorId: input.preCheck.originalSupervisorId,
+      targetId: input.preCheck.targetId,
+    },
+    input.actorUserId,
+    input.companyId,
+  );
+  if (!authorized) {
+    throw new LifecycleError('NOT_RESPONSIBLE');
+  }
+
   const appliedAt = new Date();
   const result = await tx.supervisorDecision.updateMany({
     where: {
