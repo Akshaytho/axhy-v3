@@ -30,6 +30,7 @@ import {
   proposeTerminationTool,
 } from '@axhy/ai-tools';
 import { detectConflicts } from '@axhy/state-machines';
+import { CreateAssignmentInput as CreateAssignmentInputSchema } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
@@ -45,20 +46,52 @@ import {
   preCheckApply,
   commitApply,
   LifecycleError,
-  type ApplyPreCheckResult,
   type LifecycleErrorCode,
 } from '../lib/supervisor-decision-writer.js';
+import {
+  createAssignmentService,
+  type CreateAssignmentServiceInput,
+} from '../lib/services/assignment-service.js';
+import { createLeaveRequestService } from '../lib/services/leave-request-service.js';
+import { markAbsentService } from '../lib/services/attendance-service.js';
+import { createSwapRequestService } from '../lib/services/swap-request-service.js';
 
 /**
- * Map a LifecycleError code to its HTTP status. Shared between the apply
- * pre-check failure (before domain inject) and the commit failure (after
- * domain inject, race-lost).
- * @derives(F-002.4 — apply-after-domain HTTP mapping)
+ * Map a LifecycleError code to its HTTP status.
+ * @derives(F-002.4 — apply HTTP mapping)
  */
 function httpStatusForLifecycleCode(code: LifecycleErrorCode): number {
   if (code === 'NOT_FOUND' || code === 'CROSS_TENANT') return 404;
   if (code === 'NOT_RESPONSIBLE') return 403;
   return 409;
+}
+
+/**
+ * Thrown inside a /chat/apply tx callback when a service returns a domain
+ * failure (e.g. WORKER_NOT_FOUND). Causes the entire tx (preCheck + lifecycle
+ * + domain) to roll back. The outer catch maps the code to HTTP.
+ *
+ * Used by F-002.15 to surface service-discriminant failures as throwable so
+ * Prisma rolls back the tx (lesson L1: early-return commits partial state).
+ *
+ * @derives(F-002.15 — service-domain failure mapping)
+ */
+class ServiceDomainError extends Error {
+  constructor(public code: string) {
+    super(code);
+    this.name = 'ServiceDomainError';
+  }
+}
+
+/**
+ * Map a service-domain failure code to HTTP status. Most are 404 (resource
+ * not found in the caller's tenant); a few are 400 (input validation failure
+ * inside the service).
+ * @derives(F-002.15)
+ */
+function httpStatusForServiceDomainCode(code: string): number {
+  if (code === 'WORKER_NOT_FOUND' || code === 'SITE_NOT_FOUND') return 404;
+  return 400;
 }
 
 /**
@@ -744,164 +777,267 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
     // the discriminated-union narrowing on `parsed.success === true`.
     const body = parsed.data;
 
-    // F-002.4 — apply-after-domain (production-grade rule P3).
+    // F-002.15 — apply path uses tx-callable services for true atomicity
+    // (round-2 R2b-iii, supersedes F-002.4's apply-after-domain trade-off).
     //
-    // For inject-style tools (mark_absent / leave / swap / create_assignment /
-    // living_doc_update), the apply flow is:
-    //   1. preCheckApply (tx 1) — auth + early-fail observable guards. If this
-    //      throws, no domain side-effect happens. Returns 4xx; row stays PROPOSED.
-    //   2. Domain inject — the existing `app.inject` to the route.
-    //   3. If inject returned 2xx → commitApply (tx 2) — race-safe conditional
-    //      UPDATE to set appliedAt. If a concurrent dismiss won the race in the
-    //      window between (1) and (3), commitApply throws ALREADY_DISMISSED;
-    //      the lifecycle audit only contains DWI_DISMISSED (the winner). The
-    //      domain effect from step 2 already happened and is recorded in the
-    //      domain's own audit trail (e.g., WORKER_MARKED_ABSENT). This
-    //      asymmetry is intentional under apply-after-domain (rule P3 trade-off).
-    //   4. If inject returned non-2xx → no commit; row stays PROPOSED. Caller
-    //      sees the domain error and can retry or dismiss.
+    // For the 4 ex-inject tools (propose_create_assignment, propose_mark_absent,
+    // propose_leave, propose_swap), the apply flow is:
+    //   1. Inside ONE withTenantContext(tx) callback:
+    //      a. preCheckApply(tx, ...) — auth + observable guards; throws on
+    //         failure so the tx rolls back cleanly (no state change).
+    //      b. <service>(tx, input, auth) — domain write (e.g.
+    //         markAbsentService); returns { kind: 'OK' | 'WORKER_NOT_FOUND' | ... }.
+    //         On non-OK, throw ServiceDomainError → tx rolls back.
+    //      c. commitApply(tx, ...) — race-safe conditional UPDATE + auth
+    //         re-check (R2a). On race-lost or stale-auth, throws → rollback.
+    //   2. If all three succeed, the tx commits. Lifecycle + domain happen
+    //      atomically — neither succeeds alone.
     //
-    // propose_termination is special — its tx wraps both the lifecycle update
-    // (via applyProposedDecision) and the worker.update, so it's fully atomic
-    // in a single transaction. We do NOT use the split pattern for it.
-    let applyPreCheck: ApplyPreCheckResult | null = null;
-    if (parsed.data.toolName !== 'propose_termination') {
+    // This eliminates the apply-after-domain trade-off: no path where the
+    // domain side effect happens but the lifecycle is rejected.
+    //
+    // propose_termination + propose_living_doc_update already follow the same
+    // atomic pattern (their own withTenantContext block calls
+    // applyProposedDecision alongside the domain write). Kept unchanged.
+
+    if (body.toolName === 'propose_create_assignment') {
+      // The chat tool input may use oneOffDate (Zod accepts both shapes).
+      // CreateAssignmentInput parses + normalises via expandOneOffToRecurring
+      // in the route. We do the same here so the service sees a normalised
+      // recurring shape.
+      const parsedTool = CreateAssignmentInputSchema.safeParse(body.toolInput);
+      if (!parsedTool.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsedTool.error.message });
+        return;
+      }
+      let normalized: CreateAssignmentServiceInput;
+      if ('oneOffDate' in parsedTool.data) {
+        const { expandOneOffToRecurring } = await import('@axhy/state-machines');
+        normalized = expandOneOffToRecurring(parsedTool.data);
+      } else {
+        normalized = {
+          workerId: parsedTool.data.workerId,
+          siteId: parsedTool.data.siteId,
+          dayMask: parsedTool.data.dayMask,
+          shiftStart: parsedTool.data.shiftStart,
+          shiftEnd: parsedTool.data.shiftEnd,
+          validFrom: parsedTool.data.validFrom,
+          validUntil: parsedTool.data.validUntil ?? null,
+        };
+      }
+
       try {
-        applyPreCheck = await withTenantContext(prisma, auth.companyId, async (tx) =>
-          preCheckApply(tx, {
+        const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
+          const preCheck = await preCheckApply(tx, {
             companyId: auth.companyId,
-            decisionId: parsed.data.decisionId,
+            decisionId: body.decisionId,
             actorUserId: auth.userId,
-          }),
-        );
+          });
+          const sr = await createAssignmentService(tx, normalized, {
+            companyId: auth.companyId,
+            userId: auth.userId,
+          });
+          if (sr.kind !== 'OK') throw new ServiceDomainError(sr.kind);
+          await commitApply(tx, {
+            companyId: auth.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth.userId,
+            preCheck,
+          });
+          return sr.assignment;
+        });
+        reply.code(200).send({
+          id: result.id,
+          state: result.state,
+          dayMask: result.dayMask,
+          validFrom: result.validFrom.toISOString().slice(0, 10),
+          validUntil: result.validUntil?.toISOString().slice(0, 10) ?? null,
+        });
       } catch (err) {
         if (err instanceof LifecycleError) {
           reply.code(httpStatusForLifecycleCode(err.code)).send({ error: err.code });
           return;
         }
-        throw err;
-      }
-    }
-
-    /**
-     * After a successful (2xx) domain inject, commit the lifecycle UPDATE
-     * race-safely. If the conditional UPDATE returns 0 rows, a concurrent
-     * dismiss won — we return 409. The inject's response body is still
-     * available to the caller via the domain audit trail.
-     */
-    async function commitAfterDomain(): Promise<
-      { ok: true } | { ok: false; httpStatus: number; error: string }
-    > {
-      if (!applyPreCheck) return { ok: true }; // never happens for non-termination; guard for type-narrowing
-      try {
-        await withTenantContext(prisma, auth!.companyId, async (tx) =>
-          commitApply(tx, {
-            companyId: auth!.companyId,
-            decisionId: body.decisionId,
-            actorUserId: auth!.userId,
-            preCheck: applyPreCheck!,
-          }),
-        );
-        return { ok: true };
-      } catch (err) {
-        if (err instanceof LifecycleError) {
-          return { ok: false, httpStatus: httpStatusForLifecycleCode(err.code), error: err.code };
+        if (err instanceof ServiceDomainError) {
+          reply.code(httpStatusForServiceDomainCode(err.code)).send({ error: err.code });
+          return;
         }
         throw err;
       }
-    }
-
-    /**
-     * Helper: forward an inject response, and on 2xx run the lifecycle commit.
-     * If commit fails (race lost), return the commit error instead of the
-     * domain response. The domain effect already happened; the audit trail
-     * reflects that separately.
-     */
-    async function forwardWithCommit(inner: Awaited<ReturnType<typeof app.inject>>): Promise<void> {
-      const isSuccess = inner.statusCode >= 200 && inner.statusCode < 300;
-      if (!isSuccess) {
-        // Domain failed → no lifecycle commit; row stays PROPOSED.
-        reply.code(inner.statusCode).send(inner.json());
-        return;
-      }
-      const commit = await commitAfterDomain();
-      if (!commit.ok) {
-        reply.code(commit.httpStatus).send({ error: commit.error });
-        return;
-      }
-      reply.code(inner.statusCode).send(inner.json());
-    }
-
-    if (parsed.data.toolName === 'propose_create_assignment') {
-      const inner = await app.inject({
-        method: 'POST',
-        url: '/assignments',
-        headers: { authorization: req.headers.authorization! },
-        payload: parsed.data.toolInput,
-      });
-      await forwardWithCommit(inner);
       return;
     }
 
-    if (parsed.data.toolName === 'propose_mark_absent') {
-      const ti = parsed.data.toolInput as {
+    if (body.toolName === 'propose_mark_absent') {
+      const ti = body.toolInput as {
         workerId: string;
         date?: string;
         reason?: string;
         reasonDetail?: string;
       };
-      // POST /workers/:id/mark-absent accepts { date, status, reason } per
-      // packages/shared-schema/src/zod/supervisor.ts:71-78. status defaults to
-      // 'ABSENT_NO_CALL'. Merge reason+reasonDetail into a single freeform string.
-      const reasonStr = [ti.reason, ti.reasonDetail].filter(Boolean).join(': ') || undefined;
-      const inner = await app.inject({
-        method: 'POST',
-        url: `/workers/${ti.workerId}/mark-absent`,
-        headers: { authorization: req.headers.authorization! },
-        payload: {
-          date: ti.date ?? new Date().toISOString().slice(0, 10),
-          ...(reasonStr ? { reason: reasonStr } : {}),
-        },
-      });
-      await forwardWithCommit(inner);
+      const reasonStr = [ti.reason, ti.reasonDetail].filter(Boolean).join(': ') || null;
+      const date = ti.date ?? new Date().toISOString().slice(0, 10);
+
+      try {
+        const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
+          const preCheck = await preCheckApply(tx, {
+            companyId: auth.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth.userId,
+          });
+          const sr = await markAbsentService(
+            tx,
+            { workerId: ti.workerId, date, status: 'ABSENT_NO_CALL', reason: reasonStr },
+            { companyId: auth.companyId, userId: auth.userId },
+          );
+          if (sr.kind !== 'OK') throw new ServiceDomainError(sr.kind);
+          await commitApply(tx, {
+            companyId: auth.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth.userId,
+            preCheck,
+          });
+          return sr.attendance;
+        });
+        reply.code(200).send({
+          ok: true,
+          attendanceId: result.id,
+          workerId: result.workerId,
+          date: result.date.toISOString().slice(0, 10),
+          status: result.status,
+          payDeductPaise: result.payDeductPaise,
+        });
+      } catch (err) {
+        if (err instanceof LifecycleError) {
+          reply.code(httpStatusForLifecycleCode(err.code)).send({ error: err.code });
+          return;
+        }
+        if (err instanceof ServiceDomainError) {
+          reply.code(httpStatusForServiceDomainCode(err.code)).send({ error: err.code });
+          return;
+        }
+        throw err;
+      }
       return;
     }
 
-    if (parsed.data.toolName === 'propose_leave') {
-      const ti = parsed.data.toolInput as {
+    if (body.toolName === 'propose_leave') {
+      const ti = body.toolInput as {
         workerId: string;
         fromDate: string;
         toDate: string;
         reason?: string;
         reasonDetail?: string;
       };
-      // POST /leave-requests accepts { workerId, fromDate, toDate, reason } per
-      // packages/shared-schema/src/zod/supervisor.ts (CreateLeaveRequestInput).
-      // Merge reason+reasonDetail into a single freeform string.
       const reasonStr = [ti.reason, ti.reasonDetail].filter(Boolean).join(': ') || 'other';
-      const inner = await app.inject({
-        method: 'POST',
-        url: '/leave-requests',
-        headers: { authorization: req.headers.authorization! },
-        payload: {
-          workerId: ti.workerId,
-          fromDate: ti.fromDate,
-          toDate: ti.toDate,
-          reason: reasonStr,
-        },
-      });
-      await forwardWithCommit(inner);
+      if (new Date(ti.fromDate) > new Date(ti.toDate)) {
+        reply.code(400).send({ error: 'BAD_RANGE', message: 'fromDate must be ≤ toDate' });
+        return;
+      }
+
+      try {
+        const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
+          const preCheck = await preCheckApply(tx, {
+            companyId: auth.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth.userId,
+          });
+          const sr = await createLeaveRequestService(
+            tx,
+            { workerId: ti.workerId, fromDate: ti.fromDate, toDate: ti.toDate, reason: reasonStr },
+            { companyId: auth.companyId, userId: auth.userId },
+          );
+          if (sr.kind !== 'OK') throw new ServiceDomainError(sr.kind);
+          await commitApply(tx, {
+            companyId: auth.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth.userId,
+            preCheck,
+          });
+          return sr.leave;
+        });
+        reply.code(201).send({
+          ok: true,
+          leaveRequestId: result.id,
+          workerId: result.workerId,
+          fromDate: result.fromDate.toISOString().slice(0, 10),
+          toDate: result.toDate.toISOString().slice(0, 10),
+          state: result.state,
+        });
+      } catch (err) {
+        if (err instanceof LifecycleError) {
+          reply.code(httpStatusForLifecycleCode(err.code)).send({ error: err.code });
+          return;
+        }
+        if (err instanceof ServiceDomainError) {
+          reply.code(httpStatusForServiceDomainCode(err.code)).send({ error: err.code });
+          return;
+        }
+        throw err;
+      }
       return;
     }
 
-    if (parsed.data.toolName === 'propose_swap') {
-      const inner = await app.inject({
-        method: 'POST',
-        url: '/swap-requests',
-        headers: { authorization: req.headers.authorization! },
-        payload: parsed.data.toolInput,
-      });
-      await forwardWithCommit(inner);
+    if (body.toolName === 'propose_swap') {
+      const ti = body.toolInput as {
+        fromWorkerId: string;
+        toWorkerId: string;
+        siteId: string;
+        effectiveAt: string;
+        reason?: string;
+      };
+      if (new Date(ti.effectiveAt).getTime() <= Date.now()) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: 'effectiveAt must be in the future' });
+        return;
+      }
+
+      try {
+        const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
+          const preCheck = await preCheckApply(tx, {
+            companyId: auth.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth.userId,
+          });
+          const sr = await createSwapRequestService(
+            tx,
+            {
+              fromWorkerId: ti.fromWorkerId,
+              toWorkerId: ti.toWorkerId,
+              siteId: ti.siteId,
+              effectiveAt: ti.effectiveAt,
+              reason: ti.reason ?? null,
+            },
+            { companyId: auth.companyId, userId: auth.userId },
+          );
+          if (sr.kind !== 'OK') throw new ServiceDomainError(sr.kind);
+          await commitApply(tx, {
+            companyId: auth.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth.userId,
+            preCheck,
+          });
+          return sr.swap;
+        });
+        reply.code(200).send({
+          ok: true,
+          swapRequestId: result.id,
+          fromWorkerId: result.fromWorkerId,
+          toWorkerId: result.toWorkerId,
+          siteId: result.siteId,
+          state: result.state,
+          effectiveAt: result.effectiveAt.toISOString(),
+          createdAt: result.createdAt.toISOString(),
+        });
+      } catch (err) {
+        if (err instanceof LifecycleError) {
+          reply.code(httpStatusForLifecycleCode(err.code)).send({ error: err.code });
+          return;
+        }
+        if (err instanceof ServiceDomainError) {
+          reply.code(httpStatusForServiceDomainCode(err.code)).send({ error: err.code });
+          return;
+        }
+        throw err;
+      }
       return;
     }
 
