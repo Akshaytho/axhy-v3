@@ -86,6 +86,8 @@ describe('chat → propose_leave', () => {
     expect(proposed.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(proposed.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
+    // F-002.5: decisionId required.
+    expect(body.decisionCard.decisionId).toBeTruthy();
     const applyRes = await app.inject({
       method: 'POST',
       url: '/chat/apply',
@@ -94,6 +96,7 @@ describe('chat → propose_leave', () => {
         chatMessageId: body.chatMessageId,
         toolName: 'propose_leave',
         toolInput: proposed,
+        decisionId: body.decisionCard.decisionId,
       },
     });
     expect(applyRes.statusCode).toBe(201);

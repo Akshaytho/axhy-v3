@@ -117,6 +117,8 @@ describe('chat → propose_swap', () => {
     // server local time. We've already asserted the AI populated *some*
     // string above; here we override it for the apply step only.
     const futureIso = new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString();
+    // F-002.5: decisionId required.
+    expect(body.decisionCard.decisionId).toBeTruthy();
     const applyRes = await app.inject({
       method: 'POST',
       url: '/chat/apply',
@@ -125,10 +127,10 @@ describe('chat → propose_swap', () => {
         chatMessageId: body.chatMessageId,
         toolName: 'propose_swap',
         toolInput: { ...proposed, effectiveAt: futureIso },
+        decisionId: body.decisionCard.decisionId,
       },
     });
     if (applyRes.statusCode !== 200) {
-       
       console.error('apply failed:', applyRes.statusCode, applyRes.body);
     }
     expect(applyRes.statusCode).toBe(200);
