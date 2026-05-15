@@ -917,13 +917,29 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         reason: string;
         reasonDetail?: string;
       };
-      // F-002 §3b: transition PROPOSED → APPLIED inside the SAME tx as the
-      // worker.update — fully atomic for the termination flow. If
-      // applyProposedDecision throws (lifecycle guard failure), the whole tx
-      // rolls back and the worker.update never happens. If the worker.update
-      // fails, the lifecycle transition rolls back with it.
-      // F-002.5: decisionId is now required (Zod-enforced); no conditional check.
+      // F-002.9 — reorder: validate worker FIRST (before applyProposedDecision),
+      // then lifecycle commit, then worker.update. Returning sentinels from the
+      // tx callback COMMITS the tx (lesson L1 in production-grade-rulebook
+      // memory), so validation failures must happen BEFORE any state-changing
+      // write. After this reorder, the early-return paths still commit but with
+      // no state change since no write has happened yet.
+      //
+      // F-002 §3b: lifecycle transition + worker.update share the same tx —
+      // fully atomic. If either throws, both roll back.
+      // F-002.5: decisionId is required (Zod-enforced).
       const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        // Step 1: validate worker FIRST (no writes happen on validation failure).
+        const w = await tx.worker.findFirst({
+          where: { id: wid, companyId: auth.companyId },
+        });
+        if (!w) return { kind: 'NOT_FOUND' as const };
+        if (w.state === 'TERMINATED' || w.state === 'TERMINATION_PENDING') {
+          return { kind: 'ALREADY' as const };
+        }
+
+        // Step 2: lifecycle commit (applyProposedDecision uses race-safe
+        // conditional UPDATE + emits DWI_APPLIED). Throws on lifecycle guard
+        // failure; tx rolls back if so.
         try {
           await applyProposedDecision(tx, {
             companyId: auth.companyId,
@@ -936,16 +952,12 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           }
           throw err;
         }
-        const w = await tx.worker.findFirst({
-          where: { id: wid, companyId: auth.companyId },
-        });
-        if (!w) return { kind: 'NOT_FOUND' as const };
-        if (w.state === 'TERMINATED' || w.state === 'TERMINATION_PENDING') {
-          return { kind: 'ALREADY' as const };
-        }
+
+        // Step 3: worker.update + WORKER_TERMINATION_REQUESTED audit.
         // Per Worker state machine (packages/state-machines/src/worker.ts):
         // ACTIVE on TERMINATE → TERMINATION_PENDING. Wave 2b ChangeRequest
         // workflow handles the TERMINATION_PENDING → TERMINATED finalization.
+        // If this throws, the tx (including the lifecycle commit) rolls back.
         const updated = await tx.worker.update({
           where: { id: wid },
           data: { state: 'TERMINATION_PENDING' },
