@@ -6,9 +6,10 @@
 
 ## Current state
 
-- **Active phase:** **Layer 1 implementation — routing slice paused for execution-state tracker.** PR 1 + PR 2 + P1.5 accepted + locally real-DB verified. Routing slice (foundation read APIs for routing — `getEffectiveBinding`, `deriveWorkerPrimarySiteId`, `GET /sites/:id/effective-supervisor`, `GET /decisions/proposed-for-me`) is **paused at WIP commit `84ae39c`** — 4th test file unwritten + real-DB not yet run. Pause cause: friend-approved durable execution-state tracker (`handoff/execution-state/`) built to prevent session-drift on workflow truth. **Affected workflow rows:** D17, F26, F27 — see `execution-state/supervisor-ravi.md`.
-- **Current branch:** `feat/layer-1-core-primitives` (13 commits ahead of parent post-WIP, +tracker commit pending)
-- **Last updated:** 2026-05-15 (execution-state tracker built; routing slice resumes after friend approves tracker)
+- **Active phase:** **handoff control-loop slice — built on top of the 3-layer tracker.** Adds layer 4: `handoff/owner-input/` (notes, approvals, active-slice, decisions log, change history) + `handoff/feature-queue/INDEX.md` + generator extension that renders all of it in the dashboard. Pre-commit auto-regen wired. Routing slice (foundation read APIs) remains paused at WIP `84ae39c` — resumes after this control-loop slice is APPROVED. **Affected workflow rows:** none directly — control surface around all 29 workflows.
+- **Current branch:** `feat/layer-1-core-primitives`
+- **Last updated:** 2026-05-15 evening (control-loop slice landing)
+- **Current slice + status:** see [`handoff/owner-input/active-slice.md`](./owner-input/active-slice.md) — single source of truth.
 
 ## Approved vs Draft
 
@@ -24,16 +25,28 @@
 
 - 5 audit drafts at `docs/audits/2026-05-1{4,5}-1yr-sim-*.md` — Round 1–5 locked complete; reviewable, not governing.
 
-## Read these files now (in this order)
+## Read these files now (in this order — mandatory)
 
-1. `axhy-v3/handoff/README.md` — handoff rules + anti-drift rules + mandatory update order.
-2. `axhy-v3/handoff/STATUS.md` — full state + Authority Snapshot.
-3. `axhy-v3/handoff/execution-state/INDEX.md` — workflow-truth legend + strict enums + failure-mode rules. **Mandatory.**
-4. The persona file(s) in `axhy-v3/handoff/execution-state/` that the active slice touches (currently `supervisor-ravi.md` for D17/F26/F27), plus `combined.md`.
-5. `axhy-v3/handoff/ROADMAP.md` — what's next.
-6. Whatever STATUS / ROADMAP point you to (closure spec / kickoff memo / specific audit).
+1. `axhy-v3/handoff/README.md` — handoff rules + anti-drift rules.
+2. `axhy-v3/handoff/STATUS.md` — phase-level state.
+3. `axhy-v3/handoff/execution-state/INDEX.md` — workflow-truth legend + 22 rules.
+4. `axhy-v3/handoff/workflow-maps/INDEX.md` — diagram conventions.
+5. **`axhy-v3/handoff/owner-input/INDEX.md`** — control loop rules.
+6. **`axhy-v3/handoff/owner-input/pending-notes.md`** — scan for NEW notes; if any, acknowledge before any code.
+7. **`axhy-v3/handoff/owner-input/pending-approvals.md`** — confirm no AWAITING_APPROVAL slice blocks the intended next slice.
+8. **`axhy-v3/handoff/owner-input/active-slice.md`** — what is in flight.
+9. **`axhy-v3/handoff/feature-queue/INDEX.md`** — what's queued next.
+10. The persona file(s) in `execution-state/` and `workflow-maps/` for the active workflows.
+11. `combined.md` + `combined-system.md` if cross-persona.
+12. `ROADMAP.md` — phase forward-look.
+13. (Optional) Open `handoff/generated/app-workflow-dashboard.html` for the single-page view. If JSON disagrees with markdown, markdown wins → regenerate.
 
-**Reconciliation rule:** if `execution-state/` rows disagree with `STATUS.md` / `NEXT_SESSION.md` about any workflow's state, STOP and reconcile before coding (per `execution-state/INDEX.md` failure-mode rule 5).
+**Reconciliation rules:**
+
+- `execution-state/` ⟷ `STATUS.md` / `NEXT_SESSION.md` disagree → STOP, reconcile (rule 5).
+- `generated/` ⟷ canonical markdown disagree → STOP, regenerate (rule 12).
+- NEW owner note affecting intended slice → STOP, acknowledge (rule 16).
+- AWAITING_APPROVAL slice exists → STOP, no new slice starts until approved (rule 17).
 
 ## Do NOT do these things
 
