@@ -30,6 +30,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
 import { enqueueOutbox } from '../lib/outbox.js';
+import { createLeaveRequestService } from '../lib/services/leave-request-service.js';
 
 type DecisionKind = 'approve' | 'reject';
 type DecisionRequest = FastifyRequest<{ Params: { id: string } }>;
@@ -60,49 +61,19 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
     }
 
     try {
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-        const worker = await tx.worker.findFirst({
-          where: { id: workerId, companyId: auth.companyId },
-        });
-        if (!worker) return { kind: 'NOT_FOUND' as const };
+      // F-002.b (round-2 R2b-iii): route is now a thin wrapper around
+      // createLeaveRequestService. /chat/apply (F-002.15) calls the same
+      // service INSIDE its own withTenantContext for atomic lifecycle +
+      // domain.
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+        createLeaveRequestService(
+          tx,
+          { workerId, fromDate, toDate, reason },
+          { companyId: auth.companyId, userId: auth.userId },
+        ),
+      );
 
-        const leave = await tx.leaveRequest.create({
-          data: {
-            companyId: auth.companyId,
-            workerId,
-            fromDate: new Date(fromDate),
-            toDate: new Date(toDate),
-            reason,
-            state: 'REQUESTED',
-          },
-        });
-
-        await recordAuditEvent(tx, {
-          companyId: auth.companyId,
-          kind: 'LEAVE_REQUESTED',
-          actorId: auth.userId,
-          targetId: leave.id,
-          payload: { workerId, workerName: worker.name, fromDate, toDate, reason },
-        });
-
-        await enqueueOutbox(tx, {
-          companyId: auth.companyId,
-          topic: 'hr.leave_requested',
-          payload: {
-            leaveRequestId: leave.id,
-            workerId,
-            workerName: worker.name,
-            workerPhone: worker.phone,
-            fromDate,
-            toDate,
-            reason,
-          },
-        });
-
-        return { kind: 'OK' as const, leave };
-      });
-
-      if (out.kind === 'NOT_FOUND') {
+      if (out.kind === 'WORKER_NOT_FOUND') {
         reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
         return;
       }
