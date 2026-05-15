@@ -320,18 +320,58 @@ function activeSlice() {
 }
 
 /**
- * Stale = outputs are older than canonical sources.
+ * Stale = generated outputs are older (on disk) than any canonical source file.
  *
- * After regeneration + commit, outputs will be in the most recent commit and
- * canonical will be in an earlier commit. So we compare commit DATES, not hashes.
- * If outputs were never committed, only uncommitted canonical changes mark stale.
+ * Uses filesystem mtimes — independent of git commit timing. This is correct
+ * because:
+ *   * Right after running this generator: output mtimes = NOW; canonical mtimes
+ *     are <= NOW (they were edited earlier). Outputs are fresh by definition.
+ *   * If canonical changes after the last build: canonical mtime > output mtime
+ *     → stale, exactly as we want.
+ *
+ * Note: this runs inside the generator, so at this exact moment outputs are
+ * ABOUT to be written. We check the LAST regen by reading existing outputs'
+ * mtime BEFORE we overwrite them. If outputs don't exist yet, never stale.
  */
+import { statSync, existsSync, readdirSync as fsReaddirSync } from 'node:fs';
+
 function staleReason() {
-  if (uncommittedCanonical) return `Uncommitted canonical changes:\n${uncommittedCanonical}`;
-  if (!lastCanonicalCommit) return null;
-  if (!lastGeneratedCommit) return null; // first generation; not stale
-  if (lastCanonicalCommitDate > lastGeneratedCommitDate) {
-    return `Canonical commit (${lastCanonicalCommit.slice(0, 8)}) is newer than last generated-outputs commit (${lastGeneratedCommit.slice(0, 8)}).`;
+  const dashboardPath = resolve(outDir, 'app-workflow-dashboard.html');
+  const jsonPath = resolve(outDir, 'app-workflow-state.json');
+  if (!existsSync(dashboardPath) || !existsSync(jsonPath)) return null; // first run
+  const lastOutputMtime = Math.min(
+    statSync(dashboardPath).mtimeMs,
+    statSync(jsonPath).mtimeMs,
+  );
+  // Walk every canonical .md file and find the newest mtime.
+  const canonicalDirs = [stateDir, mapsDir, ownerDir, queueDir];
+  let newestCanonical = 0;
+  let newestPath = '';
+  for (const dir of canonicalDirs) {
+    if (!existsSync(dir)) continue;
+    for (const f of fsReaddirSync(dir)) {
+      if (!f.endsWith('.md')) continue;
+      const p = resolve(dir, f);
+      const m = statSync(p).mtimeMs;
+      if (m > newestCanonical) {
+        newestCanonical = m;
+        newestPath = p;
+      }
+    }
+  }
+  // Also include the top-level handoff/*.md
+  for (const f of ['README.md', 'STATUS.md', 'NEXT_SESSION.md']) {
+    const p = resolve(handoff, f);
+    if (!existsSync(p)) continue;
+    const m = statSync(p).mtimeMs;
+    if (m > newestCanonical) {
+      newestCanonical = m;
+      newestPath = p;
+    }
+  }
+  if (newestCanonical > lastOutputMtime) {
+    const ageSec = Math.round((newestCanonical - lastOutputMtime) / 1000);
+    return `Canonical source newer than outputs: ${newestPath.replace(repoRoot + '/', '')} (older by ${ageSec}s). Run pnpm run handoff:build.`;
   }
   return null;
 }

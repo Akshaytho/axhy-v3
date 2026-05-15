@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "metadata": {
-    "last_updated_at": "2026-05-15T14:35:21.452Z",
-    "source_commit": "8f11d895cc4e5007f5703c77e708e53afbdbe0d8",
+    "last_updated_at": "2026-05-15T14:36:32.918Z",
+    "source_commit": "f9fbe68327569f55ba40c6c8e5ba2a17710a2569",
     "source_branch": "feat/layer-1-core-primitives",
-    "last_canonical_commit": "03d33dd4fee01bdff6193409de7d95831673d727",
-    "staleness_warning": "Uncommitted canonical changes:\nhandoff/NEXT_SESSION.md\nhandoff/README.md\nhandoff/feature-queue/INDEX.md\nhandoff/owner-input/INDEX.md\nhandoff/owner-input/active-slice.md\nhandoff/owner-input/change-history.md\nhandoff/owner-input/decisions-log.md\nhandoff/owner-input/pending-approvals.md\nhandoff/owner-input/pending-notes.md",
+    "last_canonical_commit": "f9fbe68327569f55ba40c6c8e5ba2a17710a2569",
+    "staleness_warning": null,
     "active_slice": "Layer 1 implementation — routing slice paused for execution-state tracker",
     "generated_from": [
       "handoff/execution-state/*.md",
