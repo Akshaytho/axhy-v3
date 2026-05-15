@@ -486,7 +486,10 @@ function parsePendingNotes() {
  *  Sections looked at:
  *    "## Currently awaiting approval" → awaiting items
  *    "## Currently blocked"           → blocked items
- *  Each section contains `### Slice: \`<slice-id>\`` subsections.
+ *  Each section contains either:
+ *    `### Slice: \`<slice-id>\``           → a code slice awaiting approval
+ *    `### Scope approval: \`<slice-id>\``  → a scope artifact awaiting approval before code
+ *  Both surface in the dashboard's approval gate; the `kind` field discriminates.
  */
 function parsePendingApprovals() {
   const text = stripCodeFences(safeRead(resolve(ownerDir, 'pending-approvals.md')));
@@ -495,9 +498,15 @@ function parsePendingApprovals() {
     const m = text.match(sectionRe);
     if (!m) return [];
     const body = m[0];
-    const subs = body.split(/\n###\s+Slice:\s*/).slice(1);
+    // Split on either `### Slice:` or `### Scope approval:` headers; keep the
+    // header text so the kind discriminator can be inferred per-entry.
+    const subs = body.split(/\n###\s+(Slice|Scope approval):\s*/).slice(1);
+    // After splitting with a capture group, subs alternates [header, content, header, content, ...]
     const out = [];
-    for (const s of subs) {
+    for (let i = 0; i + 1 < subs.length; i += 2) {
+      const header = subs[i].trim();
+      const s = subs[i + 1];
+      const kind = header === 'Scope approval' ? 'scope' : 'slice';
       const id = (s.match(/^`([^`]+)`/) || [, ''])[1];
       if (!id) continue;
       const status = (s.match(/-\s*\*\*Status:\*\*\s*`?([A-Z_]+)`?/) || [, ''])[1];
@@ -509,7 +518,26 @@ function parsePendingApprovals() {
       const built = (s.match(/-\s*\*\*What was built:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
       const notDone = (s.match(/-\s*\*\*(?:What's NOT done|Remaining to finish slice):\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
       const ownerDecision = (s.match(/-\s*\*\*Owner decision:\*\*\s*(.+)/) || [, ''])[1].trim();
-      out.push({ id, status, branch, wipCommit, lastLanded, workflowIds, blocking, built, notDone, ownerDecision });
+      // Scope-specific fields:
+      const artifact = (s.match(/-\s*\*\*Artifact:\*\*\s*`?([^`\n]+)`?/) || [, ''])[1].trim();
+      const decisionNeeded = (s.match(/-\s*\*\*Decision needed:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
+      const scopeType = (s.match(/-\s*\*\*Type:\*\*\s*(.+)/) || [, ''])[1].trim();
+      out.push({
+        id,
+        kind,
+        status,
+        branch,
+        wipCommit,
+        lastLanded,
+        workflowIds,
+        blocking,
+        built,
+        notDone,
+        ownerDecision,
+        artifact,
+        decisionNeeded,
+        scopeType,
+      });
     }
     return out;
   }
@@ -797,17 +825,24 @@ function pendingNotesSection() {
   </section>`;
 }
 
-function renderApprovalCard(a, kind) {
+function renderApprovalCard(a, sectionKind) {
+  const isScope = a.kind === 'scope';
+  const kindBadge = isScope
+    ? `<span class="badge" style="background:#7c3aed;color:#fff">SCOPE</span>`
+    : `<span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span>`;
   return `
       <div class="approval">
-        <div class="approval-head">${statusBadge(a.status)} <strong><code>${escape(a.id)}</code></strong></div>
+        <div class="approval-head">${statusBadge(a.status)} ${kindBadge} <strong><code>${escape(a.id)}</code></strong></div>
+        ${a.scopeType ? `<p class="small"><strong>Type:</strong> ${escape(a.scopeType)}</p>` : ''}
+        ${a.artifact ? `<p class="small"><strong>Artifact:</strong> <code>${escape(a.artifact)}</code></p>` : ''}
         ${a.branch ? `<p class="small"><strong>Branch:</strong> <code>${escape(a.branch)}</code></p>` : ''}
         ${a.lastLanded ? `<p class="small"><strong>Last landed commit:</strong> <code>${escape(a.lastLanded)}</code></p>` : ''}
         ${a.wipCommit ? `<p class="small"><strong>WIP commit:</strong> <code>${escape(a.wipCommit)}</code></p>` : ''}
         ${a.workflowIds ? `<p class="small"><strong>Workflows affected:</strong> ${escape(a.workflowIds)}</p>` : ''}
         ${a.blocking ? `<p><strong>What's blocking:</strong> ${renderInline(a.blocking)}</p>` : ''}
         ${a.built ? `<p><strong>Built:</strong> ${renderInline(a.built)}</p>` : ''}
-        ${a.notDone ? `<p><strong>${kind === 'blocked' ? 'Remaining' : 'Not done'}:</strong> ${renderInline(a.notDone)}</p>` : ''}
+        ${a.notDone ? `<p><strong>${sectionKind === 'blocked' ? 'Remaining' : 'Not done'}:</strong> ${renderInline(a.notDone)}</p>` : ''}
+        ${a.decisionNeeded ? `<p><strong>Decision needed:</strong> ${renderInline(a.decisionNeeded)}</p>` : ''}
         ${a.ownerDecision ? `<p class="small"><strong>Owner decision:</strong> <em>${renderInline(a.ownerDecision)}</em></p>` : ''}
       </div>`;
 }
