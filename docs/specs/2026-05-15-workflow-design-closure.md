@@ -172,7 +172,7 @@ Six entities. Every workflow in v3 produces or consumes these. Adding new featur
 - `handoffPackage JSON?` — JSON blob containing the auto-generated context package on binding creation (see Decision 8 / §3.7).
 - `endedReason ENUM` — already exists; this document extends the enum values: `manual_end`, `auto_expire`, `superseded_by_permanent`, `superseded_by_correction`, `worker_transferred`.
 
-**Lifecycle (compact):** `CREATED → ACTIVE (effectiveFrom passes) → ENDED (effectiveUntil passes OR endedAt set manually OR superseded)`. Cron `binding-expire-sweep` handles auto-expire. AuditEvents on every state change.
+**Lifecycle (compact):** `CREATED → ACTIVE (effectiveFrom passes) → ENDED (effectiveUntil passes OR endedAt set manually OR superseded)`. The ACTIVE → ENDED transition for the `effectiveUntil` path is **time-based and read-time-evaluated** (callers use `getEffectiveBinding`, whose predicate `effectiveFrom <= at AND (effectiveUntil IS NULL OR effectiveUntil > at) AND endedAt IS NULL` correctly excludes the row the instant `effectiveUntil` passes — no cron needed for the responsibility switch itself). Cron `binding-expire-sweep` is for the **side-effect side** of that transition only: emitting a `BINDING_ENDED_AUTO` AuditEvent so downstream consumers (notification dispatcher, digest generator, audit-trail reports) get the signal. AuditEvents on every state change.
 
 **Invariants:**
 
@@ -557,7 +557,7 @@ To be added to the existing AuditEvent enum:
 
 ## §10 New cron jobs
 
-- **`binding-expire-sweep`** — runs every 5 minutes. Closes any binding whose `effectiveUntil` has passed; emits `BINDING_ENDED_AUTO`. Generates "while you were out" digest for the returning supervisor.
+- **`binding-expire-sweep`** — runs every 5 minutes. **Side-effect emit only — NOT a responsibility switch.** For each binding whose `effectiveUntil` has passed and that has not yet been processed, emits a `BINDING_ENDED_AUTO` AuditEvent. The sweep does NOT decide who is the current supervisor (that decision is already time-based and read-time-evaluated by `getEffectiveBinding`) and does NOT mutate the binding row (setting `endedAt` here would break historical point-in-time queries). Idempotency is enforced by an audit-existence check on `(kind='BINDING_ENDED_AUTO', targetId=bindingId)`. Generation of the "while you were out" digest is a separate downstream consumer of `BINDING_ENDED_AUTO` and lands in its own slice once the audit emit is reliable.
 - **`decision-expire-sweep`** — runs every 15 minutes. Expires PROPOSED DWI rows older than the per-tier threshold (URGENT: 6h; NEXT_DAY: 48h; STANDARD: 14d). `[founder pick required]` if these thresholds need tuning.
 - **`flagged-visit-auto-escalate`** — runs every 30 minutes. FLAGGED Visits older than 48h escalate to pod HR queue (URGENT tier). `[founder pick required]` on exact threshold.
 - **`hr-queue-age-escalation`** — runs every 10 minutes. Upgrades queue items per Decision 3 escalation rules. Emits audit on each upgrade.

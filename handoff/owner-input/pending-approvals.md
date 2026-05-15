@@ -42,7 +42,10 @@
 6. **`BINDING_ENDED_AUTO` payload** [`{ bindingId, siteId, userId, actingForUserId, effectiveFrom, effectiveUntil, sweptAt }`]
 7. **Idempotency marker (new pick — flagged by re-scope)** — (a) audit-existence check (NOT EXISTS subquery, no schema change) / (b) new column `autoExpireProcessedAt` (schema migration). NOT (c) set `endedAt = effectiveUntil` ❌ — would break historical point-in-time queries via `getEffectiveBinding`. Recommended: **(a) audit-existence check**.
 
-**Spec amendment included in scope artifact (docs-only):** closure spec §10 line 560 wording "Closes any binding" can be misread as "cron decides who's responsible." A small clarifying amendment: drop "Closes" and say "emits `BINDING_ENDED_AUTO` for any binding whose `effectiveUntil` has passed." This makes the spec match the re-scope.
+**Spec amendment landed in this commit (per friend's directive that spec match re-scope BEFORE code starts):** two lines updated in `docs/specs/2026-05-15-workflow-design-closure.md`:
+
+- §3.1 Binding lifecycle (line 175): clarifies that the `effectiveUntil`-path ACTIVE → ENDED transition is time-based and read-time-evaluated; cron handles side-effect side only.
+- §10 Cron jobs (line 560): "Closes any binding ... Generates 'while you were out' digest" → "Side-effect emit only — NOT a responsibility switch ... emits `BINDING_ENDED_AUTO` ... does NOT mutate the binding row ... digest is a separate downstream consumer that lands in its own slice once the audit emit is reliable."
 
 **Decision needed:** `SCOPE: GO with re-scoped defaults` / `SCOPE: change picks (bullet list)` / `HOLD` / `MERGE FIRST` (graduate F-002 + S-001 to DONE before starting F-003).
 
