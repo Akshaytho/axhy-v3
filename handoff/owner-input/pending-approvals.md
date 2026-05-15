@@ -25,13 +25,15 @@
 - **What's NOT done:** 4th test file `effective-responsibility-point-in-time.test.ts`; real-DB sweep; split into 3 clean commits.
 - **Owner decision:** _empty — needs explicit APPROVED / CHANGES_REQUESTED / HOLD once control-loop ships_
 
-### Slice: `handoff-control-loop` (in flight — this slice)
+### Slice: `handoff-control-loop`
 
-- **Status:** `WIP`
+- **Status:** `AWAITING_APPROVAL`
 - **Branch:** `feat/layer-1-core-primitives`
-- **Affects:** all 4 personas indirectly; primarily the control surface.
-- **What's being built:** `handoff/owner-input/` + `handoff/feature-queue/` + extended generator + pre-commit auto-regen + updated handoff wiring.
-- **Owner decision:** _empty — will move to AWAITING_APPROVAL after surface_
+- **WIP commit:** `0445110` + the verification-fix commit landing now
+- **Workflow IDs affected:** none directly (control surface, spans all 29)
+- **What was built:** `handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 5 new HTML sections (Current Slice / Notes / Approvals / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's 4 verification-pass fixes (template not parsed as live note, header agrees with callout on active-slice, active-slice.md reflects current commits, generated_from metadata complete).
+- **What's NOT done:** Nothing in scope; friend's bug list is fully addressed. Routing slice F-001 stays BLOCKED until this one is APPROVED.
+- **Owner decision:** _empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_
 
 ---
 

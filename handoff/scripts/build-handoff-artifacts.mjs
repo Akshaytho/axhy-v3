@@ -309,7 +309,21 @@ function parseCombinedTally() {
   return tally;
 }
 
+/**
+ * Active slice display value — slice-level, not phase-level.
+ *
+ * Per friend's verification (2026-05-15 evening): header + Current Slice
+ * callout must agree. owner-input/active-slice.md is the slice-level
+ * canonical source. STATUS.md is phase-level and stays as a fallback only
+ * if the active-slice file is missing.
+ */
 function activeSlice() {
+  const aSlice = parseActiveSlice();
+  if (aSlice['Slice name']) {
+    const name = aSlice['Slice name'].replace(/`/g, '').trim();
+    const status = (aSlice['Status'] || '').replace(/`/g, '').trim();
+    return status ? `${name} · ${status}` : name;
+  }
   try {
     const status = readFileSync(resolve(handoff, 'STATUS.md'), 'utf8');
     const m = status.match(/\*\*Active phase:\*\*\s*\*\*(.+?)\.\*\*/);
@@ -335,43 +349,39 @@ function activeSlice() {
  */
 import { statSync, existsSync, readdirSync as fsReaddirSync } from 'node:fs';
 
+/**
+ * Stale at generation time means: a canonical file was modified DURING this
+ * run (race condition; rare). At generation time we are by definition
+ * producing fresh outputs from the current canonical snapshot — so unless
+ * something raced under us, the answer is "not stale".
+ *
+ * For the read-time use case (someone opens the HTML hours later after
+ * editing markdown), we cannot detect that from inside the browser. The
+ * pre-commit hook is the actual enforcement — it regenerates whenever
+ * canonical files are staged.
+ */
+const generationStartMs = Date.now();
+
 function staleReason() {
-  const dashboardPath = resolve(outDir, 'app-workflow-dashboard.html');
-  const jsonPath = resolve(outDir, 'app-workflow-state.json');
-  if (!existsSync(dashboardPath) || !existsSync(jsonPath)) return null; // first run
-  const lastOutputMtime = Math.min(
-    statSync(dashboardPath).mtimeMs,
-    statSync(jsonPath).mtimeMs,
-  );
-  // Walk every canonical .md file and find the newest mtime.
   const canonicalDirs = [stateDir, mapsDir, ownerDir, queueDir];
-  let newestCanonical = 0;
-  let newestPath = '';
   for (const dir of canonicalDirs) {
     if (!existsSync(dir)) continue;
     for (const f of fsReaddirSync(dir)) {
       if (!f.endsWith('.md')) continue;
       const p = resolve(dir, f);
       const m = statSync(p).mtimeMs;
-      if (m > newestCanonical) {
-        newestCanonical = m;
-        newestPath = p;
+      if (m > generationStartMs) {
+        return `Race: ${p.replace(repoRoot + '/', '')} was modified during this generation run. Re-run handoff:build.`;
       }
     }
   }
-  // Also include the top-level handoff/*.md
   for (const f of ['README.md', 'STATUS.md', 'NEXT_SESSION.md']) {
     const p = resolve(handoff, f);
     if (!existsSync(p)) continue;
     const m = statSync(p).mtimeMs;
-    if (m > newestCanonical) {
-      newestCanonical = m;
-      newestPath = p;
+    if (m > generationStartMs) {
+      return `Race: ${f} was modified during this generation run. Re-run handoff:build.`;
     }
-  }
-  if (newestCanonical > lastOutputMtime) {
-    const ageSec = Math.round((newestCanonical - lastOutputMtime) / 1000);
-    return `Canonical source newer than outputs: ${newestPath.replace(repoRoot + '/', '')} (older by ${ageSec}s). Run pnpm run handoff:build.`;
   }
   return null;
 }
@@ -412,21 +422,50 @@ const generatedAt = new Date().toISOString();
 // Control-loop parsers (Layer 4 — owner-input + feature-queue)
 // ---------------------------------------------------------------------------
 
-/** Parse pending-notes.md. Each note is a `### YYYY-MM-DD ...` block with
- *  Status / Affects / Note / Owner-suggested next action fields. */
+/** Strip fenced code blocks (``` ... ```) — anything inside is template/example
+ *  text and must NEVER be parsed as a live data block. Friend's 2026-05-15
+ *  evening verification caught the template being parsed as a NEW note.
+ */
+function stripCodeFences(text) {
+  return text.replace(/```[\s\S]+?```/g, '');
+}
+
+/** Parse pending-notes.md. Only the live sections matter:
+ *    "## Active notes" → parse Status from each note's body
+ *    "## Recently-applied notes (last 5)" → notes implicitly APPLIED
+ *    "## Deferred notes" → notes implicitly DEFERRED
+ *  Anything outside these three sections (e.g. the Template block) is ignored.
+ *  Code fences are stripped first as a safety net. */
 function parsePendingNotes() {
-  const text = safeRead(resolve(ownerDir, 'pending-notes.md'));
-  const sections = text.split(/\n###\s+/).slice(1);
+  const raw = safeRead(resolve(ownerDir, 'pending-notes.md'));
+  const text = stripCodeFences(raw);
+
+  const sectionRanges = [
+    { heading: 'Active notes', defaultStatus: null },
+    { heading: 'Recently-applied notes', defaultStatus: 'APPLIED' },
+    { heading: 'Deferred notes', defaultStatus: 'DEFERRED' },
+  ];
+
   const notes = [];
-  for (const s of sections) {
-    const title = s.split('\n')[0].trim();
-    const status = (s.match(/-\s*\*\*Status:\*\*\s*([A-Z_]+)/) || [, ''])[1];
-    if (!status) continue; // header sections like "Template" are skipped
-    const affects = (s.match(/-\s*\*\*Affects:\*\*\s*(.+)/) || [, ''])[1].trim();
-    const note = (s.match(/-\s*\*\*Note:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
-    const next = (s.match(/-\s*\*\*Owner-suggested next action:\*\*\s*(.+)/) || [, ''])[1].trim();
-    notes.push({ title, status, affects, note, next });
+  for (const { heading, defaultStatus } of sectionRanges) {
+    const re = new RegExp(`^##\\s+${heading}[^\\n]*\\n([\\s\\S]+?)(?=\\n##\\s|\\n---|\\Z)`, 'm');
+    const m = text.match(re);
+    if (!m) continue;
+    const body = m[1];
+    const subs = body.split(/\n###\s+/).slice(1);
+    for (const s of subs) {
+      const title = s.split('\n')[0].trim();
+      if (!title || /^[—\-_]+$/.test(title)) continue;
+      const status =
+        (s.match(/-\s*\*\*Status:\*\*\s*([A-Z_]+)/) || [, defaultStatus || ''])[1] || defaultStatus;
+      if (!status) continue;
+      const affects = (s.match(/-\s*\*\*Affects:\*\*\s*(.+)/) || [, ''])[1].trim();
+      const note = (s.match(/-\s*\*\*Note:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
+      const next = (s.match(/-\s*\*\*Owner-suggested next action:\*\*\s*(.+)/) || [, ''])[1].trim();
+      notes.push({ title, status, affects, note, next });
+    }
   }
+
   const byStatus = { NEW: [], ACKNOWLEDGED: [], APPLIED: [], DEFERRED: [] };
   for (const n of notes) {
     if (byStatus[n.status]) byStatus[n.status].push(n);
@@ -534,7 +573,15 @@ const json = {
     generated_from: [
       'handoff/execution-state/*.md',
       'handoff/workflow-maps/*.md',
+      'handoff/owner-input/INDEX.md',
+      'handoff/owner-input/pending-notes.md',
+      'handoff/owner-input/pending-approvals.md',
+      'handoff/owner-input/active-slice.md',
+      'handoff/owner-input/change-history.md',
+      'handoff/feature-queue/INDEX.md',
       'handoff/STATUS.md',
+      'handoff/NEXT_SESSION.md',
+      'handoff/README.md',
     ],
   },
   personas: Object.fromEntries(

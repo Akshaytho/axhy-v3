@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T14:36:32.918Z</strong></span>
-      <span>Commit <code>f9fbe683</code></span>
+      <span>Generated <strong>2026-05-15T14:52:38.602Z</strong></span>
+      <span>Commit <code>0445110f</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
-      <span>Active slice: <strong>Layer 1 implementation — routing slice paused for execution-state tracker</strong></span>
+      <span>Active slice: <strong>handoff-control-loop · AWAITING_APPROVAL</strong></span>
       
     </div>
   </header>
@@ -130,21 +130,13 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>handoff-control-loop</code></td></tr><tr><th>Status</th><td><span class="badge" style="background:#1a73e8;color:#fff;">WIP</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Latest commit</th><td>(pending — this slice not yet committed)</td></tr><tr><th>Workflow IDs affected</th><td>none directly (meta-slice — builds the control surface around all 29 workflows)</td></tr><tr><th>Personas affected</th><td>all four (control surface is persona-spanning)</td></tr><tr><th>Files being changed</th><td><code>handoff/owner-input/*</code> (new), <code>handoff/feature-queue/*</code> (new), <code>handoff/scripts/build-handoff-artifacts.mjs</code> (extended), <code>handoff/execution-state/INDEX.md</code>, <code>handoff/README.md</code>, <code>handoff/NEXT_SESSION.md</code>, <code>.husky/pre-commit</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">N/A (docs + tooling only)</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">LOCAL (generator runs; outputs valid)</span></td></tr><tr><th>Started at</th><td>2026-05-15 evening</td></tr><tr><th>Expected next state</th><td><code>AWAITING_APPROVAL</code> after surface</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>handoff-control-loop</code></td></tr><tr><th>Status</th><td><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Latest commit</th><td><code>0445110</code> <code>fix(handoff): stale-detection uses file mtimes — survives pre-commit timing</code></td></tr><tr><th>Slice commits</th><td><code>f9fbe68</code> (control loop) + <code>0445110</code> (stale-fix) + the verification-fix commit landing now</td></tr><tr><th>Workflow IDs affected</th><td>none directly (meta-slice — builds the control surface around all 29 workflows)</td></tr><tr><th>Personas affected</th><td>all four (control surface is persona-spanning)</td></tr><tr><th>Files changed</th><td><code>handoff/owner-input/*</code> (new), <code>handoff/feature-queue/*</code> (new), <code>handoff/scripts/build-handoff-artifacts.mjs</code> (extended), <code>handoff/execution-state/INDEX.md</code>, <code>handoff/README.md</code>, <code>handoff/NEXT_SESSION.md</code>, <code>.husky/pre-commit</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">N/A (docs + tooling only)</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">LOCAL — generator runs clean; outputs valid; 0 STALE markers; friend's 4 verification-pass bugs all fixed (template-as-note, header-vs-callout disagreement, stale active-slice content, incomplete generated_from metadata)</span></td></tr><tr><th>Started at</th><td>2026-05-15 evening</td></tr><tr><th>Expected next state</th><td><code>APPROVED</code> — when owner writes that word for the <code>handoff-control-loop</code> item in <code>pending-approvals.md</code>. Then F-001 routing slice unblocks.</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
     <h2>📝 Owner notes</h2>
-    <div class="note-banner urgent">⚠ 1 NEW owner note — must be acknowledged before any slice starts (rule 16 + 21).</div>
+    <div class="note-banner ok">No NEW owner notes. Confirm at session start: "0 NEW notes" (rule 21).</div>
     
-    <h3>NEW — needs acknowledgment (1)</h3>
-    
-      <div class="note">
-        <div class="note-head"><span class="badge" style="background:#e53935;color:#fff;">NEW</span> <strong>YYYY-MM-DD HH:MM — Short title</strong></div>
-        <p class="small"><strong>Affects:</strong> workflow IDs / personas / slice names</p>
-        <p>(free-form — what you want, what bothers you, what to change)</p>
-        <p class="small"><strong>Owner-suggested next:</strong> (optional — what you'd want Claude to do)</p>
-      </div>
     
     
     
@@ -168,13 +160,13 @@
         <p class="small"><strong>Owner decision:</strong> <em>_empty — needs explicit APPROVED / CHANGES_REQUESTED / HOLD once control-loop ships_</em></p>
       </div>
       <div class="approval">
-        <div class="approval-head"><span class="badge" style="background:#1a73e8;color:#fff;">WIP</span> <strong><code>handoff-control-loop</code></strong></div>
+        <div class="approval-head"><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span> <strong><code>handoff-control-loop</code></strong></div>
         <p class="small"><strong>Branch:</strong> <code>feat/layer-1-core-primitives</code></p>
-        
-        
-        
-        
-        <p class="small"><strong>Owner decision:</strong> <em>_empty — will move to AWAITING_APPROVAL after surface_</em></p>
+        <p class="small"><strong>WIP commit:</strong> <code>0445110</code></p>
+        <p class="small"><strong>Workflows affected:</strong> none directly (control surface, spans all 29)</p>
+        <p><strong>Built:</strong> <code>handoff/owner-input/</code> (6 files) + <code>handoff/feature-queue/INDEX.md</code> + generator parses + renders 5 new HTML sections (Current Slice / Notes / Approvals / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's 4 verification-pass fixes (template not parsed as live note, header agrees with callout on active-slice, active-slice.md reflects current commits, generated_from metadata complete).</p>
+        <p><strong>Not done:</strong> Nothing in scope; friend's bug list is fully addressed. Routing slice F-001 stays BLOCKED until this one is APPROVED.</p>
+        <p class="small"><strong>Owner decision:</strong> <em>_empty — write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code>_</em></p>
       </div>
   </section>
     
