@@ -5,21 +5,34 @@
  *   - `createProposedDecision`  — chat extractor writes a PROPOSED row inside
  *                                  the same tx as the assistant chat message
  *   - `applyProposedDecision`   — `/chat/apply` transitions PROPOSED → APPLIED
+ *                                  via race-safe conditional updateMany
  *   - `dismissProposedDecision` — `POST /decisions/:id/dismiss` transitions
- *                                  PROPOSED → DISMISSED
+ *                                  PROPOSED → DISMISSED via race-safe updateMany
  *
  * State discriminator (per F-002 scope Q4=(b), no state ENUM yet):
  *   PROPOSED  → (appliedAt IS NULL  AND dismissedAt IS NULL)
  *   APPLIED   → (appliedAt IS NOT NULL)
  *   DISMISSED → (dismissedAt IS NOT NULL)
- *   appliedAt + dismissedAt are mutually exclusive — enforced at the
- *   application layer via guards in apply/dismiss.
+ *   appliedAt + dismissedAt mutually exclusive — enforced by DB CHECK
+ *   constraint (migration 20260518) AND by conditional updateMany (this file).
+ *
+ * Concurrency model (rule P2, F-002.3 race fix):
+ *   The transition operations DO NOT do `findUnique → check → update`. They
+ *   use a SINGLE `updateMany` with the precondition in the WHERE clause:
+ *     UPDATE WHERE id=? AND companyId=? AND appliedAt IS NULL AND dismissedAt IS NULL
+ *   PostgreSQL row-level locking ensures only one of two concurrent UPDATEs
+ *   for the same row matches the predicate (the second waits for the first
+ *   to commit, then re-evaluates the WHERE — which now fails because the
+ *   first transaction set one of the columns). The Prisma return `count` is
+ *   the race-detection signal: count=1 means we won, count=0 means we lost.
+ *   Research: https://www.postgresql.org/docs/current/transaction-iso.html
  *
  * Authorization (per F-002 scope §3b + §3c):
- *   - Binding-routable kinds (MARK_ABSENT, APPROVE_LEAVE, LOG_COMPLAINT) → the
- *     **currently responsible supervisor** at the routed site/worker, derived
- *     via F-001's `getEffectiveResponsibleUserId` + `deriveWorkerPrimarySiteId`.
- *   - All other kinds → the **original supervisor** (`SupervisorDecision.supervisorId`).
+ *   Driven by DECISION_KIND_REGISTRY's routingMode:
+ *     - 'worker-targeted' or 'site-targeted' → currently responsible supervisor
+ *       at the routed site via F-001's helpers.
+ *     - 'origin-only' → original supervisorId on the row.
+ *   Single source of truth: shared-schema's DECISION_KIND_REGISTRY (F-002.1).
  *
  * SINGLE SOURCE OF TRUTH for SupervisorDecision lifecycle. Do not write to the
  * row directly outside this module unless you are writing this module.
@@ -28,11 +41,20 @@
  * @derives(master-plan §G) — HR control plane / responsibility model
  * Linked specs (not parsed by the require-derives ESLint rule):
  *   - F-002 scope §3a + §3b + §3c
+ *   - F-002 remediation §Fix 3 + §Fix 4 (race-safe + registry-driven)
  *   - workflow-design-closure §3.2 — SupervisorDecision lifecycle
  *   - supervisor-responsibility-model §5.4 — PROPOSED follows new responsible
+ *   - production-grade-rulebook P1 (invariants enforced) + P2 (no check-then-act)
  */
 
 import type { Prisma } from '@prisma/client';
+import {
+  decisionSpecByKind,
+  decisionSpecByToolName,
+  isBindingRoutable,
+  type DwiTier,
+  type RoutingMode,
+} from '@axhy/shared-schema';
 
 import { recordDwiProposed, recordDwiApplied, recordDwiDismissed } from './audit-event.js';
 import {
@@ -41,50 +63,11 @@ import {
   getEffectiveResponsibleUserId,
 } from './effective-responsibility.js';
 
-/** @derives(workflow-design-closure §3.2 — SupervisorDecision.tier enum) */
-export type DwiTier = 'NOTE' | 'OPERATIONAL' | 'PERSONNEL' | 'EMPLOYMENT';
-
-/**
- * Tool name → DWI metadata mapping. The chat extractor's `propose_*` tools
- * map onto SupervisorDecision rows via this table. Unknown tool names are
- * silently skipped (createProposedDecision returns null) — this keeps the
- * chat layer forwards-compatible with new propose_* tools that may not yet
- * have a DWI semantic.
- *
- * @derives(F-002 scope §3a)
- */
-const TOOL_TO_DWI: Record<
-  string,
-  { kind: string; tier: DwiTier; targetField: '' | 'workerId' | 'siteId' }
-> = {
-  propose_mark_absent: { kind: 'MARK_ABSENT', tier: 'OPERATIONAL', targetField: 'workerId' },
-  propose_leave: { kind: 'APPROVE_LEAVE', tier: 'OPERATIONAL', targetField: 'workerId' },
-  propose_swap: { kind: 'SWAP_WORKER', tier: 'OPERATIONAL', targetField: 'siteId' },
-  propose_termination: { kind: 'TERMINATE_WORKER', tier: 'EMPLOYMENT', targetField: 'workerId' },
-  propose_create_assignment: {
-    kind: 'CREATE_ASSIGNMENT',
-    tier: 'OPERATIONAL',
-    targetField: 'workerId',
-  },
-  propose_living_doc_update: { kind: 'LIVING_DOC_RULE', tier: 'NOTE', targetField: '' },
-};
-
-/**
- * F-001's "kind sets" replicated here as the authorization predicate. These
- * mirror WORKER_TARGETED_KINDS + SITE_TARGETED_KINDS in
- * `apps/backend/src/routes/decisions.ts`. Kept in sync manually until a shared
- * constants module makes sense.
- */
-const WORKER_TARGETED_KINDS = new Set(['MARK_ABSENT', 'APPROVE_LEAVE']);
-const SITE_TARGETED_KINDS = new Set(['LOG_COMPLAINT']);
-
-/** Returns true iff the kind is routed via the F-001 binding-aware predicate. */
-function isBindingRoutable(kind: string): boolean {
-  return WORKER_TARGETED_KINDS.has(kind) || SITE_TARGETED_KINDS.has(kind);
-}
+export type { DwiTier } from '@axhy/shared-schema';
 
 // ===========================================================================
-// createProposedDecision — F-002 §3a
+// createProposedDecision — F-002 §3a (unchanged from pre-remediation except
+// for registry-driven tool lookup)
 // ===========================================================================
 
 /** @derives(F-002 scope §3a) */
@@ -115,48 +98,47 @@ export type CreateProposedDecisionResult = {
 /**
  * Creates a PROPOSED SupervisorDecision row inside the caller's transaction.
  *
- * Returns `null` when `toolName` has no DWI mapping (unknown propose_* tool) —
- * callers may choose to log a warning but should not throw.
+ * Tool → kind mapping is sourced from DECISION_KIND_REGISTRY (F-002.1). Unknown
+ * tool names return null (caller may log; no row, no audit, no throw).
  *
- * proposedDuringAbsence detection (per F-002 scope Q5):
- *   - For binding-routable targets, derive the site, look up the effective
- *     binding via F-001's helper, and set true iff binding.kind === 'ACTING'
- *     AND binding.actingForUserId === supervisorId (i.e., the originator
- *     is currently being covered by someone else acting for them).
- *   - Otherwise false.
+ * proposedDuringAbsence (Q5): true iff effective binding for the routed site
+ * is ACTING with actingForUserId === originator.
  *
- * originContext (per F-002 scope Q1=b, best-effort capture):
- *   Captures the chat thread/message ids + tool fields + a capture timestamp.
- *   Not a typed schema yet; HR portal + Activity tab consumers should
- *   defensive-parse. Closure §3 names richer components (recent decisions,
- *   worker history) — deferred to a separate slice.
+ * originContext (Q1=b best-effort): chat ids + tool fields + capturedAt. Open
+ * shape; consumers must defensive-parse.
  *
  * @derives(F-002 scope §3a, §7-Q1, §7-Q5)
+ * @derives(F-002.1 — registry-driven tool lookup)
  * @derives(workflow-design-closure §3.2)
  */
 export async function createProposedDecision(
   tx: Prisma.TransactionClient,
   input: CreateProposedDecisionInput,
 ): Promise<CreateProposedDecisionResult | null> {
-  const mapping = TOOL_TO_DWI[input.toolName];
-  if (!mapping) return null;
+  const spec = decisionSpecByToolName.get(input.toolName);
+  if (!spec) return null;
 
+  // Determine target field based on routing mode (drives both targetId pull
+  // and proposedDuringAbsence detection).
+  const targetField: 'workerId' | 'siteId' | null =
+    spec.routingMode === 'worker-targeted'
+      ? 'workerId'
+      : spec.routingMode === 'site-targeted'
+        ? 'siteId'
+        : null;
   const targetId =
-    mapping.targetField === ''
-      ? null
-      : ((input.fields[mapping.targetField] as string | undefined) ?? null);
-  const ackRequired = mapping.tier === 'EMPLOYMENT';
+    targetField === null ? null : ((input.fields[targetField] as string | undefined) ?? null);
 
   // proposedDuringAbsence — only meaningful when we can route to a site.
   let proposedDuringAbsence = false;
   let routedSiteId: string | null = null;
   if (targetId) {
-    if (mapping.targetField === 'workerId') {
+    if (targetField === 'workerId') {
       routedSiteId = await deriveWorkerPrimarySiteId(tx, {
         companyId: input.companyId,
         workerId: targetId,
       });
-    } else if (mapping.targetField === 'siteId') {
+    } else if (targetField === 'siteId') {
       routedSiteId = targetId;
     }
   }
@@ -170,8 +152,6 @@ export async function createProposedDecision(
     }
   }
 
-  // Best-effort originContext (Q1=b). Field shape is intentionally open and
-  // consumers must defensive-parse. Add richer components in a later slice.
   const originContext = {
     sourceChatThreadId: input.threadId,
     sourceChatMessageId: input.assistantMessageId,
@@ -184,11 +164,11 @@ export async function createProposedDecision(
       id: input.decisionId,
       companyId: input.companyId,
       supervisorId: input.supervisorId,
-      kind: mapping.kind,
-      tier: mapping.tier,
+      kind: spec.kind,
+      tier: spec.tier,
       targetId,
       payload: input.fields as Prisma.InputJsonValue,
-      ackRequired,
+      ackRequired: spec.ackRequired,
       proposedDuringAbsence,
       originContext: originContext as Prisma.InputJsonValue,
       appliedAt: null,
@@ -200,11 +180,11 @@ export async function createProposedDecision(
     actorId: input.supervisorId,
     payload: {
       decisionId: input.decisionId,
-      kind: mapping.kind,
-      tier: mapping.tier,
+      kind: spec.kind,
+      tier: spec.tier,
       targetId,
       proposedDuringAbsence,
-      ackRequired,
+      ackRequired: spec.ackRequired,
       sourceChatThreadId: input.threadId,
       sourceChatMessageId: input.assistantMessageId,
     },
@@ -212,18 +192,18 @@ export async function createProposedDecision(
 
   return {
     decisionId: input.decisionId,
-    kind: mapping.kind,
-    tier: mapping.tier,
+    kind: spec.kind,
+    tier: spec.tier,
     targetId,
     proposedDuringAbsence,
   };
 }
 
 // ===========================================================================
-// Shared authorization predicate for apply + dismiss
+// Shared error type for apply + dismiss
 // ===========================================================================
 
-/** @derives(F-002 scope §3b + §3c — typed error codes for apply/dismiss guards) */
+/** @derives(F-002 scope §3b + §3c) */
 export type LifecycleErrorCode =
   | 'NOT_FOUND'
   | 'CROSS_TENANT'
@@ -242,15 +222,20 @@ export class LifecycleError extends Error {
   }
 }
 
+// ===========================================================================
+// Authorization helper — derives from DECISION_KIND_REGISTRY routingMode
+// ===========================================================================
+
 /**
- * Returns true iff `actorUserId` is allowed to apply/dismiss this row.
+ * Returns true iff `actorUserId` is allowed to transition this row.
  *
- * Binding-routable kinds → must be the currently responsible supervisor.
- * Non-binding-routable kinds → must be the original supervisorId.
+ *   - routingMode 'worker-targeted' → resolve worker → primary site → effective binding
+ *   - routingMode 'site-targeted'   → effective binding on targetId directly
+ *   - routingMode 'origin-only'     → original supervisorId equals actor
  *
- * If a worker-targeted DWI's worker has no derivable site (deriveWorkerPrimarySiteId
- * returns null), we fall back to origin-supervisor authorization — this matches
- * F-001's behaviour on the read side.
+ * For binding-routable kinds with a worker that has no derivable site, falls
+ * back to origin-supervisor — matches F-001's read-side fallback (the row
+ * couldn't be routed, so the original supervisor is the only available actor).
  */
 async function isCallerAuthorized(
   tx: Prisma.TransactionClient,
@@ -258,32 +243,64 @@ async function isCallerAuthorized(
   actorUserId: string,
   companyId: string,
 ): Promise<boolean> {
-  if (isBindingRoutable(row.kind) && row.targetId) {
-    let siteId: string | null = null;
-    if (WORKER_TARGETED_KINDS.has(row.kind)) {
-      siteId = await deriveWorkerPrimarySiteId(tx, {
-        companyId,
-        workerId: row.targetId,
-      });
-    } else if (SITE_TARGETED_KINDS.has(row.kind)) {
-      siteId = row.targetId;
-    }
+  const spec = decisionSpecByKind.get(row.kind);
+  const routingMode: RoutingMode = spec?.routingMode ?? 'origin-only';
+
+  if (routingMode === 'worker-targeted' && row.targetId) {
+    const siteId = await deriveWorkerPrimarySiteId(tx, {
+      companyId,
+      workerId: row.targetId,
+    });
     if (!siteId) {
-      // Can't route — fall back to origin supervisor.
+      // Can't derive site → fall back to origin.
       return row.supervisorId === actorUserId;
     }
-    const responsibleUserId = await getEffectiveResponsibleUserId(tx, {
-      companyId,
-      siteId,
-    });
-    return responsibleUserId === actorUserId;
+    const responsible = await getEffectiveResponsibleUserId(tx, { companyId, siteId });
+    return responsible === actorUserId;
   }
-  // Non-binding-routable kinds: origin supervisor only.
+
+  if (routingMode === 'site-targeted' && row.targetId) {
+    const responsible = await getEffectiveResponsibleUserId(tx, {
+      companyId,
+      siteId: row.targetId,
+    });
+    return responsible === actorUserId;
+  }
+
+  // 'origin-only' or no targetId on a binding-routable kind → origin supervisor.
   return row.supervisorId === actorUserId;
 }
 
 // ===========================================================================
-// applyProposedDecision — F-002 §3b
+// Race-safe state transitions via conditional updateMany
+// ===========================================================================
+
+/**
+ * Discriminator query when a conditional UPDATE returns 0 rows. Reads the
+ * current row state ONCE to map to the right LifecycleErrorCode. Called
+ * only on the failure path, so the extra read is amortised.
+ */
+async function discriminateFailure(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+  decisionId: string,
+): Promise<LifecycleErrorCode> {
+  const row = await tx.supervisorDecision.findUnique({ where: { id: decisionId } });
+  if (!row) return 'NOT_FOUND';
+  if (row.companyId !== companyId) return 'CROSS_TENANT';
+  if (row.appliedAt) return 'ALREADY_APPLIED';
+  if (row.dismissedAt) return 'ALREADY_DISMISSED';
+  // Row is still PROPOSED but UPDATE-count was 0 — only remaining cause is
+  // an authorization mismatch (the WHERE included a tenant+precondition; if
+  // we got here without one of the above, the row passed those checks).
+  // Note: in the current implementation we run the authorization check BEFORE
+  // the conditional UPDATE, so an unauthorized actor returns 'NOT_RESPONSIBLE'
+  // up there. If we ever inline auth into the WHERE, this default catches it.
+  return 'NOT_RESPONSIBLE';
+}
+
+// ===========================================================================
+// applyProposedDecision — F-002 §3b + race-safe rewrite (F-002.3)
 // ===========================================================================
 
 /** @derives(F-002 scope §3b) */
@@ -305,14 +322,27 @@ export type ApplyProposedDecisionResult = {
 };
 
 /**
- * Transitions PROPOSED → APPLIED inside the caller's transaction. The caller
- * is expected to do the domain write (mark_absent / leave / etc.) in the
- * SAME transaction — the lifecycle update + domain write together form one
- * atomic apply.
+ * Transitions PROPOSED → APPLIED via race-safe conditional updateMany.
  *
- * Throws `LifecycleError` for guard failures; caller maps error.code to HTTP.
+ * Sequence (rule P2 — no check-then-act):
+ *   1. Read row once for authorization + payload return. Throw early on
+ *      NOT_FOUND / CROSS_TENANT / ALREADY_APPLIED / ALREADY_DISMISSED /
+ *      NOT_RESPONSIBLE — these are observable from a stale read and avoid
+ *      a needless UPDATE round-trip.
+ *   2. Issue updateMany with the FULL precondition in WHERE: `id`, `companyId`,
+ *      `appliedAt IS NULL`, `dismissedAt IS NULL`. PG row-level locking
+ *      guarantees exactly one of N concurrent transactions wins.
+ *   3. If count === 0: another transaction got there first. Discriminate the
+ *      cause via a single re-read.
+ *   4. If count === 1: emit DWI_APPLIED audit and return.
+ *
+ * Callers may run this inside their own outer transaction (propose_termination
+ * does this — its tx wraps applyProposedDecision + the worker.update). The
+ * race-safety property is per-row, so outer-tx vs no-outer-tx both work.
  *
  * @derives(F-002 scope §3b)
+ * @derives(F-002.3 — race-safe rewrite via updateMany)
+ * @derives(production-grade-rulebook P2)
  * @derives(workflow-design-closure §3.2)
  */
 export async function applyProposedDecision(
@@ -336,10 +366,23 @@ export async function applyProposedDecision(
   if (!authorized) throw new LifecycleError('NOT_RESPONSIBLE');
 
   const appliedAt = new Date();
-  await tx.supervisorDecision.update({
-    where: { id: row.id },
+
+  // Race-safe conditional UPDATE. PG row-lock + WHERE re-evaluation guarantee
+  // exactly one of concurrent requests wins. See module docstring.
+  const result = await tx.supervisorDecision.updateMany({
+    where: {
+      id: row.id,
+      companyId: input.companyId,
+      appliedAt: null,
+      dismissedAt: null,
+    },
     data: { appliedAt },
   });
+
+  if (result.count === 0) {
+    const code = await discriminateFailure(tx, input.companyId, input.decisionId);
+    throw new LifecycleError(code);
+  }
 
   await recordDwiApplied(tx, {
     companyId: input.companyId,
@@ -366,7 +409,7 @@ export async function applyProposedDecision(
 }
 
 // ===========================================================================
-// dismissProposedDecision — F-002 §3c
+// dismissProposedDecision — F-002 §3c + race-safe rewrite (F-002.3)
 // ===========================================================================
 
 /** @derives(F-002 scope §3c) */
@@ -387,14 +430,12 @@ export type DismissProposedDecisionResult = {
 };
 
 /**
- * Transitions PROPOSED → DISMISSED inside the caller's transaction. Records
- * `dismissedAt` + `dismissedReason` and emits DWI_DISMISSED.
- *
- * Authorization is identical to apply (the currently-responsible supervisor
- * for binding-routable kinds, original supervisor otherwise).
+ * Transitions PROPOSED → DISMISSED via race-safe conditional updateMany.
+ * Identical race-safety mechanism to applyProposedDecision.
  *
  * @derives(F-002 scope §3c)
- * @derives(workflow-design-closure §3.2)
+ * @derives(F-002.3 — race-safe rewrite via updateMany)
+ * @derives(production-grade-rulebook P2)
  */
 export async function dismissProposedDecision(
   tx: Prisma.TransactionClient,
@@ -417,10 +458,21 @@ export async function dismissProposedDecision(
   if (!authorized) throw new LifecycleError('NOT_RESPONSIBLE');
 
   const dismissedAt = new Date();
-  await tx.supervisorDecision.update({
-    where: { id: row.id },
+
+  const result = await tx.supervisorDecision.updateMany({
+    where: {
+      id: row.id,
+      companyId: input.companyId,
+      appliedAt: null,
+      dismissedAt: null,
+    },
     data: { dismissedAt, dismissedReason: input.reason },
   });
+
+  if (result.count === 0) {
+    const code = await discriminateFailure(tx, input.companyId, input.decisionId);
+    throw new LifecycleError(code);
+  }
 
   await recordDwiDismissed(tx, {
     companyId: input.companyId,
@@ -444,3 +496,7 @@ export async function dismissProposedDecision(
     originalSupervisorId: row.supervisorId,
   };
 }
+
+// Re-export for callers that need the predicate (kept here for legacy importers;
+// new code should import directly from @axhy/shared-schema).
+export { isBindingRoutable };
