@@ -42,8 +42,24 @@ import { loadCalendarTier3 } from '../lib/calendar-context.js';
 import {
   createProposedDecision,
   applyProposedDecision,
+  preCheckApply,
+  commitApply,
   LifecycleError,
+  type ApplyPreCheckResult,
+  type LifecycleErrorCode,
 } from '../lib/supervisor-decision-writer.js';
+
+/**
+ * Map a LifecycleError code to its HTTP status. Shared between the apply
+ * pre-check failure (before domain inject) and the commit failure (after
+ * domain inject, race-lost).
+ * @derives(F-002.4 — apply-after-domain HTTP mapping)
+ */
+function httpStatusForLifecycleCode(code: LifecycleErrorCode): number {
+  if (code === 'NOT_FOUND' || code === 'CROSS_TENANT') return 404;
+  if (code === 'NOT_RESPONSIBLE') return 403;
+  return 409;
+}
 
 /**
  * Stripped system prompt — moved per-tool guidance into each tool's
@@ -724,43 +740,96 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    // F-002 §3b: transition PROPOSED → APPLIED before the domain write when
-    // the client supplied a decisionId. If the lifecycle guards fail (NOT_FOUND,
-    // CROSS_TENANT, ALREADY_APPLIED, ALREADY_DISMISSED, NOT_RESPONSIBLE), bail
-    // before any domain write. If the client did not supply decisionId (pre-F-002
-    // mobile clients), proceed without lifecycle update — back-compat path.
+    // Capture the parsed payload at the outer scope so inner closures keep
+    // the discriminated-union narrowing on `parsed.success === true`.
+    const body = parsed.data;
+
+    // F-002.4 — apply-after-domain (production-grade rule P3).
     //
-    // Known limitation: for inject-style tools (mark_absent / leave / swap /
-    // create_assignment / living_doc_update) the lifecycle commit and the
-    // domain inject are in separate transactions. If the domain inject fails
-    // AFTER the lifecycle commits, the row will be in APPLIED state with no
-    // domain effect — an orphan APPLIED row. The audit trail still tells the
-    // truth: DWI_APPLIED present, downstream domain audit absent. Acceptable
-    // for F-002 MVP; a future refactor can extract the domain logic to be
-    // tx-shareable. propose_termination already does this correctly (its tx
-    // includes both the lifecycle transition and the worker.update).
-    if (parsed.data.decisionId && parsed.data.toolName !== 'propose_termination') {
+    // For inject-style tools (mark_absent / leave / swap / create_assignment /
+    // living_doc_update), the apply flow is:
+    //   1. preCheckApply (tx 1) — auth + early-fail observable guards. If this
+    //      throws, no domain side-effect happens. Returns 4xx; row stays PROPOSED.
+    //   2. Domain inject — the existing `app.inject` to the route.
+    //   3. If inject returned 2xx → commitApply (tx 2) — race-safe conditional
+    //      UPDATE to set appliedAt. If a concurrent dismiss won the race in the
+    //      window between (1) and (3), commitApply throws ALREADY_DISMISSED;
+    //      the lifecycle audit only contains DWI_DISMISSED (the winner). The
+    //      domain effect from step 2 already happened and is recorded in the
+    //      domain's own audit trail (e.g., WORKER_MARKED_ABSENT). This
+    //      asymmetry is intentional under apply-after-domain (rule P3 trade-off).
+    //   4. If inject returned non-2xx → no commit; row stays PROPOSED. Caller
+    //      sees the domain error and can retry or dismiss.
+    //
+    // propose_termination is special — its tx wraps both the lifecycle update
+    // (via applyProposedDecision) and the worker.update, so it's fully atomic
+    // in a single transaction. We do NOT use the split pattern for it.
+    let applyPreCheck: ApplyPreCheckResult | null = null;
+    if (parsed.data.toolName !== 'propose_termination') {
       try {
-        await withTenantContext(prisma, auth.companyId, async (tx) =>
-          applyProposedDecision(tx, {
+        applyPreCheck = await withTenantContext(prisma, auth.companyId, async (tx) =>
+          preCheckApply(tx, {
             companyId: auth.companyId,
-            decisionId: parsed.data.decisionId!,
+            decisionId: parsed.data.decisionId,
             actorUserId: auth.userId,
           }),
         );
       } catch (err) {
         if (err instanceof LifecycleError) {
-          const httpStatus =
-            err.code === 'NOT_FOUND' || err.code === 'CROSS_TENANT'
-              ? 404
-              : err.code === 'NOT_RESPONSIBLE'
-                ? 403
-                : 409;
-          reply.code(httpStatus).send({ error: err.code });
+          reply.code(httpStatusForLifecycleCode(err.code)).send({ error: err.code });
           return;
         }
         throw err;
       }
+    }
+
+    /**
+     * After a successful (2xx) domain inject, commit the lifecycle UPDATE
+     * race-safely. If the conditional UPDATE returns 0 rows, a concurrent
+     * dismiss won — we return 409. The inject's response body is still
+     * available to the caller via the domain audit trail.
+     */
+    async function commitAfterDomain(): Promise<
+      { ok: true } | { ok: false; httpStatus: number; error: string }
+    > {
+      if (!applyPreCheck) return { ok: true }; // never happens for non-termination; guard for type-narrowing
+      try {
+        await withTenantContext(prisma, auth!.companyId, async (tx) =>
+          commitApply(tx, {
+            companyId: auth!.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth!.userId,
+            preCheck: applyPreCheck!,
+          }),
+        );
+        return { ok: true };
+      } catch (err) {
+        if (err instanceof LifecycleError) {
+          return { ok: false, httpStatus: httpStatusForLifecycleCode(err.code), error: err.code };
+        }
+        throw err;
+      }
+    }
+
+    /**
+     * Helper: forward an inject response, and on 2xx run the lifecycle commit.
+     * If commit fails (race lost), return the commit error instead of the
+     * domain response. The domain effect already happened; the audit trail
+     * reflects that separately.
+     */
+    async function forwardWithCommit(inner: Awaited<ReturnType<typeof app.inject>>): Promise<void> {
+      const isSuccess = inner.statusCode >= 200 && inner.statusCode < 300;
+      if (!isSuccess) {
+        // Domain failed → no lifecycle commit; row stays PROPOSED.
+        reply.code(inner.statusCode).send(inner.json());
+        return;
+      }
+      const commit = await commitAfterDomain();
+      if (!commit.ok) {
+        reply.code(commit.httpStatus).send({ error: commit.error });
+        return;
+      }
+      reply.code(inner.statusCode).send(inner.json());
     }
 
     if (parsed.data.toolName === 'propose_create_assignment') {
@@ -770,7 +839,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         headers: { authorization: req.headers.authorization! },
         payload: parsed.data.toolInput,
       });
-      reply.code(inner.statusCode).send(inner.json());
+      await forwardWithCommit(inner);
       return;
     }
 
@@ -794,7 +863,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           ...(reasonStr ? { reason: reasonStr } : {}),
         },
       });
-      reply.code(inner.statusCode).send(inner.json());
+      await forwardWithCommit(inner);
       return;
     }
 
@@ -821,7 +890,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           reason: reasonStr,
         },
       });
-      reply.code(inner.statusCode).send(inner.json());
+      await forwardWithCommit(inner);
       return;
     }
 
@@ -832,7 +901,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         headers: { authorization: req.headers.authorization! },
         payload: parsed.data.toolInput,
       });
-      reply.code(inner.statusCode).send(inner.json());
+      await forwardWithCommit(inner);
       return;
     }
 
@@ -848,23 +917,24 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         reason: string;
         reasonDetail?: string;
       };
-      // F-002 §3b: when decisionId is provided, transition PROPOSED → APPLIED
-      // inside the SAME tx as the worker.update — true atomicity for the
-      // termination flow (the only /chat/apply branch that doesn't use inject).
+      // F-002 §3b: transition PROPOSED → APPLIED inside the SAME tx as the
+      // worker.update — fully atomic for the termination flow. If
+      // applyProposedDecision throws (lifecycle guard failure), the whole tx
+      // rolls back and the worker.update never happens. If the worker.update
+      // fails, the lifecycle transition rolls back with it.
+      // F-002.5: decisionId is now required (Zod-enforced); no conditional check.
       const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-        if (parsed.data.decisionId) {
-          try {
-            await applyProposedDecision(tx, {
-              companyId: auth.companyId,
-              decisionId: parsed.data.decisionId,
-              actorUserId: auth.userId,
-            });
-          } catch (err) {
-            if (err instanceof LifecycleError) {
-              return { kind: 'LIFECYCLE_ERROR' as const, code: err.code };
-            }
-            throw err;
+        try {
+          await applyProposedDecision(tx, {
+            companyId: auth.companyId,
+            decisionId: parsed.data.decisionId,
+            actorUserId: auth.userId,
+          });
+        } catch (err) {
+          if (err instanceof LifecycleError) {
+            return { kind: 'LIFECYCLE_ERROR' as const, code: err.code };
           }
+          throw err;
         }
         const w = await tx.worker.findFirst({
           where: { id: wid, companyId: auth.companyId },
@@ -945,7 +1015,25 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       // `axhy.current_company_id` is set inside the tx → RLS policies fire.
       // Panel-flagged Tier-1 fix; `persistChatTurn` (line ~146) was wrapped
       // in the same commit so every chat-route transaction is now scoped.
-      const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
+      //
+      // F-002.4 — fully atomic apply for living-doc: the DWI lifecycle
+      // transition and the LivingDoc write share one transaction. Same
+      // atomicity guarantee as propose_termination. If applyProposedDecision
+      // throws (lifecycle guard failure) or the LivingDoc write throws, the
+      // whole tx rolls back; neither effect happens.
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        try {
+          await applyProposedDecision(tx, {
+            companyId: auth.companyId,
+            decisionId: body.decisionId,
+            actorUserId: auth.userId,
+          });
+        } catch (err) {
+          if (err instanceof LifecycleError) {
+            return { kind: 'LIFECYCLE_ERROR' as const, code: err.code };
+          }
+          throw err;
+        }
         // Upsert ensures the row exists (matches getLivingDoc behavior;
         // first-time supervisors won't have a row yet).
         const doc = await tx.livingDoc.upsert({
@@ -979,9 +1067,13 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             version: updated.version,
           },
         });
-        return { ruleId, version: updated.version };
+        return { kind: 'OK' as const, ruleId, version: updated.version };
       });
-      reply.code(200).send(result);
+      if (out.kind === 'LIFECYCLE_ERROR') {
+        reply.code(httpStatusForLifecycleCode(out.code)).send({ error: out.code });
+        return;
+      }
+      reply.code(200).send({ ruleId: out.ruleId, version: out.version });
       return;
     }
 

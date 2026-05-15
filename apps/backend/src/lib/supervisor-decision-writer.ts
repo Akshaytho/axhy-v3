@@ -322,6 +322,119 @@ export type ApplyProposedDecisionResult = {
 };
 
 /**
+ * Pre-check result that callers thread through `commitApply` so the audit
+ * payload uses the row state observed at auth-check time (not a fresh read
+ * after the conditional UPDATE).
+ * @derives(F-002.4 — apply-after-domain split)
+ */
+export type ApplyPreCheckResult = {
+  decisionId: string;
+  kind: string;
+  tier: DwiTier;
+  targetId: string | null;
+  originalSupervisorId: string;
+  payload: Prisma.JsonValue;
+};
+
+/**
+ * Pre-check half of applyProposedDecision: reads the row, verifies tenant +
+ * lifecycle guards + authorization. Throws LifecycleError on any failure;
+ * returns the row's auditable fields on success.
+ *
+ * Used by `/chat/apply` inject-style branches for apply-after-domain:
+ *   1. preCheckApply (tx 1)
+ *   2. domain inject (no tx)
+ *   3. commitApply (tx 2) only if domain returned 2xx
+ *
+ * NOTE: there is a logical race window between preCheckApply (tx 1) and
+ * commitApply (tx 2). A concurrent dismiss could transition the row to
+ * DISMISSED in that window. commitApply's race-safe conditional UPDATE
+ * detects that case (count=0) and refuses to set appliedAt — the lifecycle
+ * audit will only have the winner's DWI_DISMISSED, not a stale DWI_APPLIED.
+ * The domain effect from step 2 already happened though; that asymmetry is
+ * intentional under apply-after-domain. The domain side has its own audit
+ * trail (e.g., WORKER_MARKED_ABSENT) which records the domain effect
+ * independently. Manual reconciliation surfaces if needed.
+ *
+ * @derives(F-002 scope §3b)
+ * @derives(F-002.4 — apply-after-domain split)
+ * @derives(production-grade-rulebook P3)
+ */
+export async function preCheckApply(
+  tx: Prisma.TransactionClient,
+  input: ApplyProposedDecisionInput,
+): Promise<ApplyPreCheckResult> {
+  const row = await tx.supervisorDecision.findUnique({
+    where: { id: input.decisionId },
+  });
+  if (!row) throw new LifecycleError('NOT_FOUND');
+  if (row.companyId !== input.companyId) throw new LifecycleError('CROSS_TENANT');
+  if (row.appliedAt) throw new LifecycleError('ALREADY_APPLIED');
+  if (row.dismissedAt) throw new LifecycleError('ALREADY_DISMISSED');
+
+  const authorized = await isCallerAuthorized(
+    tx,
+    { kind: row.kind, supervisorId: row.supervisorId, targetId: row.targetId },
+    input.actorUserId,
+    input.companyId,
+  );
+  if (!authorized) throw new LifecycleError('NOT_RESPONSIBLE');
+
+  return {
+    decisionId: row.id,
+    kind: row.kind,
+    tier: row.tier as DwiTier,
+    targetId: row.targetId,
+    originalSupervisorId: row.supervisorId,
+    payload: row.payload as Prisma.JsonValue,
+  };
+}
+
+/**
+ * Commit half of applyProposedDecision: race-safe conditional UPDATE + audit
+ * emit. Throws LifecycleError on race-lost (count === 0).
+ *
+ * Callers passing `preCheck` skip the read; they thread the auditable fields
+ * captured at preCheckApply time. This is the path used by `/chat/apply`
+ * after a successful domain inject.
+ *
+ * @derives(F-002.4 — apply-after-domain split)
+ * @derives(production-grade-rulebook P2)
+ */
+export async function commitApply(
+  tx: Prisma.TransactionClient,
+  input: ApplyProposedDecisionInput & { preCheck: ApplyPreCheckResult },
+): Promise<{ appliedAt: Date }> {
+  const appliedAt = new Date();
+  const result = await tx.supervisorDecision.updateMany({
+    where: {
+      id: input.decisionId,
+      companyId: input.companyId,
+      appliedAt: null,
+      dismissedAt: null,
+    },
+    data: { appliedAt },
+  });
+  if (result.count === 0) {
+    const code = await discriminateFailure(tx, input.companyId, input.decisionId);
+    throw new LifecycleError(code);
+  }
+  await recordDwiApplied(tx, {
+    companyId: input.companyId,
+    actorId: input.actorUserId,
+    payload: {
+      decisionId: input.preCheck.decisionId,
+      kind: input.preCheck.kind,
+      tier: input.preCheck.tier,
+      appliedAt: appliedAt.toISOString(),
+      appliedBy: input.actorUserId,
+      originalSupervisorId: input.preCheck.originalSupervisorId,
+    },
+  });
+  return { appliedAt };
+}
+
+/**
  * Transitions PROPOSED → APPLIED via race-safe conditional updateMany.
  *
  * Sequence (rule P2 — no check-then-act):
@@ -349,62 +462,20 @@ export async function applyProposedDecision(
   tx: Prisma.TransactionClient,
   input: ApplyProposedDecisionInput,
 ): Promise<ApplyProposedDecisionResult> {
-  const row = await tx.supervisorDecision.findUnique({
-    where: { id: input.decisionId },
-  });
-  if (!row) throw new LifecycleError('NOT_FOUND');
-  if (row.companyId !== input.companyId) throw new LifecycleError('CROSS_TENANT');
-  if (row.appliedAt) throw new LifecycleError('ALREADY_APPLIED');
-  if (row.dismissedAt) throw new LifecycleError('ALREADY_DISMISSED');
-
-  const authorized = await isCallerAuthorized(
-    tx,
-    { kind: row.kind, supervisorId: row.supervisorId, targetId: row.targetId },
-    input.actorUserId,
-    input.companyId,
-  );
-  if (!authorized) throw new LifecycleError('NOT_RESPONSIBLE');
-
-  const appliedAt = new Date();
-
-  // Race-safe conditional UPDATE. PG row-lock + WHERE re-evaluation guarantee
-  // exactly one of concurrent requests wins. See module docstring.
-  const result = await tx.supervisorDecision.updateMany({
-    where: {
-      id: row.id,
-      companyId: input.companyId,
-      appliedAt: null,
-      dismissedAt: null,
-    },
-    data: { appliedAt },
-  });
-
-  if (result.count === 0) {
-    const code = await discriminateFailure(tx, input.companyId, input.decisionId);
-    throw new LifecycleError(code);
-  }
-
-  await recordDwiApplied(tx, {
-    companyId: input.companyId,
-    actorId: input.actorUserId,
-    payload: {
-      decisionId: row.id,
-      kind: row.kind,
-      tier: row.tier as DwiTier,
-      appliedAt: appliedAt.toISOString(),
-      appliedBy: input.actorUserId,
-      originalSupervisorId: row.supervisorId,
-    },
-  });
-
+  // Composed from preCheckApply + commitApply. Both halves run in the same
+  // transaction; the conditional UPDATE in commitApply still has its own
+  // race-safety guarantee because the row predicate is re-evaluated by
+  // PG under concurrent writers (see module docstring).
+  const preCheck = await preCheckApply(tx, input);
+  const { appliedAt } = await commitApply(tx, { ...input, preCheck });
   return {
-    decisionId: row.id,
-    kind: row.kind,
-    tier: row.tier as DwiTier,
-    targetId: row.targetId,
+    decisionId: preCheck.decisionId,
+    kind: preCheck.kind,
+    tier: preCheck.tier,
+    targetId: preCheck.targetId,
     appliedAt,
-    originalSupervisorId: row.supervisorId,
-    payload: row.payload as Prisma.JsonValue,
+    originalSupervisorId: preCheck.originalSupervisorId,
+    payload: preCheck.payload,
   };
 }
 
