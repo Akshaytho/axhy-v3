@@ -22,4 +22,5 @@ export * from './zod/hr-pod.js';
 export * from './zod/policy.js';
 export * from './zod/notification.js';
 export * from './zod/digest.js';
+export * from './zod/site-supervisor-binding.js';
 export * from './zod/audit-payloads.js';
