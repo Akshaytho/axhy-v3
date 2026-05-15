@@ -70,7 +70,9 @@ These are surfaced as scope-stage questions; no code lands until they are answer
 - Does not introduce a new entity. `BINDING_ENDED_AUTO` AuditEvent kind is already catalogued (closure spec §11).
 - Does not change the S-001 guard. Sweep emits side-effect audit only.
 - Does not set `endedAt` on auto-expired bindings (would break historical point-in-time queries via `getEffectiveBinding`).
-- Does not amend the closure spec wording at line 560 ("Closes any binding") — that wording can be read as "cron decides who's responsible," which contradicts the re-scope. A small clarifying spec amendment to line 560 should land as part of the F-003 scope artifact: "emits `BINDING_ENDED_AUTO` for any binding whose `effectiveUntil` has passed" (drop the misleading "Closes"). The amendment is a docs change, not a code change.
+- **Closure-spec wording amendment** — landed in the same commit as this re-scope (per friend's directive that the spec match the re-scope before F-003 coding starts). Two lines amended in `docs/specs/2026-05-15-workflow-design-closure.md`:
+  - §3.1 Binding lifecycle (line 175): now spells out that the `effectiveUntil`-path ACTIVE → ENDED transition is time-based and read-time-evaluated via `getEffectiveBinding`; cron is for the side-effect side only.
+  - §10 Cron jobs (line 560): "Closes any binding ... Generates 'while you were out' digest" → "Side-effect emit only — NOT a responsibility switch ... emits `BINDING_ENDED_AUTO` ... does NOT mutate the binding row ... digest is a separate downstream consumer that lands in its own slice."
 - Does not auto-merge `feat/layer-1-core-primitives` to main. Merge is a separate owner-driven step.
 
 ## F-002 + S-001 closure summary (kept for cross-slice context)
@@ -117,7 +119,7 @@ Expected: 17 files, 84 cases, all green.
 
 ## Decision needed (owner + friend, before any F-003 code)
 
-- `SCOPE: GO with default picks (1: OS-cron + HTTP endpoint, 2: every-minute, 3: sweep exempt from S-001, 4: one tx per row, 5: rely on idempotency, 6: BINDING_ENDED_AUTO payload as above)` → I draft the scope artifact at `handoff/feature-queue/scopes/F-003.md` capturing the picks; on owner sign-off, code begins.
+- `SCOPE: GO with default picks (1: OS-cron + HTTP endpoint · 2: CLOSED at every 5 minutes per closure spec §10 line 560 · 3: sweep exempt from S-001 · 4: one tx per row · 5: rely on idempotency · 6: BINDING_ENDED_AUTO payload as above · 7: idempotency-marker = audit-existence check, no schema change)` → I draft the scope artifact at `handoff/feature-queue/scopes/F-003.md` capturing the picks; on owner sign-off, code begins.
 - `SCOPE: change picks` → name what to change.
 - `HOLD` → F-003 pauses; surface a different next slice instead (e.g. F-004 HandoffPackage composer, F-005 HR portal scaffold, or a separate cleanup).
 - `MERGE FIRST` → owner merges `feat/layer-1-core-primitives` to main first to graduate F-002 + S-001 from APPROVED to DONE; F-003 picks up after.
