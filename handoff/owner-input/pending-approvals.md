@@ -20,18 +20,7 @@
 
 ## Currently awaiting approval
 
-### Scope approval: `F-002` — Chat extractor writes PROPOSED SupervisorDecision rows
-
-- **Type:** Scope artifact (NOT a code slice yet). No code commits to review.
-- **Artifact:** `handoff/feature-queue/scopes/F-002.md`
-- **Why surfacing first:** Per rule 23 (confidence-score-before-acting) + friend's 2026-05-15 evening directive on approving F-001 ("surface the next planned slice before writing code"). Five sub-decisions in §7 of the scope doc are below the ≥90% own-confidence threshold; friend's pick on each is wanted before any code lands.
-- **Open questions (default picks proposed if friend doesn't choose):**
-  - Q1. `originContext` JSON shape — default (b) best-effort capture, refine later.
-  - Q2. Single slice vs split into 2 — default (a) single slice covering PROPOSED + apply + dismiss.
-  - Q3. Dismiss in this slice — default (a) include.
-  - Q4. State ENUM column — default (b) defer.
-  - Q5. `proposedDuringAbsence` detection — default approach (reuse F-001 helpers).
-- **Decision needed:** `APPROVED` (with optional Q1–Q5 overrides) / `CHANGES_REQUESTED` / `HOLD`. F-002 implementation starts only after this lands.
+_None._
 
 ---
 
@@ -42,6 +31,26 @@ _None._
 ---
 
 ## Recently approved (last 5)
+
+### Scope approval: `F-002` — APPROVED 2026-05-15 evening
+
+- **Type:** Scope artifact approval (not a code slice). No code review needed — this is the gate that unlocks F-002 coding.
+- **Artifact:** `handoff/feature-queue/scopes/F-002.md`
+- **Last landed commit at approval:** `1fb546e` — `fix(handoff): full sweep for forward-looking wording`
+- **Approval received:** Friend's file-grounded verification at HEAD `1fb546e`. Verbatim: "trust fixes are real · F-002 scope approved · use the default picks · start coding".
+- **Default picks accepted (all 5):**
+  - Q1 `originContext` shape = (b) best-effort capture now.
+  - Q2 single vs split = (a) single slice.
+  - Q3 dismiss support = (a) include (adds `dismissedAt` + `dismissedReason` migration).
+  - Q4 state ENUM = (b) defer.
+  - Q5 `proposedDuringAbsence` detection = reuse F-001 helpers.
+- **Friend's execution constraints (locked):**
+  - single slice covering PROPOSED writer + apply transition + dismiss endpoint
+  - include dismissedAt + dismissedReason migration; no full state enum yet
+  - best-effort originContext capture only
+  - real-DB verification required before surfacing for approval
+  - sanity-rerun the 4 F-001 routing tests along with the new F-002 tests
+  - stop again when F-002 reaches AWAITING_APPROVAL
 
 ### Slice: `routing-foundation-read-apis` (F-001) — APPROVED 2026-05-15 evening
 

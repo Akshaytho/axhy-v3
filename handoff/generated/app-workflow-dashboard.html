@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T16:24:10.759Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>c5cb5a46</code></span>
+      <span>Generated <strong>2026-05-15T16:30:21.280Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>1fb546e8</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
-      <span>Active slice: <strong>routing-foundation-read-apis (F-001) — most-recent activity; no new WIP slice yet (rule 18 honoured) · APPROVED — friend's verification 2026-05-15 evening; no WIP slice in flight; F-002 queued as next, scope under review</strong></span>
+      <span>Active slice: <strong>chat-writes-proposed-decisions (F-002) · WIP</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>routing-foundation-read-apis</code> (F-001) — most-recent activity; no new WIP slice yet (rule 18 honoured)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">APPROVED — friend's verification 2026-05-15 evening; no WIP slice in flight; F-002 queued as next, scope under review</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>9709b5d</code> — <code>docs(handoff): routing F-001 APPROVED → surface F-002 scope (no code yet)</code></td></tr><tr><th>Just-approved slice</th><td><code>routing-foundation-read-apis</code> (F-001) — 3 commits (<code>84ae39c</code> · <code>429886d</code> · <code>7e07a24</code>) + tracker propagation <code>aa363f0</code>; 23/23 cases green on fresh local Postgres 16; friend's verification at HEAD <code>aa363f0</code> cleared with no blocking findings; WIP-split deviation accepted</td></tr><tr><th>Next slice candidate</th><td><code>F-002</code> — <code>Chat extractor writes PROPOSED SupervisorDecision rows</code>. Dependency on F-001 met. Scope artifact at <code>handoff/feature-queue/scopes/F-002.md</code> (landed in <code>9709b5d</code>) for friend's approve / change-request / hold before any code lands.</td></tr><tr><th>Workflow IDs touched by F-002</th><td><code>D17</code> (writer side), <code>D20</code> (writer side — EMPLOYMENT-tier ack gate), <code>C11</code>, <code>E21</code>, <code>E22</code>, <code>E24</code></td></tr><tr><th>Personas affected by F-002</th><td>Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's <code>GET /decisions/proposed-for-me</code>), Kavitha (EMPLOYMENT ack), Suresh (subject)</td></tr><tr><th>Why F-002 is next</th><td>Friend's roadmap order; closure spec §3.2 SupervisorDecision lifecycle is the largest live gap; F-001's read API is now ready to consume F-002's writes round-trip; closure Decision 7 (<code>originContext</code> + <code>proposedDuringAbsence</code>) already landed in schema (commit <code>095c766</code>, migration <code>20260515_layer_1_core_primitives</code>)</td></tr><tr><th>What is NOT being done yet</th><td>Writing F-002 code. The scope doc must be approved first per rule 23 (confidence-score-before-acting) and friend's directive.</td></tr><tr><th>Expected next state transition</th><td>After friend approves the scope: F-002 PLANNED → WIP, this file flips to active F-002 tracking.</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>chat-writes-proposed-decisions</code> (F-002)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#1a73e8;color:#fff;">WIP</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>1fb546e</code> — <code>fix(handoff): full sweep for forward-looking wording</code></td></tr><tr><th>Scope artifact (approved)</th><td><code>handoff/feature-queue/scopes/F-002.md</code> (approved 2026-05-15 evening with all 5 default picks)</td></tr><tr><th>Workflow IDs affected</th><td><code>D17</code> (writer side), <code>D20</code> (writer side — EMPLOYMENT-tier ack gate), <code>C11</code>, <code>E21</code>, <code>E22</code>, <code>E24</code></td></tr><tr><th>Personas affected</th><td>Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's <code>GET /decisions/proposed-for-me</code>), Kavitha (EMPLOYMENT ack), Suresh (subject)</td></tr><tr><th>Locked picks (Q1–Q5)</th><td>Q1=(b) best-effort originContext capture · Q2=(a) single slice · Q3=(a) include dismiss + migration · Q4=(b) defer state ENUM · Q5=reuse F-001 helpers for <code>proposedDuringAbsence</code></td></tr><tr><th>Files in slice</th><td><code>packages/shared-schema/prisma/schema.prisma</code> (+2 cols) · new migration · <code>apps/backend/src/lib/audit-event.ts</code> (+3 helpers) · new <code>apps/backend/src/lib/supervisor-decision-writer.ts</code> · <code>apps/backend/src/routes/chat.ts</code> (propose + apply modified) · <code>apps/backend/src/routes/decisions.ts</code> (+ dismiss endpoint) · 5 new test files</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">none yet</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">UNVERIFIED until real-DB sweep runs (fresh local Postgres 16 + all 11 migrations including new dismiss-cols migration). Sweep must include 4 F-001 routing tests as regression sanity + 5 new F-002 tests.</span></td></tr><tr><th>Started at</th><td>2026-05-15 evening — immediately after F-002 scope approval at HEAD <code>1fb546e</code>.</td></tr><tr><th>Expected next state</th><td><code>AWAITING_APPROVAL</code> after all 9 test files green (4 F-001 + 5 F-002) + tracker propagated.</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -150,23 +150,7 @@
   <section id="approvals" class="control-section">
     <h2>✅ Approval gate</h2>
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
-    
-      <div class="approval">
-        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#7c3aed;color:#fff">SCOPE</span> <strong><code>F-002</code></strong></div>
-        <p class="small"><strong>Type:</strong> Scope artifact (NOT a code slice yet). No code commits to review.</p>
-        <p class="small"><strong>Artifact:</strong> <code>handoff/feature-queue/scopes/F-002.md</code></p>
-        
-        
-        
-        
-        
-        
-        
-        <p><strong>Decision needed:</strong> <code>APPROVED</code> (with optional Q1–Q5 overrides) / <code>CHANGES_REQUESTED</code> / <code>HOLD</code>. F-002 implementation starts only after this lands.
-
----</p>
-        
-      </div>
+    <p>No items awaiting approval.</p>
   </section>
     
     
@@ -192,7 +176,7 @@
       <details class="feature">
         <summary>
           <code>F-002</code>
-          <span class="badge" style="background:#1e8e3e;color:#fff;">READY</span>
+          <span class="badge" style="background:#1a73e8;color:#fff;">WIP</span>
           <strong>D17 SupervisorDecision writer</strong>
         </summary>
         <div class="feature-body">
@@ -303,6 +287,13 @@
       <tbody>
     <tr>
       <td class="small">2026-05-15 evening</td>
+      <td><code>chat-writes-proposed-decisions</code></td>
+      <td><code>PLANNED → WIP</code></td>
+      <td><code>n/a (transition before first commit)</code></td>
+      <td class="small">F-002 scope APPROVED at HEAD <code>1fb546e</code> with all 5 default picks accepted (Q1=b, Q2=a, Q3=a, Q4=b, Q5=default). Slice starts: PROPOSED writer + apply transition + dismiss endpoint + dismissedAt/dismissedReason migration.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 evening</td>
       <td><code>routing-foundation-read-apis</code></td>
       <td><code>AWAITING_APPROVAL → APPROVED</code></td>
       <td><code>`aa363f0`</code></td>
@@ -363,13 +354,6 @@
       <td><code>WIP → BLOCKED</code></td>
       <td><code>`84ae39c`</code></td>
       <td class="small">Paused mid-flight to build tracker. 4th test file + real-DB sweep remaining. Now blocked by handoff-control-loop approval.</td>
-    </tr>
-    <tr>
-      <td class="small">2026-05-15</td>
-      <td><code>p1.5-future-dated-fix</code></td>
-      <td><code>WIP → APPROVED → DONE</code></td>
-      <td><code>`44a453d`</code></td>
-      <td class="small">Friend caught the endedAt-vs-effectiveUntil bug in reassignPermanentBinding; fixed + verified.</td>
     </tr></tbody>
     </table>
     <p class="source-link small">Source: <a href="../owner-input/change-history.md">handoff/owner-input/change-history.md</a>.</p>

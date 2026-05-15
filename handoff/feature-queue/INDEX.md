@@ -58,7 +58,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `READY` (next slice; scope being surfaced for friend's approval per directive — no code yet).
+- **status:** `WIP` (scope APPROVED 2026-05-15 evening at HEAD `1fb546e` with all 5 default picks accepted; active in `owner-input/active-slice.md`).
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 

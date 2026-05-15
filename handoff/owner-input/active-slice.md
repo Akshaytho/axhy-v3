@@ -1,47 +1,52 @@
 # Active Slice
 
 > Exactly one slice in flight at any time. This file is the single source of truth for the dashboard's "Current slice focus" callout AND the page-header active-slice banner (friend's 2026-05-15 evening reconciliation).
->
-> **Between-slices state (2026-05-15 evening):** Routing slice approved; F-002 surfaced as next per friend's directive — no code yet. Friend's verbatim: "surface the next planned slice before writing code". Active WIP is intentionally empty until the F-002 scope is approved.
 
 ## Current
 
-| Field                              | Value                                                                                                                                                                                                                                                                                                                        |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**                     | `routing-foundation-read-apis` (F-001) — most-recent activity; no new WIP slice yet (rule 18 honoured)                                                                                                                                                                                                                       |
-| **Status**                         | `APPROVED` — friend's verification 2026-05-15 evening; no WIP slice in flight; `F-002` queued as next, scope under review                                                                                                                                                                                                    |
-| **Branch**                         | `feat/layer-1-core-primitives`                                                                                                                                                                                                                                                                                               |
-| **Last landed commit**             | `9709b5d` — `docs(handoff): routing F-001 APPROVED → surface F-002 scope (no code yet)`                                                                                                                                                                                                                                      |
-| **Just-approved slice**            | `routing-foundation-read-apis` (F-001) — 3 commits (`84ae39c` · `429886d` · `7e07a24`) + tracker propagation `aa363f0`; 23/23 cases green on fresh local Postgres 16; friend's verification at HEAD `aa363f0` cleared with no blocking findings; WIP-split deviation accepted                                                |
-| **Next slice candidate**           | `F-002` — `Chat extractor writes PROPOSED SupervisorDecision rows`. Dependency on F-001 met. Scope artifact at `handoff/feature-queue/scopes/F-002.md` (landed in `9709b5d`) for friend's approve / change-request / hold before any code lands.                                                                             |
-| **Workflow IDs touched by F-002**  | `D17` (writer side), `D20` (writer side — EMPLOYMENT-tier ack gate), `C11`, `E21`, `E22`, `E24`                                                                                                                                                                                                                              |
-| **Personas affected by F-002**     | Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's `GET /decisions/proposed-for-me`), Kavitha (EMPLOYMENT ack), Suresh (subject)                                                                                                                                                                  |
-| **Why F-002 is next**              | Friend's roadmap order; closure spec §3.2 SupervisorDecision lifecycle is the largest live gap; F-001's read API is now ready to consume F-002's writes round-trip; closure Decision 7 (`originContext` + `proposedDuringAbsence`) already landed in schema (commit `095c766`, migration `20260515_layer_1_core_primitives`) |
-| **What is NOT being done yet**     | Writing F-002 code. The scope doc must be approved first per rule 23 (confidence-score-before-acting) and friend's directive.                                                                                                                                                                                                |
-| **Expected next state transition** | After friend approves the scope: F-002 PLANNED → WIP, this file flips to active F-002 tracking.                                                                                                                                                                                                                              |
+| Field                         | Value                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**                | `chat-writes-proposed-decisions` (F-002)                                                                                                                                                                                                                                                                                                |
+| **Status**                    | `WIP`                                                                                                                                                                                                                                                                                                                                   |
+| **Branch**                    | `feat/layer-1-core-primitives`                                                                                                                                                                                                                                                                                                          |
+| **Last landed commit**        | `1fb546e` — `fix(handoff): full sweep for forward-looking wording`                                                                                                                                                                                                                                                                      |
+| **Scope artifact (approved)** | `handoff/feature-queue/scopes/F-002.md` (approved 2026-05-15 evening with all 5 default picks)                                                                                                                                                                                                                                          |
+| **Workflow IDs affected**     | `D17` (writer side), `D20` (writer side — EMPLOYMENT-tier ack gate), `C11`, `E21`, `E22`, `E24`                                                                                                                                                                                                                                         |
+| **Personas affected**         | Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's `GET /decisions/proposed-for-me`), Kavitha (EMPLOYMENT ack), Suresh (subject)                                                                                                                                                                             |
+| **Locked picks (Q1–Q5)**      | Q1=(b) best-effort originContext capture · Q2=(a) single slice · Q3=(a) include dismiss + migration · Q4=(b) defer state ENUM · Q5=reuse F-001 helpers for `proposedDuringAbsence`                                                                                                                                                      |
+| **Files in slice**            | `packages/shared-schema/prisma/schema.prisma` (+2 cols) · new migration · `apps/backend/src/lib/audit-event.ts` (+3 helpers) · new `apps/backend/src/lib/supervisor-decision-writer.ts` · `apps/backend/src/routes/chat.ts` (propose + apply modified) · `apps/backend/src/routes/decisions.ts` (+ dismiss endpoint) · 5 new test files |
+| **Tests status**              | none yet                                                                                                                                                                                                                                                                                                                                |
+| **Verification status**       | `UNVERIFIED` until real-DB sweep runs (fresh local Postgres 16 + all 11 migrations including new dismiss-cols migration). Sweep must include 4 F-001 routing tests as regression sanity + 5 new F-002 tests.                                                                                                                            |
+| **Started at**                | 2026-05-15 evening — immediately after F-002 scope approval at HEAD `1fb546e`.                                                                                                                                                                                                                                                          |
+| **Expected next state**       | `AWAITING_APPROVAL` after all 9 test files green (4 F-001 + 5 F-002) + tracker propagated.                                                                                                                                                                                                                                              |
 
-## What just shipped (F-001)
+## What this slice does
 
-Per `handoff/workflow-maps/supervisor-ravi.md` (D17 / F26 / F27 read side):
+Inserts a PROPOSED → APPLIED lifecycle between the chat extractor's "decision proposal" and the domain write. Today's chat-MVP applies decisions directly (e.g. `propose_mark_absent` → `POST /workers/:id/mark-absent`) without ever creating a `SupervisorDecision` row. F-002 fixes that by:
 
-- **`getEffectiveBinding(tx, { companyId, siteId, at? })`** — central, anti-drift read of who is the effective responsible supervisor at a moment, applying §5.8 precedence (ACTING > PERMANENT).
-- **`deriveWorkerPrimarySiteId(tx, { companyId, workerId, at? })`** — point-in-time aware fallback chain (effective Assignment → most-recent ACTIVE → most-recent any) per responsibility-model §5.9.
-- **`GET /sites/:siteId/effective-supervisor`** — per-site point-in-time lookup with `?at=ISO8601`.
-- **`GET /decisions/proposed-for-me`** — narrow kinds routed by current responsibility; all other kinds fall back to origin-supervisor.
+1. **PROPOSED writer** — every `propose_*` tool call writes a `SupervisorDecision` row (`appliedAt: null`) inside the same transaction that persists the assistant message. Row carries `kind`, `tier`, `targetId`, `payload`, `originContext` (best-effort), `proposedDuringAbsence` (detected via F-001's helpers).
+2. **APPLY transition** — `/chat/apply` looks up the row by id, verifies tenant + caller-is-responsible (via F-001's `getEffectiveResponsibleUserId`) + `appliedAt IS NULL`, then in one transaction sets `appliedAt = now()` and performs the existing domain write.
+3. **DISMISS endpoint** — new `POST /decisions/:id/dismiss` with same tenant + responsibility verification; sets new `dismissedAt` + `dismissedReason` columns; emits `SUPERVISOR_DECISION_DISMISSED`.
+4. **AuditEvent kinds** — 3 new kinds (`SUPERVISOR_DECISION_PROPOSED`, `SUPERVISOR_DECISION_APPLIED`, `SUPERVISOR_DECISION_DISMISSED`) with typed helpers.
 
-These reads are now ready to consume F-002's writes round-trip.
+F-001's read API (`GET /decisions/proposed-for-me`) is the consumer — round-trip test included.
 
-## Pointer to F-002 scope
+## What is NOT being done in this slice (deferred per scope)
 
-The scope artifact lives at `handoff/feature-queue/scopes/F-002.md` (landed in commit `9709b5d`). Friend reviews + approves / change-requests / holds via the standard approval-word convention before any F-002 code lands.
+- State ENUM column for DISMISSED / FAILED / EXPIRED / UNDONE — defer per Q4=(b). Today's discriminator is `appliedAt` + new `dismissedAt`.
+- Undo window UI (30-min reverse) — chat-MVP / UI concern, not substrate.
+- Worker-side notification of the decision — that's F-007.
+- EMPLOYMENT-tier HR ack surface — that's F-005 (HR portal).
+- HandoffPackage composition on binding change — that's F-004.
+- Backfilling existing chat history — pre-F-002 chat turns don't get retroactive DWI rows.
 
-## Hash-truth convention (inherited from control-loop slice)
+## Hash-truth convention
 
-The "Just-approved slice" / "Last landed commit" rows above name ONLY landed commit hashes — never speculation about commits that haven't finished. Under the auto-regen pre-commit hook the new commit's hash is created AFTER the file is written and staged, so at write-time we cannot know the hash that will contain this file. Convention:
+The "Last landed commit" / "Scope artifact (approved)" rows above name ONLY landed commit hashes. Under the auto-regen pre-commit hook the new commit's hash is created AFTER the file is written and staged, so at write-time we cannot know the hash that will contain this file. Convention:
 
 - List only commits already in `git log`.
 - After a commit lands, the NEXT edit to this file names that commit explicitly.
-- No "landing now", no "may land", no "next commit will be" wording.
+- No "landing now", no "may land", no "next commit will be", no "in this commit" wording.
 
 ## How to read this file
 
