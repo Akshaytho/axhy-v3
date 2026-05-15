@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T15:58:43.532Z",
-    "generated_against_head": "7e07a2433468bfb64a863efcdc2bc47a93a1e630",
+    "last_updated_at": "2026-05-15T16:11:56.101Z",
+    "generated_against_head": "aa363f0156385cf3afea3a017af8f3406f79231f",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "0b2e234530be9dddde7f7d2f2b9250b46b744338",
+    "last_canonical_commit_at_gen": "aa363f0156385cf3afea3a017af8f3406f79231f",
     "staleness_warning": null,
-    "active_slice": "routing-foundation-read-apis (F-001) · AWAITING_APPROVAL",
+    "active_slice": "routing-foundation-read-apis (F-001) — most-recent activity; no new WIP slice yet (rule 18 honoured) · APPROVED — friend's verification 2026-05-15 evening; no WIP slice in flight; F-002 queued as next, scope under review",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,34 +1183,19 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`routing-foundation-read-apis` (F-001)",
-      "Status": "`AWAITING_APPROVAL`",
+      "Slice name": "`routing-foundation-read-apis` (F-001) — most-recent activity; no new WIP slice yet (rule 18 honoured)",
+      "Status": "`APPROVED` — friend's verification 2026-05-15 evening; no WIP slice in flight; `F-002` queued as next, scope under review",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed commit": "`7e07a24` — `test(routing): point-in-time effective-responsibility (4th test file)`",
-      "Slice commits (oldest → newest)": "`84ae39c` (WIP: helpers + routes + 3 of 4 tests) · `429886d` (fix: issueAccessToken await + availableRoles + locale in 2 route tests) · `7e07a24` (test: 4th test file — point-in-time, 3 cases)",
-      "Workflow IDs affected": "`D17` (read side), `F26` (read side), `F27` (read side)",
-      "Personas affected": "Supervisor (Ravi) primarily; HR + Worker indirectly via the binding-routed reads",
-      "Files in slice": "`apps/backend/src/lib/effective-responsibility.ts` · `apps/backend/src/routes/decisions.ts` · `apps/backend/src/routes/sites.ts` (+ GET endpoint) · `apps/backend/src/server.ts` (wired) · 4 test files in `apps/backend/test/`",
-      "Tests status": "4 of 4 test files written; 23 of 23 cases green",
-      "Verification status": "`REAL_DB` — fresh local Postgres 16 (Docker), all 10 migrations applied (20260507 → 20260516), all 23 tests green in one run. Test DB connection: `postgres://postgres:test@localhost:55432/axhy_test?schema=axhy`. Container `axhy-test-pg` still running for friend's spot-check.",
-      "Started at": "2026-05-15 afternoon (originally); paused for control-loop slice; resumed 2026-05-15 evening after friend approved `handoff-control-loop`.",
-      "Completed at": "2026-05-15 evening — 4th test landed; real-DB sweep green; awaiting friend's approval word.",
-      "Deviation from directive (transparent)": "Friend's directive said \"split WIP commit `84ae39c` into 3 clean commits (helpers / routes / tests)\". An interactive rebase to split would have rewritten ~12 commit hashes already referenced in `change-history.md` + `pending-approvals.md` (the just-approved control-loop slice). Instead, the WIP `84ae39c` is preserved as-is and the completion landed as 2 additive commits on top (`429886d` + `7e07a24`). The slice is now in 3 commits total — not the prescribed grouping, but cleanly separable for review. If friend prefers a true rebase-split, surfacing now before approval is cheap to redo."
+      "Last landed commit": "`aa363f0` — `docs(handoff): routing slice F-001 → AWAITING_APPROVAL (23/23 green)` (next commit will land the APPROVED state propagation)",
+      "Just-approved slice": "`routing-foundation-read-apis` (F-001) — 3 commits (`84ae39c` · `429886d` · `7e07a24`) + tracker propagation `aa363f0`; 23/23 cases green on fresh local Postgres 16; friend's verification at HEAD `aa363f0` cleared with no blocking findings; WIP-split deviation accepted",
+      "Next slice candidate": "`F-002` — `Chat extractor writes PROPOSED SupervisorDecision rows`. Dependency on F-001 met. Scope artifact landing in this commit (`feature-queue/scopes/F-002.md`) for friend's approve / change-request / hold before any code lands.",
+      "Workflow IDs touched by F-002": "`D17` (writer side), `D20` (writer side — EMPLOYMENT-tier ack gate), `C11`, `E21`, `E22`, `E24`",
+      "Personas affected by F-002": "Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's `GET /decisions/proposed-for-me`), Kavitha (EMPLOYMENT ack), Suresh (subject)",
+      "Why F-002 is next": "Friend's roadmap order; closure spec §3.2 SupervisorDecision lifecycle is the largest live gap; F-001's read API is now ready to consume F-002's writes round-trip; closure Decision 7 (`originContext` + `proposedDuringAbsence`) already landed in schema (commit `095c766`, migration `20260515_layer_1_core_primitives`)",
+      "What is NOT being done yet": "Writing F-002 code. The scope doc must be approved first per rule 23 (confidence-score-before-acting) and friend's directive.",
+      "Expected next state transition": "After friend approves the scope: F-002 PLANNED → WIP, this file flips to active F-002 tracking."
     },
-    "pending_approvals": [
-      {
-        "id": "routing-foundation-read-apis",
-        "status": "AWAITING_APPROVAL",
-        "branch": "feat/layer-1-core-primitives",
-        "wipCommit": "",
-        "lastLanded": "7e07a24",
-        "workflowIds": "D17 (read side), F26 (read side), F27 (read side)",
-        "blocking": "",
-        "built": "",
-        "notDone": "",
-        "ownerDecision": ""
-      }
-    ],
+    "pending_approvals": [],
     "blocked_items": [],
     "pending_notes": {
       "counts": {
@@ -1231,18 +1216,18 @@
         "workflows": "D17, F26 (read), F27 (read).",
         "entities": "`apps/backend/src/lib/effective-responsibility.ts` (new), `apps/backend/src/routes/decisions.ts` (new), `apps/backend/src/routes/sites.ts` (+1 endpoint), `apps/backend/test/*` (+4 files).",
         "verification": "`REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).",
-        "status": "AWAITING_APPROVAL"
+        "status": "APPROVED"
       },
       {
         "id": "F-002",
         "title": "D17 SupervisorDecision writer",
         "why": "The largest workflow gap. Today chat-MVP applies decisions directly, skipping the PROPOSED → APPLIED lifecycle. Every EMPLOYMENT-tier ack, undo, dismiss, originContext-across-binding ride on this writer.",
-        "depends_on": "F-001 (routing read API must work for the new rows to be routable).",
+        "depends_on": "F-001 (APPROVED 2026-05-15 evening) — dependency met.",
         "personas": "Ravi (originator), Lakshmi/Anjali (current responsible), Kavitha (EMPLOYMENT ack gate), Suresh (subject).",
         "workflows": "D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).",
         "entities": "`apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.",
         "verification": "`REAL_DB`.",
-        "status": "QUEUED"
+        "status": "READY"
       },
       {
         "id": "F-003",
@@ -1315,6 +1300,13 @@
       {
         "when": "2026-05-15 evening",
         "slice": "routing-foundation-read-apis",
+        "transition": "AWAITING_APPROVAL → APPROVED",
+        "commit": "`aa363f0`",
+        "note": "Friend's file-grounded verification pass at HEAD `aa363f0` cleared with no blocking findings. Verbatim: \"accept the WIP-split deviation and approve the slice\". Directive on approval: surface F-002 scope before writing code; do not start F-002 code yet."
+      },
+      {
+        "when": "2026-05-15 evening",
+        "slice": "routing-foundation-read-apis",
         "transition": "WIP → AWAITING_APPROVAL",
         "commit": "`7e07a24`",
         "note": "4th test landed + real-DB sweep green (23/23 across 4 files on fresh local Postgres 16 with all 10 migrations). Slice complete; awaiting friend's approval word. WIP-split deviation surfaced in `active-slice.md` for friend's call."
@@ -1374,13 +1366,6 @@
         "transition": "WIP → APPROVED → DONE",
         "commit": "`44a453d`",
         "note": "Friend caught the endedAt-vs-effectiveUntil bug in reassignPermanentBinding; fixed + verified."
-      },
-      {
-        "when": "2026-05-15",
-        "slice": "p1.5-site-supervisor-binding",
-        "transition": "WIP → APPROVED → DONE",
-        "commit": "`9c0b3d8`, `a8eed8b`, `fe0f6f4`",
-        "note": "SiteSupervisorBinding table + helpers + 17 real-DB tests green."
       }
     ]
   }

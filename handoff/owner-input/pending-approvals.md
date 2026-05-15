@@ -20,29 +20,18 @@
 
 ## Currently awaiting approval
 
-### Slice: `routing-foundation-read-apis` (F-001) — AWAITING_APPROVAL 2026-05-15 evening
+### Scope approval: `F-002` — Chat extractor writes PROPOSED SupervisorDecision rows
 
-- **Status:** `AWAITING_APPROVAL`
-- **Branch:** `feat/layer-1-core-primitives`
-- **Last landed commit:** `7e07a24` — `test(routing): point-in-time effective-responsibility (4th test file)`
-- **Slice commits (oldest → newest):** `84ae39c` (WIP: helpers + routes + 3 of 4 tests) · `429886d` (fix: 2 route-test `issueAccessToken` calls — await + availableRoles + locale) · `7e07a24` (test: 4th test file, 3 point-in-time cases)
-- **Workflow IDs affected:** D17 (read side), F26 (read side), F27 (read side)
-- **Verification gate cleared:** `REAL_DB`. Fresh local Postgres 16 (Docker container `axhy-test-pg` on port 55432), `axhy_test` database, all 10 migrations applied via `prisma migrate deploy` (20260507 → 20260516). All 4 binding-routing test files green in one run: 8 helper + 5 sites-route + 7 decisions-route + 3 point-in-time = **23/23 cases**.
-- **Decision needed:**
-  1. Approve / change-request / hold the slice itself.
-  2. Decide the WIP-split deviation. Friend's directive said "split WIP `84ae39c` into 3 clean commits (helpers / routes / tests)". A true rebase-split would have rewritten ~12 commit hashes already cited in `change-history.md` and `pending-approvals.md` (the just-locked control-loop slice). Chose to land the completion as 2 additive commits on top instead — slice is reviewable as 3 separately-themed commits without invalidating the handoff machinery. If you prefer the actual rebase-split, easy to redo now before approval.
-- **Reproduction (for friend's spot-check):**
-  ```
-  docker exec axhy-test-pg pg_isready -U postgres
-  cd apps/backend
-  DATABASE_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
-  AXHY_DB_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
-  pnpm exec vitest run \
-    test/effective-responsibility-helper.test.ts \
-    test/sites-effective-supervisor-route.test.ts \
-    test/decisions-proposed-for-me-route.test.ts \
-    test/effective-responsibility-point-in-time.test.ts
-  ```
+- **Type:** Scope artifact (NOT a code slice yet). No code commits to review.
+- **Artifact:** `handoff/feature-queue/scopes/F-002.md`
+- **Why surfacing first:** Per rule 23 (confidence-score-before-acting) + friend's 2026-05-15 evening directive on approving F-001 ("surface the next planned slice before writing code"). Five sub-decisions in §7 of the scope doc are below the ≥90% own-confidence threshold; friend's pick on each is wanted before any code lands.
+- **Open questions (default picks proposed if friend doesn't choose):**
+  - Q1. `originContext` JSON shape — default (b) best-effort capture, refine later.
+  - Q2. Single slice vs split into 2 — default (a) single slice covering PROPOSED + apply + dismiss.
+  - Q3. Dismiss in this slice — default (a) include.
+  - Q4. State ENUM column — default (b) defer.
+  - Q5. `proposedDuringAbsence` detection — default approach (reuse F-001 helpers).
+- **Decision needed:** `APPROVED` (with optional Q1–Q5 overrides) / `CHANGES_REQUESTED` / `HOLD`. F-002 implementation starts only after this lands.
 
 ---
 
@@ -53,6 +42,18 @@ _None._
 ---
 
 ## Recently approved (last 5)
+
+### Slice: `routing-foundation-read-apis` (F-001) — APPROVED 2026-05-15 evening
+
+- **Status:** `APPROVED`
+- **Branch:** `feat/layer-1-core-primitives`
+- **Last landed commit at approval:** `aa363f0` — `docs(handoff): routing slice F-001 → AWAITING_APPROVAL (23/23 green)`
+- **Slice commits (oldest → newest):** `84ae39c` · `429886d` · `7e07a24` (plus tracker propagation `aa363f0` outside the slice's code surface)
+- **Workflow IDs affected:** D17 (read side), F26 (read side), F27 (read side)
+- **Approval received:** Friend's file-grounded verification pass at HEAD `aa363f0`. Verbatim: "no blocking findings · handoff/control state is consistent · routing code and 4th test file are real · DB container/migration state is real · accept the WIP-split deviation and approve the slice".
+- **Friend's directive on approval:** mark APPROVED → move active slice forward in canonical files → regenerate outputs → surface the next planned slice (F-002) before writing code.
+- **Friend's residual note:** could not personally rerun the 4-file Vitest sweep in their verification shell because pnpm wasn't on PATH and the local Rollup native-module path hit a code-signing issue. Acknowledged as a verification-shell tooling limitation, not a slice bug. Approval not gated on it.
+- **WIP-split deviation:** ACCEPTED. Friend's verbatim: "Given the control-loop/history machinery already cites these hashes, additive completion on top is the cleaner choice unless there is a strong review reason to rewrite."
 
 ### Slice: `handoff-control-loop` — APPROVED 2026-05-15 evening
 

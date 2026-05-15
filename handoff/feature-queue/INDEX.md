@@ -46,19 +46,19 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, F26 (read), F27 (read).
 - **entities/routes/tables touched:** `apps/backend/src/lib/effective-responsibility.ts` (new), `apps/backend/src/routes/decisions.ts` (new), `apps/backend/src/routes/sites.ts` (+1 endpoint), `apps/backend/test/*` (+4 files).
 - **expected verification gate:** `REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).
-- **status:** `AWAITING_APPROVAL` (slice complete; 23/23 tests green on fresh local Postgres 16; surfaced in `owner-input/pending-approvals.md`).
+- **status:** `APPROVED` (friend's file-grounded verification 2026-05-15 evening; WIP-split deviation accepted; ready to be marked DONE once branch merges to main).
 
 ### F-002 — D17 SupervisorDecision writer
 
 - **id:** F-002
 - **title:** Chat extractor writes PROPOSED SupervisorDecision rows
 - **why:** The largest workflow gap. Today chat-MVP applies decisions directly, skipping the PROPOSED → APPLIED lifecycle. Every EMPLOYMENT-tier ack, undo, dismiss, originContext-across-binding ride on this writer.
-- **depends on:** F-001 (routing read API must work for the new rows to be routable).
+- **depends on:** F-001 (APPROVED 2026-05-15 evening) — dependency met.
 - **personas touched:** Ravi (originator), Lakshmi/Anjali (current responsible), Kavitha (EMPLOYMENT ack gate), Suresh (subject).
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `QUEUED`.
+- **status:** `READY` (next slice; scope being surfaced for friend's approval per directive — no code yet).
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 
