@@ -6,9 +6,9 @@
 
 ## Current state
 
-- **Active phase:** **Layer 1 implementation — PR 1 + PR 2 accepted + locally real-DB verified.** PR 2 added 3 typed audit-emit helpers + 8 real-DB integration test files (29/29 green against fresh Postgres 16). No schema churn beyond what was already in PR 1. Migration still **NOT** applied to Railway prod (later supervised step). Next slice: **P1.5 SiteSupervisorBinding** — single table for both ACTING + PERMANENT bindings, only the BINDING\_\* audit helpers needed by this slice, real-DB lifecycle tests.
-- **Current branch:** `feat/layer-1-core-primitives` (7 commits ahead of parent)
-- **Last updated:** 2026-05-15 (PR 2 accepted + locally real-DB verified; P1.5 next)
+- **Active phase:** **Layer 1 implementation — routing slice paused for execution-state tracker.** PR 1 + PR 2 + P1.5 accepted + locally real-DB verified. Routing slice (foundation read APIs for routing — `getEffectiveBinding`, `deriveWorkerPrimarySiteId`, `GET /sites/:id/effective-supervisor`, `GET /decisions/proposed-for-me`) is **paused at WIP commit `84ae39c`** — 4th test file unwritten + real-DB not yet run. Pause cause: friend-approved durable execution-state tracker (`docs/handoff/execution-state/`) built to prevent session-drift on workflow truth. **Affected workflow rows:** D17, F26, F27 — see `execution-state/supervisor-ravi.md`.
+- **Current branch:** `feat/layer-1-core-primitives` (13 commits ahead of parent post-WIP, +tracker commit pending)
+- **Last updated:** 2026-05-15 (execution-state tracker built; routing slice resumes after friend approves tracker)
 
 ## Approved vs Draft
 
@@ -28,8 +28,12 @@
 
 1. `axhy-v3/docs/handoff/README.md` — handoff rules + anti-drift rules + mandatory update order.
 2. `axhy-v3/docs/handoff/STATUS.md` — full state + Authority Snapshot.
-3. `axhy-v3/docs/handoff/ROADMAP.md` — what's next.
-4. Whatever STATUS / ROADMAP point you to (closure spec / kickoff memo / specific audit).
+3. `axhy-v3/docs/handoff/execution-state/INDEX.md` — workflow-truth legend + strict enums + failure-mode rules. **Mandatory.**
+4. The persona file(s) in `axhy-v3/docs/handoff/execution-state/` that the active slice touches (currently `supervisor-ravi.md` for D17/F26/F27), plus `combined.md`.
+5. `axhy-v3/docs/handoff/ROADMAP.md` — what's next.
+6. Whatever STATUS / ROADMAP point you to (closure spec / kickoff memo / specific audit).
+
+**Reconciliation rule:** if `execution-state/` rows disagree with `STATUS.md` / `NEXT_SESSION.md` about any workflow's state, STOP and reconcile before coding (per `execution-state/INDEX.md` failure-mode rule 5).
 
 ## Do NOT do these things
 
@@ -55,6 +59,20 @@
 5. **Do NOT** mix in cleanup of the cosmetic drift items (ChatMessage.costInr annotation + LivingDoc constraint rename) — still deferred.
 6. **Do NOT** reopen workflow design — closure spec is Active; the binding shape lives there + in the responsibility-model spec.
 7. **Do NOT** add helpers for §9 kinds outside the BINDING\_\* set this slice actually needs.
+
+---
+
+**UPDATE 2026-05-15 (post execution-state tracker build):** P1.5 is complete and accepted (commits `9c0b3d8`, `a8eed8b`, `fe0f6f4`, `44a453d`). The next slice — **routing slice / foundation read APIs** — was started, then paused mid-way at WIP commit `84ae39c` so the execution-state tracker (`docs/handoff/execution-state/`) could be built first. On resume:
+
+1. **Stay on `feat/layer-1-core-primitives`.** WIP commit `84ae39c` is the pause anchor.
+2. **Mandatory pre-resume reading:** `execution-state/INDEX.md` (legend + failure-mode rules) → `execution-state/supervisor-ravi.md` rows D17 / F26 / F27 → `execution-state/combined.md` D17 section.
+3. **Resume actions** (in order):
+   - Write 4th test file `apps/backend/test/effective-responsibility-point-in-time.test.ts` (3 cases — acting+permanent overlap timeline, sequential reassignments, acting-then-permanent-reassigned mid-acting).
+   - Run real-DB sweep against fresh local Postgres + all 10 migrations.
+   - Split WIP commit `84ae39c` into 3 clean commits (helpers / routes / tests).
+   - Update `execution-state/supervisor-ravi.md` D17/F26/F27 rows to reflect verification movement.
+4. **Update cadence rule (INDEX.md):** before first code edit, at pause/block, after verify+commit. Three updates per slice, no more, no less.
+5. **Reconciliation rule:** if STATUS/NEXT_SESSION and `execution-state/` disagree on any row, STOP and reconcile.
 
 ## Open founder picks (8)
 

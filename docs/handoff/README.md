@@ -12,14 +12,15 @@ This folder is the **navigation + state** layer. The actual content (specs, plan
 
 ## Files in this folder
 
-| File                     | Purpose                                                                                                  | Update cadence                                         |
-| ------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `README.md` (this file)  | Entry point. Structure, rules, anti-drift, update order, failure modes.                                  | Rare — only when the structure or rules change.        |
-| `NEXT_SESSION.md`        | 2-minute resume file for AI sessions. Approved-vs-Draft summary + next concrete action + what NOT to do. | Every phase shift; keep it short.                      |
-| `STATUS.md`              | Living description of the project's current state + Authority Snapshot.                                  | Every major phase shift.                               |
-| `ROADMAP.md`             | What's planned next.                                                                                     | When the next phase is named.                          |
-| `PROMOTION_CHECKLIST.md` | Mandatory checklist for Draft → Active promotions. Run end-to-end or do not promote.                     | Rare — only when the promotion process itself changes. |
-| `done/`                  | Archive subfolder. Each completed phase gets one Markdown file using the standardised template.          | Append a new file when a phase closes.                 |
+| File                       | Purpose                                                                                                                                             | Update cadence                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `README.md` (this file)    | Entry point. Structure, rules, anti-drift, update order, failure modes.                                                                             | Rare — only when the structure or rules change.        |
+| `NEXT_SESSION.md`          | 2-minute resume file for AI sessions. Approved-vs-Draft summary + next concrete action + what NOT to do.                                            | Every phase shift; keep it short.                      |
+| `STATUS.md`                | Living description of the project's current state + Authority Snapshot.                                                                             | Every major phase shift.                               |
+| `execution-state/INDEX.md` | **Per-workflow build state.** Persona-by-persona + combined. The workflow-truth surface — must be updated before/at-pause/after every coding slice. | Every slice (3 triggers per slice).                    |
+| `ROADMAP.md`               | What's planned next.                                                                                                                                | When the next phase is named.                          |
+| `PROMOTION_CHECKLIST.md`   | Mandatory checklist for Draft → Active promotions. Run end-to-end or do not promote.                                                                | Rare — only when the promotion process itself changes. |
+| `done/`                    | Archive subfolder. Each completed phase gets one Markdown file using the standardised template.                                                     | Append a new file when a phase closes.                 |
 
 ## Where actual content lives
 
@@ -37,8 +38,12 @@ The handoff folder does **not** duplicate content. It points to:
 
 1. Read `NEXT_SESSION.md` — 2-min resume.
 2. Read `STATUS.md` — full state.
-3. Read `ROADMAP.md` — what's next.
-4. Read whichever specs/plans/audits `STATUS.md` points you to. Nothing else.
+3. Read `execution-state/INDEX.md` — workflow-truth legend + rules. **Mandatory.**
+4. Read the persona file(s) in `execution-state/` that the next slice touches, plus `combined.md` if the slice spans personas.
+5. Read `ROADMAP.md` — what's next.
+6. Read whichever specs/plans/audits `STATUS.md` points you to. Nothing else.
+
+**If `execution-state/` and `STATUS.md` / `NEXT_SESSION.md` disagree about a workflow's state: STOP. Reconcile before any code. See `execution-state/INDEX.md` failure-mode rule 5.**
 
 ### Finishing a phase
 
