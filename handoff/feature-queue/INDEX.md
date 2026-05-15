@@ -83,21 +83,23 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **expected verification gate:** `REAL_DB`.
 - **status:** `APPROVED` (friend's file-grounded verification 2026-05-16 at HEAD `12c1df6`; round-3 fixes closed both P1 + P2; 15/15 test files green, 75/75 cases pass; ready to be marked DONE once branch merges to main).
 
-### F-003 — Cron framework + `binding-expire-sweep`
+### F-003 — Cron framework + `binding-expire-sweep` (RE-SCOPED 2026-05-16)
 
 - **id:** F-003
-- **title:** Cron framework + first sweep job (`binding-expire-sweep`)
-- **why:** Closure spec mandates four crons (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`); only `reset-ai-spend` exists today. Bindings can't auto-expire when `effectiveUntil` passes; "while you were out" digests can't fire; decisions can't auto-expire. Every downstream slice (F-004, F-005, F-007) eventually needs at least one of these sweeps to be real.
+- **title:** Cron framework + first sweep job — **side-effect emit only, NOT a responsibility switch**
+- **why:** Responsibility switching when `effectiveUntil` passes is already correct and time-based via `getEffectiveBinding` (read-time predicate excludes the expired acting row immediately). What does NOT exist today is a scheduled trigger that observes "this binding just expired" and emits the audit event + later the "while you were out" digest + later the notifications. F-003 fills only that side-effect gap. Matches Oracle / Workday / SAP effective-dating patterns: source-of-truth is date-based; scheduled jobs handle side effects.
 - **depends on:** F-001 (APPROVED 2026-05-15) — dependency met. F-002 (APPROVED 2026-05-16) and S-001 (APPROVED 2026-05-16) not strictly required but both landed.
-- **personas touched:** Ravi (sees acting binding auto-end), Lakshmi/Anjali (their cover windows close on time), Kavitha (HR queue items can later age-escalate via the same framework).
-- **workflows touched:** F26 (acting binding expiry — this slice), F27 (permanent reassign expiry — same job), C12 (decision expiry — later slice on this framework).
+- **personas touched:** all 4 indirectly via downstream consumers of `BINDING_ENDED_AUTO` (notification dispatcher F-007, digest generator, audit-trail reports).
+- **workflows touched:** F26 (acting binding expiry — emits audit; switching itself is already read-time correct), F27 (permanent reassign expiry — same), C12 (decision expiry — later slice on this framework).
 - **entities/routes/tables touched:**
   - **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.
-  - **WIRED:** sweep sets `endedAt = effectiveUntil` on `SiteSupervisorBinding` rows where `effectiveUntil <= now() AND endedAt IS NULL`; emits `BINDING_ENDED_AUTO` AuditEvent per row (kind already in the closure-spec catalogue).
-  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + sets `endedAt`.
-  - **NO** new entity. **NO** schema change. **NO** HTTP route in this slice (scheduler invocation TBD per scope picks).
-- **expected verification gate:** `REAL_DB` (real Postgres + sweep run + idempotency assertion).
-- **status:** `PLANNED — AWAITING_SCOPE_APPROVAL` — active slice. Scope artifact draft to land at `handoff/feature-queue/scopes/F-003.md`; 6 open picks (scheduler shape · run cadence · S-001 interaction · failure handling · multi-replica dedup · audit payload). See `handoff/owner-input/active-slice.md` for the full pick list with recommended defaults.
+  - **EMITS:** `BINDING_ENDED_AUTO` AuditEvent per binding whose `effectiveUntil` has just passed and that has not yet been processed (kind already catalogued in closure spec §11).
+  - **DOES NOT MUTATE the binding row.** `endedAt` stays NULL for auto-expired bindings — setting it would break historical point-in-time queries via `getEffectiveBinding`.
+  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + does NOT mutate the binding row + does NOT change `getEffectiveBinding` results.
+  - **NO** new entity. **NO** schema change in the recommended scope (pick 7 option (a) — audit-existence check). **NO** HTTP route mutation lands.
+- **expected verification gate:** `REAL_DB` (real Postgres + sweep run + idempotency assertion + read-time-routing-unchanged assertion).
+- **spec amendment included in scope artifact (docs-only):** closure spec §10 line 560 wording "Closes any binding whose `effectiveUntil` has passed" → "Emits `BINDING_ENDED_AUTO` for any binding whose `effectiveUntil` has passed" (removes the misleading "Closes" — cron does not perform the switch).
+- **status:** `PLANNED — AWAITING_SCOPE_APPROVAL` — active slice. Re-scoped 2026-05-16 after friend caught 2 contradictions (transaction shape; cadence vs spec) and owner directed the side-effects-only re-scope. Scope artifact draft to land at `handoff/feature-queue/scopes/F-003.md`. 7 picks now: 5 with recommended defaults, 1 CLOSED at spec value (cadence = 5 min per closure spec §10), 1 NEW (idempotency marker). See `handoff/owner-input/active-slice.md` for the full pick list and trade-offs.
 
 ### F-004 — HandoffPackage composer
 

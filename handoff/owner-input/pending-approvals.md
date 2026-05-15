@@ -20,26 +20,31 @@
 
 ## Currently awaiting approval
 
-### Slice: `cron-framework-binding-expire-sweep` (F-003 — scope approval) — AWAITING_SCOPE_APPROVAL 2026-05-16
+### Slice: `cron-framework-binding-expire-sweep` (F-003 — scope approval, RE-SCOPED 2026-05-16) — AWAITING_SCOPE_APPROVAL 2026-05-16
 
-**Problem in simple English:** the closure spec lists four crons the system needs (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`); only `reset-ai-spend` exists today. Without the framework + first sweep, bindings can't auto-expire when `effectiveUntil` passes, "while you were out" digests can't fire, decisions can't auto-expire, and HR queue items can't age-escalate. Every downstream slice eventually depends on at least one of these.
+**Status note (2026-05-16 evening):** owner directed a re-scope after friend caught 2 contradictions in the prior draft (transaction shape inconsistent, cadence inconsistent with closure spec §10). Owner's directive: cron is NOT the source of truth for supervisor switching — that's already time-based via `getEffectiveBinding`'s read-time predicate. Cron is for post-expiry side effects only (audit emit, later digest, later notifications). This matches Oracle / Workday / SAP effective-dating patterns: source-of-truth is date-based; scheduled jobs handle side effects.
 
-**Simplest business rule:** add a small cron framework that runs short idempotent "sweep" jobs on a schedule. Start with `binding-expire-sweep`: any SiteSupervisorBinding where `effectiveUntil <= now() AND endedAt IS NULL` gets `endedAt = effectiveUntil` + a `BINDING_ENDED_AUTO` AuditEvent. Idempotent (re-runs are no-ops). Future sweeps land in subsequent slices on the same framework.
+**Problem (re-scoped):** when an acting supervisor's `effectiveUntil` passes, responsibility automatically flips back to the underlying binding (already correct in `getEffectiveBinding` — predicate `effectiveFrom <= at AND (effectiveUntil IS NULL OR effectiveUntil > at) AND endedAt IS NULL` naturally excludes the expired acting row). But there is no scheduled trigger that observes "this binding just expired" and emits the audit + later the "while you were out" digest + later notifications. That is the only gap F-003 fills.
 
-**Code (only after scope-artifact approval):** new `apps/backend/src/jobs/` dir + cron framework module + `binding-expire-sweep` + real-DB integration test. No new schema field. `BINDING_ENDED_AUTO` AuditEvent kind already catalogued in closure spec §11.
+**Simplest business rule:** add a small cron framework. First job `binding-expire-sweep` emits a `BINDING_ENDED_AUTO` AuditEvent for each binding whose `effectiveUntil` has passed and that has not yet been processed. The sweep does NOT decide who is responsible. The sweep does NOT mutate `endedAt`. The sweep does NOT alter the schema. Future sweeps land in later slices on the same framework.
 
-**Why scope first:** F-003 is medium-major (new infra dir + scheduling pattern + first auto-mutation of `SiteSupervisorBinding` rows). Per `feedback_plan_mode_for_medium_major_changes.md` discipline lock, scope artifact + owner approval must come BEFORE code.
+**Code (only after scope-artifact approval):** new `apps/backend/src/jobs/` dir + cron framework module + `binding-expire-sweep` job + real-DB integration test. Per-binding work in its own short transaction (independent side effects). Run cadence locked at **every 5 minutes** per closure spec §10 (line 560) — matching the spec, not contradicting it.
 
-**6 open picks for owner + friend** (see `active-slice.md` for full trade-off discussion; recommended defaults in brackets):
+**Why scope first:** F-003 is medium-major (new infra dir + scheduling pattern). Per `feedback_plan_mode_for_medium_major_changes.md` discipline lock, scope artifact + owner approval must come BEFORE code.
 
-1. **Scheduler shape** — in-process / `node-cron` / `pg_cron` / OS-cron + HTTP endpoint? [OS-cron + HTTP endpoint, matches existing `reset-ai-spend`]
-2. **Run cadence for `binding-expire-sweep`** — every minute / every 5 min / every hour? [every minute at launch]
-3. **S-001 interaction** — does sweep count as a "responsibility change today"? [exempt — sweep bookkeeps an already-locked `effectiveUntil`, not a new mutation]
-4. **Failure handling** — partial-batch retry / one tx per row? [one tx per row at launch]
-5. **Multi-replica dedup** — Postgres advisory lock / rely on idempotency? [rely on idempotency at launch]
-6. **`BINDING_ENDED_AUTO` payload** — `{ bindingId, siteId, userId, effectiveUntil, sweptAt }`? [yes]
+**7 picks for owner + friend** (see `active-slice.md` for full trade-off; CLOSED items already determined by spec / friend's fix; recommended defaults in brackets):
 
-**Decision needed:** `SCOPE: GO with default picks` / `SCOPE: change picks (bullet list)` / `HOLD` / `MERGE FIRST` (graduate F-002 + S-001 to DONE before starting F-003).
+1. **Scheduler shape** [OS-cron + HTTP endpoint, matches existing `reset-ai-spend`]
+2. **Run cadence** — **CLOSED: every 5 minutes** per closure spec §10 line 560 (the prior "every minute" recommendation was a spec contradiction and is withdrawn)
+3. **S-001 interaction** [sweep is exempt — responsibility switch already happened at read-time when `effectiveUntil` passed; sweep emits side-effect audit only]
+4. **Failure handling and transaction shape** — **one tx per row** (per-row side effects are independent; whole-sweep tx would amplify a single failure into total rollback). Same picks 4 + Code section — no more contradiction.
+5. **Multi-replica dedup** [rely on idempotency at launch via pick 7's marker]
+6. **`BINDING_ENDED_AUTO` payload** [`{ bindingId, siteId, userId, actingForUserId, effectiveFrom, effectiveUntil, sweptAt }`]
+7. **Idempotency marker (new pick — flagged by re-scope)** — (a) audit-existence check (NOT EXISTS subquery, no schema change) / (b) new column `autoExpireProcessedAt` (schema migration). NOT (c) set `endedAt = effectiveUntil` ❌ — would break historical point-in-time queries via `getEffectiveBinding`. Recommended: **(a) audit-existence check**.
+
+**Spec amendment included in scope artifact (docs-only):** closure spec §10 line 560 wording "Closes any binding" can be misread as "cron decides who's responsible." A small clarifying amendment: drop "Closes" and say "emits `BINDING_ENDED_AUTO` for any binding whose `effectiveUntil` has passed." This makes the spec match the re-scope.
+
+**Decision needed:** `SCOPE: GO with re-scoped defaults` / `SCOPE: change picks (bullet list)` / `HOLD` / `MERGE FIRST` (graduate F-002 + S-001 to DONE before starting F-003).
 
 ---
 
