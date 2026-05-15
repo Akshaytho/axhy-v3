@@ -708,6 +708,17 @@ model SupervisorDecision {
   /// HR review render the "proposed during absence" framing.
   /// @derives(workflow-design-closure §3.2, Decision 7)
   proposedDuringAbsence Boolean   @default(false)
+  /// Set when the currently-responsible supervisor explicitly rejects a PROPOSED
+  /// decision via POST /decisions/:id/dismiss. Mutually exclusive with appliedAt:
+  /// a row is in PROPOSED state iff both appliedAt IS NULL AND dismissedAt IS NULL.
+  /// State ENUM column deferred per F-002 scope Q4=(b); discriminator is the
+  /// pair (appliedAt, dismissedAt) for now.
+  /// @derives(F-002 scope §3c)
+  dismissedAt           DateTime?
+  /// Plain-text reason the responsible supervisor gave at dismiss time.
+  /// Surface in Activity tab + downstream learning for the AI extractor.
+  /// @derives(F-002 scope §3c)
+  dismissedReason       String?   @db.Text
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -717,6 +728,7 @@ model SupervisorDecision {
   @@index([companyId, supervisorId, createdAt])
   @@index([companyId, tier])
   @@index([companyId, appliedAt])
+  @@index([companyId, dismissedAt])
   @@schema("axhy")
 }
 
