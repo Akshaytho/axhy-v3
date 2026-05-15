@@ -24,14 +24,19 @@ export const ApplyDecisionCardInput = z
     toolInput: z.record(z.unknown()),
     /**
      * SupervisorDecision.id that the chat extractor wrote when the AI proposed
-     * this card. Required so /chat/apply can transition the PROPOSED row to
-     * APPLIED in the same flow as the domain write. Optional during the F-002
-     * transition for back-compat with mobile clients that haven't shipped the
-     * new decisionCard.decisionId field yet — when omitted, /chat/apply
-     * proceeds without lifecycle update + logs a warning.
+     * this card. REQUIRED — every apply must transition a specific PROPOSED
+     * row to its terminal state, otherwise the row leaks open and can be
+     * applied / dismissed a second time (F-002 finding F2 / rule P4).
+     *
+     * F-002.5: the prior optional decisionId existed as a temporary back-compat
+     * shim. That shim has been removed because the back-compat path was never
+     * deployed (this slice is on a feature branch). Old clients now get 400
+     * BAD_INPUT and must ship the new shape.
+     *
      * @derives(F-002 scope §3a + §3b)
+     * @derives(F-002.5 — back-compat removal per friend's required addition 2)
      */
-    decisionId: z.string().uuid().optional(),
+    decisionId: z.string().uuid(),
   })
   .strict();
 export type ApplyDecisionCardInputT = z.infer<typeof ApplyDecisionCardInput>;
