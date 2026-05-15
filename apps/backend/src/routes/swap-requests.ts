@@ -25,8 +25,7 @@ import type { CreateSwapRequestOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
-import { recordAuditEvent } from '../lib/audit-event.js';
-import { enqueueOutbox } from '../lib/outbox.js';
+import { createSwapRequestService } from '../lib/services/swap-request-service.js';
 
 /**
  * Register swap-request supervisor routes.
@@ -59,78 +58,17 @@ export async function registerSwapRequestRoutes(app: FastifyInstance): Promise<v
     }
 
     try {
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-        const fromWorker = await tx.worker.findFirst({
-          where: { id: fromWorkerId, companyId: auth.companyId },
-        });
-        if (!fromWorker) return { kind: 'WORKER_NOT_FOUND' as const, which: 'fromWorker' };
-        const toWorker = await tx.worker.findFirst({
-          where: { id: toWorkerId, companyId: auth.companyId },
-        });
-        if (!toWorker) return { kind: 'WORKER_NOT_FOUND' as const, which: 'toWorker' };
-        const site = await tx.site.findFirst({
-          where: { id: siteId, companyId: auth.companyId },
-        });
-        if (!site) return { kind: 'SITE_NOT_FOUND' as const };
-
-        const swap = await tx.swapRequest.create({
-          data: {
-            companyId: auth.companyId,
-            supervisorId: auth.userId,
-            fromWorkerId,
-            toWorkerId,
-            siteId,
-            effectiveAt: effectiveDate,
-            reason: reason ?? null,
-            state: 'SENT',
-          },
-        });
-
-        await recordAuditEvent(tx, {
-          companyId: auth.companyId,
-          kind: 'SWAP_REQUEST_SENT',
-          actorId: auth.userId,
-          targetId: swap.id,
-          payload: {
-            fromWorkerId,
-            fromWorkerName: fromWorker.name,
-            toWorkerId,
-            toWorkerName: toWorker.name,
-            siteId,
-            siteName: site.name,
-            effectiveAt,
-            reason: reason ?? null,
-          },
-        });
-
-        // Notify both workers via WhatsApp (Phase C — stubbed in dispatcher)
-        await enqueueOutbox(tx, {
-          companyId: auth.companyId,
-          topic: 'gupshup.send',
-          payload: {
-            kind: 'swap_request_sent',
-            recipient: { workerId: fromWorkerId, phone: fromWorker.phone, name: fromWorker.name },
-            site: { id: siteId, name: site.name },
-            counterparty: { workerId: toWorkerId, name: toWorker.name },
-            swapRequestId: swap.id,
-            effectiveAt,
-          },
-        });
-        await enqueueOutbox(tx, {
-          companyId: auth.companyId,
-          topic: 'gupshup.send',
-          payload: {
-            kind: 'swap_request_sent',
-            recipient: { workerId: toWorkerId, phone: toWorker.phone, name: toWorker.name },
-            site: { id: siteId, name: site.name },
-            counterparty: { workerId: fromWorkerId, name: fromWorker.name },
-            swapRequestId: swap.id,
-            effectiveAt,
-          },
-        });
-
-        return { kind: 'OK' as const, swap };
-      });
+      // F-002.b (round-2 R2b-iii): route is now a thin wrapper around
+      // createSwapRequestService. /chat/apply (F-002.15) calls the same
+      // service INSIDE its own withTenantContext for atomic lifecycle +
+      // domain.
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+        createSwapRequestService(
+          tx,
+          { fromWorkerId, toWorkerId, siteId, effectiveAt, reason: reason ?? null },
+          { companyId: auth.companyId, userId: auth.userId },
+        ),
+      );
 
       if (out.kind === 'WORKER_NOT_FOUND') {
         reply.code(404).send({
