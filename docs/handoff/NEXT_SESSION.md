@@ -6,9 +6,9 @@
 
 ## Current state
 
-- **Active phase:** Layer 1 implementation in progress. Closure spec PROMOTED Active 2026-05-15. Branch `feat/layer-1-core-primitives` OPEN. Working from Active closure spec.
-- **Current branch:** `feat/layer-1-core-primitives`
-- **Last updated:** 2026-05-15 (promotion + Layer 1 branch open)
+- **Active phase:** Layer 1 PR 1 = **code complete, migration ready-to-apply but NOT yet applied.** Blocked by lack of non-prod Railway DB (per project memory the only Railway Postgres is production-tagged); awaiting either founder approval for a production migration window, a provisioned dev DB, or local Postgres verification. PR 2 NOT started.
+- **Current branch:** `feat/layer-1-core-primitives` (2 commits: 215c208 schema + be954a2 PolicyValue doc reconciliation)
+- **Last updated:** 2026-05-15 (PR 1 code complete; migration apply blocked)
 
 ## Approved vs Draft
 
@@ -41,11 +41,15 @@
 
 ## Next concrete action
 
-**Closure spec is Active.** Layer 1 build is unblocked.
+**PR 1 is code-complete; migration apply is blocked.** Decisions needed before PR 2:
 
-1. Open the branch: `git checkout -b feat/layer-1-core-primitives`.
-2. First PR per kickoff memo §7: **schema-only migrations.** All 8 migrations (A–H) + Prisma model changes in `packages/shared-schema` + Zod schema updates + AuditEvent kind enum extension. No business logic in PR 1. Aim: green CI + Railway dev apply.
-3. Update STATUS.md and NEXT_SESSION.md the same day the branch opens (per Mandatory Update Order §7 in README).
+1. **Pick a verification path** for the migration:
+   - **Production-window approval** (founder explicitly authorises `prisma migrate deploy` against the shared Railway Postgres during a planned window); OR
+   - **Provision a separate Railway dev DB** + supply DATABASE_URL; OR
+   - **Local Postgres verification** (Docker container or local install — ~5 minutes if Docker is available); OR
+   - **Defer apply to scheduled production migration window** (PR 1 stays code-reviewed and merge-ready; apply happens at a planned window with founder supervision).
+2. Once migration applies cleanly somewhere, mark PR 1 fully verified and surface PR 2 plan (audit-emit helpers for 15 new kinds + real-DB integration tests).
+3. **Do not start PR 2 until migration verification is recorded.**
 
 ## Open founder picks (8)
 

@@ -2,8 +2,8 @@
 
 > **Living document.** Update at every major phase shift (per the Mandatory Update Order in `README.md`).
 
-**Last updated:** 2026-05-15 (promotion + Layer 1 branch open)
-**Active phase:** Layer 1 implementation in progress. Closure spec PROMOTED Active. Branch `feat/layer-1-core-primitives` OPEN. First PR: schema-only migrations (PR 1 per kickoff memo §7). Building from Active closure spec.
+**Last updated:** 2026-05-15 (PR 1 code complete; migration ready-to-apply but not applied)
+**Active phase:** Layer 1 PR 1 schema-only — **code complete, migration NOT yet applied to any DB.** Branch `feat/layer-1-core-primitives` open with 2 commits (215c208 schema + be954a2 PolicyValue doc reconciliation). Blocked from non-prod verification because there is no separate Railway dev DB (per project memory the only Railway Postgres is production-tagged). Awaiting either (a) explicit founder approval for a production migration window, (b) provisioning of a separate dev DB, or (c) local Postgres verification path. PR 2 NOT started.
 
 ## Authority Snapshot
 
