@@ -6,9 +6,9 @@
 
 ## Current state
 
-- **Active phase:** **Migration-baseline recovery planning.** PR 1 (Layer 1 schema-only) is code-complete but **cannot be locally verified** because the repo's migration history is structurally incomplete — foundational baseline tables (Company, User, Membership, Site, Worker, Visit, LeaveRequest, OtpAttempt) are not captured in any migration. Surfaced 2026-05-15 during local Docker-Postgres verification: `20260508_phase_b_domain` fails with `relation "axhy.Company" does not exist` on a fresh DB. Investigation note + ranked recovery options at `docs/plans/2026-05-15-migration-baseline-recovery.md`. Recommendation: Option 1 (reconstruct baseline migration in a separate PR). PR 1 holds unchanged; PR 2 NOT started.
-- **Current branch:** `feat/layer-1-core-primitives` (3 commits: 215c208 schema + be954a2 PolicyValue doc reconciliation + 853672c handoff state)
-- **Last updated:** 2026-05-15 (baseline-migration gap surfaced; PR 1 holds pending recovery)
+- **Active phase:** **Layer 1 implementation — PR 1 code-complete + locally real-DB verified.** Migration baseline recovery merged into parent `feat/phase-c-wave-4b-chat-completion` at `1dbf951`. `feat/layer-1-core-primitives` rebased onto the updated parent; full chain of 9 migrations applies cleanly to a fresh Postgres; all 9 expected Layer 1 schema objects (4 tables, 4 columns, 1 view) verified present. Migration **NOT** yet applied to Railway prod — prod apply is a later supervised step. Next slice: **PR 2 — audit-emit helpers + real-DB integration tests**.
+- **Current branch:** `feat/layer-1-core-primitives` (4 commits ahead of parent post-rebase)
+- **Last updated:** 2026-05-15 (baseline merged into parent; PR 1 locally real-DB verified; PR 2 next)
 
 ## Approved vs Draft
 
@@ -41,17 +41,17 @@
 
 ## Next concrete action
 
-**PR 1 is blocked by a repo-level baseline-migration-history gap, NOT by Layer 1 schema correctness.** Decisions needed before any further Layer 1 progress:
+**PR 1 is approved and locally real-DB verified. Start PR 2 next, narrow scope.**
 
-1. **Read `docs/plans/2026-05-15-migration-baseline-recovery.md`** — investigation note + ranked recovery options.
-2. **Founder picks a recovery path:**
-   - **Option 1 (recommended):** reconstruct baseline migration in a separate PR ahead of PR 1's merge. Requires read-only access to Railway prod schema via `prisma migrate diff` or `pg_dump --schema-only`. PR 1 holds; rebases naturally once baseline lands.
-   - **Option 2:** clone Railway prod DB → verify Layer 1 against the clone. Doesn't fix the underlying repo issue.
-   - **Option 3 (last resort):** defer all local replay; apply Layer 1 directly during a supervised production window. Repo baseline gap stays open.
-3. **Do not start PR 2** until baseline recovery is decided and (if Option 1) the baseline PR lands.
-4. **Do not touch Railway prod** without explicit founder window approval (still applies).
-
-PR 1 disposition: **HOLD unchanged.** Don't stack, don't rebase. Once a baseline migration timestamped before `20260508_*` lands, PR 1 naturally works on top.
+1. **Stay on `feat/layer-1-core-primitives`.** No new branch.
+2. **PR 2 scope (narrow — do not exceed):**
+   - Audit-emit helpers for the new AuditEvent kinds introduced by Layer 1 (per closure spec §3.6 + the kind catalogue extension committed in 095c766).
+   - Real-DB integration tests around the new schema objects where applicable (HRPod creation + Membership.podId binding, Policy round-trip, Notification + Digest insert/query, SupervisorDecision.originContext + proposedDuringAbsence flow, QueueItem view query).
+   - Verification status per slice: real-DB verified before claiming done.
+3. **Do NOT** introduce new schema changes unless a real blocker appears.
+4. **Do NOT** start Layer 2 surface work.
+5. **Do NOT** apply the migration to Railway prod — that's a later supervised step gated on `prisma migrate resolve --applied 20260507_phase_a_baseline_day3` + a supervised window.
+6. **Do NOT** mix in cleanup of the two cosmetic drift items (ChatMessage.costInr precision annotation + LivingDoc constraint rename) — they're deferred to a separate small migration after PR 2.
 
 ## Open founder picks (8)
 
