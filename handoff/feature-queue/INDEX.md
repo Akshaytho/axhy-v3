@@ -51,14 +51,25 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 ### S-001 — Same-day supervisor-freeze policy
 
 - **id:** S-001
-- **title:** Once-the-day-starts supervisor ownership is frozen; HR binding-create rejects same-day effectiveFrom
-- **why:** Eliminates the stale-authority race at the source rather than engineering around it (rule 25 — policy-first / no unnecessary complexity). F-002 round-2 + round-3 already cover the race as defense-in-depth; this slice makes the race impossible by construction.
-- **depends on:** F-002 (APPROVED 2026-05-16) — dependency met. Spec lock in `2026-05-14-supervisor-responsibility-model.md` + `2026-05-15-workflow-design-closure.md` must land before code.
+- **title:** Shared `assertNotChangingTodaysResponsibility` guard at every HR binding-mutation entry point — no responsibility change may take effect today
+- **why:** Eliminates the stale-authority race at the source rather than engineering around it (rule 25 — policy-first / no unnecessary complexity). F-002 round-2 + round-3 already cover the race as defense-in-depth; this slice makes the race impossible by construction. Framed around the business outcome ("no responsibility change takes effect today"), not around any single field, so a future code path mutating responsibility through a different field cannot silently bypass it.
+- **depends on:** F-002 (APPROVED 2026-05-16) — dependency met. Spec lock in `2026-05-14-supervisor-responsibility-model.md` + `2026-05-15-workflow-design-closure.md` landed in `2835e84` (single-source v2 wording in both specs).
 - **personas touched:** Kavitha (HR, gated at API layer), Ravi (originator, no behavior change for him), Lakshmi/Anjali (acting binding flows shift to next-day-effective).
-- **workflows touched:** F26 (acting binding create), F27 (permanent reassign).
-- **entities/routes/tables touched:** HR binding-create + `reassignPermanentBinding` services (Zod refine on `effectiveFrom` ≥ tomorrow-midnight-tenant-local). No schema change. No new entity.
-- **expected verification gate:** `REAL_DB` (2 new tests: HR same-day rejected → 400; existing routing unchanged for permanent + future-dated bindings).
-- **status:** `AWAITING_APPROVAL` (spec lock landed at `2835e84`; code landed at `d234e77` — helper `assertNotChangingTodaysResponsibility` + wire into `reassignPermanentBinding` + 5 new tests + 4 adapted tests; 17/17 test files green, 84/84 cases pass on fresh local Postgres 16).
+- **workflows touched:** F26 (acting binding create), F27 (permanent reassign), binding-end mutations (any path that would change today's responsible supervisor).
+- **entities/routes/tables touched:**
+  - **NEW:** `apps/backend/src/lib/same-day-freeze.ts` exporting `assertNotChangingTodaysResponsibility({ now?, tenantTimeZone?, effectiveFrom?, effectiveUntil? })`, `SameDayFreezeError(code='SAME_DAY_FREEZE')`, `tomorrowMidnightInTimeZone(now, tz)` (DST-safe via `Intl.DateTimeFormat` offset sampling), `DEFAULT_TENANT_TIME_ZONE = 'Asia/Kolkata'`.
+  - **WIRED:** `apps/backend/src/lib/site-supervisor-binding.ts` — `reassignPermanentBinding` calls the guard BEFORE the prior-find. Guard covers both the new binding's `effectiveFrom` AND the closed binding's `effectiveUntil` (they share the cutover instant in this path). `ReassignPermanentBindingInput` gains optional `tenantTimeZone`.
+  - **NEW (deferred to F-005):** HR binding-create / binding-end HTTP routes (admin-web HR portal). The guard is exported and ready to drop into those routes when they ship.
+  - **NO** schema change. **NO** new Prisma model. **NO** new HTTP route in this slice. **NO** `Company.timeZone` column (deferred — guard accepts the override parameter today).
+- **expected verification gate:** `REAL_DB` — 5 new tests + 4 adapted existing tests:
+  - **NEW** `apps/backend/test/same-day-supervisor-freeze.test.ts` (5 cases):
+    1. helper rejects same-day `effectiveFrom` (proves reusable for future F-005 HR binding-create route);
+    2. helper rejects same-day `effectiveUntil` (covers binding-end mutations);
+    3. `reassignPermanentBinding` rejects same-day cutover (real-DB; seed remains, no audit emitted);
+    4. supervisor-app routing unchanged for permanent + future-dated bindings (`getEffectiveBinding` returns userA now, userB at post-cutover);
+    5. helper sanity — `tomorrowMidnightInTimeZone` returns 00:00 local in IST.
+  - **ADAPTED** `apps/backend/test/binding-permanent-reassignment-basics.test.ts` (3 cases shifted to +36h cutovers; one case renamed and refactored to query effective-at-post-cutover, the only correct shape under S-001).
+- **status:** `AWAITING_APPROVAL` — spec lock landed `2835e84`; code landed `d234e77`; tracker propagation `8e763f8`. Full real-DB sweep: **17/17 test files green · 84/84 cases pass** on fresh local Postgres 16 (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).
 
 ### F-002 — D17 SupervisorDecision writer
 
