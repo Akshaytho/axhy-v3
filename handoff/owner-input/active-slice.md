@@ -16,14 +16,14 @@
 
 ## Current
 
-| Field                   | Value                                                                                                                                                                      |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**          | `same-day-supervisor-freeze` (S-001)                                                                                                                                       |
-| **Status**              | `PLANNED — AWAITING_SPEC_LOCK` (round-1 wording iteration — friend CHANGES_REQUESTED on wording 2026-05-16; reworded below; awaiting final SPEC LOCK APPROVED before code) |
-| **Branch**              | `feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)                                                                                                  |
-| **Last landed commit**  | `12c1df6` — `docs(handoff): F-002 round-3 fixes complete → AWAITING_APPROVAL (F-002.20, 15 files / 75 cases green)` (F-002 closed APPROVED)                                |
-| **Tests status**        | n/a — no code in flight                                                                                                                                                    |
-| **Verification status** | n/a — spec phase                                                                                                                                                           |
+| Field                   | Value                                                                                                                                                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**          | `same-day-supervisor-freeze` (S-001)                                                                                                                                                                                   |
+| **Status**              | `SPEC_LOCKED — READY FOR CODE` (v2 wording landed in both specs 2026-05-16; friend `SPEC LOCK APPROVED` at HEAD `9e137e4`; stale control-file line cleaned in the same spec-lock commit; S-001 code slice starts next) |
+| **Branch**              | `feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)                                                                                                                                              |
+| **Last landed commit**  | `12c1df6` — `docs(handoff): F-002 round-3 fixes complete → AWAITING_APPROVAL (F-002.20, 15 files / 75 cases green)` (F-002 closed APPROVED)                                                                            |
+| **Tests status**        | n/a — no code in flight                                                                                                                                                                                                |
+| **Verification status** | n/a — spec phase                                                                                                                                                                                                       |
 
 ## Spec lock — what needs to land before code
 
@@ -107,7 +107,7 @@ Expected: 15 files, 75 cases, all green (F-002 baseline).
 
 ## Decision needed (owner + friend, before any S-001 code)
 
-- `SPEC LOCK APPROVED` → spec wording lands in both specs in one commit batch; then S-001 code (Zod check + 2 tests) lands in a second commit.
+- `SPEC LOCK APPROVED` → spec wording lands in both specs in one commit batch; then S-001 code (shared API-layer guard `assertNotChangingTodaysResponsibility` + 4 tests) lands in a second commit.
 - `CHANGES_REQUESTED on wording` → bullet list of wording adjustments.
 - `HOLD` → S-001 pauses. F-002's round-2+3 protections continue to carry the load.
 

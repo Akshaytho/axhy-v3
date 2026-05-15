@@ -744,3 +744,28 @@ This is a Draft; nothing is amended yet. After founder approval, the following c
 ---
 
 _End of workflow design closure. Status: Draft — pending founder approval. After approval, this document becomes the implementation-ready operational design that closes the cross-cutting gaps the audit set surfaced._
+
+---
+
+## 2026-05-16 Update — S-001 same-day supervisor-freeze policy (locked)
+
+Locked 2026-05-16. Triggered after F-002 round 2 + round 3 had to engineer a stale-authority race around the possibility that responsibility can change mid-day. Per the policy-first rule (rule 25): simplify the business rule before engineering around it. The same text is the lock wording in `2026-05-14-supervisor-responsibility-model.md` (single source).
+
+**Lock wording (single source — same text used in the responsibility-model 2026-05-16 update):**
+
+> Same-day supervisor-freeze policy (S-001). Once the day has started in the tenant's local timezone, no supervisor responsibility change may take effect for that site until the next tenant-local midnight. This includes new acting cover, permanent reassignment, ending the current responsible binding, or any other binding mutation that would change who is officially responsible for today. Same-day emergencies are handled operationally outside ownership-change logic. No account sharing. F-002's atomicity and auth re-check protections remain in place as defense-in-depth.
+
+**How this simplifies the closure-spec primitives + persona surfaces:**
+
+- **§3.1 Binding (site responsibility)** — `effectiveFrom`/`effectiveUntil` are still the existing fields. The freeze constrains the values HR can submit through the API; the primitive itself is unchanged.
+- **§4 HR Pod Model** — pod owners cannot push a mid-day responsibility change; the cross-pod override (§4.5) is also subject to the freeze. Same-day emergencies route to operational coordination, not to a system mutation.
+- **§5.3 HR persona surfaces** — binding-create / binding-end / reassign surfaces honor the freeze at the API layer. The HR portal UX (deferred) will surface the policy by greying out same-day effective dates, but the gate is server-side.
+- **§5.2 Supervisor surfaces** — Activity tab attribution-during-acting-window and "while you were out" digest UX are unchanged.
+- **§5.4 Owner surfaces** — owner-side digest of binding changes (Decision 8 / §3.7 HandoffPackage) is unchanged; it now describes only tomorrow-or-later binding changes.
+- **§6 Fallback rules** — HR-absent fallback (Decision 2 / G-1) is unchanged. Cross-pod override + owner emergency-override now apply only to tomorrow-or-later changes; same-day emergencies are explicitly out of ownership-change logic.
+
+**Effect on F-002 round-2/round-3 protections:** they stay as defense-in-depth. The atomic preCheck + service + commitApply pattern remains in `/chat/apply`; the auth re-check inside `commitApply` remains. They cost nothing now and remain correct if the policy is ever loosened.
+
+**Implementation surface:** one shared API-layer helper `assertNotChangingTodaysResponsibility(tenantTimeZone, mutation)` applied at every HR binding-mutation entry point (binding-create, binding-end, `reassignPermanentBinding`, and any new path that mutates a SiteSupervisorBinding row in a way that would change today's responsible supervisor). 400 BAD_INPUT on violation.
+
+**Cross-reference:** active-slice `same-day-supervisor-freeze (S-001)` on branch `feat/layer-1-core-primitives`. Spec lock approved by friend at HEAD `9e137e4` on 2026-05-16 ("v2 wording is good · spec lock approved").
