@@ -1,11 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "metadata": {
-    "last_updated_at": "2026-05-15T13:18:09.698Z",
-    "source_commit": "03d33dd4fee01bdff6193409de7d95831673d727",
+    "last_updated_at": "2026-05-15T13:33:07.632Z",
+    "source_commit": "e222a221e50630d177fbb90b938cd5c0e460efca",
     "source_branch": "feat/layer-1-core-primitives",
     "last_canonical_commit": "03d33dd4fee01bdff6193409de7d95831673d727",
-    "staleness_warning": null,
+    "staleness_warning": "Generated output may be stale — canonical sources updated more recently than this generation.",
     "active_slice": "Layer 1 implementation — routing slice paused for execution-state tracker",
     "generated_from": [
       "handoff/execution-state/*.md",
@@ -15,9 +15,18 @@
   },
   "personas": {
     "supervisor": {
-      "name": "Ravi",
+      "name": "Ravi (Supervisor)",
       "scope": "O.3 Ravi — supervisor at Surya Cleaning. Manages ~40 workers across ~8 sites at launch (envelope: 25–60 workers / 5–12 sites). Daily product user; spends most time inside the supervisor mobile app (`apps/mobile/`). Telugu first, Hindi second, basic English. ₹15K phone; relies on voice capture + clear cards. Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.3.",
       "surfaces": "Backend routes in `apps/backend/src/routes/`; supervisor screens in `apps/mobile/app/(auth)/` + `apps/mobile/app/(supervisor)/`. **No** worker-mobile or admin-web-supervisor-portal — the supervisor surface is mobile-only.",
+      "workflow_count": 28,
+      "state_distribution": {
+        "BUILT": 4,
+        "PARTIAL": 19,
+        "WIP": 0,
+        "STUBBED": 0,
+        "NOT_STARTED": 5,
+        "BLOCKED": 0
+      },
       "workflows": [
         {
           "id": "A1",
@@ -357,28 +366,58 @@
         }
       ],
       "journeys": [
-        "Worker no-show → mark absent → maybe replacement",
-        "Daily scheduling (calendar → assignment → visit)",
-        "Site complaint",
-        "Chat → DWI lifecycle (the missing-middle)",
-        "Ravi gets sick → Lakshmi covers (F26 from Ravi's seat)",
-        "Ravi hands sites to Anjali (F27 future-dated handoff from Ravi's seat)"
+        {
+          "num": 1,
+          "title": "Worker no-show → mark absent → maybe replacement",
+          "description": "The most-common daily flow. Ravi gets a phone call from Suresh-the-supervisor-of-record, or notices on the chat. Spec: data-flow §5; ops-workflow-model A.C11 + F28.",
+          "has_diagram": true
+        },
+        {
+          "num": 2,
+          "title": "Daily scheduling (calendar → assignment → visit)",
+          "description": "Ravi's recurring weekly rhythm. Spec: ops-workflow-model B.B7–B10 + C.C12; R6 §4.",
+          "has_diagram": true
+        },
+        {
+          "num": 3,
+          "title": "Site complaint",
+          "description": "Ravi logs a complaint about a site (client called, area unclean, equipment missing). Spec: data-flow §5; ops-workflow-model C13.",
+          "has_diagram": true
+        },
+        {
+          "num": 4,
+          "title": "Chat → DWI lifecycle (the missing-middle)",
+          "description": "The headline gap. Closure spec mandates a PROPOSED-row intermediate for every supervisor-initiated decision. Chat MVP currently skips it.",
+          "has_diagram": true
+        },
+        {
+          "num": 5,
+          "title": "Ravi gets sick → Lakshmi covers (F26 from Ravi's seat)",
+          "description": "The headline P1.5 workflow. Spec: responsibility-model §5–7; closure Decision 4.",
+          "has_diagram": true
+        },
+        {
+          "num": 6,
+          "title": "Ravi hands sites to Anjali (F27 future-dated handoff from Ravi's seat)",
+          "description": "Future-dated permanent reassignment. The P1.5 fix made this work mechanically. Spec: responsibility-model §7 + §9; closure §4.",
+          "has_diagram": true
+        }
       ],
-      "has_workflow_map": true,
-      "workflow_count": 28,
-      "state_distribution": {
-        "BUILT": 4,
-        "PARTIAL": 19,
-        "WIP": 0,
-        "STUBBED": 0,
-        "NOT_STARTED": 5,
-        "BLOCKED": 0
-      }
+      "has_current_slice_focus": false
     },
     "worker": {
-      "name": "Suresh",
+      "name": "Suresh (Worker)",
       "scope": "O.4 Suresh — Bihar migrant worker at Surya Cleaning's Lakeview site. Hindi-first; basic English; Telugu near-zero. ₹6K Realme phone, 80% storage full. Earns ~₹14K/month. Persona fears: late pay, false accusation, firing without notice. Daily user (when worker app exists). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.4.",
       "surfaces": "Backend routes write `Worker` / `Visit` / `Assignment` / `LeaveRequest` / `Attendance` rows but **no worker mobile app exists in the repo today.** `find apps -maxdepth 2 -name \"worker-mobile\"` returns nothing. Every Suresh-side workflow has Implementation state = `NOT_STARTED` from his seat, even when the backend is `BUILT`. This is the headline finding of his audit (`docs/audits/2026-05-14-1yr-sim-worker-suresh.md`): the worker is currently **structurally invisible** to himself.",
+      "workflow_count": 18,
+      "state_distribution": {
+        "BUILT": 0,
+        "PARTIAL": 0,
+        "WIP": 0,
+        "STUBBED": 0,
+        "NOT_STARTED": 18,
+        "BLOCKED": 0
+      },
       "workflows": [
         {
           "id": "A1",
@@ -598,27 +637,52 @@
         }
       ],
       "journeys": [
-        "First activation (A3 + A4)",
-        "Marked absent (C11 subject view)",
-        "Suresh requests leave (E21 worker-initiated)",
-        "Supervisor change notification (W-1 + W-2 + W-3 + W-7)",
-        "Suresh is terminated (E24 / W-4 subject view)"
+        {
+          "num": 1,
+          "title": "First activation (A3 + A4)",
+          "description": "How Suresh experiences day 1 when the worker app exists.",
+          "has_diagram": true
+        },
+        {
+          "num": 2,
+          "title": "Marked absent (C11 subject view)",
+          "description": "Suresh wakes up sick; supervisor marks him absent; Suresh wants to know what happened.",
+          "has_diagram": true
+        },
+        {
+          "num": 3,
+          "title": "Suresh requests leave (E21 worker-initiated)",
+          "description": "He has a family wedding, wants 2 days off.",
+          "has_diagram": true
+        },
+        {
+          "num": 4,
+          "title": "Supervisor change notification (W-1 + W-2 + W-3 + W-7)",
+          "description": "The headline Suresh case. Closure Decision 4 mandates this; nothing exists today.",
+          "has_diagram": true
+        },
+        {
+          "num": 5,
+          "title": "Suresh is terminated (E24 / W-4 subject view)",
+          "description": "The most consequential moment for Suresh. Closure Decision 5: in-app push + 7-day appeal + records export.",
+          "has_diagram": true
+        }
       ],
-      "has_workflow_map": true,
+      "has_current_slice_focus": false
+    },
+    "hr": {
+      "name": "Kavitha (HR)",
+      "scope": "O.2 Kavitha — HR control plane operator at Surya Cleaning. Currently runs payroll + HR via 3 Excel sheets + Tally + Gmail + WhatsApp. Reddy's sister-in-law; high relational stake. Multi-HR-user team at 5K-scale (Kavitha + Anita + Vikram + Priya + Deepak). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.2. Audit: `docs/audits/2026-05-15-1yr-sim-hr-kavitha.md` (H-1 through H-9 switching scope).",
+      "surfaces": "HR control plane lives in `apps/admin-web/` — but the HR portal **does not exist yet**. `ls apps/admin-web/app/` shows: about / api / contact / login / owner / pricing / privacy / system / terms — **no HR route**. The closure spec §4 HR pod model is locked in schema but the admin-web HR portal is the largest unbuilt surface in the system.",
       "workflow_count": 18,
       "state_distribution": {
         "BUILT": 0,
-        "PARTIAL": 0,
+        "PARTIAL": 11,
         "WIP": 0,
         "STUBBED": 0,
-        "NOT_STARTED": 18,
+        "NOT_STARTED": 7,
         "BLOCKED": 0
-      }
-    },
-    "hr": {
-      "name": "Kavitha",
-      "scope": "O.2 Kavitha — HR control plane operator at Surya Cleaning. Currently runs payroll + HR via 3 Excel sheets + Tally + Gmail + WhatsApp. Reddy's sister-in-law; high relational stake. Multi-HR-user team at 5K-scale (Kavitha + Anita + Vikram + Priya + Deepak). Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.2. Audit: `docs/audits/2026-05-15-1yr-sim-hr-kavitha.md` (H-1 through H-9 switching scope).",
-      "surfaces": "HR control plane lives in `apps/admin-web/` — but the HR portal **does not exist yet**. `ls apps/admin-web/app/` shows: about / api / contact / login / owner / pricing / privacy / system / terms — **no HR route**. The closure spec §4 HR pod model is locked in schema but the admin-web HR portal is the largest unbuilt surface in the system.",
+      },
       "workflows": [
         {
           "id": "A1",
@@ -838,28 +902,58 @@
         }
       ],
       "journeys": [
-        "Bootstrap seed review (H-6, pick 8)",
-        "Create acting cover (H-1, F26 orchestration)",
-        "Permanent reassignment + portfolio liquidation (H-2 + H-4)",
-        "EMPLOYMENT-tier final ack gate (H-7, D20 HR side)",
-        "HR queue + leave approval (E21 HR side, SLA-tiered)",
-        "HR-absent fallback (H-5, G-1, closure Decision 2)"
+        {
+          "num": 1,
+          "title": "Bootstrap seed review (H-6, pick 8)",
+          "description": "The first thing Kavitha does at migration time. Per ops §8 + closure Decision 6.",
+          "has_diagram": true
+        },
+        {
+          "num": 2,
+          "title": "Create acting cover (H-1, F26 orchestration)",
+          "description": "Kavitha gets a call: Ravi is sick. She needs to bind Lakshmi as acting for Ravi's sites.",
+          "has_diagram": true
+        },
+        {
+          "num": 3,
+          "title": "Permanent reassignment + portfolio liquidation (H-2 + H-4)",
+          "description": "Q3 rebalance: Anjali takes 3 sites from Ravi. Or a supervisor quits and his portfolio liquidates.",
+          "has_diagram": true
+        },
+        {
+          "num": 4,
+          "title": "EMPLOYMENT-tier final ack gate (H-7, D20 HR side)",
+          "description": "Ravi proposes terminating a worker. Kavitha is the ack gate.",
+          "has_diagram": true
+        },
+        {
+          "num": 5,
+          "title": "HR queue + leave approval (E21 HR side, SLA-tiered)",
+          "description": "Closure Decision 3: 3 tiers + age-escalation.",
+          "has_diagram": true
+        },
+        {
+          "num": 6,
+          "title": "HR-absent fallback (H-5, G-1, closure Decision 2)",
+          "description": "What happens when Kavitha herself is on PTO for 3 days. Closure Decision 2: tiered fallback.",
+          "has_diagram": true
+        }
       ],
-      "has_workflow_map": true,
-      "workflow_count": 18,
-      "state_distribution": {
-        "BUILT": 0,
-        "PARTIAL": 11,
-        "WIP": 0,
-        "STUBBED": 0,
-        "NOT_STARTED": 7,
-        "BLOCKED": 0
-      }
+      "has_current_slice_focus": false
     },
     "owner": {
-      "name": "Reddy",
+      "name": "Reddy (Owner)",
       "scope": "O.1 Mr. Reddy — founder/owner of Surya Cleaning. Not a daily product user. Receives digests, approves bank changes, watches company KPIs, fields AI budget alerts. Telugu first; reads English. Persona detail: `~/.claude/plans/now-i-think-it-functional-kernighan.md` §O.1. Audit: `docs/audits/2026-05-15-1yr-sim-owner-reddy.md`.",
       "surfaces": "Owner surfaces live in `apps/admin-web/app/owner/` (one `page.tsx` today) + WhatsApp digest delivery (off-app). Per closure Decision 10: 7 owner surfaces total — 4 admin-web + 3 off-app. Of those 7, **1** has any code today (`apps/admin-web/app/owner/page.tsx`).",
+      "workflow_count": 12,
+      "state_distribution": {
+        "BUILT": 0,
+        "PARTIAL": 2,
+        "WIP": 0,
+        "STUBBED": 0,
+        "NOT_STARTED": 9,
+        "BLOCKED": 1
+      },
       "workflows": [
         {
           "id": "A1",
@@ -1007,21 +1101,32 @@
         }
       ],
       "journeys": [
-        "Monthly digest (O-1, closure Decision 10)",
-        "AI budget alert (G29, the only PARTIAL surface today)",
-        "Bank-authority change (O-4, 2-step OTP, sensitive)",
-        "Emergency override (closure Decision 2 tier 3)"
+        {
+          "num": 1,
+          "title": "Monthly digest (O-1, closure Decision 10)",
+          "description": "",
+          "has_diagram": true
+        },
+        {
+          "num": 2,
+          "title": "AI budget alert (G29, the only PARTIAL surface today)",
+          "description": "",
+          "has_diagram": true
+        },
+        {
+          "num": 3,
+          "title": "Bank-authority change (O-4, 2-step OTP, sensitive)",
+          "description": "Reddy needs to update Surya's payroll bank account. Per closure Decision 10.",
+          "has_diagram": true
+        },
+        {
+          "num": 4,
+          "title": "Emergency override (closure Decision 2 tier 3)",
+          "description": "The most consequential owner surface. HR is fully absent for 72h; system escalates to Reddy.",
+          "has_diagram": true
+        }
       ],
-      "has_workflow_map": true,
-      "workflow_count": 12,
-      "state_distribution": {
-        "BUILT": 0,
-        "PARTIAL": 2,
-        "WIP": 0,
-        "STUBBED": 0,
-        "NOT_STARTED": 9,
-        "BLOCKED": 1
-      }
+      "has_current_slice_focus": false
     }
   },
   "combined": {
@@ -1034,12 +1139,37 @@
       "NOT_STARTED": 4
     },
     "sequence_diagrams": [
-      "F26 Acting cover (Ravi sick, Lakshmi covers for 7 days)",
-      "F27 Permanent reassignment (future-dated handoff)",
-      "D17 Decision apply (the missing-middle)",
-      "E21 Leave request end-to-end",
-      "E24 Worker termination end-to-end",
-      "Overlap stress scene (audit Round 5 combined)"
+      {
+        "num": 1,
+        "title": "F26 Acting cover (Ravi sick, Lakshmi covers for 7 days)",
+        "has_diagram": true
+      },
+      {
+        "num": 2,
+        "title": "F27 Permanent reassignment (future-dated handoff)",
+        "has_diagram": true
+      },
+      {
+        "num": 3,
+        "title": "D17 Decision apply (the missing-middle)",
+        "has_diagram": true
+      },
+      {
+        "num": 4,
+        "title": "E21 Leave request end-to-end",
+        "has_diagram": true
+      },
+      {
+        "num": 5,
+        "title": "E24 Worker termination end-to-end",
+        "has_diagram": true
+      },
+      {
+        "num": 6,
+        "title": "Overlap stress scene (audit Round 5 combined)",
+        "has_diagram": true
+      }
     ]
-  }
+  },
+  "data_model_has_er": true
 }
