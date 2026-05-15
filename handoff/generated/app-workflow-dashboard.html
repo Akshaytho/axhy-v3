@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T18:17:38.646Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>54c0ca9d</code></span>
+      <span>Generated <strong>2026-05-15T18:36:11.949Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>ffb500c9</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
-      <span>Active slice: <strong>chat-writes-proposed-decisions (F-002 — remediation pass) · CHANGES_REQUESTED (round 2) — friend's second production-grade pass found 3 remaining issues at the orchestration layer. Core writer is much safer; the route plumbing around it still has corruption holes. Remediation plan in pending-approvals.md.</strong></span>
+      <span>Active slice: <strong>chat-writes-proposed-decisions (F-002 — remediation pass) · CHANGES_REQUESTED (round-2 revised plan, 2026-05-16) — friend rejected R2b-i (accept-the-leak default). Revised plan commits to R2b-iii: refactor 4 inject-style routes into tx-callable services so domain effect + lifecycle commit share one tx. R1 + R2a + R3 unchanged. See pending-approvals.md.</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>chat-writes-proposed-decisions</code> (F-002 — remediation pass)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">CHANGES_REQUESTED (round 2) — friend's second production-grade pass found 3 remaining issues at the orchestration layer. Core writer is much safer; the route plumbing around it still has corruption holes. Remediation plan in pending-approvals.md.</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>2557e1f</code> — <code>test(decisions): F-002 remediation tests — concurrency + new kinds + stale-client (F-002.7)</code></td></tr><tr><th>Original slice commits</th><td><code>a8b4e79</code> · <code>73ee9eb</code> · <code>8d20db0</code> · <code>7fbddcb</code> · <code>12f27ed</code> · <code>662e146</code> (kept in tree; not rebased)</td></tr><tr><th>Remediation commits (oldest→newest)</th><td><code>f2b2d74</code> (F-002.1 unified registry) · <code>ec01f62</code> (F-002.2 CHECK constraint) · <code>38b9987</code> (F-002.3 race-safe writer) · <code>2e03315</code> (F-002.4+5 apply-after-domain + decisionId required) · <code>4506b3d</code> (F-002.6 read-side via registry) · <code>2557e1f</code> (F-002.7 tests)</td></tr><tr><th>Workflow IDs affected</th><td><code>D17</code> · <code>D20</code> · <code>C11</code> · <code>E21</code> · <code>E22</code> · <code>E24</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">11/11 test files green · 61/61 cases pass · 7 new cases for remediation (4 concurrency + 3 new-kind binding-change) · stale-client test rewritten as 400 BAD_INPUT assertion · all 6 existing chat-\* tests updated to pass decisionId</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">REAL_DB — fresh local Postgres 16 (Docker container axhy-test-pg, port 55432), all 12 migrations applied (20260507 → 20260518 including F-002.2 CHECK constraint). Full sweep in one run. Container left running for friend's spot-check.</span></td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>chat-writes-proposed-decisions</code> (F-002 — remediation pass)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">CHANGES_REQUESTED (round-2 revised plan, 2026-05-16) — friend rejected R2b-i (accept-the-leak default). Revised plan commits to R2b-iii: refactor 4 inject-style routes into tx-callable services so domain effect + lifecycle commit share one tx. R1 + R2a + R3 unchanged. See pending-approvals.md.</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>2557e1f</code> — <code>test(decisions): F-002 remediation tests — concurrency + new kinds + stale-client (F-002.7)</code></td></tr><tr><th>Original slice commits</th><td><code>a8b4e79</code> · <code>73ee9eb</code> · <code>8d20db0</code> · <code>7fbddcb</code> · <code>12f27ed</code> · <code>662e146</code> (kept in tree; not rebased)</td></tr><tr><th>Remediation commits (oldest→newest)</th><td><code>f2b2d74</code> (F-002.1 unified registry) · <code>ec01f62</code> (F-002.2 CHECK constraint) · <code>38b9987</code> (F-002.3 race-safe writer) · <code>2e03315</code> (F-002.4+5 apply-after-domain + decisionId required) · <code>4506b3d</code> (F-002.6 read-side via registry) · <code>2557e1f</code> (F-002.7 tests)</td></tr><tr><th>Workflow IDs affected</th><td><code>D17</code> · <code>D20</code> · <code>C11</code> · <code>E21</code> · <code>E22</code> · <code>E24</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">11/11 test files green · 61/61 cases pass · 7 new cases for remediation (4 concurrency + 3 new-kind binding-change) · stale-client test rewritten as 400 BAD_INPUT assertion · all 6 existing chat-\* tests updated to pass decisionId</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">REAL_DB — fresh local Postgres 16 (Docker container axhy-test-pg, port 55432), all 12 migrations applied (20260507 → 20260518 including F-002.2 CHECK constraint). Full sweep in one run. Container left running for friend's spot-check.</span></td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -151,6 +151,20 @@
     <h2>✅ Approval gate</h2>
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
     
+      <div class="approval">
+        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>chat-writes-proposed-decisions</code></strong></div>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+      </div>
       <div class="approval">
         <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">CHANGES_REQUESTED</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>chat-writes-proposed-decisions</code></strong></div>
         

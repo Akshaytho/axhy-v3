@@ -20,7 +20,11 @@
 
 ## Currently awaiting approval
 
-### Slice: `chat-writes-proposed-decisions` (F-002 — round 2 review) — CHANGES_REQUESTED 2026-05-15 evening
+### Slice: `chat-writes-proposed-decisions` (F-002 — round-2 revised plan) — CHANGES_REQUESTED 2026-05-16
+
+**Revision 2026-05-16:** friend rejected R2b-i (the "accept the leak and reconcile later" default). Plan now commits to R2b-iii — refactor inject-style routes into tx-callable service functions so the domain effect + lifecycle commit share one database transaction. R1 + R2a + R3 unchanged.
+
+### Slice: `chat-writes-proposed-decisions` (F-002 — round 2 review, original) — CHANGES_REQUESTED 2026-05-15 evening
 
 - **Status:** `CHANGES_REQUESTED` (round 2) — friend's second production-grade verification pass found 3 remaining issues at the request orchestration layer. The core SupervisorDecision state machine + writer are now safe; the route plumbing around them still has corruption windows that rule P3 + P7 + P8 don't permit.
 - **Branch:** `feat/layer-1-core-primitives`
@@ -52,21 +56,49 @@ Either step 2 or step 3 can throw; the whole tx rolls back. propose_living_doc_u
 
 Small change. High confidence (~96%). No new pattern, just a reorder.
 
-**Fix R2 — close the stale-authority window in commitApply (G2, rules P2 + P3).**
+**Fix R2 — close the stale-authority window AND the domain leak (G2, rules P2 + P3 + P8).**
 
-Two layers:
+**Revised 2026-05-16 (friend rejected R2b-i).** Friend's framing: a workflow is not production-grade if the business side effect can succeed under authority that is already stale. Documented + reconciled-via-audit is too weak. The plan now commits to R2b-iii — refactor — so the domain effect AND the lifecycle commit share one database transaction.
 
-- **R2a (LIFECYCLE side, must-do):** add `isCallerAuthorized` re-check INSIDE `commitApply`, before the conditional UPDATE. If authority changed since `preCheckApply`, throw `NOT_RESPONSIBLE`. The conditional UPDATE never runs; no DWI_APPLIED audit is emitted; the row stays PROPOSED. Friend's success-condition "audit state matches the winner only" is preserved.
+- **R2a (LIFECYCLE side, unchanged):** add `isCallerAuthorized` re-check INSIDE `commitApply`, before the conditional UPDATE. If authority changed since `preCheckApply`, throw `NOT_RESPONSIBLE`. The conditional UPDATE never runs; no DWI_APPLIED audit is emitted; the row stays PROPOSED.
 
-- **R2b (DOMAIN side, surface for friend's call):** for inject-style branches, the domain effect already happened BEFORE commitApply. R2a stops the lifecycle leak but the domain effect (e.g. Attendance row) remains. Three ways to close this:
+- **R2b-iii (DOMAIN side, NEW commitment):** extract the 4 inject-style routes into tx-callable service functions. `/chat/apply` calls each service INSIDE its own `withTenantContext(prisma, companyId, async (tx) => ...)` along with `preCheckApply` + the domain service call + `commitApply`. All three commit together or none commits. No `app.inject` in the apply path for these branches.
 
-  | Option  | Cost                                                                                                                                                                                                                     | What it gains                                                                                                                                                          |
-  | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | R2b-i   | Smallest — accept the leak; document it; surface in audit (DWI never emitted under stale auth + WORKER_MARKED_ABSENT alone → manual flag)                                                                                | Closes the lifecycle hole only. Domain leak remains under stale-auth.                                                                                                  |
-  | R2b-ii  | Medium — wrap each /chat/apply branch in an outer `prisma.$transaction` + `SELECT FOR UPDATE` on the SupervisorDecision row across the inject. PG row-lock blocks concurrent dismiss + holds during the inject.          | Closes both lifecycle AND inject-window dismiss-races. Stale binding still a concern unless we add SERIALIZABLE isolation. Cost: longer-held connection during inject. |
-  | R2b-iii | Large — refactor each inject-style domain route to expose its logic as a tx-callable function. /chat/apply calls that function INSIDE the same tx as commitApply. True atomicity, no inject() at all for these branches. | Closes everything cleanly. Significant refactor (~5 routes).                                                                                                           |
+  Research per Rule P9:
+  - **Prisma interactive transactions** — https://www.prisma.io/docs/orm/prisma-client/queries/transactions — verified: "all queries inside it have to be run on the same connection. A database connection can only ever execute one query at a time." `app.inject` runs in its own Fastify request lifecycle on a different connection; it CANNOT share a Prisma tx with the outer caller. This is the conclusive reason R2b-iii (refactor) is required, not R2b-ii (pessimistic locking).
+  - **PostgreSQL transaction isolation** — https://www.postgresql.org/docs/current/transaction-iso.html — already cited in F-002.3 commit; row-locking + WHERE re-evaluation guarantee exactly-one-wins for conditional UPDATEs. With everything in one tx, the binding read and the lifecycle UPDATE both see a consistent snapshot under READ COMMITTED for this slice's needs.
+  - **PostgreSQL explicit locking** — https://www.postgresql.org/docs/current/explicit-locking.html — not needed under R2b-iii because we are NOT trying to span a non-DB operation; everything is in-tx.
+  - **Fastify inject docs** — https://fastify.dev/docs/latest/Guides/Testing/ — inject is a request-execution mechanism, not a tx-sharing mechanism. Confirmed by the Prisma docs above.
 
-  **My default:** R2a + R2b-i for this round. R2b-ii or R2b-iii deferred to a separate slice with an explicit sunset trigger (e.g. when the first production incident surfaces a stale-auth case, OR proactively after F-007 / F-005 ship). Reason: the lifecycle audit is the auditable record; under R2a the audit correctly reflects "no apply happened" when authority is stale, so the domain leak is detectable + recoverable. Friend's call though.
+  Scoped (file-grounded survey 2026-05-16):
+
+  | Route                         | Handler size | Side effects                                           | Extraction shape                                                                                               |
+  | ----------------------------- | ------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+  | POST /assignments             | ~96 LOC      | 2 prisma lookups + 1 create + 1 AuditEvent. No Outbox. | `createAssignmentService(tx, input, auth) → { kind: 'OK'\|'WORKER_NOT_FOUND'\|'SITE_NOT_FOUND', assignment? }` |
+  | POST /leave-requests          | ~79 LOC      | 1 lookup + 1 create + 1 AuditEvent + 1 Outbox.         | `createLeaveRequestService(tx, input, auth) → { kind, leaveRequest? }`                                         |
+  | POST /workers/:id/mark-absent | ~118 LOC     | 1 lookup + 1 upsert + 1 AuditEvent + up to 2 Outbox.   | `markAbsentService(tx, input, auth) → { kind, attendance? }`                                                   |
+  | POST /swap-requests           | ~128 LOC     | 3 lookups + 1 create + 1 AuditEvent + 2 Outbox.        | `createSwapRequestService(tx, input, auth) → { kind, swapRequest? }`                                           |
+
+  All 4 routes are extraction-friendly:
+  - All currently wrap their work in `withTenantContext`.
+  - All side effects go through `recordAuditEvent(tx, ...)` and `enqueueOutbox(tx, ...)` which already accept a TransactionClient (no external HTTP / synchronous third-party calls).
+  - No blocking refactor.
+  - Existing route handlers keep working — they just become thin wrappers that call the service inside `withTenantContext`.
+
+  After extraction, `/chat/apply` for each inject-style branch becomes:
+
+  ```ts
+  await withTenantContext(prisma, auth.companyId, async (tx) => {
+    const preCheck = await preCheckApply(tx, { companyId, decisionId, actorUserId });
+    const result = await (<service>(tx, input, auth)); // domain in same tx
+    if (result.kind !== 'OK') throw new DomainError(result.kind);
+    await commitApply(tx, { ...input, preCheck }); // lifecycle in same tx
+  });
+  ```
+
+  Either step throws → the whole tx rolls back. Atomic. No inject. No stale-auth leak.
+
+  **Why R2b-ii (pessimistic locking) is rejected as fallback for this slice:** friend correctly flagged that `SELECT FOR UPDATE only protects the rows you lock`. The SupervisorDecision row lock would NOT block a concurrent SiteSupervisorBinding write (different table). Closing that gap would require SERIALIZABLE isolation, which then requires retry logic on conflict. The complexity exceeds R2b-iii's refactor cost, and the connection-held-across-inject pattern is a known anti-pattern (Prisma docs explicitly warn against long-held transactions). R2b-iii is both simpler AND more correct.
 
 **Fix R3 — route-level concurrency + route-level stale-authority tests (G3, rules P6 + P8).**
 
@@ -87,22 +119,45 @@ New test file `chat-apply-route-concurrency.test.ts`:
 | What happens for the G1 termination invalid-worker case?     | Tx rolls back. Lifecycle stays PROPOSED. 404 WORKER_NOT_FOUND or 409 ALREADY_TERMINATING returned. No appliedAt set.                                                                                                                                                                                                                                  |
 | What is still intentionally deferred (with sunset)?          | Domain-side leak under stale authority for inject-style branches. Sunset: when stale-auth incident is observed, OR proactively in a follow-up slice that extracts domain logic for tx-sharing (or wraps inject in pessimistic row-lock — option R2b-ii). Today's audit trail surfaces it for reconciliation.                                          |
 
-#### Suggested commit shape (after plan approval)
+#### Revised P10 failure matrix (post-R1 + R2a + R2b-iii + R3)
+
+| Question                                                     | Answer                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What invariants does this slice introduce?                   | Previous invariants + (5) lifecycle commit happens only if the actor is STILL responsible at commit time. (6) Termination lifecycle never commits unless the worker.update commits too. (7) For ALL chat-apply branches (including the 4 ex-inject ones), domain effect + lifecycle commit happen inside one Prisma transaction. |
+| How is each invariant enforced?                              | (5) `isCallerAuthorized` re-check in `commitApply` before the conditional UPDATE. (6) Worker validation runs BEFORE `applyProposedDecision` in the termination tx. (7) Each ex-inject branch wraps `preCheckApply` + domain-service call + `commitApply` in one `withTenantContext`.                                             |
+| What happens on stale authority between preCheck and commit? | LIFECYCLE: row stays PROPOSED + 403 NOT_RESPONSIBLE returned. DOMAIN: the service call is in the same tx that throws → roll back → NO domain row created. Both sides correct.                                                                                                                                                    |
+| What happens for the G1 termination invalid-worker case?     | Tx rolls back. Lifecycle stays PROPOSED. 404/409 returned. No appliedAt set.                                                                                                                                                                                                                                                     |
+| What happens for the apply-vs-dismiss race after R2b-iii?    | The conditional UPDATE in `commitApply` is the only mechanism that can transition the row. Whichever transaction commits first wins; the other returns 4xx with the right error. Domain effect happens iff lifecycle commit happens — never alone.                                                                               |
+| What is still intentionally deferred (with sunset)?          | Full state ENUM column (FAILED / EXPIRED / UNDONE) — deferred per scope Q4=(b); needs concrete triggers in their own slices. No corruption windows remaining for the PROPOSED → APPLIED/DISMISSED transitions this slice covers.                                                                                                 |
+
+#### Suggested commit shape (R1 + R2a + R3 + R2b-iii)
+
+R1 + R2a + R3 (small fixes + test additions):
 
 1. `fix(chat): reorder termination tx — validate worker before lifecycle commit (F-002.9, fixes G1)`
 2. `fix(decisions): re-check authorization in commitApply (F-002.10, fixes G2 lifecycle side)`
 3. `test(decisions): route-level concurrency + stale-auth tests (F-002.11, fixes G3 + verifies R1+R2a)`
-4. `docs(handoff): F-002 round-2 remediation → AWAITING_APPROVAL`
 
-For R2b (domain-side leak fix) — surfaced as an explicit follow-up slice candidate F-002.b, NOT in this round, awaiting your choice between R2b-i (defer, manual reconciliation), R2b-ii (pessimistic locking), or R2b-iii (refactor domain routes for tx-sharing).
+R2b-iii (4 service extractions + chat refactor + tests):
+
+4. `feat(services): extract createAssignmentService for tx-sharing (F-002.12)` — simplest route first.
+5. `feat(services): extract createLeaveRequestService + markAbsentService (F-002.13)` — paired.
+6. `feat(services): extract createSwapRequestService (F-002.14)` — largest, most lookups.
+7. `feat(chat): /chat/apply uses tx-callable services for true atomicity (F-002.15)` — remove `app.inject` for the 4 branches; rewrite each as `withTenantContext(preCheckApply + service + commitApply)`.
+8. `test(chat): full-atomic apply tests for all 5 branches incl. domain-failure rollback (F-002.16)` — assert: if the service returns non-OK, lifecycle stays PROPOSED AND no domain row exists.
+9. `docs(handoff): F-002 round-2 remediation → AWAITING_APPROVAL`
+
+Each refactor commit (4–6) keeps the existing route handler working — it just becomes a thin wrapper calling the service. All existing chat-\* OpenAI-real tests + the new route tests continue to pass.
+
+Confidence: 91% own on R1 + R2a + R3 (high; well-understood fixes). 90% on R2b-iii (file-grounded scope confirms no blocking side effects, but each service extraction has subtle details to get right). Per Rule P9, each refactor commit cites the Prisma transactions doc + does a quick mental dry-run of the route's existing tx boundaries before changing them.
 
 #### Decision needed
 
-- `APPROVED on plan` (with optional R2b override) → I research P9 sources, implement R1 + R2a + R3 in 4 commits, re-surface as AWAITING_APPROVAL.
+- `APPROVED on plan` → I implement R1 + R2a + R3 + R2b-iii in 8 commits (9 with tracker), re-surface as AWAITING_APPROVAL once 11+ test files green AND including 5 new route-atomicity tests.
 - `CHANGES_REQUESTED on plan` → name what to change.
-- `HOLD` → pause F-002. Note: F-001 read API still works; F-002 writes happen in chat but with the current lifecycle gaps.
+- `HOLD` → pause F-002. Note: F-001 read API still works; F-002 writes happen in chat but with the current lifecycle gaps + the round-2 G1/G2 corruption windows still open.
 
-**I will not write a single line of fix code until you approve this round-2 remediation plan.** Recording it openly: this is the second time my orchestration around safe primitives missed real corruption windows. The pattern: I get the core writer right but mis-order the tx callbacks around it. Adding to my session memory.
+**I will not write a single line of fix code until you approve this revised plan.** Recording the lesson from this round openly: when a workflow can produce a real-world domain effect under stale authority, "document + reconcile via audit" is not production-grade. The production-grade answer is "make the domain effect and the lifecycle commit share one tx, so neither can succeed alone." That's what R2b-iii does. Adding this to my session memory as a permanent rule.
 
 ---
 

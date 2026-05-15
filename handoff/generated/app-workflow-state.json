@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T18:17:38.646Z",
-    "generated_against_head": "54c0ca9da63c39c0688f2bd72d724e6cd6d22723",
+    "last_updated_at": "2026-05-15T18:36:11.949Z",
+    "generated_against_head": "ffb500c9a33ae71d704c2e24c4f2f7c3c80415bc",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "54c0ca9da63c39c0688f2bd72d724e6cd6d22723",
+    "last_canonical_commit_at_gen": "ffb500c9a33ae71d704c2e24c4f2f7c3c80415bc",
     "staleness_warning": null,
-    "active_slice": "chat-writes-proposed-decisions (F-002 — remediation pass) · CHANGES_REQUESTED (round 2) — friend's second production-grade pass found 3 remaining issues at the orchestration layer. Core writer is much safer; the route plumbing around it still has corruption holes. Remediation plan in pending-approvals.md.",
+    "active_slice": "chat-writes-proposed-decisions (F-002 — remediation pass) · CHANGES_REQUESTED (round-2 revised plan, 2026-05-16) — friend rejected R2b-i (accept-the-leak default). Revised plan commits to R2b-iii: refactor 4 inject-style routes into tx-callable services so domain effect + lifecycle commit share one tx. R1 + R2a + R3 unchanged. See pending-approvals.md.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,7 +1184,7 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`chat-writes-proposed-decisions` (F-002 — remediation pass)",
-      "Status": "`CHANGES_REQUESTED` (round 2) — friend's second production-grade pass found 3 remaining issues at the orchestration layer. Core writer is much safer; the route plumbing around it still has corruption holes. Remediation plan in `pending-approvals.md`.",
+      "Status": "`CHANGES_REQUESTED` (round-2 revised plan, 2026-05-16) — friend rejected R2b-i (accept-the-leak default). Revised plan commits to R2b-iii: refactor 4 inject-style routes into tx-callable services so domain effect + lifecycle commit share one tx. R1 + R2a + R3 unchanged. See `pending-approvals.md`.",
       "Branch": "`feat/layer-1-core-primitives`",
       "Last landed commit": "`2557e1f` — `test(decisions): F-002 remediation tests — concurrency + new kinds + stale-client (F-002.7)`",
       "Original slice commits": "`a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146` (kept in tree; not rebased)",
@@ -1194,6 +1194,22 @@
       "Verification status": "`REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied (20260507 → 20260518 including F-002.2 CHECK constraint). Full sweep in one run. Container left running for friend's spot-check."
     },
     "pending_approvals": [
+      {
+        "id": "chat-writes-proposed-decisions",
+        "kind": "slice",
+        "status": "",
+        "branch": "",
+        "wipCommit": "",
+        "lastLanded": "",
+        "workflowIds": "",
+        "blocking": "",
+        "built": "",
+        "notDone": "",
+        "ownerDecision": "",
+        "artifact": "",
+        "decisionNeeded": "",
+        "scopeType": ""
+      },
       {
         "id": "chat-writes-proposed-decisions",
         "kind": "slice",
