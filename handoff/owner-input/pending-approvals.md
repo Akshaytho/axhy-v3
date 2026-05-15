@@ -6,6 +6,8 @@
 > - **Blocked** — slice cannot proceed because of an external dependency (not because it's awaiting approval).
 >
 > Rule 17: No new slice starts while anything is `AWAITING_APPROVAL`.
+>
+> **Hash convention:** only landed commit hashes appear in this file. No "landing now" / "next commit" / "may land" speculation. Per the convention in `active-slice.md`, the file in commit N references commits 1..(N-1).
 
 ## Approval-word convention (for the AWAITING_APPROVAL section below)
 
@@ -22,10 +24,11 @@
 
 - **Status:** `AWAITING_APPROVAL`
 - **Branch:** `feat/layer-1-core-primitives`
-- **Last landed commit:** `7916a3b` (plus the verification-fix commit landing next)
+- **Last landed commit:** `b35748e`
+- **Slice commits (oldest → newest):** `f9fbe68` · `0445110` · `7916a3b` · `b35748e`
 - **Workflow IDs affected:** none directly (control surface, spans all 29)
-- **What was built:** `handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 5 new HTML sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split).
-- **What's NOT done:** Nothing in scope; both friend bug lists fully addressed.
+- **What was built:** `handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in `7916a3b` (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in `b35748e` (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues addressed in the follow-up commit (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).
+- **What's NOT done:** Nothing in scope; all three friend bug lists fully addressed.
 - **Owner decision:** _empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_
 
 ---
@@ -36,12 +39,12 @@
 
 - **Status:** `BLOCKED`
 - **Branch:** `feat/layer-1-core-primitives`
-- **WIP commit:** `84ae39c wip(routing): foundation read APIs — paused mid-slice for execution-state tracker`
+- **WIP commit:** `84ae39c` `wip(routing): foundation read APIs — paused mid-slice for execution-state tracker`
 - **Workflow IDs affected:** `D17`, `F26` (read side), `F27` (read side)
-- **What's blocking:** `handoff-control-loop` slice not yet APPROVED. When that slice is approved + the routing block is removed, this slice resumes from WIP commit `84ae39c`.
+- **What's blocking:** `handoff-control-loop` slice not yet APPROVED. When that slice is approved, this slice resumes from WIP commit `84ae39c`.
 - **What was built:** `getEffectiveBinding` + `deriveWorkerPrimarySiteId` + `GET /sites/:id/effective-supervisor` + `GET /decisions/proposed-for-me` + 3 of 4 test files. Doc-level checks green; real-DB sweep not yet run.
 - **Remaining to finish slice:** 4th test file `effective-responsibility-point-in-time.test.ts`; real-DB sweep; split WIP commit into 3 clean commits.
-- **Owner decision:** N/A (blocked, not awaiting approval). Decision belongs on `handoff-control-loop` first.
+- **Owner decision:** N/A (blocked, not awaiting decision). Decision belongs on `handoff-control-loop` first.
 
 ---
 
