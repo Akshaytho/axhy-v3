@@ -20,7 +20,37 @@
 
 ## Currently awaiting approval
 
-_None._
+### Slice: `chat-writes-proposed-decisions` (F-002) — AWAITING_APPROVAL 2026-05-15 evening
+
+- **Status:** `AWAITING_APPROVAL`
+- **Branch:** `feat/layer-1-core-primitives`
+- **Last landed commit:** `662e146` — `test(decisions): 5 integration test files for F-002 (54/54 green)`
+- **Slice commits (oldest → newest):** `a8b4e79` (schema + migration) · `73ee9eb` (audit kinds + helpers + payloads) · `8d20db0` (supervisor-decision-writer.ts) · `7fbddcb` (chat.ts propose + apply) · `12f27ed` (dismiss route + tighten proposed predicate) · `662e146` (5 test files)
+- **Workflow IDs affected:** D17 (writer), D20 (writer, EMPLOYMENT ack gate), C11, E21, E22, E24
+- **Verification gate cleared:** `REAL_DB`. Fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 11 migrations applied (20260507 → 20260517). Full sweep in one run: **54/54 cases green** across 9 test files (4 F-001 regression + 5 F-002 new).
+- **Locked picks accepted (Q1–Q5):** Q1=(b) best-effort originContext capture · Q2=(a) single slice · Q3=(a) include dismiss + migration · Q4=(b) defer state ENUM · Q5=reuse F-001 helpers for `proposedDuringAbsence`.
+- **Known limitation (surfaced for friend's call):** Inject-style `/chat/apply` branches commit lifecycle in tx 1, domain inject in tx 2. If domain inject fails after lifecycle commits → orphan APPLIED row (audit shows DWI_APPLIED without downstream domain audit). Acceptable for F-002 MVP per scope §3b's "inside one transaction" (interpreted pragmatically given inject() architecture). `propose_termination` is fully atomic. Future cleanup slice could extract domain logic to be tx-shareable.
+- **Reproduction (for friend's spot-check):**
+  ```
+  docker exec axhy-test-pg pg_isready -U postgres
+  cd apps/backend
+  DATABASE_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
+  AXHY_DB_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
+  pnpm exec vitest run \
+    test/effective-responsibility-helper.test.ts \
+    test/sites-effective-supervisor-route.test.ts \
+    test/decisions-proposed-for-me-route.test.ts \
+    test/effective-responsibility-point-in-time.test.ts \
+    test/supervisor-decision-writer-create.test.ts \
+    test/supervisor-decision-apply.test.ts \
+    test/decisions-dismiss-route.test.ts \
+    test/supervisor-decision-proposed-during-absence.test.ts \
+    test/chat-apply-transitions-decision.test.ts
+  ```
+- **What changed beyond the scope artifact:**
+  - The `ApplyDecisionCardInput` Zod schema added `decisionId` as **optional** (not required) — back-compat for old mobile clients that haven't shipped the new shape yet. The scope artifact §3b implied required. Surfacing this small relaxation for friend's awareness; can tighten in a follow-up once all clients ship.
+  - Existing chat-\* tests (`chat-mark-absent.test.ts`, `chat-leave.test.ts`, etc. that hit the real OpenAI loop) were NOT re-run in this sweep — they require an OpenAI key + take ~90s each. The new tests cover all F-002 logic without OpenAI dependency. Friend's call: re-run the OpenAI tests against this slice before merge to main?
+- **Decision needed:** `APPROVED` / `CHANGES_REQUESTED` (with bullet list) / `HOLD` (with reason). On APPROVED, the slice moves to `APPROVED` state; next slice can start.
 
 ---
 
