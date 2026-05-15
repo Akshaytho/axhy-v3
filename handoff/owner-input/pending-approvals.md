@@ -20,9 +20,69 @@
 
 ## Currently awaiting approval
 
-### Slice: `chat-writes-proposed-decisions` (F-002 — round-2 revised plan) — CHANGES_REQUESTED 2026-05-16
+### Slice: `chat-writes-proposed-decisions` (F-002 — round-2 R2b-iii remediation) — AWAITING_APPROVAL 2026-05-16
 
-**Revision 2026-05-16:** friend rejected R2b-i (the "accept the leak and reconcile later" default). Plan now commits to R2b-iii — refactor inject-style routes into tx-callable service functions so the domain effect + lifecycle commit share one database transaction. R1 + R2a + R3 unchanged.
+- **Status:** `AWAITING_APPROVAL`. Friend's round-2 plan (approved 2026-05-16 with the control-surface cleanup as a prerequisite) is fully implemented.
+- **Branch:** `feat/layer-1-core-primitives`
+- **Last landed commit:** `92294f3` — `test(chat): atomicity verification — domain failure rolls back lifecycle (F-002.16)`
+- **Round-2 commits (in landing order):**
+  1. `75b56f8` — control-surface cleanup (friend's required prerequisite; superseded apply-after-domain wording removed from active-slice + pending-approvals).
+  2. `a1f6a2d` — F-002.9: termination tx reorder (G1 fix). Validate worker BEFORE applyProposedDecision.
+  3. `c63a163` — F-002.10: isCallerAuthorized re-check inside commitApply (G2 lifecycle fix, R2a).
+  4. `d8b664b` — F-002.11: route-level concurrency + stale-auth tests (R3; 4 cases).
+  5. `0cbb8ed` — F-002.12: extract createAssignmentService.
+  6. `6e4c677` — F-002.13: extract createLeaveRequestService + markAbsentService.
+  7. `50a859c` — F-002.14: extract createSwapRequestService.
+  8. `cb3ae13` — F-002.15: /chat/apply uses tx-callable services in `withTenantContext` (R2b-iii core integration). Removes `app.inject` for the 4 ex-inject branches. SUPERSEDES F-002.4's apply-after-domain trade-off.
+  9. `92294f3` — F-002.16: atomicity tests for all 4 ex-inject branches (4 cases proving domain failure rolls back lifecycle).
+- **Verification:** REAL_DB on fresh local Postgres 16 (container `axhy-test-pg`, port 55432, all 12 migrations applied 20260507→20260518). **13/13 test files green · 69/69 cases pass** in one sweep. Container left running for friend's spot-check.
+
+#### How each round-2 finding is closed
+
+| Finding          | Status            | Resolution                                                                                                                                                                                                                                                                                                                           |
+| ---------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| G1 (termination) | CLOSED            | F-002.9 reorders the termination tx. Worker validation runs FIRST; lifecycle SECOND; worker.update THIRD. Early-returns happen before any state-changing write. Verified by F-002.11's G1 test case (termination apply against TERMINATION_PENDING worker → 409 + row stays PROPOSED).                                               |
+| G2 (lifecycle)   | CLOSED            | F-002.10 adds `isCallerAuthorized` re-check inside commitApply. Verified by F-002.11's R2a test case (preCheck succeeds → binding changes → commitApply throws NOT_RESPONSIBLE → row stays PROPOSED).                                                                                                                                |
+| G2 (domain side) | CLOSED by R2b-iii | F-002.12 + F-002.13 + F-002.14 extracted 4 services. F-002.15 makes /chat/apply call each service INSIDE one `withTenantContext` alongside preCheckApply + commitApply. Domain effect + lifecycle commit are atomic. Verified by F-002.16's 4 atomicity tests (non-existent worker/site → 404 + lifecycle PROPOSED + NO domain row). |
+| G3 (test gap)    | CLOSED            | F-002.11 adds 4 route-level tests; F-002.16 adds 4 atomicity tests. Total 8 new cases at the load-bearing path.                                                                                                                                                                                                                      |
+
+#### What friend asked the resurface packet to prove
+
+| Friend's expectation                                                       | Where it's proven                                                                                                           |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Termination invalid-worker path leaves decision PROPOSED                   | `chat-apply-route-concurrency.test.ts` G1 case (F-002.11).                                                                  |
+| Stale authority cannot produce domain side effect without lifecycle commit | `chat-apply-route-concurrency.test.ts` R2a case (F-002.11) + the whole `chat-apply-atomicity.test.ts` file (F-002.16).      |
+| Apply-vs-dismiss on the real route path is safe                            | `chat-apply-route-concurrency.test.ts` route-level apply-vs-dismiss test (F-002.11).                                        |
+| All 4 ex-inject branches are truly atomic now                              | `chat-apply-atomicity.test.ts` — one rollback test per branch (F-002.16).                                                   |
+| Domain-failure rollback tests exist for those branches                     | `chat-apply-atomicity.test.ts` 4 cases (F-002.16).                                                                          |
+| Control files match the new truth with no leftover superseded matrix text  | F-002 round-2 prep commit `75b56f8` removed the superseded apply-after-domain matrix from active-slice + pending-approvals. |
+
+#### P10 failure matrix (post-round-2)
+
+| Question                                                     | Answer                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What invariants does this slice introduce?                   | (1) PROPOSED transitions to exactly one terminal state. (2) `appliedAt` + `dismissedAt` mutually exclusive (DB CHECK). (3) Transitions require currently-responsible (binding-routable) OR origin supervisor (origin-only), CHECKED AT COMMIT TIME. (4) Domain effect + lifecycle commit happen in ONE Prisma transaction — neither succeeds alone. |
+| How is each invariant enforced?                              | (1) Conditional updateMany on every transition. (2) DB CHECK constraint + conditional WHERE. (3) `isCallerAuthorized` at BOTH preCheckApply AND commitApply. (4) /chat/apply for all 5 branches wraps preCheckApply + service + commitApply in ONE `withTenantContext`.                                                                             |
+| What happens on failure of the domain effect?                | Tx rolls back. Lifecycle stays PROPOSED. No DWI_APPLIED audit. Caller sees the service's error code (404/400). Verified by F-002.16.                                                                                                                                                                                                                |
+| What happens on stale authority between preCheck and commit? | The whole flow runs in ONE tx; commitApply re-checks auth. If authority changed, tx rolls back → NO lifecycle change AND NO domain effect. Verified by F-002.11's R2a test.                                                                                                                                                                         |
+| What happens for retry / double-submit?                      | Conditional updateMany returns count=0 → discriminator → throws ALREADY_APPLIED. Domain idempotency is each domain route's own concern.                                                                                                                                                                                                             |
+| What happens under concurrent requests on the same row?      | PG row-lock + WHERE re-evaluation guarantee exactly one of N concurrent UPDATEs wins. DB CHECK rejects the impossible state. Audit reflects only the winner.                                                                                                                                                                                        |
+| What happens for a stale client (old shape)?                 | 400 BAD_INPUT with `decisionId is required`. Row unaffected.                                                                                                                                                                                                                                                                                        |
+| What is still intentionally deferred (with sunset)?          | Full state ENUM column (FAILED / EXPIRED / UNDONE) — needs concrete triggers in their own slices. **NO corruption windows remain for the PROPOSED → APPLIED/DISMISSED transitions this slice covers.**                                                                                                                                              |
+
+#### Lessons logged to memory (`feedback_production_grade_workflow_rules.md`)
+
+- **L1** — Tx-callback early-return commits partial state. Validation failures must throw, not return sentinels, when wrapped around a primitive that has already written.
+- **L2** — Authorization checked in tx 1 doesn't bind tx 2; always re-check inside the commit tx.
+- **L3** — "Document + reconcile via audit" is too weak when the side effect can corrupt real-world state. Make the side effect impossible under stale authority, not "recorded after the fact".
+
+#### Decision needed
+
+- `APPROVED` → slice moves to APPROVED state; next slice can start.
+- `CHANGES_REQUESTED` (bullet list) → name what to change.
+- `HOLD` → pause F-002.
+
+**Reproduction snippet for friend's spot-check is in `active-slice.md`.** Docker container `axhy-test-pg` is left running.
 
 ### Slice: `chat-writes-proposed-decisions` (F-002 — round 2 review, original) — CHANGES_REQUESTED 2026-05-15 evening
 
