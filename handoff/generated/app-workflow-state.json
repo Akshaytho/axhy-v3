@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T16:24:10.759Z",
-    "generated_against_head": "c5cb5a46db713162c011aaa49b98d1be862c966e",
+    "last_updated_at": "2026-05-15T16:30:21.280Z",
+    "generated_against_head": "1fb546e8634f229c8d480d3ee980fedd66e655c2",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "c5cb5a46db713162c011aaa49b98d1be862c966e",
+    "last_canonical_commit_at_gen": "1fb546e8634f229c8d480d3ee980fedd66e655c2",
     "staleness_warning": null,
-    "active_slice": "routing-foundation-read-apis (F-001) — most-recent activity; no new WIP slice yet (rule 18 honoured) · APPROVED — friend's verification 2026-05-15 evening; no WIP slice in flight; F-002 queued as next, scope under review",
+    "active_slice": "chat-writes-proposed-decisions (F-002) · WIP",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,36 +1183,21 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`routing-foundation-read-apis` (F-001) — most-recent activity; no new WIP slice yet (rule 18 honoured)",
-      "Status": "`APPROVED` — friend's verification 2026-05-15 evening; no WIP slice in flight; `F-002` queued as next, scope under review",
+      "Slice name": "`chat-writes-proposed-decisions` (F-002)",
+      "Status": "`WIP`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed commit": "`9709b5d` — `docs(handoff): routing F-001 APPROVED → surface F-002 scope (no code yet)`",
-      "Just-approved slice": "`routing-foundation-read-apis` (F-001) — 3 commits (`84ae39c` · `429886d` · `7e07a24`) + tracker propagation `aa363f0`; 23/23 cases green on fresh local Postgres 16; friend's verification at HEAD `aa363f0` cleared with no blocking findings; WIP-split deviation accepted",
-      "Next slice candidate": "`F-002` — `Chat extractor writes PROPOSED SupervisorDecision rows`. Dependency on F-001 met. Scope artifact at `handoff/feature-queue/scopes/F-002.md` (landed in `9709b5d`) for friend's approve / change-request / hold before any code lands.",
-      "Workflow IDs touched by F-002": "`D17` (writer side), `D20` (writer side — EMPLOYMENT-tier ack gate), `C11`, `E21`, `E22`, `E24`",
-      "Personas affected by F-002": "Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's `GET /decisions/proposed-for-me`), Kavitha (EMPLOYMENT ack), Suresh (subject)",
-      "Why F-002 is next": "Friend's roadmap order; closure spec §3.2 SupervisorDecision lifecycle is the largest live gap; F-001's read API is now ready to consume F-002's writes round-trip; closure Decision 7 (`originContext` + `proposedDuringAbsence`) already landed in schema (commit `095c766`, migration `20260515_layer_1_core_primitives`)",
-      "What is NOT being done yet": "Writing F-002 code. The scope doc must be approved first per rule 23 (confidence-score-before-acting) and friend's directive.",
-      "Expected next state transition": "After friend approves the scope: F-002 PLANNED → WIP, this file flips to active F-002 tracking."
+      "Last landed commit": "`1fb546e` — `fix(handoff): full sweep for forward-looking wording`",
+      "Scope artifact (approved)": "`handoff/feature-queue/scopes/F-002.md` (approved 2026-05-15 evening with all 5 default picks)",
+      "Workflow IDs affected": "`D17` (writer side), `D20` (writer side — EMPLOYMENT-tier ack gate), `C11`, `E21`, `E22`, `E24`",
+      "Personas affected": "Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's `GET /decisions/proposed-for-me`), Kavitha (EMPLOYMENT ack), Suresh (subject)",
+      "Locked picks (Q1–Q5)": "Q1=(b) best-effort originContext capture · Q2=(a) single slice · Q3=(a) include dismiss + migration · Q4=(b) defer state ENUM · Q5=reuse F-001 helpers for `proposedDuringAbsence`",
+      "Files in slice": "`packages/shared-schema/prisma/schema.prisma` (+2 cols) · new migration · `apps/backend/src/lib/audit-event.ts` (+3 helpers) · new `apps/backend/src/lib/supervisor-decision-writer.ts` · `apps/backend/src/routes/chat.ts` (propose + apply modified) · `apps/backend/src/routes/decisions.ts` (+ dismiss endpoint) · 5 new test files",
+      "Tests status": "none yet",
+      "Verification status": "`UNVERIFIED` until real-DB sweep runs (fresh local Postgres 16 + all 11 migrations including new dismiss-cols migration). Sweep must include 4 F-001 routing tests as regression sanity + 5 new F-002 tests.",
+      "Started at": "2026-05-15 evening — immediately after F-002 scope approval at HEAD `1fb546e`.",
+      "Expected next state": "`AWAITING_APPROVAL` after all 9 test files green (4 F-001 + 5 F-002) + tracker propagated."
     },
-    "pending_approvals": [
-      {
-        "id": "F-002",
-        "kind": "scope",
-        "status": "",
-        "branch": "",
-        "wipCommit": "",
-        "lastLanded": "",
-        "workflowIds": "",
-        "blocking": "",
-        "built": "",
-        "notDone": "",
-        "ownerDecision": "",
-        "artifact": "handoff/feature-queue/scopes/F-002.md",
-        "decisionNeeded": "`APPROVED` (with optional Q1–Q5 overrides) / `CHANGES_REQUESTED` / `HOLD`. F-002 implementation starts only after this lands.\n\n---",
-        "scopeType": "Scope artifact (NOT a code slice yet). No code commits to review."
-      }
-    ],
+    "pending_approvals": [],
     "blocked_items": [],
     "pending_notes": {
       "counts": {
@@ -1244,7 +1229,7 @@
         "workflows": "D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).",
         "entities": "`apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.",
         "verification": "`REAL_DB`.",
-        "status": "READY"
+        "status": "WIP"
       },
       {
         "id": "F-003",
@@ -1316,6 +1301,13 @@
     "change_history": [
       {
         "when": "2026-05-15 evening",
+        "slice": "chat-writes-proposed-decisions",
+        "transition": "PLANNED → WIP",
+        "commit": "n/a (transition before first commit)",
+        "note": "F-002 scope APPROVED at HEAD `1fb546e` with all 5 default picks accepted (Q1=b, Q2=a, Q3=a, Q4=b, Q5=default). Slice starts: PROPOSED writer + apply transition + dismiss endpoint + dismissedAt/dismissedReason migration."
+      },
+      {
+        "when": "2026-05-15 evening",
         "slice": "routing-foundation-read-apis",
         "transition": "AWAITING_APPROVAL → APPROVED",
         "commit": "`aa363f0`",
@@ -1376,13 +1368,6 @@
         "transition": "WIP → BLOCKED",
         "commit": "`84ae39c`",
         "note": "Paused mid-flight to build tracker. 4th test file + real-DB sweep remaining. Now blocked by handoff-control-loop approval."
-      },
-      {
-        "when": "2026-05-15",
-        "slice": "p1.5-future-dated-fix",
-        "transition": "WIP → APPROVED → DONE",
-        "commit": "`44a453d`",
-        "note": "Friend caught the endedAt-vs-effectiveUntil bug in reassignPermanentBinding; fixed + verified."
       }
     ]
   }
