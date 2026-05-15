@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T18:36:11.949Z",
-    "generated_against_head": "ffb500c9a33ae71d704c2e24c4f2f7c3c80415bc",
+    "last_updated_at": "2026-05-15T18:45:10.303Z",
+    "generated_against_head": "f06c98a9b7b63ef92015b8070f8926e5c2758277",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "ffb500c9a33ae71d704c2e24c4f2f7c3c80415bc",
+    "last_canonical_commit_at_gen": "f06c98a9b7b63ef92015b8070f8926e5c2758277",
     "staleness_warning": null,
-    "active_slice": "chat-writes-proposed-decisions (F-002 — remediation pass) · CHANGES_REQUESTED (round-2 revised plan, 2026-05-16) — friend rejected R2b-i (accept-the-leak default). Revised plan commits to R2b-iii: refactor 4 inject-style routes into tx-callable services so domain effect + lifecycle commit share one tx. R1 + R2a + R3 unchanged. See pending-approvals.md.",
+    "active_slice": "chat-writes-proposed-decisions (F-002 — round-2 remediation, R2b-iii approved 2026-05-16) · CHANGES_REQUESTED → round-2 plan APPROVED 2026-05-16 → implementing R1 + R2a + R2b-iii + R3. Will move to AWAITING_APPROVAL once all 4 fixes land + tests green + control surface clean.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,15 +1183,16 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`chat-writes-proposed-decisions` (F-002 — remediation pass)",
-      "Status": "`CHANGES_REQUESTED` (round-2 revised plan, 2026-05-16) — friend rejected R2b-i (accept-the-leak default). Revised plan commits to R2b-iii: refactor 4 inject-style routes into tx-callable services so domain effect + lifecycle commit share one tx. R1 + R2a + R3 unchanged. See `pending-approvals.md`.",
+      "Slice name": "`chat-writes-proposed-decisions` (F-002 — round-2 remediation, R2b-iii approved 2026-05-16)",
+      "Status": "`CHANGES_REQUESTED` → round-2 plan APPROVED 2026-05-16 → implementing R1 + R2a + R2b-iii + R3. Will move to AWAITING_APPROVAL once all 4 fixes land + tests green + control surface clean.",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed commit": "`2557e1f` — `test(decisions): F-002 remediation tests — concurrency + new kinds + stale-client (F-002.7)`",
-      "Original slice commits": "`a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146` (kept in tree; not rebased)",
-      "Remediation commits (oldest→newest)": "`f2b2d74` (F-002.1 unified registry) · `ec01f62` (F-002.2 CHECK constraint) · `38b9987` (F-002.3 race-safe writer) · `2e03315` (F-002.4+5 apply-after-domain + decisionId required) · `4506b3d` (F-002.6 read-side via registry) · `2557e1f` (F-002.7 tests)",
+      "Last landed commit": "`f06c98a` — `docs(handoff): F-002 round-2 plan revised — commit to R2b-iii (refactor)`",
+      "Pre-remediation slice commits": "`a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146` (round-1 implementation; kept in tree)",
+      "Round-1 remediation commits": "`f2b2d74` · `ec01f62` · `38b9987` · `2e03315` · `4506b3d` · `2557e1f` (registry + CHECK + race-safe writer + apply-after-domain + required decisionId + read-side registry + tests; landed but the apply-after-domain trade-off in F-002.4 is **superseded** by the round-2 R2b-iii plan).",
+      "Round-2 remediation (planned)": "F-002.9 termination tx reorder · F-002.10 auth re-check in commitApply · F-002.11 route-level tests · F-002.12 + F-002.13 + F-002.14 extract 4 services · F-002.15 chat refactor to true atomicity · F-002.16 atomicity tests · F-002.17 tracker.",
       "Workflow IDs affected": "`D17` · `D20` · `C11` · `E21` · `E22` · `E24`",
-      "Tests status": "11/11 test files green · 61/61 cases pass · 7 new cases for remediation (4 concurrency + 3 new-kind binding-change) · stale-client test rewritten as 400 BAD_INPUT assertion · all 6 existing chat-\\* tests updated to pass decisionId",
-      "Verification status": "`REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied (20260507 → 20260518 including F-002.2 CHECK constraint). Full sweep in one run. Container left running for friend's spot-check."
+      "Current tests status (round-1 sweep)": "11/11 test files green · 61/61 cases pass on fresh local Postgres 16 with 12 migrations. New round-2 tests in F-002.11 + F-002.16 will add ~10 more cases.",
+      "Friend's required cleanup (this commit)": "Remove superseded \"apply-after-domain trade-off\" wording so the control surface tells one truth: R2b-iii is the path, the orphan-domain-effect leak is no longer accepted."
     },
     "pending_approvals": [
       {
