@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T17:03:07.817Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>662e1460</code></span>
+      <span>Generated <strong>2026-05-15T17:27:50.759Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>c0c000a7</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
-      <span>Active slice: <strong>chat-writes-proposed-decisions (F-002) · AWAITING_APPROVAL</strong></span>
+      <span>Active slice: <strong>chat-writes-proposed-decisions (F-002) · CHANGES_REQUESTED — friend's production-grade review found 4 safety findings (rule P3 / P4 / P5 / P1+P2). Remediation plan surfaced in pending-approvals.md for owner's approval before any fix code is written.</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>chat-writes-proposed-decisions</code> (F-002)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>662e146</code> — <code>test(decisions): 5 integration test files for F-002 (54/54 green)</code></td></tr><tr><th>Scope artifact (approved)</th><td><code>handoff/feature-queue/scopes/F-002.md</code> (approved 2026-05-15 evening with all 5 default picks)</td></tr><tr><th>Slice commits (oldest → newest)</th><td><code>a8b4e79</code> (schema + migration) · <code>73ee9eb</code> (audit kinds + helpers + payloads) · <code>8d20db0</code> (supervisor-decision-writer.ts) · <code>7fbddcb</code> (chat.ts propose + apply) · <code>12f27ed</code> (dismiss route + tighten proposed predicate) · <code>662e146</code> (5 integration test files)</td></tr><tr><th>Workflow IDs affected</th><td><code>D17</code> (writer side), <code>D20</code> (writer side — EMPLOYMENT-tier ack gate), <code>C11</code>, <code>E21</code>, <code>E22</code>, <code>E24</code></td></tr><tr><th>Personas affected</th><td>Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's <code>GET /decisions/proposed-for-me</code>), Kavitha (EMPLOYMENT ack), Suresh (subject)</td></tr><tr><th>Locked picks (Q1–Q5)</th><td>Q1=(b) best-effort originContext capture · Q2=(a) single slice · Q3=(a) include dismiss + migration · Q4=(b) defer state ENUM · Q5=reuse F-001 helpers for <code>proposedDuringAbsence</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">9/9 test files green (4 F-001 regression + 5 F-002 new); 54/54 cases pass</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">REAL_DB — fresh local Postgres 16 (Docker container axhy-test-pg on port 55432), all 11 migrations applied (20260507 → 20260517), full sweep in one run. Container left running for friend's spot-check.</span></td></tr><tr><th>Known limitation (surfaced for friend's review)</th><td>Inject-style <code>/chat/apply</code> branches (mark_absent / leave / swap / create_assignment / living_doc_update): lifecycle commits in tx 1, domain inject runs in tx 2. If the domain inject fails after lifecycle commits, the row is in APPLIED state with no downstream effect (orphan APPLIED row). Audit trail tells the truth (DWI_APPLIED present, domain audit absent). Acceptable for F-002 MVP per scope §3b (&quot;inside one transaction&quot; — interpreted pragmatically given the inject() architecture). <code>propose_termination</code> is fully atomic (shared tx). A future-cleanup slice can extract domain logic to be tx-shareable.</td></tr><tr><th>Started at</th><td>2026-05-15 evening — immediately after F-002 scope approval at HEAD <code>1fb546e</code>.</td></tr><tr><th>Completed at</th><td>2026-05-15 evening — slice complete; awaiting friend's approval word.</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>chat-writes-proposed-decisions</code> (F-002)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">CHANGES_REQUESTED — friend's production-grade review found 4 safety findings (rule P3 / P4 / P5 / P1+P2). Remediation plan surfaced in pending-approvals.md for owner's approval before any fix code is written.</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Last landed commit</th><td><code>662e146</code> — <code>test(decisions): 5 integration test files for F-002 (54/54 green)</code></td></tr><tr><th>Scope artifact (approved)</th><td><code>handoff/feature-queue/scopes/F-002.md</code> (approved 2026-05-15 evening with all 5 default picks)</td></tr><tr><th>Slice commits (oldest → newest)</th><td><code>a8b4e79</code> (schema + migration) · <code>73ee9eb</code> (audit kinds + helpers + payloads) · <code>8d20db0</code> (supervisor-decision-writer.ts) · <code>7fbddcb</code> (chat.ts propose + apply) · <code>12f27ed</code> (dismiss route + tighten proposed predicate) · <code>662e146</code> (5 integration test files)</td></tr><tr><th>Workflow IDs affected</th><td><code>D17</code> (writer side), <code>D20</code> (writer side — EMPLOYMENT-tier ack gate), <code>C11</code>, <code>E21</code>, <code>E22</code>, <code>E24</code></td></tr><tr><th>Personas affected</th><td>Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's <code>GET /decisions/proposed-for-me</code>), Kavitha (EMPLOYMENT ack), Suresh (subject)</td></tr><tr><th>Locked picks (Q1–Q5)</th><td>Q1=(b) best-effort originContext capture · Q2=(a) single slice · Q3=(a) include dismiss + migration · Q4=(b) defer state ENUM · Q5=reuse F-001 helpers for <code>proposedDuringAbsence</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">9/9 test files green (4 F-001 regression + 5 F-002 new); 54/54 cases pass</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">REAL_DB — fresh local Postgres 16 (Docker container axhy-test-pg on port 55432), all 11 migrations applied (20260507 → 20260517), full sweep in one run. Container left running for friend's spot-check.</span></td></tr><tr><th>Known limitation (surfaced for friend's review)</th><td>Inject-style <code>/chat/apply</code> branches (mark_absent / leave / swap / create_assignment / living_doc_update): lifecycle commits in tx 1, domain inject runs in tx 2. If the domain inject fails after lifecycle commits, the row is in APPLIED state with no downstream effect (orphan APPLIED row). Audit trail tells the truth (DWI_APPLIED present, domain audit absent). Acceptable for F-002 MVP per scope §3b (&quot;inside one transaction&quot; — interpreted pragmatically given the inject() architecture). <code>propose_termination</code> is fully atomic (shared tx). A future-cleanup slice can extract domain logic to be tx-shareable.</td></tr><tr><th>Started at</th><td>2026-05-15 evening — immediately after F-002 scope approval at HEAD <code>1fb546e</code>.</td></tr><tr><th>Completed at</th><td>2026-05-15 evening — slice complete; awaiting friend's approval word.</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -152,13 +152,13 @@
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
     
       <div class="approval">
-        <div class="approval-head"><span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>chat-writes-proposed-decisions</code></strong></div>
+        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">CHANGES_REQUESTED</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>chat-writes-proposed-decisions</code></strong></div>
         
         
         <p class="small"><strong>Branch:</strong> <code>feat/layer-1-core-primitives</code></p>
-        <p class="small"><strong>Last landed commit:</strong> <code>662e146</code></p>
         
-        <p class="small"><strong>Workflows affected:</strong> D17 (writer), D20 (writer, EMPLOYMENT ack gate), C11, E21, E22, E24</p>
+        
+        
         
         
         
@@ -190,7 +190,7 @@
       <details class="feature">
         <summary>
           <code>F-002</code>
-          <span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span>
+          <span class="badge" style="background:#bdbdbd;color:#fff;">CHANGES_REQUESTED</span>
           <strong>D17 SupervisorDecision writer</strong>
         </summary>
         <div class="feature-body">
@@ -302,6 +302,20 @@
     <tr>
       <td class="small">2026-05-15 evening</td>
       <td><code>chat-writes-proposed-decisions</code></td>
+      <td><code>AWAITING_APPROVAL → CHANGES_REQUESTED</code></td>
+      <td><code>n/a (no commit; review verdict)</code></td>
+      <td class="small">Friend's production-grade review at HEAD <code>c0c000a</code> surfaced 4 findings the new rule 24 / production-grade rulebook explicitly say are NOT absolvable by documentation: orphan APPLIED on inject failure (P3), optional decisionId leaves stale PROPOSED (P4), 3 new kinds bypass binding routing (P5), check-then-act race on apply/dismiss (P1+P2). Remediation plan surfaced in pending-approvals.md; no fix code written yet (rule 23 confidence 87% — needs plan approval first).</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 evening</td>
+      <td><code>production-grade-rulebook</code></td>
+      <td><code>PLANNED → DONE</code></td>
+      <td><code>`(this commit)`</code></td>
+      <td class="small">New permanent rulebook <code>handoff/owner-input/production-grade-rulebook.md</code> + rule 24 in INDEX.md + memory file <code>feedback_production_grade_workflow_rules.md</code>. 10 rules (P1–P10) lock the production-grade bar for all future workflow / lifecycle / multi-actor slices. Triggered by friend's 2026-05-15 evening F-002 review.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 evening</td>
+      <td><code>chat-writes-proposed-decisions</code></td>
       <td><code>WIP → AWAITING_APPROVAL</code></td>
       <td><code>`662e146`</code></td>
       <td class="small">All 6 implementation commits + 5 test files landed. Real-DB sweep on fresh local Postgres 16 with all 11 migrations: <strong>54/54 cases green</strong> across 9 files (4 F-001 regression + 5 F-002 new). One known limitation surfaced: inject-style /chat/apply branches do lifecycle commit + domain inject in separate tx (propose_termination is fully atomic).</td>
@@ -354,20 +368,6 @@
       <td><code>PLANNED → WIP</code></td>
       <td><code>n/a (transition before first commit)</code></td>
       <td class="small">Akshay's &quot;take it one level further&quot; directive started this slice. Built into the file system before the first commit (f9fbe68).</td>
-    </tr>
-    <tr>
-      <td class="small">2026-05-15 afternoon</td>
-      <td><code>dashboard-embed-diagrams</code></td>
-      <td><code>AWAITING_APPROVAL → APPROVED → DONE</code></td>
-      <td><code>`8f11d89`</code></td>
-      <td class="small">32 Mermaid diagrams embedded into the HTML dashboard via Mermaid CDN. Friend approved with 2 corrections noted (carried into handoff-control-loop).</td>
-    </tr>
-    <tr>
-      <td class="small">2026-05-15 afternoon</td>
-      <td><code>tracker-3-layer-system</code></td>
-      <td><code>AWAITING_APPROVAL → APPROVED → DONE</code></td>
-      <td><code>`e222a22`, `03d33dd`, `d4bb4c8`</code></td>
-      <td class="small">Built execution-state + workflow-maps + generated layers. Folder moved to top-level <code>handoff/</code>. Friend: &quot;much better and directionally correct&quot;.</td>
     </tr></tbody>
     </table>
     <p class="source-link small">Source: <a href="../owner-input/change-history.md">handoff/owner-input/change-history.md</a>.</p>

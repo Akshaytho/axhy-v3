@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T17:03:07.817Z",
-    "generated_against_head": "662e146064c2d49be209f759ced3c9b9376b5f52",
+    "last_updated_at": "2026-05-15T17:27:50.759Z",
+    "generated_against_head": "c0c000a7004d781af372c8edddae649a1d88ed7b",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "328819bc52d0298bd1c660defdac7212748bd825",
+    "last_canonical_commit_at_gen": "c0c000a7004d781af372c8edddae649a1d88ed7b",
     "staleness_warning": null,
-    "active_slice": "chat-writes-proposed-decisions (F-002) · AWAITING_APPROVAL",
+    "active_slice": "chat-writes-proposed-decisions (F-002) · CHANGES_REQUESTED — friend's production-grade review found 4 safety findings (rule P3 / P4 / P5 / P1+P2). Remediation plan surfaced in pending-approvals.md for owner's approval before any fix code is written.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,7 +1184,7 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`chat-writes-proposed-decisions` (F-002)",
-      "Status": "`AWAITING_APPROVAL`",
+      "Status": "`CHANGES_REQUESTED` — friend's production-grade review found 4 safety findings (rule P3 / P4 / P5 / P1+P2). Remediation plan surfaced in `pending-approvals.md` for owner's approval before any fix code is written.",
       "Branch": "`feat/layer-1-core-primitives`",
       "Last landed commit": "`662e146` — `test(decisions): 5 integration test files for F-002 (54/54 green)`",
       "Scope artifact (approved)": "`handoff/feature-queue/scopes/F-002.md` (approved 2026-05-15 evening with all 5 default picks)",
@@ -1202,11 +1202,11 @@
       {
         "id": "chat-writes-proposed-decisions",
         "kind": "slice",
-        "status": "AWAITING_APPROVAL",
+        "status": "CHANGES_REQUESTED",
         "branch": "feat/layer-1-core-primitives",
         "wipCommit": "",
-        "lastLanded": "662e146",
-        "workflowIds": "D17 (writer), D20 (writer, EMPLOYMENT ack gate), C11, E21, E22, E24",
+        "lastLanded": "",
+        "workflowIds": "",
         "blocking": "",
         "built": "",
         "notDone": "",
@@ -1247,7 +1247,7 @@
         "workflows": "D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).",
         "entities": "`apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.",
         "verification": "`REAL_DB`.",
-        "status": "AWAITING_APPROVAL"
+        "status": "CHANGES_REQUESTED"
       },
       {
         "id": "F-003",
@@ -1320,6 +1320,20 @@
       {
         "when": "2026-05-15 evening",
         "slice": "chat-writes-proposed-decisions",
+        "transition": "AWAITING_APPROVAL → CHANGES_REQUESTED",
+        "commit": "n/a (no commit; review verdict)",
+        "note": "Friend's production-grade review at HEAD `c0c000a` surfaced 4 findings the new rule 24 / production-grade rulebook explicitly say are NOT absolvable by documentation: orphan APPLIED on inject failure (P3), optional decisionId leaves stale PROPOSED (P4), 3 new kinds bypass binding routing (P5), check-then-act race on apply/dismiss (P1+P2). Remediation plan surfaced in pending-approvals.md; no fix code written yet (rule 23 confidence 87% — needs plan approval first)."
+      },
+      {
+        "when": "2026-05-15 evening",
+        "slice": "production-grade-rulebook",
+        "transition": "PLANNED → DONE",
+        "commit": "`(this commit)`",
+        "note": "New permanent rulebook `handoff/owner-input/production-grade-rulebook.md` + rule 24 in INDEX.md + memory file `feedback_production_grade_workflow_rules.md`. 10 rules (P1–P10) lock the production-grade bar for all future workflow / lifecycle / multi-actor slices. Triggered by friend's 2026-05-15 evening F-002 review."
+      },
+      {
+        "when": "2026-05-15 evening",
+        "slice": "chat-writes-proposed-decisions",
         "transition": "WIP → AWAITING_APPROVAL",
         "commit": "`662e146`",
         "note": "All 6 implementation commits + 5 test files landed. Real-DB sweep on fresh local Postgres 16 with all 11 migrations: **54/54 cases green** across 9 files (4 F-001 regression + 5 F-002 new). One known limitation surfaced: inject-style /chat/apply branches do lifecycle commit + domain inject in separate tx (propose_termination is fully atomic)."
@@ -1372,20 +1386,6 @@
         "transition": "PLANNED → WIP",
         "commit": "n/a (transition before first commit)",
         "note": "Akshay's \"take it one level further\" directive started this slice. Built into the file system before the first commit (f9fbe68)."
-      },
-      {
-        "when": "2026-05-15 afternoon",
-        "slice": "dashboard-embed-diagrams",
-        "transition": "AWAITING_APPROVAL → APPROVED → DONE",
-        "commit": "`8f11d89`",
-        "note": "32 Mermaid diagrams embedded into the HTML dashboard via Mermaid CDN. Friend approved with 2 corrections noted (carried into handoff-control-loop)."
-      },
-      {
-        "when": "2026-05-15 afternoon",
-        "slice": "tracker-3-layer-system",
-        "transition": "AWAITING_APPROVAL → APPROVED → DONE",
-        "commit": "`e222a22`, `03d33dd`, `d4bb4c8`",
-        "note": "Built execution-state + workflow-maps + generated layers. Folder moved to top-level `handoff/`. Friend: \"much better and directionally correct\"."
       }
     ]
   }

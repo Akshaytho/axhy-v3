@@ -20,37 +20,86 @@
 
 ## Currently awaiting approval
 
-### Slice: `chat-writes-proposed-decisions` (F-002) — AWAITING_APPROVAL 2026-05-15 evening
+### Slice: `chat-writes-proposed-decisions` (F-002) — CHANGES_REQUESTED 2026-05-15 evening
 
-- **Status:** `AWAITING_APPROVAL`
+- **Status:** `CHANGES_REQUESTED` — friend's production-grade review at HEAD `c0c000a` surfaced 4 findings that the new rule 24 (production-grade rulebook) explicitly says are NOT absolvable by documentation. The slice's shape is correct; the safety guarantees are not. Per rule P7 ("documented limitation ≠ acceptable limitation"), this is a blocker, not a footnote.
 - **Branch:** `feat/layer-1-core-primitives`
-- **Last landed commit:** `662e146` — `test(decisions): 5 integration test files for F-002 (54/54 green)`
-- **Slice commits (oldest → newest):** `a8b4e79` (schema + migration) · `73ee9eb` (audit kinds + helpers + payloads) · `8d20db0` (supervisor-decision-writer.ts) · `7fbddcb` (chat.ts propose + apply) · `12f27ed` (dismiss route + tighten proposed predicate) · `662e146` (5 test files)
-- **Workflow IDs affected:** D17 (writer), D20 (writer, EMPLOYMENT ack gate), C11, E21, E22, E24
-- **Verification gate cleared:** `REAL_DB`. Fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 11 migrations applied (20260507 → 20260517). Full sweep in one run: **54/54 cases green** across 9 test files (4 F-001 regression + 5 F-002 new).
-- **Locked picks accepted (Q1–Q5):** Q1=(b) best-effort originContext capture · Q2=(a) single slice · Q3=(a) include dismiss + migration · Q4=(b) defer state ENUM · Q5=reuse F-001 helpers for `proposedDuringAbsence`.
-- **Known limitation (surfaced for friend's call):** Inject-style `/chat/apply` branches commit lifecycle in tx 1, domain inject in tx 2. If domain inject fails after lifecycle commits → orphan APPLIED row (audit shows DWI_APPLIED without downstream domain audit). Acceptable for F-002 MVP per scope §3b's "inside one transaction" (interpreted pragmatically given inject() architecture). `propose_termination` is fully atomic. Future cleanup slice could extract domain logic to be tx-shareable.
-- **Reproduction (for friend's spot-check):**
-  ```
-  docker exec axhy-test-pg pg_isready -U postgres
-  cd apps/backend
-  DATABASE_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
-  AXHY_DB_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
-  pnpm exec vitest run \
-    test/effective-responsibility-helper.test.ts \
-    test/sites-effective-supervisor-route.test.ts \
-    test/decisions-proposed-for-me-route.test.ts \
-    test/effective-responsibility-point-in-time.test.ts \
-    test/supervisor-decision-writer-create.test.ts \
-    test/supervisor-decision-apply.test.ts \
-    test/decisions-dismiss-route.test.ts \
-    test/supervisor-decision-proposed-during-absence.test.ts \
-    test/chat-apply-transitions-decision.test.ts
-  ```
-- **What changed beyond the scope artifact:**
-  - The `ApplyDecisionCardInput` Zod schema added `decisionId` as **optional** (not required) — back-compat for old mobile clients that haven't shipped the new shape yet. The scope artifact §3b implied required. Surfacing this small relaxation for friend's awareness; can tighten in a follow-up once all clients ship.
-  - Existing chat-\* tests (`chat-mark-absent.test.ts`, `chat-leave.test.ts`, etc. that hit the real OpenAI loop) were NOT re-run in this sweep — they require an OpenAI key + take ~90s each. The new tests cover all F-002 logic without OpenAI dependency. Friend's call: re-run the OpenAI tests against this slice before merge to main?
-- **Decision needed:** `APPROVED` / `CHANGES_REQUESTED` (with bullet list) / `HOLD` (with reason). On APPROVED, the slice moves to `APPROVED` state; next slice can start.
+- **Last landed commit at review:** `c0c000a` (tracker propagation); slice body at `662e146`.
+- **Slice commits still in tree:** `a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146`. They stay (no rebase); remediation lands as additive commits on top.
+- **Friend's verbatim summary:** "He built the shape of the design, but not the safety guarantees the design really needed … apply is not truly atomic for most actions; backward-compat path leaves stale PROPOSED rows; some decision kinds are not routed to the current responsible supervisor; concurrent apply/dismiss can break state integrity."
+
+#### The 4 findings (rulebook citations)
+
+| #   | Finding                                                                                                                                                                                                   | Rule    | Severity                 | Location                                                                                                                                    |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1  | `appliedAt` commits before the real domain effect succeeds. Inject-style branches (mark_absent / leave / swap / create_assignment / living_doc_update) → orphan APPLIED on domain failure.                | P3 + P7 | corrupts business truth  | `apps/backend/src/routes/chat.ts` — pre-block `applyProposedDecision` call before each `app.inject` branch.                                 |
+| F2  | `ApplyDecisionCardInput.decisionId` is OPTIONAL → old clients can apply without closing the row. PROPOSED stays open; can be applied or dismissed a second time.                                          | P4      | duplicate-effect / stale | `packages/shared-schema/src/zod/chat.ts` + the `if (parsed.data.decisionId && ...)` branch in `chat.ts`.                                    |
+| F3  | New kinds (`SWAP_WORKER`, `TERMINATE_WORKER`, `CREATE_ASSIGNMENT`) are in `TOOL_TO_DWI` writer mapping but NOT in F-001's `WORKER_TARGETED_KINDS` / `SITE_TARGETED_KINDS` read sets. Fall back to origin. | P5      | misrouted responsibility | `apps/backend/src/routes/decisions.ts:54-58` + `apps/backend/src/lib/supervisor-decision-writer.ts:78-79` (duplicated sets — drift hazard). |
+| F4  | `applyProposedDecision` + `dismissProposedDecision` use `findUnique → check → update`. Two concurrent requests can both pass guards. Row can end with BOTH `appliedAt` AND `dismissedAt` set.             | P1 + P2 | state-integrity / race   | `apps/backend/src/lib/supervisor-decision-writer.ts` — apply at L268+, dismiss at L356+.                                                    |
+
+#### Remediation plan (for your approval BEFORE I write code)
+
+Confidence: 87% own. Below the rule 23 ≥90% threshold for code execution, so I want your go-ahead on the plan shape before implementing. Per rule P9 I will research Prisma `updateMany` semantics + PostgreSQL row-locking + CHECK constraint behaviour before each commit; sources cited in each commit message.
+
+**Fix 1 — atomic apply (P3, fixes F1).** Default: **apply-after-domain with conditional UPDATE**.
+
+- Re-order each `/chat/apply` inject-style branch: auth + responsibility check FIRST (read-only), then domain inject, then `UPDATE WHERE id=? AND appliedAt IS NULL AND dismissedAt IS NULL`. If `count === 0` after a 2xx domain response: the row was concurrently dismissed/applied — return 409 + emit a new `DWI_RACE_DETECTED` audit row.
+- `propose_termination` stays fully atomic (no change — its tx already inlines lifecycle + worker.update).
+- Alternative: intermediate `appliedAttemptedAt` state. Heavier; new migration; needs a reconciler. Default rejects this in favour of apply-after-domain unless you say otherwise.
+
+**Fix 2 — `decisionId` becomes required (P4, fixes F2).**
+
+- Tighten Zod: `decisionId: z.string().uuid()` (drop `.optional()`).
+- Delete the `if (parsed.data.decisionId && ...)` branch entirely — old clients hit 400 BAD_INPUT.
+- Sunset: the back-compat path was never deployed (this is `feat/layer-1-core-primitives`, not `main`). Safe to delete now. No mobile-app coordination needed.
+
+**Fix 3 — wire new kinds into routing (P5, fixes F3).**
+
+- Consolidate `WORKER_TARGETED_KINDS` + `SITE_TARGETED_KINDS` into a single shared module: `packages/shared-schema/src/zod/supervisor-decision-kinds.ts`. Both `decisions.ts` and `supervisor-decision-writer.ts` import from there. Cannot drift.
+- Add the 3 kinds:
+  - `CREATE_ASSIGNMENT` → `WORKER_TARGETED_KINDS` (targetId is workerId; route via primary site)
+  - `TERMINATE_WORKER` → `WORKER_TARGETED_KINDS` (targetId is workerId; route via primary site)
+  - `SWAP_WORKER` → `SITE_TARGETED_KINDS` (targetId is siteId; direct route)
+- Add a test per new kind: seed PROPOSED + binding change between propose-time and apply-time → currently responsible supervisor wins, original rejected with 403.
+
+**Fix 4 — race-safe transitions (P1 + P2, fixes F4).**
+
+- **DB layer** (rule P1 — invariants in the DB): new migration adds `CHECK (NOT ("appliedAt" IS NOT NULL AND "dismissedAt" IS NOT NULL))`. The impossible state becomes DB-impossible.
+- **App layer** (rule P2 — no check-then-act): switch apply + dismiss to `prisma.supervisorDecision.updateMany` with the full precondition in WHERE. Inspect `count`; if 0, run a discriminator read to map to the right LifecycleError code.
+- Add a concurrent-double-submit test: fire two `app.inject` calls in parallel, assert exactly one returns 200 and the other returns 409.
+
+#### P10 failure matrix (post-remediation)
+
+| Question                                                | Answer (after Fixes 1–4)                                                                                                                                                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| What invariants does this slice introduce?              | (1) A PROPOSED row transitions to exactly one terminal state. (2) `appliedAt` + `dismissedAt` mutually exclusive. (3) Only the currently responsible supervisor (per F-001 routing) can transition it. |
+| How is each invariant enforced?                         | (1) Conditional UPDATE on every transition. (2) DB CHECK constraint + conditional UPDATE both. (3) App-layer F-001 routing predicate on the unified kind sets.                                         |
+| What happens on failure of the domain effect?           | Row stays PROPOSED (apply-after-domain). User retries or dismisses. No corruption.                                                                                                                     |
+| What happens on retry / double-submit?                  | Conditional UPDATE returns 0 → 409 ALREADY_APPLIED. No double lifecycle effect. Domain side: depends on the domain route's own idempotency (mark_absent, leave, etc. already have it).                 |
+| What happens under concurrent requests on the same row? | Exactly one wins via conditional UPDATE. The other gets 409. DB CHECK blocks the impossible (both-set) state even if app guard is bypassed.                                                            |
+| What happens for a stale client (old shape)?            | 400 BAD_INPUT — `decisionId is required`. No back-compat fallback. Sunset: never deployed.                                                                                                             |
+| What is still intentionally deferred (with sunset)?     | Full state ENUM column (FAILED / EXPIRED / UNDONE). Today's (appliedAt, dismissedAt) pair covers PROPOSED / APPLIED / DISMISSED. Other states get their own slice with concrete triggers.              |
+
+#### Suggested commit shape (after plan approval)
+
+1. `feat(schema): consolidate worker/site-targeted kind sets into shared-schema (F-002.1)`
+2. `feat(schema): SupervisorDecision apply/dismiss mutual-exclusion CHECK constraint (F-002.2)`
+3. `feat(decisions): race-safe applyProposedDecision + dismissProposedDecision via updateMany (F-002.3)`
+4. `feat(chat): atomic apply via apply-after-domain pattern (F-002.4)`
+5. `feat(chat): decisionId required on /chat/apply — drop back-compat (F-002.5)`
+6. `feat(decisions): route SWAP / TERMINATE / CREATE_ASSIGNMENT via current responsible (F-002.6)`
+7. `test(decisions): concurrent-double-submit + DB-constraint enforcement tests (F-002.7)`
+8. `docs(handoff): F-002 remediation complete → AWAITING_APPROVAL`
+
+Total: 7 fix commits + 1 tracker commit, additive on top of the 6 existing slice commits.
+
+#### Decision needed
+
+- `APPROVED on plan` → I research (P9), implement the 7 fixes, re-surface as AWAITING_APPROVAL with the P10 matrix filled in concretely.
+- `CHANGES_REQUESTED on plan` → name what to change in the plan; I revise.
+- `HOLD` → pause F-002. F-001's read API still works (no writer exists yet, so no production data is affected by pausing).
+
+**I will not write a single line of fix code until this remediation plan is explicitly approved.**
 
 ---
 
