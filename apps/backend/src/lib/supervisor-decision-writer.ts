@@ -223,6 +223,35 @@ export class LifecycleError extends Error {
 }
 
 // ===========================================================================
+// TEST-ONLY hook for deterministic stale-authority tests (F-002 R3.2-a)
+// ===========================================================================
+//
+// commitApply has a window between preCheckApply (which ran earlier in the
+// caller's tx) and the conditional UPDATE: the binding/authority can change
+// in another connection during that window. To test that R2a's auth re-check
+// catches this race deterministically (not probabilistically via timing),
+// tests set this hook to a function that commits a binding change on a
+// side-channel connection. commitApply awaits the hook BEFORE the auth
+// re-check, so the race condition is forced.
+//
+// The hook is gated on `process.env.NODE_ENV === 'test'`. In production
+// (NODE_ENV undefined / 'production'), the hook is never read — even if
+// __setCommitApplyTestHook was called. Defense-in-depth against accidental
+// activation.
+//
+// Tests MUST reset the hook to null in afterEach/afterAll to avoid leaking
+// across cases.
+//
+// @derives(F-002 R3.2-a — deterministic stale-auth route-level test)
+
+let __commitApplyTestHook: (() => Promise<void>) | null = null;
+
+/** TEST-ONLY. See module-level comment above. */
+export function __setCommitApplyTestHook(fn: (() => Promise<void>) | null): void {
+  __commitApplyTestHook = fn;
+}
+
+// ===========================================================================
 // Authorization helper — derives from DECISION_KIND_REGISTRY routingMode
 // ===========================================================================
 
@@ -405,6 +434,13 @@ export async function commitApply(
   tx: Prisma.TransactionClient,
   input: ApplyProposedDecisionInput & { preCheck: ApplyPreCheckResult },
 ): Promise<{ appliedAt: Date }> {
+  // R3.2-a test-only hook (no-op in production). Lets the route-level
+  // stale-auth test inject a binding change on a side-channel connection
+  // RIGHT BEFORE the auth re-check, so the race is deterministic.
+  if (process.env.NODE_ENV === 'test' && __commitApplyTestHook) {
+    await __commitApplyTestHook();
+  }
+
   // F-002.10 (R2a): re-check authorization at commit time, not just at
   // preCheck time. The auth state could have changed between preCheckApply
   // (tx 1) and commitApply (tx 2 — for the apply-after-domain path used by
