@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T21:15:25.930Z",
-    "generated_against_head": "2a0f27c48daa13d43e1a38f7b3dc90a591d09164",
+    "last_updated_at": "2026-05-15T21:41:09.427Z",
+    "generated_against_head": "361acf5ba1d159c2e78e530054d64227953b26cf",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "2a0f27c48daa13d43e1a38f7b3dc90a591d09164",
+    "last_canonical_commit_at_gen": "361acf5ba1d159c2e78e530054d64227953b26cf",
     "staleness_warning": null,
     "active_slice": "cron-framework-binding-expire-sweep (F-003) · PLANNED — AWAITING_SCOPE_APPROVAL (scope artifact draft to land at handoff/feature-queue/scopes/F-003.md; owner + friend approve picks; then code)",
     "generated_from": [
@@ -1260,13 +1260,13 @@
       },
       {
         "id": "F-003",
-        "title": "Cron framework + `binding-expire-sweep`",
-        "why": "Closure spec mandates four crons (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`); only `reset-ai-spend` exists today. Bindings can't auto-expire when `effectiveUntil` passes; \"while you were out\" digests can't fire; decisions can't auto-expire. Every downstream slice (F-004, F-005, F-007) eventually needs at least one of these sweeps to be real.",
+        "title": "Cron framework + `binding-expire-sweep` (RE-SCOPED 2026-05-16)",
+        "why": "Responsibility switching when `effectiveUntil` passes is already correct and time-based via `getEffectiveBinding` (read-time predicate excludes the expired acting row immediately). What does NOT exist today is a scheduled trigger that observes \"this binding just expired\" and emits the audit event + later the \"while you were out\" digest + later the notifications. F-003 fills only that side-effect gap. Matches Oracle / Workday / SAP effective-dating patterns: source-of-truth is date-based; scheduled jobs handle side effects.",
         "depends_on": "F-001 (APPROVED 2026-05-15) — dependency met. F-002 (APPROVED 2026-05-16) and S-001 (APPROVED 2026-05-16) not strictly required but both landed.",
-        "personas": "Ravi (sees acting binding auto-end), Lakshmi/Anjali (their cover windows close on time), Kavitha (HR queue items can later age-escalate via the same framework).",
-        "workflows": "F26 (acting binding expiry — this slice), F27 (permanent reassign expiry — same job), C12 (decision expiry — later slice on this framework).",
-        "entities": "- **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.\n  - **WIRED:** sweep sets `endedAt = effectiveUntil` on `SiteSupervisorBinding` rows where `effectiveUntil <= now() AND endedAt IS NULL`; emits `BINDING_ENDED_AUTO` AuditEvent per row (kind already in the closure-spec catalogue).\n  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + sets `endedAt`.\n  - **NO** new entity. **NO** schema change. **NO** HTTP route in this slice (scheduler invocation TBD per scope picks).",
-        "verification": "`REAL_DB` (real Postgres + sweep run + idempotency assertion).",
+        "personas": "all 4 indirectly via downstream consumers of `BINDING_ENDED_AUTO` (notification dispatcher F-007, digest generator, audit-trail reports).",
+        "workflows": "F26 (acting binding expiry — emits audit; switching itself is already read-time correct), F27 (permanent reassign expiry — same), C12 (decision expiry — later slice on this framework).",
+        "entities": "- **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.\n  - **EMITS:** `BINDING_ENDED_AUTO` AuditEvent per binding whose `effectiveUntil` has just passed and that has not yet been processed (kind already catalogued in closure spec §11).\n  - **DOES NOT MUTATE the binding row.** `endedAt` stays NULL for auto-expired bindings — setting it would break historical point-in-time queries via `getEffectiveBinding`.\n  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + does NOT mutate the binding row + does NOT change `getEffectiveBinding` results.\n  - **NO** new entity. **NO** schema change in the recommended scope (pick 7 option (a) — audit-existence check). **NO** HTTP route mutation lands.",
+        "verification": "`REAL_DB` (real Postgres + sweep run + idempotency assertion + read-time-routing-unchanged assertion).",
         "status": "PLANNED"
       },
       {
