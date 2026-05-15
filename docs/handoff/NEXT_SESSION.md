@@ -6,9 +6,9 @@
 
 ## Current state
 
-- **Active phase:** Layer 1 PR 1 = **code complete, migration ready-to-apply but NOT yet applied.** Blocked by lack of non-prod Railway DB (per project memory the only Railway Postgres is production-tagged); awaiting either founder approval for a production migration window, a provisioned dev DB, or local Postgres verification. PR 2 NOT started.
-- **Current branch:** `feat/layer-1-core-primitives` (2 commits: 215c208 schema + be954a2 PolicyValue doc reconciliation)
-- **Last updated:** 2026-05-15 (PR 1 code complete; migration apply blocked)
+- **Active phase:** **Migration-baseline recovery planning.** PR 1 (Layer 1 schema-only) is code-complete but **cannot be locally verified** because the repo's migration history is structurally incomplete — foundational baseline tables (Company, User, Membership, Site, Worker, Visit, LeaveRequest, OtpAttempt) are not captured in any migration. Surfaced 2026-05-15 during local Docker-Postgres verification: `20260508_phase_b_domain` fails with `relation "axhy.Company" does not exist` on a fresh DB. Investigation note + ranked recovery options at `docs/plans/2026-05-15-migration-baseline-recovery.md`. Recommendation: Option 1 (reconstruct baseline migration in a separate PR). PR 1 holds unchanged; PR 2 NOT started.
+- **Current branch:** `feat/layer-1-core-primitives` (3 commits: 215c208 schema + be954a2 PolicyValue doc reconciliation + 853672c handoff state)
+- **Last updated:** 2026-05-15 (baseline-migration gap surfaced; PR 1 holds pending recovery)
 
 ## Approved vs Draft
 
@@ -41,15 +41,17 @@
 
 ## Next concrete action
 
-**PR 1 is code-complete; migration apply is blocked.** Decisions needed before PR 2:
+**PR 1 is blocked by a repo-level baseline-migration-history gap, NOT by Layer 1 schema correctness.** Decisions needed before any further Layer 1 progress:
 
-1. **Pick a verification path** for the migration:
-   - **Production-window approval** (founder explicitly authorises `prisma migrate deploy` against the shared Railway Postgres during a planned window); OR
-   - **Provision a separate Railway dev DB** + supply DATABASE_URL; OR
-   - **Local Postgres verification** (Docker container or local install — ~5 minutes if Docker is available); OR
-   - **Defer apply to scheduled production migration window** (PR 1 stays code-reviewed and merge-ready; apply happens at a planned window with founder supervision).
-2. Once migration applies cleanly somewhere, mark PR 1 fully verified and surface PR 2 plan (audit-emit helpers for 15 new kinds + real-DB integration tests).
-3. **Do not start PR 2 until migration verification is recorded.**
+1. **Read `docs/plans/2026-05-15-migration-baseline-recovery.md`** — investigation note + ranked recovery options.
+2. **Founder picks a recovery path:**
+   - **Option 1 (recommended):** reconstruct baseline migration in a separate PR ahead of PR 1's merge. Requires read-only access to Railway prod schema via `prisma migrate diff` or `pg_dump --schema-only`. PR 1 holds; rebases naturally once baseline lands.
+   - **Option 2:** clone Railway prod DB → verify Layer 1 against the clone. Doesn't fix the underlying repo issue.
+   - **Option 3 (last resort):** defer all local replay; apply Layer 1 directly during a supervised production window. Repo baseline gap stays open.
+3. **Do not start PR 2** until baseline recovery is decided and (if Option 1) the baseline PR lands.
+4. **Do not touch Railway prod** without explicit founder window approval (still applies).
+
+PR 1 disposition: **HOLD unchanged.** Don't stack, don't rebase. Once a baseline migration timestamped before `20260508_*` lands, PR 1 naturally works on top.
 
 ## Open founder picks (8)
 
