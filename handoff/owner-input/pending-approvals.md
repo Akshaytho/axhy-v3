@@ -20,37 +20,27 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-control-loop`
-
-- **Status:** `AWAITING_APPROVAL`
-- **Branch:** `feat/layer-1-core-primitives`
-- **Last landed commit:** `eefaf11`
-- **Slice commits (oldest → newest):** `f9fbe68` · `0445110` · `7916a3b` · `b35748e` · `eefaf11`
-- **Workflow IDs affected:** none directly (control surface, spans all 29)
-- **What was built:** `handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in `7916a3b` (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in `b35748e` (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues fixed in `eefaf11` (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).
-- **What's NOT done:** Nothing in scope; all three friend bug lists fully addressed.
-- **Owner decision:** _empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_
+_None._
 
 ---
 
 ## Currently blocked (NOT awaiting approval — blocked by external dependency)
 
-### Slice: `routing-foundation-read-apis`
-
-- **Status:** `BLOCKED`
-- **Branch:** `feat/layer-1-core-primitives`
-- **WIP commit:** `84ae39c` `wip(routing): foundation read APIs — paused mid-slice for execution-state tracker`
-- **Workflow IDs affected:** `D17`, `F26` (read side), `F27` (read side)
-- **What's blocking:** `handoff-control-loop` slice not yet APPROVED. When that slice is approved, this slice resumes from WIP commit `84ae39c`.
-- **What was built:** `getEffectiveBinding` + `deriveWorkerPrimarySiteId` + `GET /sites/:id/effective-supervisor` + `GET /decisions/proposed-for-me` + 3 of 4 test files. Doc-level checks green; real-DB sweep not yet run.
-- **Remaining to finish slice:** 4th test file `effective-responsibility-point-in-time.test.ts`; real-DB sweep; split WIP commit into 3 clean commits.
-- **Owner decision:** N/A (blocked, not awaiting decision). Decision belongs on `handoff-control-loop` first.
+_None._
 
 ---
 
 ## Recently approved (last 5)
 
-_None yet. Items move here after the owner writes `APPROVED`._
+### Slice: `handoff-control-loop` — APPROVED 2026-05-15 evening
+
+- **Status:** `APPROVED`
+- **Branch:** `feat/layer-1-core-primitives`
+- **Last landed commit at approval:** `03a1c22` — `docs(handoff): rule 23 — confidence-score-before-acting (Akshay directive)`
+- **Slice commits (oldest → newest):** `f9fbe68` · `0445110` · `7916a3b` · `b35748e` · `eefaf11` · `091c2a6` · `03a1c22`
+- **Workflow IDs affected:** none directly (control surface, spans all 29)
+- **Approval received:** Friend's 5th file-grounded verification pass declared the control loop lock-ready at HEAD `091c2a6`. Verbatim: "the control-loop slice is now trustworthy enough to lock."
+- **Friend's directive on approval:** mark APPROVED → unblock F-001 → resume from WIP `84ae39c` → finish 4th routing test → run real-DB sweep → split WIP into clean commits → stop for review.
 
 ---
 
