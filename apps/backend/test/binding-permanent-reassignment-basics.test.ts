@@ -94,7 +94,9 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
       return b.id;
     });
 
-    const handoffAt = new Date();
+    // S-001 same-day-freeze: cutover must be tomorrow-or-later in tenant tz.
+    // +36h is safely past tomorrow IST midnight regardless of when the test runs.
+    const handoffAt = new Date(Date.now() + 36 * 60 * 60 * 1000);
 
     // Reassign to user B
     const result = await withTenantContext(prisma, companyId, async (tx) => {
@@ -154,7 +156,7 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
     expect(createdPayload.userId).toBe(userB);
   });
 
-  it('after a cutover-now reassignment, exactly one permanent binding is currently effective', async () => {
+  it('after a tomorrow-effective reassignment, exactly one permanent binding is effective at the post-cutover moment', async () => {
     const site = await prisma.site.create({ data: { companyId, name: 'Reassign-2' } });
 
     await withTenantContext(prisma, companyId, async (tx) => {
@@ -172,30 +174,34 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
       });
     });
 
+    // S-001 same-day-freeze: cutover must be tomorrow-or-later. +36h is safely
+    // past tomorrow IST midnight regardless of when the test runs.
+    const cutover = new Date(Date.now() + 36 * 60 * 60 * 1000);
+
     await withTenantContext(prisma, companyId, async (tx) => {
       await reassignPermanentBinding(tx, {
         companyId,
         siteId: site.id,
         newUserId: userB,
-        effectiveFrom: new Date(),
+        effectiveFrom: cutover,
         effectiveUntil: null,
         reason: 'Reassign',
         reassignedBy: hrUserId,
       });
     });
 
-    // "Currently effective" = endedAt IS NULL AND effectiveFrom <= now
-    // AND (effectiveUntil IS NULL OR effectiveUntil > now). This is the
-    // query shape consumers will use; "endedAt IS NULL" alone is not enough.
-    const now = new Date();
+    // "Currently effective at instant X" = endedAt IS NULL AND effectiveFrom <= X
+    // AND (effectiveUntil IS NULL OR effectiveUntil > X). At a post-cutover
+    // instant the new row owns the site; userA's row is no longer effective.
+    const afterCutover = new Date(cutover.getTime() + 60_000);
     const currentlyEffective = await prisma.siteSupervisorBinding.findMany({
       where: {
         companyId,
         siteId: site.id,
         actingForUserId: null,
         endedAt: null,
-        effectiveFrom: { lte: now },
-        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }],
+        effectiveFrom: { lte: afterCutover },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: afterCutover } }],
       },
     });
     expect(currentlyEffective).toHaveLength(1);
@@ -205,13 +211,18 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
   it('throws when no permanent binding is effective at the requested cutover', async () => {
     const site = await prisma.site.create({ data: { companyId, name: 'Reassign-Empty' } });
 
+    // S-001 same-day-freeze: cutover must be tomorrow-or-later. Use +36h so
+    // the freeze check passes and the prior-find runs (which is the throw
+    // path this test is verifying).
+    const cutover = new Date(Date.now() + 36 * 60 * 60 * 1000);
+
     await expect(
       withTenantContext(prisma, companyId, async (tx) => {
         await reassignPermanentBinding(tx, {
           companyId,
           siteId: site.id,
           newUserId: userA,
-          effectiveFrom: new Date(),
+          effectiveFrom: cutover,
           effectiveUntil: null,
           reason: 'Should fail — no prior',
           reassignedBy: hrUserId,

@@ -22,6 +22,7 @@ import {
 } from '@axhy/shared-schema';
 
 import { recordAuditEvent } from './audit-event.js';
+import { assertNotChangingTodaysResponsibility } from './same-day-freeze.js';
 
 // ---------------------------------------------------------------------------
 // Typed audit-emit helpers — BINDING_* kinds
@@ -128,6 +129,14 @@ export type ReassignPermanentBindingInput = {
   effectiveUntil?: Date | null;
   reason: string;
   reassignedBy: string;
+  /**
+   * IANA timezone for the tenant. Defaults to {@link DEFAULT_TENANT_TIME_ZONE}
+   * (Asia/Kolkata) inside {@link assertNotChangingTodaysResponsibility} until
+   * Company.timeZone lands in the schema. Pass `null` ONLY in seed/migration
+   * paths that bypass the S-001 freeze deliberately; HTTP routes must never
+   * pass `null`.
+   */
+  tenantTimeZone?: string;
 };
 
 /** @derives(ADR-0003) — schema-derived; @derives(master-plan §G) — HR control plane */
@@ -142,6 +151,18 @@ export async function reassignPermanentBinding(
   input: ReassignPermanentBindingInput,
 ): Promise<ReassignPermanentBindingResult> {
   const cutover = input.effectiveFrom;
+
+  // S-001 same-day supervisor-freeze: the cutover instant is BOTH the new
+  // binding's effectiveFrom AND the old binding's effectiveUntil. A single
+  // check on `effectiveFrom` covers both sides because they are the same
+  // moment. effectiveUntil on the new row (optional planned end) is naturally
+  // >= effectiveFrom and therefore also after tomorrow-midnight, so does not
+  // need a separate check here.
+  assertNotChangingTodaysResponsibility({
+    effectiveFrom: cutover,
+    effectiveUntil: input.effectiveUntil ?? null,
+    tenantTimeZone: input.tenantTimeZone,
+  });
 
   const prior = await tx.siteSupervisorBinding.findFirst({
     where: {
