@@ -2,11 +2,11 @@
 
 > **Target read time: 2 minutes.** This file is the fastest way to resume work without losing context. Read this first, then `STATUS.md`, then dive into the specific files this points you to.
 >
-> **Resume command:** "Open `/Users/thotaakshay/eclean_workspace/axhy-v3/docs/handoff/README.md` and follow the handoff files before doing anything else."
+> **Resume command:** "Open `/Users/thotaakshay/eclean_workspace/axhy-v3/handoff/README.md` and follow the handoff files before doing anything else."
 
 ## Current state
 
-- **Active phase:** **Layer 1 implementation — routing slice paused for execution-state tracker.** PR 1 + PR 2 + P1.5 accepted + locally real-DB verified. Routing slice (foundation read APIs for routing — `getEffectiveBinding`, `deriveWorkerPrimarySiteId`, `GET /sites/:id/effective-supervisor`, `GET /decisions/proposed-for-me`) is **paused at WIP commit `84ae39c`** — 4th test file unwritten + real-DB not yet run. Pause cause: friend-approved durable execution-state tracker (`docs/handoff/execution-state/`) built to prevent session-drift on workflow truth. **Affected workflow rows:** D17, F26, F27 — see `execution-state/supervisor-ravi.md`.
+- **Active phase:** **Layer 1 implementation — routing slice paused for execution-state tracker.** PR 1 + PR 2 + P1.5 accepted + locally real-DB verified. Routing slice (foundation read APIs for routing — `getEffectiveBinding`, `deriveWorkerPrimarySiteId`, `GET /sites/:id/effective-supervisor`, `GET /decisions/proposed-for-me`) is **paused at WIP commit `84ae39c`** — 4th test file unwritten + real-DB not yet run. Pause cause: friend-approved durable execution-state tracker (`handoff/execution-state/`) built to prevent session-drift on workflow truth. **Affected workflow rows:** D17, F26, F27 — see `execution-state/supervisor-ravi.md`.
 - **Current branch:** `feat/layer-1-core-primitives` (13 commits ahead of parent post-WIP, +tracker commit pending)
 - **Last updated:** 2026-05-15 (execution-state tracker built; routing slice resumes after friend approves tracker)
 
@@ -26,11 +26,11 @@
 
 ## Read these files now (in this order)
 
-1. `axhy-v3/docs/handoff/README.md` — handoff rules + anti-drift rules + mandatory update order.
-2. `axhy-v3/docs/handoff/STATUS.md` — full state + Authority Snapshot.
-3. `axhy-v3/docs/handoff/execution-state/INDEX.md` — workflow-truth legend + strict enums + failure-mode rules. **Mandatory.**
-4. The persona file(s) in `axhy-v3/docs/handoff/execution-state/` that the active slice touches (currently `supervisor-ravi.md` for D17/F26/F27), plus `combined.md`.
-5. `axhy-v3/docs/handoff/ROADMAP.md` — what's next.
+1. `axhy-v3/handoff/README.md` — handoff rules + anti-drift rules + mandatory update order.
+2. `axhy-v3/handoff/STATUS.md` — full state + Authority Snapshot.
+3. `axhy-v3/handoff/execution-state/INDEX.md` — workflow-truth legend + strict enums + failure-mode rules. **Mandatory.**
+4. The persona file(s) in `axhy-v3/handoff/execution-state/` that the active slice touches (currently `supervisor-ravi.md` for D17/F26/F27), plus `combined.md`.
+5. `axhy-v3/handoff/ROADMAP.md` — what's next.
 6. Whatever STATUS / ROADMAP point you to (closure spec / kickoff memo / specific audit).
 
 **Reconciliation rule:** if `execution-state/` rows disagree with `STATUS.md` / `NEXT_SESSION.md` about any workflow's state, STOP and reconcile before coding (per `execution-state/INDEX.md` failure-mode rule 5).
@@ -62,7 +62,7 @@
 
 ---
 
-**UPDATE 2026-05-15 (post execution-state tracker build):** P1.5 is complete and accepted (commits `9c0b3d8`, `a8eed8b`, `fe0f6f4`, `44a453d`). The next slice — **routing slice / foundation read APIs** — was started, then paused mid-way at WIP commit `84ae39c` so the execution-state tracker (`docs/handoff/execution-state/`) could be built first. On resume:
+**UPDATE 2026-05-15 (post execution-state tracker build):** P1.5 is complete and accepted (commits `9c0b3d8`, `a8eed8b`, `fe0f6f4`, `44a453d`). The next slice — **routing slice / foundation read APIs** — was started, then paused mid-way at WIP commit `84ae39c` so the execution-state tracker (`handoff/execution-state/`) could be built first. On resume:
 
 1. **Stay on `feat/layer-1-core-primitives`.** WIP commit `84ae39c` is the pause anchor.
 2. **Mandatory pre-resume reading:** `execution-state/INDEX.md` (legend + failure-mode rules) → `execution-state/supervisor-ravi.md` rows D17 / F26 / F27 → `execution-state/combined.md` D17 section.

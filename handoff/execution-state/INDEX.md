@@ -1,16 +1,18 @@
 # Execution State — Index + Legend + Rules
 
-> **What this folder is.** The durable per-workflow truth surface for Axhy v3.
-> Every named workflow from `operations-workflow-model.md` §6 (29 workflows)
-> appears in exactly one persona file, with its current Design verdict,
-> Implementation state, and Verification state. Plus a Combined file for
-> cross-persona handoffs and overlap stress.
+> **This folder is one of three handoff layers. Read all three at session start.**
 >
-> **What this folder is NOT.** It's not a spec. Specs live in `docs/specs/`.
-> It's not a plan. Plans live in `docs/plans/`. It's not the audit set. Audits
-> live in `docs/audits/`. This folder is **build state** — what is actually
-> coded, what is half-coded, what is not coded, and what is being worked on
-> right now.
+> | Layer                                | Folder / file              | What it answers                                                                                                                  |
+> | ------------------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+> | **1. Execution state** (this folder) | `handoff/execution-state/` | What is built, partial, missing, verified, in flight. The build-state ledger.                                                    |
+> | **2. Workflow architecture maps**    | `handoff/workflow-maps/`   | How the system is INTENDED to work end-to-end. Connected journey flowcharts + cross-persona sequences + the data model.          |
+> | **3. Generated outputs** (read-only) | `handoff/generated/`       | `app-workflow-dashboard.html` (human view) + `app-workflow-state.json` (agent view). Derived from layers 1+2; never hand-edited. |
+>
+> **Why three layers.** Build state ≠ system understanding. Status tracking ≠ workflow architecture. The friend's 2026-05-15 evening review caught that layer 1 alone produces colored status heatmaps but not real workflow execution maps — both are required.
+>
+> **What this folder is.** The durable per-workflow build-state ledger. Every named workflow from `operations-workflow-model.md` §6 (29 workflows) appears in exactly one persona file, with its current Design verdict, Implementation state, and Verification state. Plus a Combined file for cross-persona handoffs and overlap stress.
+>
+> **What this folder is NOT.** It's not a spec (specs live in `docs/specs/`). It's not a plan (plans live in `docs/plans/`). It's not the audit set (audits live in `docs/audits/`). It's not the workflow architecture (that's `workflow-maps/`). This folder is **build state** — what is actually coded, what is half-coded, what is not coded, and what is being worked on right now.
 
 ## Files
 
@@ -25,11 +27,14 @@
 
 ## Read order at start of any session
 
-1. `docs/handoff/README.md`
-2. `docs/handoff/NEXT_SESSION.md`
-3. `docs/handoff/execution-state/INDEX.md` (this file)
-4. The persona file(s) for the workflow(s) the current slice touches.
-5. `docs/handoff/execution-state/combined.md` if the slice spans personas.
+1. `handoff/README.md`
+2. `handoff/NEXT_SESSION.md`
+3. `handoff/execution-state/INDEX.md` (this file) — build-state legend + rules.
+4. `handoff/workflow-maps/INDEX.md` — workflow-architecture conventions.
+5. The matching persona file(s) in **both** folders for the workflow(s) the current slice touches.
+6. `handoff/execution-state/combined.md` + `handoff/workflow-maps/combined-system.md` if the slice spans personas.
+7. `handoff/workflow-maps/data-model.md` if the slice touches schema, audit kinds, notifications, or any cross-table flow.
+8. (Optional) `handoff/generated/app-workflow-dashboard.html` for the single-pane view.
 
 ## Strict enums
 
@@ -105,15 +110,47 @@ Higher states imply lower. A `BUILT` row should normally be `REAL_DB` or `PROD_A
 
 **Combined is not optional.** It exists specifically to answer: do Supervisor / Worker / HR / Owner line up together?
 
-## Failure-mode rules (non-negotiable)
+## Failure-mode rules (non-negotiable — friend 2026-05-15 evening review)
 
-These are baked in to prevent the kind of drift the friend's reviews have been catching.
+These rules apply across all three handoff layers (execution-state + workflow-maps + generated). They exist because the friend's reviews have repeatedly caught drift; they prevent it from coming back.
 
-1. **No code outside the tracker.** If you (Claude or human) are about to write code for a workflow that isn't represented in `execution-state/`, **stop**. Update the tracker first. Adding a row to the tracker is cheap; tracking-after-the-fact is where drift starts.
-2. **Slice-truth-and-tracker-truth must agree at commit time.** If a slice changes any cell in any workflow row (Implementation state shift, new file path, new commit hash, Verification status change), update the tracker in the same local work session **before** marking the slice done.
+### Core anti-drift rules (rules 1–5)
+
+1. **No code outside the tracker.** If you (Claude or human) are about to write code for a workflow that isn't represented in `execution-state/` and `workflow-maps/`, **stop**. Update both first. Adding a row + a journey step is cheap; tracking-after-the-fact is where drift starts.
+2. **Slice-truth and tracker-truth must agree at commit time.** If a slice changes any cell in any workflow row (Implementation state shift, new file path, new commit hash, Verification status change), update the tracker in the same local work session **before** marking the slice done. If the slice changes how a workflow actually flows (new step, new branch, new handoff), update `workflow-maps/` too.
 3. **Pause discipline.** If work is paused mid-slice (interrupted, blocked, waiting for review), mark the row's Implementation state as `WIP` or `BLOCKED` with the exact files/commit/stash reference. No anonymous working-tree state.
-4. **Mandatory read at session start.** Any new Claude session must read `handoff/README.md`, `handoff/NEXT_SESSION.md`, this `INDEX.md`, the relevant persona file(s), and `combined.md` **before** continuing any work. Cited explicitly in `handoff/README.md` and `NEXT_SESSION.md`.
-5. **Reconcile on disagreement.** If `STATUS.md` / `NEXT_SESSION.md` and the execution-state tracker disagree about any workflow's state, **stop**. Resolve the precedence before any coding resumes. The tracker is the workflow-level truth; STATUS / NEXT_SESSION are the phase-level summary. They must align at the rows they both reference.
+4. **Mandatory read at session start.** Any new Claude session must read `handoff/README.md`, `handoff/NEXT_SESSION.md`, this `INDEX.md`, `workflow-maps/INDEX.md`, the relevant persona file(s) in both folders, plus `combined.md` / `combined-system.md` — **before** continuing any work.
+5. **Reconcile on disagreement.** If `STATUS.md` / `NEXT_SESSION.md`, execution-state, workflow-maps, or generated outputs disagree about any workflow's state, **stop**. Reconcile before any coding resumes. Precedence: canonical markdown (execution-state + workflow-maps) > generated outputs. STATUS / NEXT_SESSION are phase-level summary, not workflow-level; must align at any row both reference.
+
+### Generated-artifact discipline (rules 6–14 — friend 2026-05-15)
+
+6. **Canonical source edits first.** Any workflow/design/build-state change MUST be recorded first in the canonical source files (`execution-state/` and/or `workflow-maps/`). Never edit `generated/app-workflow-dashboard.html` or `generated/app-workflow-state.json` directly. They are read-only outputs.
+7. **Regenerate on every truth change.** If `execution-state/` or `workflow-maps/` is changed, regenerate the two outputs in `generated/` in the **same work session** — not "later", not "next slice".
+8. **Three-trigger update cadence (mandatory).** Per slice, update + regenerate at exactly three moments:
+   - **Before** the first code edit of a new slice.
+   - **At** pause / block.
+   - **After** verification / commit of the slice.
+9. **"Done" definition.** A slice is not done unless ALL of these are updated: (a) execution-state rows, (b) workflow-maps if flow truth changed, (c) regenerated `app-workflow-dashboard.html`, (d) regenerated `app-workflow-state.json`, (e) verification state moved appropriately, (f) current-slice marker moved forward.
+10. **WIP visibility.** Mid-flight work must be visible in the generated outputs: `WIP` / `BLOCKED` badge + last-updated timestamp + current branch + current commit + next required action.
+11. **Generated artifacts are derivations only.** Never hand-maintain HTML or JSON. Always regenerate via `pnpm run build:handoff` (or equivalent script). If the script doesn't run cleanly, fix the canonical source first — never patch the output.
+12. **Session-start rule for the JSON.** New sessions MAY consume `generated/app-workflow-state.json` for machine context. But if JSON and the canonical markdown disagree, the markdown wins and the JSON must be regenerated immediately.
+13. **Commit-time rule.** If a commit changes any canonical workflow truth and the tracker/generated outputs are not updated in the same commit (or the immediately preceding commit), the slice is incomplete. Stop and update before surfacing the work.
+14. **Finalization transitions are everywhere.** When a workflow moves from `PARTIAL` → `BUILT`, `BLOCKED` → `WIP`, `UNVERIFIED` → `REAL_DB`, etc., that transition must appear in: execution-state row, workflow-maps step state (if relevant), generated HTML, generated JSON.
+15. **Drift detection.** If you (Claude) notice code/files/tests no longer match the tracker or generated artifacts, **stop coding** and reconcile first. Adding the discrepancy to the tracker without fixing it is also acceptable as long as it's surfaced.
+
+### Required metadata in generated outputs
+
+Both `app-workflow-dashboard.html` and `app-workflow-state.json` must carry:
+
+- `last_updated_at` — ISO 8601 UTC.
+- `source_commit` — the git commit hash that produced this generation.
+- `source_branch` — current branch.
+- `active_slice` — name of the slice currently in flight (or "none").
+- `verification_level` — highest verification state reached this session.
+- `generated_from` — list of canonical source files used.
+- `staleness_warning` — non-empty if the generation is older than the most recent commit touching `execution-state/` or `workflow-maps/`.
+
+This way anyone opening the HTML / JSON can tell at a glance whether it's fresh truth or stale output.
 
 ## Update cadence (strict but practical)
 

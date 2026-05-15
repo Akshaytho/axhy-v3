@@ -4,70 +4,33 @@
 
 **Surface mapping:** Backend routes in `apps/backend/src/routes/`; supervisor screens in `apps/mobile/app/(auth)/` + `apps/mobile/app/(supervisor)/`. **No** worker-mobile or admin-web-supervisor-portal — the supervisor surface is mobile-only.
 
-## Mermaid overview (supervisor workflow build state)
+## Build-state summary (overview)
+
+> **Workflow execution diagrams (the actual flowcharts) live in `handoff/workflow-maps/supervisor-ravi.md`.** This file is the build-state ledger; the journey layer is in workflow-maps.
 
 ```mermaid
-graph TB
-    %% Layout: backend-first lanes; node colour by Implementation state.
+graph LR
     classDef built fill:#1e8e3e,stroke:#0b6624,color:#fff
     classDef partial fill:#f5b400,stroke:#8a6900,color:#000
     classDef wip fill:#1a73e8,stroke:#0b3d8a,color:#fff
-    classDef stubbed fill:#bdbdbd,stroke:#555,color:#000
     classDef notstarted fill:#e53935,stroke:#7a1715,color:#fff
 
-    subgraph "Identity"
-        A1[A1 OTP login]:::built
-        A2[A2 JWT refresh]:::built
-    end
+    J1["Journey 1 — Worker no-show + replacement<br/>C11 BUILT · F28 NOT_STARTED"]:::partial
+    J2["Journey 2 — Daily scheduling<br/>B7-B10 backend BUILT · UI absent · C12 worker app absent"]:::partial
+    J3["Journey 3 — Site complaint<br/>C13 backend BUILT · UI absent · cascade NOT_STARTED"]:::partial
+    J4["Journey 4 — Chat → DWI lifecycle<br/>D16 BUILT · D17 writer NOT_STARTED · read API WIP"]:::wip
+    J5["Journey 5 — F26 sick coverage<br/>P1.5 backend BUILT · 5 surfaces NOT_STARTED"]:::partial
+    J6["Journey 6 — F27 portfolio reassign<br/>P1.5 fix verified · 4 surfaces NOT_STARTED"]:::partial
 
-    subgraph "Daily ops"
-        C11[C11 Mark absent]:::partial
-        C13[C13 Site complaint]:::partial
-        C12[C12 Visit lifecycle]:::partial
-        C14[C14 Photo verify]:::partial
-        C15[C15 30-min undo]:::notstarted
-    end
-
-    subgraph "Scheduling"
-        B7[B7 Calendar entry]:::partial
-        B8[B8 Calendar→Assignment]:::partial
-        B9[B9 Direct assignment]:::partial
-        B10[B10 Conflict guard]:::built
-    end
-
-    subgraph "Chat / DWI"
-        D16[D16 Chat→extract]:::built
-        D17[D17 Decision apply]:::partial
-        D18[D18 Dismiss/undo]:::notstarted
-        D19[D19 Option picker]:::notstarted
-        D20[D20 EMPLOYMENT ack]:::notstarted
-    end
-
-    subgraph "Workforce"
-        E21[E21 Leave]:::partial
-        E22[E22 Swap]:::partial
-        E23[E23 HR Updates ack]:::partial
-        E24[E24 Termination propose]:::partial
-        E25[E25 Suspension]:::notstarted
-        F28[F28 Replacement invite]:::notstarted
-    end
-
-    subgraph "Responsibility (P1.5)"
-        F26[F26 Acting cover]:::partial
-        F27[F27 Permanent reassign]:::partial
-    end
-
-    subgraph "Routing (WIP)"
-        RT[Read-time routing helpers + 2 read APIs]:::wip
-    end
-
-    A1 --> D16
-    D16 --> D17
-    F26 --> RT
-    F27 --> RT
+    CURRENT["Current slice: ROUTING (WIP 84ae39c)<br/>touches J4 + J5 + J6 read side"]:::wip
+    CURRENT --> J4
+    CURRENT --> J5
+    CURRENT --> J6
 ```
 
-Legend: **green = BUILT**, **yellow = PARTIAL**, **blue = WIP**, **grey = STUBBED**, **red = NOT_STARTED**.
+Workflow tally for Ravi: 4 BUILT · 14 PARTIAL · 0 STUBBED · 4 NOT_STARTED · 3 WIP (D17/F26/F27 read side).
+
+For actual journey diagrams with branches, handoffs, and implementation horizons: see `handoff/workflow-maps/supervisor-ravi.md`.
 
 ## Current active slice affecting Ravi
 

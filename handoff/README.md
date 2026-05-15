@@ -2,7 +2,7 @@
 
 > **If you're a new Claude session or a new engineer joining this project, read this file first, then `NEXT_SESSION.md`, then `STATUS.md`, then `ROADMAP.md`.**
 >
-> **Resume command** (paste this to a new session): _"Open `/Users/thotaakshay/eclean_workspace/axhy-v3/docs/handoff/README.md` and follow the handoff files before doing anything else."_
+> **Resume command** (paste this to a new session): _"Open `/Users/thotaakshay/eclean_workspace/axhy-v3/handoff/README.md` and follow the handoff files before doing anything else."_
 
 ## What this folder is
 
