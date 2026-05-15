@@ -14,7 +14,11 @@ import {
   ApplyDecisionCardInput,
   LIVING_DOC_SECTION_TO_COLUMN,
   ProposeLivingDocUpdateInput,
+  MarkAbsentInput,
+  CreateLeaveRequestInput,
+  CreateSwapRequestInput,
 } from '@axhy/shared-schema';
+import { z } from 'zod';
 import { CHAT_HISTORY_TURN_WINDOW } from '@axhy/business-rules';
 import {
   openaiToolLoop,
@@ -869,13 +873,34 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
 
     if (body.toolName === 'propose_mark_absent') {
       const ti = body.toolInput as {
-        workerId: string;
-        date?: string;
-        reason?: string;
-        reasonDetail?: string;
+        workerId?: unknown;
+        date?: unknown;
+        reason?: unknown;
+        reasonDetail?: unknown;
       };
-      const reasonStr = [ti.reason, ti.reasonDetail].filter(Boolean).join(': ') || null;
-      const date = ti.date ?? new Date().toISOString().slice(0, 10);
+      // R3.1 — validate via the SAME schemas the direct route uses (closes the
+      // round-2 P1 regression where chat path skipped Zod). workerId lives in
+      // the URL path on the direct route; we validate it as a UUID here.
+      const workerIdParsed = z.string().uuid().safeParse(ti.workerId);
+      if (!workerIdParsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: 'workerId must be a uuid' });
+        return;
+      }
+      const reasonRaw =
+        [ti.reason, ti.reasonDetail]
+          .filter((v) => typeof v === 'string' && v.length > 0)
+          .join(': ') || undefined;
+      const parsedTool = MarkAbsentInput.safeParse({
+        date: ti.date ?? new Date().toISOString().slice(0, 10),
+        status: 'ABSENT_NO_CALL',
+        ...(reasonRaw ? { reason: reasonRaw } : {}),
+      });
+      if (!parsedTool.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsedTool.error.message });
+        return;
+      }
+      const workerId = workerIdParsed.data;
+      const validatedInput = parsedTool.data;
 
       try {
         const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
@@ -886,7 +911,12 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           });
           const sr = await markAbsentService(
             tx,
-            { workerId: ti.workerId, date, status: 'ABSENT_NO_CALL', reason: reasonStr },
+            {
+              workerId,
+              date: validatedInput.date,
+              status: validatedInput.status,
+              reason: validatedInput.reason ?? null,
+            },
             { companyId: auth.companyId, userId: auth.userId },
           );
           if (sr.kind !== 'OK') throw new ServiceDomainError(sr.kind);
@@ -922,17 +952,33 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
 
     if (body.toolName === 'propose_leave') {
       const ti = body.toolInput as {
-        workerId: string;
-        fromDate: string;
-        toDate: string;
-        reason?: string;
-        reasonDetail?: string;
+        workerId?: unknown;
+        fromDate?: unknown;
+        toDate?: unknown;
+        reason?: unknown;
+        reasonDetail?: unknown;
       };
-      const reasonStr = [ti.reason, ti.reasonDetail].filter(Boolean).join(': ') || 'other';
-      if (new Date(ti.fromDate) > new Date(ti.toDate)) {
+      // R3.1 — validate via the SAME schema the direct route uses.
+      const reasonStr =
+        [ti.reason, ti.reasonDetail]
+          .filter((v) => typeof v === 'string' && v.length > 0)
+          .join(': ') || 'other';
+      const parsedTool = CreateLeaveRequestInput.safeParse({
+        workerId: ti.workerId,
+        fromDate: ti.fromDate,
+        toDate: ti.toDate,
+        reason: reasonStr,
+      });
+      if (!parsedTool.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsedTool.error.message });
+        return;
+      }
+      // fromDate <= toDate is route-only (not in the schema); preserve it.
+      if (new Date(parsedTool.data.fromDate) > new Date(parsedTool.data.toDate)) {
         reply.code(400).send({ error: 'BAD_RANGE', message: 'fromDate must be ≤ toDate' });
         return;
       }
+      const validatedInput = parsedTool.data;
 
       try {
         const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
@@ -943,7 +989,12 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           });
           const sr = await createLeaveRequestService(
             tx,
-            { workerId: ti.workerId, fromDate: ti.fromDate, toDate: ti.toDate, reason: reasonStr },
+            {
+              workerId: validatedInput.workerId,
+              fromDate: validatedInput.fromDate,
+              toDate: validatedInput.toDate,
+              reason: validatedInput.reason,
+            },
             { companyId: auth.companyId, userId: auth.userId },
           );
           if (sr.kind !== 'OK') throw new ServiceDomainError(sr.kind);
@@ -979,16 +1030,32 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
 
     if (body.toolName === 'propose_swap') {
       const ti = body.toolInput as {
-        fromWorkerId: string;
-        toWorkerId: string;
-        siteId: string;
-        effectiveAt: string;
-        reason?: string;
+        fromWorkerId?: unknown;
+        toWorkerId?: unknown;
+        siteId?: unknown;
+        effectiveAt?: unknown;
+        reason?: unknown;
       };
-      if (new Date(ti.effectiveAt).getTime() <= Date.now()) {
+      // R3.1 — validate via the SAME schema the direct route uses (includes
+      // the .refine that rejects fromWorkerId === toWorkerId — the regression
+      // case friend's P1 flagged).
+      const parsedTool = CreateSwapRequestInput.safeParse({
+        fromWorkerId: ti.fromWorkerId,
+        toWorkerId: ti.toWorkerId,
+        siteId: ti.siteId,
+        effectiveAt: ti.effectiveAt,
+        ...(typeof ti.reason === 'string' ? { reason: ti.reason } : {}),
+      });
+      if (!parsedTool.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsedTool.error.message });
+        return;
+      }
+      // effectiveAt-future check is route-only (schema only validates ISO format).
+      if (new Date(parsedTool.data.effectiveAt).getTime() <= Date.now()) {
         reply.code(400).send({ error: 'BAD_INPUT', message: 'effectiveAt must be in the future' });
         return;
       }
+      const validatedInput = parsedTool.data;
 
       try {
         const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
@@ -1000,11 +1067,11 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           const sr = await createSwapRequestService(
             tx,
             {
-              fromWorkerId: ti.fromWorkerId,
-              toWorkerId: ti.toWorkerId,
-              siteId: ti.siteId,
-              effectiveAt: ti.effectiveAt,
-              reason: ti.reason ?? null,
+              fromWorkerId: validatedInput.fromWorkerId,
+              toWorkerId: validatedInput.toWorkerId,
+              siteId: validatedInput.siteId,
+              effectiveAt: validatedInput.effectiveAt,
+              reason: validatedInput.reason ?? null,
             },
             { companyId: auth.companyId, userId: auth.userId },
           );
