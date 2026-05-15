@@ -22,6 +22,16 @@ export const ApplyDecisionCardInput = z
     toolName: z.string(),
     /** Tool input args (must match what AI emitted, copied from DecisionCard) */
     toolInput: z.record(z.unknown()),
+    /**
+     * SupervisorDecision.id that the chat extractor wrote when the AI proposed
+     * this card. Required so /chat/apply can transition the PROPOSED row to
+     * APPLIED in the same flow as the domain write. Optional during the F-002
+     * transition for back-compat with mobile clients that haven't shipped the
+     * new decisionCard.decisionId field yet — when omitted, /chat/apply
+     * proceeds without lifecycle update + logs a warning.
+     * @derives(F-002 scope §3a + §3b)
+     */
+    decisionId: z.string().uuid().optional(),
   })
   .strict();
 export type ApplyDecisionCardInputT = z.infer<typeof ApplyDecisionCardInput>;
