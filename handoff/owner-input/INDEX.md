@@ -83,6 +83,18 @@ These extend the rules in `handoff/execution-state/INDEX.md` (1–15).
     - **Failure matrix required in every approval packet** (P10): what invariants, how enforced, what happens on failure, retry, concurrency, stale client, what's deferred.
     - **Definition of done (production-grade):** design intent implemented + invariants enforced (code AND DB) + all layers agree + negative paths tested + real-DB green + control surface updated + failure matrix filled + remaining limitations non-corrupting AND explicitly accepted.
 
+25. **Policy-first / no unnecessary complexity (Akshay rule, 2026-05-16, locked after F-002 round-3 review).** Before building a complex system around an operational edge case, first ask whether we should simplify the rule itself.
+    - **The two-line operating rule:**
+      - If a complexity exists ONLY because of a rare operational edge case, first ask whether we should simplify the rule instead of building a complex system around it.
+      - Real problems need real solutions, but real solutions are often simpler than technical over-design.
+    - **Decision flow for any new complexity:**
+      1. Does this complexity exist because of a rare operational edge case (e.g. mid-day reassignment, account-handoff)? If no → engineer it correctly under rule 24 / P1–P10.
+      2. If yes → can a product / operational rule eliminate the edge case at the source? Surface to owner BEFORE writing code.
+      3. If owner adopts the policy → engineer the simpler system. If not → engineer the complex one with full P1–P10.
+    - **Concrete example (F-002 saga):** the round-1 + round-2 + round-3 complexity around stale-authority during /chat/apply was driven by "HR might change supervisor mid-day." Owner's same-day-freeze policy (S-001 candidate) eliminates this edge case at the source. Defense-in-depth (R2a auth re-check, R2b-iii atomicity) still stands; the load-bearing protection moves from code to policy.
+    - **What this rule does NOT change:** the production-grade bar (rule 24 / P1–P10) is still mandatory for any complexity that DOES remain. This rule is about NOT building unnecessary complexity; it does NOT lower the bar on necessary complexity.
+    - **How to apply going forward:** when scoping a new slice, ask the rare-edge-case question first. If found, surface a policy-vs-code option to the owner in the scope artifact, not after the code lands.
+
 ## Session-start read order (mandatory)
 
 When a new Claude session starts on Axhy v3 work:

@@ -58,7 +58,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `CHANGES_REQUESTED` (round 3, 2026-05-16; friend found P1 validation regression on /chat/apply for mark-absent/leave/swap + P2 stale-auth test overclaim — key test is still writer-level. Plus owner asks to adopt same-day supervisor-freeze policy. Round-3 plan in `owner-input/pending-approvals.md`).
+- **status:** `CHANGES_REQUESTED` (round 3, plan APPROVED 2026-05-16) → implementing R3.1 + R3.2-a. S-001 same-day-freeze deferred to separate next slice after F-002 closes.
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 

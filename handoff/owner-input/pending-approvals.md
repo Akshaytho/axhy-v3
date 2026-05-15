@@ -119,15 +119,23 @@ This is a SPEC decision, not just code. Owner + friend should lock the policy be
 - R3.2-b (property-style test): 80% own. Timing-dependent; flaky-test risk.
 - S-001 (same-day freeze policy): 72% own. The engineering is straightforward (one Zod check in the HR service), but it's a SPEC change that needs owner+friend lock first. Per Rule P9 I would research how other systems model "no same-day reassignments" before locking the exact effectiveFrom check.
 
-#### Decision needed
+#### Decisions received 2026-05-16 (friend's call, owner-relayed)
 
-Three separate decisions:
+1. **R3.1 — APPROVED.** Re-add the exact same Zod validation on /chat/apply for mark-absent, leave, and swap. Chat path and direct route must reject/accept identical inputs.
+2. **R3.2 — APPROVED with option R3.2-a.** Small deterministic test-only hook, env-gated, no production behavior change.
+3. **S-001 same-day supervisor-freeze — APPROVED AS SEPARATE SLICE.** Do NOT fold into F-002. Close F-002 cleanly first. S-001 lands later as its own policy/spec slice.
+4. **Round-2 commits — KEEP AS-IS.**
 
-1. **R3.1 + R3.2 plan:** APPROVED / CHANGES_REQUESTED (with your pick of R3.2-a vs R3.2-b) / HOLD.
-2. **S-001 policy:** APPROVED-as-new-slice / APPROVED-fold-into-F-002 / CHANGES_REQUESTED on the policy wording / HOLD (defer).
-3. **Existing round-2 commits:** keep as-is (they are not wrong, just incomplete) — confirming this is the right shape.
+Friend's wording on the format going forward: "From next update onward, keep the format simple: Problem in simple English · Simplest business solution · Code fix only if still needed · Why that code is necessary."
 
-**No code lands until you and friend explicitly approve the round-3 plan AND the S-001 policy direction.**
+#### Execution rule for round 3 (locked)
+
+- Fix validation regression (R3.1)
+- Add deterministic stale-auth route proof (R3.2-a)
+- No more architecture changes in this round
+- Stop again at AWAITING_APPROVAL for review
+
+**S-001 will be a separate next slice after F-002 closes — spec lock first, code second.**
 
 ### Slice: `chat-writes-proposed-decisions` (F-002 — round-2 R2b-iii remediation, superseded by round 3) — was AWAITING_APPROVAL 2026-05-16
 
