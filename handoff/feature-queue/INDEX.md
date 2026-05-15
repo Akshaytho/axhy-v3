@@ -58,7 +58,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `AWAITING_APPROVAL` (remediation complete; 7 fix commits landed addressing all 4 findings; 61/61 tests green incl. apply-vs-apply + apply-vs-dismiss concurrency + DB CHECK constraint + new-kind binding-change tests; P10 failure matrix filled in `owner-input/pending-approvals.md`).
+- **status:** `CHANGES_REQUESTED` (round 2; friend's second production-grade pass found 3 orchestration-layer holes: termination commits APPLIED before worker validation throws-early, stale-authority window between preCheckApply and commitApply, route-level concurrency tests missing. Core writer state machine is now solid; the request orchestration around it is not yet production-safe).
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 

@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T18:03:11.674Z",
-    "generated_against_head": "2557e1f733abd506d751c4508daa8ce7c04b2d78",
+    "last_updated_at": "2026-05-15T18:17:38.646Z",
+    "generated_against_head": "54c0ca9da63c39c0688f2bd72d724e6cd6d22723",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "d6651fa99cc015ef87b1c3784973b32a106010b9",
+    "last_canonical_commit_at_gen": "54c0ca9da63c39c0688f2bd72d724e6cd6d22723",
     "staleness_warning": null,
-    "active_slice": "chat-writes-proposed-decisions (F-002 — remediation pass) · AWAITING_APPROVAL",
+    "active_slice": "chat-writes-proposed-decisions (F-002 — remediation pass) · CHANGES_REQUESTED (round 2) — friend's second production-grade pass found 3 remaining issues at the orchestration layer. Core writer is much safer; the route plumbing around it still has corruption holes. Remediation plan in pending-approvals.md.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,7 +1184,7 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`chat-writes-proposed-decisions` (F-002 — remediation pass)",
-      "Status": "`AWAITING_APPROVAL`",
+      "Status": "`CHANGES_REQUESTED` (round 2) — friend's second production-grade pass found 3 remaining issues at the orchestration layer. Core writer is much safer; the route plumbing around it still has corruption holes. Remediation plan in `pending-approvals.md`.",
       "Branch": "`feat/layer-1-core-primitives`",
       "Last landed commit": "`2557e1f` — `test(decisions): F-002 remediation tests — concurrency + new kinds + stale-client (F-002.7)`",
       "Original slice commits": "`a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146` (kept in tree; not rebased)",
@@ -1197,17 +1197,17 @@
       {
         "id": "chat-writes-proposed-decisions",
         "kind": "slice",
-        "status": "AWAITING_APPROVAL",
+        "status": "CHANGES_REQUESTED",
         "branch": "feat/layer-1-core-primitives",
         "wipCommit": "",
-        "lastLanded": "2557e1f",
+        "lastLanded": "",
         "workflowIds": "",
         "blocking": "",
         "built": "",
         "notDone": "",
         "ownerDecision": "",
         "artifact": "",
-        "decisionNeeded": "`APPROVED` / `CHANGES_REQUESTED` (with bullet list) / `HOLD`. On APPROVED, the slice moves to APPROVED; F-002 is shippable; next slice can start.\n\n---",
+        "decisionNeeded": "",
         "scopeType": ""
       }
     ],
@@ -1242,7 +1242,7 @@
         "workflows": "D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).",
         "entities": "`apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.",
         "verification": "`REAL_DB`.",
-        "status": "AWAITING_APPROVAL"
+        "status": "CHANGES_REQUESTED"
       },
       {
         "id": "F-003",
