@@ -6,9 +6,9 @@
 
 ## Current state
 
-- **Active phase:** **Layer 1 implementation — PR 1 code-complete + locally real-DB verified.** Migration baseline recovery merged into parent `feat/phase-c-wave-4b-chat-completion` at `1dbf951`. `feat/layer-1-core-primitives` rebased onto the updated parent; full chain of 9 migrations applies cleanly to a fresh Postgres; all 9 expected Layer 1 schema objects (4 tables, 4 columns, 1 view) verified present. Migration **NOT** yet applied to Railway prod — prod apply is a later supervised step. Next slice: **PR 2 — audit-emit helpers + real-DB integration tests**.
-- **Current branch:** `feat/layer-1-core-primitives` (4 commits ahead of parent post-rebase)
-- **Last updated:** 2026-05-15 (baseline merged into parent; PR 1 locally real-DB verified; PR 2 next)
+- **Active phase:** **Layer 1 implementation — PR 1 + PR 2 accepted + locally real-DB verified.** PR 2 added 3 typed audit-emit helpers + 8 real-DB integration test files (29/29 green against fresh Postgres 16). No schema churn beyond what was already in PR 1. Migration still **NOT** applied to Railway prod (later supervised step). Next slice: **P1.5 SiteSupervisorBinding** — single table for both ACTING + PERMANENT bindings, only the BINDING\_\* audit helpers needed by this slice, real-DB lifecycle tests.
+- **Current branch:** `feat/layer-1-core-primitives` (7 commits ahead of parent)
+- **Last updated:** 2026-05-15 (PR 2 accepted + locally real-DB verified; P1.5 next)
 
 ## Approved vs Draft
 
@@ -41,17 +41,20 @@
 
 ## Next concrete action
 
-**PR 1 is approved and locally real-DB verified. Start PR 2 next, narrow scope.**
+**PR 1 + PR 2 are accepted and locally real-DB verified. Start the P1.5 SiteSupervisorBinding slice next, narrow scope.**
 
 1. **Stay on `feat/layer-1-core-primitives`.** No new branch.
-2. **PR 2 scope (narrow — do not exceed):**
-   - Audit-emit helpers for the new AuditEvent kinds introduced by Layer 1 (per closure spec §3.6 + the kind catalogue extension committed in 095c766).
-   - Real-DB integration tests around the new schema objects where applicable (HRPod creation + Membership.podId binding, Policy round-trip, Notification + Digest insert/query, SupervisorDecision.originContext + proposedDuringAbsence flow, QueueItem view query).
+2. **P1.5 scope (narrow — do not exceed):**
+   - SiteSupervisorBinding table + Prisma model + migration (single table for both ACTING and PERMANENT bindings per closure §4 / responsibility model).
+   - Matching Zod / type exports in `@axhy/shared-schema`.
+   - Only the `BINDING_*` audit-emit helpers actually needed by this slice (not the full §9 catalogue).
+   - Real-DB lifecycle tests: binding creation, no-overlap invariant per site, acting window basics, permanent reassignment basics.
    - Verification status per slice: real-DB verified before claiming done.
-3. **Do NOT** introduce new schema changes unless a real blocker appears.
-4. **Do NOT** start Layer 2 surface work.
-5. **Do NOT** apply the migration to Railway prod — that's a later supervised step gated on `prisma migrate resolve --applied 20260507_phase_a_baseline_day3` + a supervised window.
-6. **Do NOT** mix in cleanup of the two cosmetic drift items (ChatMessage.costInr precision annotation + LivingDoc constraint rename) — they're deferred to a separate small migration after PR 2.
+3. **Do NOT** start any Layer 2 surface work (no worker app, no admin-web shells, no termination flow).
+4. **Do NOT** apply the migration to Railway prod — same supervised-window gate as PR 1.
+5. **Do NOT** mix in cleanup of the cosmetic drift items (ChatMessage.costInr annotation + LivingDoc constraint rename) — still deferred.
+6. **Do NOT** reopen workflow design — closure spec is Active; the binding shape lives there + in the responsibility-model spec.
+7. **Do NOT** add helpers for §9 kinds outside the BINDING\_\* set this slice actually needs.
 
 ## Open founder picks (8)
 
