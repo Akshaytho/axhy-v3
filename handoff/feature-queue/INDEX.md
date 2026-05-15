@@ -69,7 +69,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
     4. supervisor-app routing unchanged for permanent + future-dated bindings (`getEffectiveBinding` returns userA now, userB at post-cutover);
     5. helper sanity — `tomorrowMidnightInTimeZone` returns 00:00 local in IST.
   - **ADAPTED** `apps/backend/test/binding-permanent-reassignment-basics.test.ts` (3 cases shifted to +36h cutovers; one case renamed and refactored to query effective-at-post-cutover, the only correct shape under S-001).
-- **status:** `AWAITING_APPROVAL` — spec lock landed `2835e84`; code landed `d234e77`; tracker propagation `8e763f8`. Full real-DB sweep: **17/17 test files green · 84/84 cases pass** on fresh local Postgres 16 (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).
+- **status:** `APPROVED` — friend's file-grounded verification 2026-05-16 at HEAD `2a0f27c`. Verbatim: "Final tracker propagation is clean · I do not see a new code bug or a new tracker-truth bug · Decision: APPROVED." Final S-001 commit chain: `2835e84` (spec lock) · `d234e77` (code) · `8e763f8` (tracker → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup) · `2a0f27c` (final tracker propagation). 17/17 files · 84/84 cases pass on fresh local Postgres 16. Ready to be marked DONE once branch merges to main.
 
 ### F-002 — D17 SupervisorDecision writer
 
@@ -86,14 +86,18 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 ### F-003 — Cron framework + `binding-expire-sweep`
 
 - **id:** F-003
-- **title:** Daily cron framework + first sweep job
-- **why:** Closure spec mandates several crons (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`). Today only `reset-ai-spend` exists. Bindings can't auto-expire; "while-you-were-out" digests can't fire.
-- **depends on:** F-001.
-- **personas touched:** Ravi (expiry trigger), all when downstream sweeps land.
-- **workflows touched:** F26 (acting window expiry), C12 (decision expiry).
-- **entities/routes/tables touched:** `apps/backend/src/jobs/*` (new dir), cron framework module, `binding-expire-sweep` job, integration test.
-- **expected verification gate:** `REAL_DB`.
-- **status:** `QUEUED`.
+- **title:** Cron framework + first sweep job (`binding-expire-sweep`)
+- **why:** Closure spec mandates four crons (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`); only `reset-ai-spend` exists today. Bindings can't auto-expire when `effectiveUntil` passes; "while you were out" digests can't fire; decisions can't auto-expire. Every downstream slice (F-004, F-005, F-007) eventually needs at least one of these sweeps to be real.
+- **depends on:** F-001 (APPROVED 2026-05-15) — dependency met. F-002 (APPROVED 2026-05-16) and S-001 (APPROVED 2026-05-16) not strictly required but both landed.
+- **personas touched:** Ravi (sees acting binding auto-end), Lakshmi/Anjali (their cover windows close on time), Kavitha (HR queue items can later age-escalate via the same framework).
+- **workflows touched:** F26 (acting binding expiry — this slice), F27 (permanent reassign expiry — same job), C12 (decision expiry — later slice on this framework).
+- **entities/routes/tables touched:**
+  - **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.
+  - **WIRED:** sweep sets `endedAt = effectiveUntil` on `SiteSupervisorBinding` rows where `effectiveUntil <= now() AND endedAt IS NULL`; emits `BINDING_ENDED_AUTO` AuditEvent per row (kind already in the closure-spec catalogue).
+  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + sets `endedAt`.
+  - **NO** new entity. **NO** schema change. **NO** HTTP route in this slice (scheduler invocation TBD per scope picks).
+- **expected verification gate:** `REAL_DB` (real Postgres + sweep run + idempotency assertion).
+- **status:** `PLANNED — AWAITING_SCOPE_APPROVAL` — active slice. Scope artifact draft to land at `handoff/feature-queue/scopes/F-003.md`; 6 open picks (scheduler shape · run cadence · S-001 interaction · failure handling · multi-replica dedup · audit payload). See `handoff/owner-input/active-slice.md` for the full pick list with recommended defaults.
 
 ### F-004 — HandoffPackage composer
 

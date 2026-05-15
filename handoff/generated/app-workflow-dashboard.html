@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T21:07:08.539Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>ab4d9a2d</code></span>
+      <span>Generated <strong>2026-05-15T21:15:25.930Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>2a0f27c4</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
-      <span>Active slice: <strong>same-day-supervisor-freeze (S-001) · AWAITING_APPROVAL (spec lock + code + tests complete; 17/17 files, 84/84 cases green on fresh local Postgres 16; stop for review per friend's execution rule)</strong></span>
+      <span>Active slice: <strong>cron-framework-binding-expire-sweep (F-003) · PLANNED — AWAITING_SCOPE_APPROVAL (scope artifact draft to land at handoff/feature-queue/scopes/F-003.md; owner + friend approve picks; then code)</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>same-day-supervisor-freeze</code> (S-001)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">AWAITING_APPROVAL (spec lock + code + tests complete; 17/17 files, 84/84 cases green on fresh local Postgres 16; stop for review per friend's execution rule)</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code> (continues from F-002; S-001 lands on top)</td></tr><tr><th>Last landed commit</th><td><code>ab4d9a2</code> — <code>docs(handoff): S-001 control-surface cleanup — purge pre-code phrasing + describe delivered shape (S-001.3)</code></td></tr><tr><th>S-001 commits (oldest→newest)</th><td><code>2835e84</code> (spec lock — wording v2 landed in both specs + stale control-file line cleaned) · <code>d234e77</code> (helper + wire into <code>reassignPermanentBinding</code> + 5 new tests + 4 adapted) · <code>8e763f8</code> (tracker propagation → AWAITING_APPROVAL) · <code>ab4d9a2</code> (control-surface cleanup — pre-code phrasing purged + feature-queue entry describes the delivered shape)</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">**17/17 test files green · 84/84 cases pass** on fresh local Postgres 16 (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">REAL_DB — fresh local Postgres 16 (Docker container axhy-test-pg, port 55432), all 12 migrations applied. Full sweep in one run.</span></td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>cron-framework-binding-expire-sweep</code> (F-003)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">PLANNED — AWAITING_SCOPE_APPROVAL (scope artifact draft to land at handoff/feature-queue/scopes/F-003.md; owner + friend approve picks; then code)</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code> (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion</td></tr><tr><th>Last landed commit</th><td><code>2a0f27c</code> — <code>docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)</code> (S-001 closure tracker propagation; S-001 is APPROVED)</td></tr><tr><th>Dependencies</th><td>F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — code not started; scope phase</span></td></tr><tr><th>Verification gate</th><td>will be <code>REAL_DB</code> once code lands</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -152,11 +152,25 @@
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
     
       <div class="approval">
-        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>same-day-supervisor-freeze</code></strong></div>
+        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>cron-framework-binding-expire-sweep</code></strong></div>
         
         
         
         
+        
+        
+        
+        
+        
+        
+        
+      </div>
+      <div class="approval">
+        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">CHANGES_REQUESTED</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>chat-writes-proposed-decisions</code></strong></div>
+        
+        
+        <p class="small"><strong>Branch:</strong> <code>feat/layer-1-core-primitives</code></p>
+        <p class="small"><strong>Last landed commit:</strong> <code>fe927b2</code></p>
         
         
         
@@ -205,16 +219,19 @@
       <details class="feature">
         <summary>
           <code>F-003</code>
-          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <span class="badge" style="background:#999;color:#fff;">PLANNED</span>
           <strong>Cron framework + `binding-expire-sweep`</strong>
         </summary>
         <div class="feature-body">
-          <p><strong>Why:</strong> Closure spec mandates several crons (<code>binding-expire-sweep</code>, <code>decision-expire-sweep</code>, <code>hr-queue-age-escalation</code>, <code>hr-availability-sweep</code>). Today only <code>reset-ai-spend</code> exists. Bindings can't auto-expire; &quot;while-you-were-out&quot; digests can't fire.</p>
-          <p><strong>Depends on:</strong> F-001.</p>
-          <p><strong>Personas:</strong> Ravi (expiry trigger), all when downstream sweeps land.</p>
-          <p><strong>Workflows:</strong> F26 (acting window expiry), C12 (decision expiry).</p>
-          <p><strong>Entities / routes / tables:</strong> <code>apps/backend/src/jobs/*</code> (new dir), cron framework module, <code>binding-expire-sweep</code> job, integration test.</p>
-          <p><strong>Verification gate:</strong> <code>REAL_DB</code>.</p>
+          <p><strong>Why:</strong> Closure spec mandates four crons (<code>binding-expire-sweep</code>, <code>decision-expire-sweep</code>, <code>hr-queue-age-escalation</code>, <code>hr-availability-sweep</code>); only <code>reset-ai-spend</code> exists today. Bindings can't auto-expire when <code>effectiveUntil</code> passes; &quot;while you were out&quot; digests can't fire; decisions can't auto-expire. Every downstream slice (F-004, F-005, F-007) eventually needs at least one of these sweeps to be real.</p>
+          <p><strong>Depends on:</strong> F-001 (APPROVED 2026-05-15) — dependency met. F-002 (APPROVED 2026-05-16) and S-001 (APPROVED 2026-05-16) not strictly required but both landed.</p>
+          <p><strong>Personas:</strong> Ravi (sees acting binding auto-end), Lakshmi/Anjali (their cover windows close on time), Kavitha (HR queue items can later age-escalate via the same framework).</p>
+          <p><strong>Workflows:</strong> F26 (acting binding expiry — this slice), F27 (permanent reassign expiry — same job), C12 (decision expiry — later slice on this framework).</p>
+          <p><strong>Entities / routes / tables:</strong> - <strong>NEW dir:</strong> <code>apps/backend/src/jobs/</code> — cron framework module + <code>binding-expire-sweep</code> job.
+  - <strong>WIRED:</strong> sweep sets <code>endedAt = effectiveUntil</code> on <code>SiteSupervisorBinding</code> rows where <code>effectiveUntil &lt;= now() AND endedAt IS NULL</code>; emits <code>BINDING_ENDED_AUTO</code> AuditEvent per row (kind already in the closure-spec catalogue).
+  - <strong>NEW test:</strong> real-DB integration test verifying sweep is idempotent + emits the audit + sets <code>endedAt</code>.
+  - <strong>NO</strong> new entity. <strong>NO</strong> schema change. <strong>NO</strong> HTTP route in this slice (scheduler invocation TBD per scope picks).</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> (real Postgres + sweep run + idempotency assertion).</p>
         </div>
       </details>
       <details class="feature">
@@ -301,6 +318,13 @@
       <tbody>
     <tr>
       <td class="small">2026-05-16</td>
+      <td><code>same-day-supervisor-freeze</code></td>
+      <td><code>AWAITING_APPROVAL → APPROVED</code></td>
+      <td><code>n/a (friend's approval; no commit)</code></td>
+      <td class="small">Friend's file-grounded verification at HEAD <code>2a0f27c</code> cleared with no blocking findings. Verbatim: &quot;Final tracker propagation is clean · The last remaining control-surface mismatch is fixed · I do not see a new code bug or a new tracker-truth bug · Decision: APPROVED.&quot; Verification-shell limitation acknowledged (local Rollup native-module/code-signing issue prevents fresh Vitest rerun); not gating. Friend's directive: mark S-001 APPROVED + regenerate outputs + close S-001 + surface next slice in simple-English-first format. S-001 ready to be marked DONE once branch <code>feat/layer-1-core-primitives</code> merges to main (alongside F-002).</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-16</td>
       <td><code>chat-writes-proposed-decisions</code></td>
       <td><code>AWAITING_APPROVAL → APPROVED</code></td>
       <td><code>n/a (friend's approval; no commit)</code></td>
@@ -361,13 +385,6 @@
       <td><code>BLOCKED → WIP</code></td>
       <td><code>`84ae39c`</code></td>
       <td class="small">Resume after control-loop approval. Picks up from the original WIP commit; 4th routing test (point-in-time effective responsibility) + fresh-Postgres real-DB sweep + 3-way WIP-split (helpers / routes / tests) remain.</td>
-    </tr>
-    <tr>
-      <td class="small">2026-05-15 evening</td>
-      <td><code>handoff-control-loop</code></td>
-      <td><code>AWAITING_APPROVAL → APPROVED</code></td>
-      <td><code>`03a1c22`</code></td>
-      <td class="small">Friend's 5th file-grounded verification pass at HEAD <code>091c2a6</code> declared the slice trustworthy enough to lock. Verbatim: &quot;the control-loop slice is now trustworthy enough to lock.&quot; Rule 23 (confidence-score-before-acting) added post-approval in <code>03a1c22</code>.</td>
     </tr></tbody>
     </table>
     <p class="source-link small">Source: <a href="../owner-input/change-history.md">handoff/owner-input/change-history.md</a>.</p>

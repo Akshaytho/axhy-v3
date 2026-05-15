@@ -6,89 +6,58 @@
 
 ## In simple English
 
-**Problem:** Today HR can switch a site's supervisor at any moment of the day. F-002 round-2 + round-3 had to engineer around the resulting stale-authority race (atomic preCheck + service + commitApply re-check inside one tx + a deterministic test-only hook). All of that complexity exists only because responsibility can change mid-day — a rare operational edge case.
+**Problem:** the closure spec lists four crons the system needs (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`), but only one cron exists in the codebase today (`reset-ai-spend`). Without the framework + first sweep, bindings can't auto-expire when `effectiveUntil` passes, "while you were out" digests can't fire, decisions can't auto-expire when their tier deadline passes, and HR queue items can't escalate. Every downstream slice (F-004 HandoffPackage composer, F-005 HR portal, F-007 notification dispatcher) eventually needs one of these sweeps to be real.
 
-**Simplest business rule:** Once the day starts in the tenant's local timezone, no supervisor responsibility change may take effect for that site until the next tenant-local midnight. This covers new acting cover, permanent reassignment, ending the current responsible binding, or any other binding mutation that would change who is officially responsible for today. Same-day emergencies are handled operationally outside ownership-change logic. No account sharing.
+**Simplest business rule:** add a small cron framework that runs short idempotent "sweep" jobs on a schedule. Start with `binding-expire-sweep`: any SiteSupervisorBinding whose `effectiveUntil` has passed AND whose `endedAt` is still NULL gets `endedAt` set to `effectiveUntil` AND a `BINDING_ENDED_AUTO` AuditEvent emitted. Idempotent (re-runs are no-ops). Future sweeps land in subsequent slices using the same framework.
 
-**Code fix (landed):** one shared API-layer guard `assertNotChangingTodaysResponsibility({ now?, tenantTimeZone?, effectiveFrom?, effectiveUntil? })` throws `SameDayFreezeError(code='SAME_DAY_FREEZE')` whenever a mutation would change today's responsible supervisor. Wired into `reassignPermanentBinding` (covers both the new `effectiveFrom` AND the closed `effectiveUntil` because they share the cutover instant). Exported and ready to drop into the future F-005 HR binding-create / binding-end routes. The guard is framed around the business outcome ("no responsibility change takes effect today"), not around a single field, so a future code path mutating responsibility through a different field cannot silently bypass it.
+**Code (only after scope-artifact approval):** new `apps/backend/src/jobs/` dir + cron framework module + `binding-expire-sweep` job + real-DB integration test. Single Prisma transaction per sweep. No new schema field; `BINDING_ENDED_AUTO` AuditEvent kind is already in the spec catalogue (closure §11). The framework follows the same shape as the existing `reset-ai-spend` cron.
 
-**Why this code is necessary:** without the helper the spec is words; with the helper any HR-driven mutation that would change today's responsible supervisor is rejected by construction. F-002 round-2 atomicity + round-3 auth re-check stay as defense-in-depth — they cost nothing now and remain correct if the policy is ever loosened.
+**Why scope first:** F-003 is a medium-major change (new infra dir + scheduling pattern + first auto-mutation of `SiteSupervisorBinding` rows). Per `feedback_plan_mode_for_medium_major_changes.md` discipline lock, plan-mode + scope artifact + owner approval must come BEFORE code. The scope artifact will surface trade-offs (in-process vs OS cron, run-cadence pick, what happens if a sweep fails mid-batch, multi-replica deduplication, S-001 interaction — does the sweep itself count as a "responsibility change today" or is it always-allowed because it just bookkeeps an already-expired binding).
 
 ## Current
 
-| Field                             | Value                                                                                                                                                                                                                                                                                                                                                      |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**                    | `same-day-supervisor-freeze` (S-001)                                                                                                                                                                                                                                                                                                                       |
-| **Status**                        | `AWAITING_APPROVAL` (spec lock + code + tests complete; 17/17 files, 84/84 cases green on fresh local Postgres 16; stop for review per friend's execution rule)                                                                                                                                                                                            |
-| **Branch**                        | `feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)                                                                                                                                                                                                                                                                                  |
-| **Last landed commit**            | `ab4d9a2` — `docs(handoff): S-001 control-surface cleanup — purge pre-code phrasing + describe delivered shape (S-001.3)`                                                                                                                                                                                                                                  |
-| **S-001 commits (oldest→newest)** | `2835e84` (spec lock — wording v2 landed in both specs + stale control-file line cleaned) · `d234e77` (helper + wire into `reassignPermanentBinding` + 5 new tests + 4 adapted) · `8e763f8` (tracker propagation → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup — pre-code phrasing purged + feature-queue entry describes the delivered shape) |
-| **Tests status**                  | **17/17 test files green · 84/84 cases pass** on fresh local Postgres 16 (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).                                                                                                                                                                                                                    |
-| **Verification status**           | `REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied. Full sweep in one run.                                                                                                                                                                                                                       |
+| Field                  | Value                                                                                                                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**         | `cron-framework-binding-expire-sweep` (F-003)                                                                                                                                                        |
+| **Status**             | `PLANNED — AWAITING_SCOPE_APPROVAL` (scope artifact draft to land at `handoff/feature-queue/scopes/F-003.md`; owner + friend approve picks; then code)                                               |
+| **Branch**             | `feat/layer-1-core-primitives` (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion |
+| **Last landed commit** | `2a0f27c` — `docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)` (S-001 closure tracker propagation; S-001 is APPROVED)                                                           |
+| **Dependencies**       | F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met                                                                                                      |
+| **Tests status**       | n/a — code not started; scope phase                                                                                                                                                                  |
+| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                                                    |
 
-## How each S-001 planned test case is closed
+## What the F-003 scope artifact needs to lock (open picks for owner + friend)
 
-| Test case (from the slice plan)                                                                                   | Status | Resolution                                                                                                                                                                                                                                                                                             |
-| ----------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1. HR cannot create a same-day acting binding (rejected with 400)                                                 | CLOSED | `same-day-supervisor-freeze.test.ts` case 1 — helper rejects same-day `effectiveFrom` with `SameDayFreezeError(code='SAME_DAY_FREEZE')`. Helper-level because the HR binding-create HTTP route lands in F-005 (admin-web HR portal). The guard is exported and ready to wire in when that route ships. |
-| 2. HR cannot end the current responsible binding effective today (rejected with 400)                              | CLOSED | `same-day-supervisor-freeze.test.ts` case 2 — helper rejects same-day `effectiveUntil` with `SameDayFreezeError`. Same F-005 deferral reason. Proves the guard covers `effectiveUntil`-only mutations, not just `effectiveFrom`.                                                                       |
-| 3. `reassignPermanentBinding` with same-day boundary is rejected                                                  | CLOSED | `same-day-supervisor-freeze.test.ts` case 3 — real-DB test against the service helper; rejects with `SameDayFreezeError` BEFORE the prior-find runs. Seed remains intact; no `BINDING_CREATED` or `BINDING_ENDED_SUPERSEDED_BY_PERMANENT` audit emitted.                                               |
-| 4. Supervisor-app routing behavior is unchanged for any day's current binding (already permanent or pre-tomorrow) | CLOSED | `same-day-supervisor-freeze.test.ts` case 4 — `getEffectiveBinding` returns userA right now (before cutover) and userB at a post-cutover instant. Direct-Prisma seeding bypasses the API guard by design (F-002 baseline pattern, called out in the closure spec's 2026-05-16 update).                 |
+These are surfaced as scope-stage questions; no code lands until they are answered.
 
-## S-001 file inventory (new + adapted in this slice)
-
-- `apps/backend/src/lib/same-day-freeze.ts` — NEW. Helper module exporting `assertNotChangingTodaysResponsibility`, `SameDayFreezeError`, `tomorrowMidnightInTimeZone`, `DEFAULT_TENANT_TIME_ZONE`.
-- `apps/backend/src/lib/site-supervisor-binding.ts` — wires the guard into `reassignPermanentBinding`; adds optional `tenantTimeZone` to `ReassignPermanentBindingInput`.
-- `apps/backend/test/same-day-supervisor-freeze.test.ts` — NEW. 5 cases (4 from the plan + 1 helper sanity).
-- `apps/backend/test/binding-permanent-reassignment-basics.test.ts` — 3 cases adapted to honor the new policy (cutover shifted to +36h; one case renamed and refactored to query effective-at-post-cutover instead of effective-now, the only correct shape under S-001).
-- `docs/specs/2026-05-14-supervisor-responsibility-model.md` — "2026-05-16 Update" section appended (single-source wording).
-- `docs/specs/2026-05-15-workflow-design-closure.md` — "2026-05-16 Update" section appended (single-source wording).
-
-## P10 failure matrix for S-001
-
-| Question                                              | Answer                                                                                                                                                                                                                                                                                 |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| What invariants does this slice introduce?            | (1) No supervisor responsibility change may take effect today. (2) Every HR-driven binding mutation that would change today's responsible supervisor is rejected with 400.                                                                                                             |
-| How is each invariant enforced?                       | (1) Shared `assertNotChangingTodaysResponsibility` helper rejects same-day `effectiveFrom` / `effectiveUntil`. (2) `reassignPermanentBinding` calls the helper before doing any DB work. Future HR binding-create / binding-end routes (F-005) will call the helper the same way.      |
-| What happens on a same-day mutation attempt?          | `SameDayFreezeError` thrown (code `SAME_DAY_FREEZE`) before any write. No state change, no audit, no partial commit. HTTP route layer maps to 400 BAD_INPUT.                                                                                                                           |
-| What happens for tomorrow-or-later mutations?         | Pass through unaffected. `reassignPermanentBinding` still performs its full supersession (bound old row's `effectiveUntil` + insert new row + emit BINDING_ENDED_SUPERSEDED_BY_PERMANENT + BINDING_CREATED).                                                                           |
-| What happens for direct-Prisma seed/migration writes? | Bypasses the guard by design — the policy is at the API layer (per the spec). Bootstrap-seed migration (pick 8) and test seed paths can still write same-day rows where appropriate.                                                                                                   |
-| What happens to F-002's stale-authority protections?  | Unchanged. Round-2 atomic preCheck + service + commitApply tx and round-3 auth re-check in commitApply both remain. They cost nothing now and remain correct if the policy is ever loosened.                                                                                           |
-| What happens for DST transitions?                     | `tomorrowMidnightInTimeZone` samples the tz offset at the candidate instant via `Intl.DateTimeFormat`, so spring-forward and fall-back are handled correctly. Asia/Kolkata has no DST so this is theoretical for launch; the helper still does the right thing in other tz.            |
-| What is still intentionally deferred?                 | HR binding-create + binding-end HTTP routes (F-005 admin-web HR portal). When those land, they call the helper exported here. `Company.timeZone` schema column also deferred; the helper accepts the override parameter now, so the wiring is a one-line change when the column lands. |
+1. **Scheduler shape** — in-process `setInterval` / `node-cron` package / external Postgres `pg_cron` / OS-level cron firing an HTTP endpoint? Trade-off: in-process is simplest but doesn't survive single-replica restart cleanly and double-fires on multi-replica; pg_cron is at-most-once across the cluster but couples scheduling to the DB; OS-cron + HTTP endpoint is what `reset-ai-spend` already does — favoured for consistency unless there's a strong reason to diverge.
+2. **Run cadence for `binding-expire-sweep`** — every minute? every 5 minutes? every hour? Trade-off: minute-cadence keeps expiry close to real-time for downstream consumers (e.g. F-004 "while you were out" digest at the moment of binding end) but burns ~1440 no-op queries/day per tenant; hourly is cheaper but introduces up to an hour of staleness in "currently effective" computed in callers that bypass `getEffectiveBinding` and trust `endedAt` instead. Recommended pick: **every minute** at launch (cheap query, tight downstream UX), revisit if cost matters.
+3. **S-001 interaction** — does the sweep count as a "responsibility change today"? Argument it does NOT: the sweep just bookkeeps an `effectiveUntil` that was already locked at create-time + already passed; the responsibility-change moment was when HR set the `effectiveUntil`, not when the sweep observed it. Recommended pick: **sweep is exempt** — the S-001 guard runs on writes-that-set-effectiveFrom-or-effectiveUntil, not on the sweep's `endedAt` bookkeeping.
+4. **Failure handling** — sweep crashes mid-batch: leave partial state + retry next tick (idempotent, fine since `endedAt IS NULL` predicate naturally filters already-swept rows) or wrap each row in its own short transaction (slower but stronger isolation)? Recommended pick: **one tx per row** at launch for clearest audit + simplest reasoning; can batch later if the row count grows.
+5. **Multi-replica deduplication** — if backend ever runs 2+ replicas, two replicas may both fire the sweep at the same minute. Either coordinate via Postgres advisory lock per-job-name, or accept that idempotency (count=0 on the second runner) is enough. Recommended pick: **rely on idempotency** at launch; advisory lock added later if needed.
+6. **Audit emit** — new `BINDING_ENDED_AUTO` AuditEvent kind exists in the closure spec catalogue (§11); payload shape needs locking: `{ bindingId, siteId, userId, effectiveUntil, sweptAt }`?
 
 ## What this slice does NOT do
 
-- Does not modify F-002 round-2 atomicity or round-3 auth re-check. Both stay as defense-in-depth.
-- Does not introduce a new transaction pattern.
-- Does not add a cron job or schedule mid-day binding flips.
-- Does not change the SiteSupervisorBinding schema.
-- Does not add the `Company.timeZone` schema column (deferred — helper accepts an override parameter today).
-- Does not land HTTP routes for HR binding-create / binding-end (F-005 admin-web HR portal scope).
+- Does not implement `decision-expire-sweep`, `hr-queue-age-escalation`, or `hr-availability-sweep` — those are separate later slices on top of the same framework.
+- Does not introduce a new entity. `BINDING_ENDED_AUTO` AuditEvent kind is already catalogued.
+- Does not change the S-001 guard. Sweep is the bookkeeping side of a binding lifecycle event whose responsibility-change instant already locked at create-time.
+- Does not auto-merge `feat/layer-1-core-primitives` to main. Merge is a separate owner-driven step.
 
-## Spec lock — what landed (2026-05-16)
+## F-002 + S-001 closure summary (kept for cross-slice context)
 
-Single-source wording (identical text in both specs):
+| Slice                                  | Status              | Approval at    | Friend's verbatim                                                                                                                                                       |
+| -------------------------------------- | ------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-002 (chat-writes-proposed-decisions) | APPROVED 2026-05-16 | HEAD `12c1df6` | "P1 is really fixed · P2 is really fixed enough for approval · handoff/control state is consistent · APPROVED."                                                         |
+| S-001 (same-day-supervisor-freeze)     | APPROVED 2026-05-16 | HEAD `2a0f27c` | "Final tracker propagation is clean. The last remaining control-surface mismatch is fixed. I do not see a new code bug or a new tracker-truth bug. Decision: APPROVED." |
 
-> Same-day supervisor-freeze policy (S-001). Once the day has started in the tenant's local timezone, no supervisor responsibility change may take effect for that site until the next tenant-local midnight. This includes new acting cover, permanent reassignment, ending the current responsible binding, or any other binding mutation that would change who is officially responsible for today. Same-day emergencies are handled operationally outside ownership-change logic. No account sharing. F-002's atomicity and auth re-check protections remain in place as defense-in-depth.
+Both are ready to be marked DONE once branch merges to main.
 
-- `docs/specs/2026-05-14-supervisor-responsibility-model.md` — "2026-05-16 Update" section (after the existing 2026-05-15 update). Adds interaction notes against §§3.1, 3.2, 4, 5, 7, 9, 10.
-- `docs/specs/2026-05-15-workflow-design-closure.md` — "2026-05-16 Update" section after §15. Adds interaction notes against §§3.1, 4, 5.3, 5.2/5.4, 6.
+**S-001 final commit chain:** `2835e84` (spec lock) · `d234e77` (helper + wire + 5 new tests + 4 adapted) · `8e763f8` (tracker → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup) · `2a0f27c` (final tracker propagation). Full real-DB sweep: 17 files · 84 cases, all green on fresh local Postgres 16.
 
-Friend's `SPEC LOCK APPROVED` at HEAD `9e137e4`. Verbatim: "v2 wording is good · spec lock approved · fix one stale control-file line while landing it · then start S-001 code."
+Friend's standing verification-shell limitation noted across both approvals: pnpm / Vitest startup hits a local Rollup native-module/code-signing issue, so friend's approvals are file-grounded, not fresh-test-grounded. The Docker container `axhy-test-pg` remains running for any future replay.
 
-## F-002 closure summary (kept for cross-slice context)
-
-F-002 (`chat-writes-proposed-decisions`) approved by friend at HEAD `12c1df6` on 2026-05-16. Verbatim: "I do not have any new blocking findings · P1 is really fixed · P2 is really fixed enough for approval · handoff/control state is consistent · APPROVED." Friend's verification limitation noted (could not personally rerun the 2 new Vitest files in their shell because pnpm wasn't on PATH); not gating.
-
-- **F-002 round-1 commits:** `a8b4e79` · `73ee9eb` · `8d20db0` · `7fbddcb` · `12f27ed` · `662e146`
-- **F-002 round-1 remediation:** `f2b2d74` · `ec01f62` · `38b9987` · `2e03315` · `4506b3d` · `2557e1f`
-- **F-002 round-2:** `75b56f8` (control-surface cleanup) · `a1f6a2d` (G1) · `c63a163` (G2 lifecycle / R2a) · `d8b664b` (R3 writer-level tests) · `0cbb8ed` · `6e4c677` · `50a859c` · `cb3ae13` · `92294f3`
-- **F-002 round-3:** `c8c34b3` (rule 25 + approval propagation) · `5972881` (R3.1) · `990b96e` (R3.2-a)
-- **F-002 tracker propagation:** `fe927b2` · `dc0ae2d` · `12c1df6`
-- **Workflow IDs affected (F-002):** `D17` · `D20` · `C11` · `E21` · `E22` · `E24`
-
-## Reproduction (full S-001 + F-002 baseline sweep)
+## Reproduction (F-002 + S-001 baseline; applies until F-003 code lands new tests)
 
 ```
 docker exec axhy-test-pg pg_isready -U postgres
@@ -115,13 +84,14 @@ pnpm exec vitest run \
   test/same-day-supervisor-freeze.test.ts
 ```
 
-Expected: 17 files, 84 cases, all green (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).
+Expected: 17 files, 84 cases, all green.
 
-## Decision needed on S-001 code
+## Decision needed (owner + friend, before any F-003 code)
 
-- `APPROVED` → slice moves to APPROVED; ready to be marked DONE once branch merges to main (alongside F-002).
-- `CHANGES_REQUESTED` (bullet list) → name what to change.
-- `HOLD` → S-001 pauses.
+- `SCOPE: GO with default picks (1: OS-cron + HTTP endpoint, 2: every-minute, 3: sweep exempt from S-001, 4: one tx per row, 5: rely on idempotency, 6: BINDING_ENDED_AUTO payload as above)` → I draft the scope artifact at `handoff/feature-queue/scopes/F-003.md` capturing the picks; on owner sign-off, code begins.
+- `SCOPE: change picks` → name what to change.
+- `HOLD` → F-003 pauses; surface a different next slice instead (e.g. F-004 HandoffPackage composer, F-005 HR portal scaffold, or a separate cleanup).
+- `MERGE FIRST` → owner merges `feat/layer-1-core-primitives` to main first to graduate F-002 + S-001 from APPROVED to DONE; F-003 picks up after.
 
 ## Hash-truth convention
 
