@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T16:30:21.280Z",
-    "generated_against_head": "1fb546e8634f229c8d480d3ee980fedd66e655c2",
+    "last_updated_at": "2026-05-15T17:03:07.817Z",
+    "generated_against_head": "662e146064c2d49be209f759ced3c9b9376b5f52",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "1fb546e8634f229c8d480d3ee980fedd66e655c2",
+    "last_canonical_commit_at_gen": "328819bc52d0298bd1c660defdac7212748bd825",
     "staleness_warning": null,
-    "active_slice": "chat-writes-proposed-decisions (F-002) · WIP",
+    "active_slice": "chat-writes-proposed-decisions (F-002) · AWAITING_APPROVAL",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,20 +1184,38 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`chat-writes-proposed-decisions` (F-002)",
-      "Status": "`WIP`",
+      "Status": "`AWAITING_APPROVAL`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed commit": "`1fb546e` — `fix(handoff): full sweep for forward-looking wording`",
+      "Last landed commit": "`662e146` — `test(decisions): 5 integration test files for F-002 (54/54 green)`",
       "Scope artifact (approved)": "`handoff/feature-queue/scopes/F-002.md` (approved 2026-05-15 evening with all 5 default picks)",
+      "Slice commits (oldest → newest)": "`a8b4e79` (schema + migration) · `73ee9eb` (audit kinds + helpers + payloads) · `8d20db0` (supervisor-decision-writer.ts) · `7fbddcb` (chat.ts propose + apply) · `12f27ed` (dismiss route + tighten proposed predicate) · `662e146` (5 integration test files)",
       "Workflow IDs affected": "`D17` (writer side), `D20` (writer side — EMPLOYMENT-tier ack gate), `C11`, `E21`, `E22`, `E24`",
       "Personas affected": "Ravi (originator), Lakshmi/Anjali (current responsible — consumes via F-001's `GET /decisions/proposed-for-me`), Kavitha (EMPLOYMENT ack), Suresh (subject)",
       "Locked picks (Q1–Q5)": "Q1=(b) best-effort originContext capture · Q2=(a) single slice · Q3=(a) include dismiss + migration · Q4=(b) defer state ENUM · Q5=reuse F-001 helpers for `proposedDuringAbsence`",
-      "Files in slice": "`packages/shared-schema/prisma/schema.prisma` (+2 cols) · new migration · `apps/backend/src/lib/audit-event.ts` (+3 helpers) · new `apps/backend/src/lib/supervisor-decision-writer.ts` · `apps/backend/src/routes/chat.ts` (propose + apply modified) · `apps/backend/src/routes/decisions.ts` (+ dismiss endpoint) · 5 new test files",
-      "Tests status": "none yet",
-      "Verification status": "`UNVERIFIED` until real-DB sweep runs (fresh local Postgres 16 + all 11 migrations including new dismiss-cols migration). Sweep must include 4 F-001 routing tests as regression sanity + 5 new F-002 tests.",
+      "Tests status": "9/9 test files green (4 F-001 regression + 5 F-002 new); 54/54 cases pass",
+      "Verification status": "`REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg` on port 55432), all 11 migrations applied (20260507 → 20260517), full sweep in one run. Container left running for friend's spot-check.",
+      "Known limitation (surfaced for friend's review)": "Inject-style `/chat/apply` branches (mark_absent / leave / swap / create_assignment / living_doc_update): lifecycle commits in tx 1, domain inject runs in tx 2. If the domain inject fails after lifecycle commits, the row is in APPLIED state with no downstream effect (orphan APPLIED row). Audit trail tells the truth (DWI_APPLIED present, domain audit absent). Acceptable for F-002 MVP per scope §3b (\"inside one transaction\" — interpreted pragmatically given the inject() architecture). `propose_termination` is fully atomic (shared tx). A future-cleanup slice can extract domain logic to be tx-shareable.",
       "Started at": "2026-05-15 evening — immediately after F-002 scope approval at HEAD `1fb546e`.",
-      "Expected next state": "`AWAITING_APPROVAL` after all 9 test files green (4 F-001 + 5 F-002) + tracker propagated."
+      "Completed at": "2026-05-15 evening — slice complete; awaiting friend's approval word."
     },
-    "pending_approvals": [],
+    "pending_approvals": [
+      {
+        "id": "chat-writes-proposed-decisions",
+        "kind": "slice",
+        "status": "AWAITING_APPROVAL",
+        "branch": "feat/layer-1-core-primitives",
+        "wipCommit": "",
+        "lastLanded": "662e146",
+        "workflowIds": "D17 (writer), D20 (writer, EMPLOYMENT ack gate), C11, E21, E22, E24",
+        "blocking": "",
+        "built": "",
+        "notDone": "",
+        "ownerDecision": "",
+        "artifact": "",
+        "decisionNeeded": "",
+        "scopeType": ""
+      }
+    ],
     "blocked_items": [],
     "pending_notes": {
       "counts": {
@@ -1229,7 +1247,7 @@
         "workflows": "D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).",
         "entities": "`apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.",
         "verification": "`REAL_DB`.",
-        "status": "WIP"
+        "status": "AWAITING_APPROVAL"
       },
       {
         "id": "F-003",
@@ -1302,6 +1320,13 @@
       {
         "when": "2026-05-15 evening",
         "slice": "chat-writes-proposed-decisions",
+        "transition": "WIP → AWAITING_APPROVAL",
+        "commit": "`662e146`",
+        "note": "All 6 implementation commits + 5 test files landed. Real-DB sweep on fresh local Postgres 16 with all 11 migrations: **54/54 cases green** across 9 files (4 F-001 regression + 5 F-002 new). One known limitation surfaced: inject-style /chat/apply branches do lifecycle commit + domain inject in separate tx (propose_termination is fully atomic)."
+      },
+      {
+        "when": "2026-05-15 evening",
+        "slice": "chat-writes-proposed-decisions",
         "transition": "PLANNED → WIP",
         "commit": "n/a (transition before first commit)",
         "note": "F-002 scope APPROVED at HEAD `1fb546e` with all 5 default picks accepted (Q1=b, Q2=a, Q3=a, Q4=b, Q5=default). Slice starts: PROPOSED writer + apply transition + dismiss endpoint + dismissedAt/dismissedReason migration."
@@ -1361,13 +1386,6 @@
         "transition": "AWAITING_APPROVAL → APPROVED → DONE",
         "commit": "`e222a22`, `03d33dd`, `d4bb4c8`",
         "note": "Built execution-state + workflow-maps + generated layers. Folder moved to top-level `handoff/`. Friend: \"much better and directionally correct\"."
-      },
-      {
-        "when": "2026-05-15 afternoon",
-        "slice": "routing-foundation-read-apis",
-        "transition": "WIP → BLOCKED",
-        "commit": "`84ae39c`",
-        "note": "Paused mid-flight to build tracker. 4th test file + real-DB sweep remaining. Now blocked by handoff-control-loop approval."
       }
     ]
   }
