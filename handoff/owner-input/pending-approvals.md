@@ -24,10 +24,10 @@
 
 - **Status:** `AWAITING_APPROVAL`
 - **Branch:** `feat/layer-1-core-primitives`
-- **Last landed commit:** `b35748e`
-- **Slice commits (oldest → newest):** `f9fbe68` · `0445110` · `7916a3b` · `b35748e`
+- **Last landed commit:** `eefaf11`
+- **Slice commits (oldest → newest):** `f9fbe68` · `0445110` · `7916a3b` · `b35748e` · `eefaf11`
 - **Workflow IDs affected:** none directly (control surface, spans all 29)
-- **What was built:** `handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in `7916a3b` (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in `b35748e` (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues addressed in the follow-up commit (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).
+- **What was built:** `handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in `7916a3b` (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in `b35748e` (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues fixed in `eefaf11` (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).
 - **What's NOT done:** Nothing in scope; all three friend bug lists fully addressed.
 - **Owner decision:** _empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_
 

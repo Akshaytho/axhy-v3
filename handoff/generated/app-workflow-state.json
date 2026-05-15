@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T15:14:44.870Z",
-    "generated_against_head": "b35748e18e245b8715020144f7ddcb271ce5d566",
+    "last_updated_at": "2026-05-15T15:24:55.720Z",
+    "generated_against_head": "eefaf11a7857953120944eb0fced90272629c47e",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "b35748e18e245b8715020144f7ddcb271ce5d566",
+    "last_canonical_commit_at_gen": "eefaf11a7857953120944eb0fced90272629c47e",
     "staleness_warning": null,
     "active_slice": "handoff-control-loop · AWAITING_APPROVAL",
     "generated_from": [
@@ -1186,13 +1186,13 @@
       "Slice name": "`handoff-control-loop`",
       "Status": "`AWAITING_APPROVAL`",
       "Branch": "`feat/layer-1-core-primitives`",
-      "Last landed slice commit": "`b35748e` — `fix(handoff): address friend's 3 remaining trust issues — commit-truth, hash-naming, approval/blocked split`",
-      "All slice commits (oldest → newest)": "`f9fbe68` · `0445110` · `7916a3b` · `b35748e`",
+      "Last landed slice commit": "`eefaf11` — `fix(handoff): purge future-placeholder wording + populate change-history`",
+      "All slice commits (oldest → newest)": "`f9fbe68` · `0445110` · `7916a3b` · `b35748e` · `eefaf11`",
       "Workflow IDs affected": "none directly (meta-slice — builds the control surface around all 29 workflows)",
       "Personas affected": "all four (control surface is persona-spanning)",
       "Files changed": "`handoff/owner-input/*` (new), `handoff/feature-queue/*` (new), `handoff/scripts/build-handoff-artifacts.mjs` (extended), `handoff/execution-state/INDEX.md`, `handoff/README.md`, `handoff/NEXT_SESSION.md`, `.husky/pre-commit`",
       "Tests status": "N/A (docs + tooling only)",
-      "Verification status": "`LOCAL` — generator runs clean; 0 STALE markers; friend's first 4 bugs fixed in `7916a3b` (template-as-note, header-vs-callout, stale active-slice, generated_from list); friend's 3 follow-up bugs fixed in `b35748e` (commit-truth drift framed honestly, hash-naming pinned to landed commits, AWAITING_APPROVAL/BLOCKED sections split). Friend's third-pass 3 trust issues are addressed by the contents of this file + `pending-approvals.md` + `change-history.md` right now; the landing commit will appear in the next row of `change-history.md` once committed.",
+      "Verification status": "`LOCAL` — generator runs clean; 0 STALE markers; friend's first 4 bugs fixed in `7916a3b` (template-as-note, header-vs-callout, stale active-slice, generated_from list); friend's 3 follow-up bugs fixed in `b35748e` (commit-truth drift framed honestly, hash-naming pinned to landed commits, AWAITING_APPROVAL/BLOCKED sections split). Friend's third-pass 3 trust issues fixed in `eefaf11` (future-placeholder wording purged from active-slice, pending-approvals refreshed, change-history populated).",
       "Started at": "2026-05-15 evening",
       "Expected next state": "`APPROVED` — when owner writes that word for the `handoff-control-loop` item in `pending-approvals.md`. Then F-001 routing slice unblocks."
     },
@@ -1202,10 +1202,10 @@
         "status": "AWAITING_APPROVAL",
         "branch": "feat/layer-1-core-primitives",
         "wipCommit": "",
-        "lastLanded": "b35748e",
+        "lastLanded": "eefaf11",
         "workflowIds": "none directly (control surface, spans all 29)",
         "blocking": "",
-        "built": "`handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in `7916a3b` (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in `b35748e` (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues addressed in the follow-up commit (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).",
+        "built": "`handoff/owner-input/` (6 files) + `handoff/feature-queue/INDEX.md` + generator parses + renders 6 control sections (Current Slice / Notes / Approvals / Blocked / Queue / History) + pre-commit auto-regen + filesystem-mtime stale detection + friend's first-pass 4 bugs fixed in `7916a3b` (template-as-note / header-vs-callout / stale active-slice / generated_from) + friend's second-pass 3 bugs fixed in `b35748e` (commit-truth honest framing / hash-naming pinned to landed commits / AWAITING_APPROVAL+BLOCKED split) + friend's third-pass 3 trust issues fixed in `eefaf11` (future-placeholder wording purged from active-slice / pending-approvals refreshed / change-history fully populated).",
         "notDone": "Nothing in scope; all three friend bug lists fully addressed.",
         "ownerDecision": "_empty — write `APPROVED` / `CHANGES_REQUESTED` / `HOLD`_"
       }
