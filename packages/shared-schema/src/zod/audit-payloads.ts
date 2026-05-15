@@ -171,3 +171,104 @@ export const BindingEndedSupersededByPermanentPayloadSchema = z.object({
 export type BindingEndedSupersededByPermanentPayload = z.infer<
   typeof BindingEndedSupersededByPermanentPayloadSchema
 >;
+
+// ============================================================================
+// F-002 SupervisorDecision lifecycle kinds (DWI_PROPOSED / APPLIED / DISMISSED)
+// AuditEvent.kind values are already catalogued in audit-event.ts.
+// @derives(F-002 scope §3d)
+// @derives(workflow-design-closure §3.2 — SupervisorDecision lifecycle)
+// ============================================================================
+
+/**
+ * The kinds the chat extractor + apply path + dismiss endpoint produce on a
+ * SupervisorDecision row. Mirrors the field on SupervisorDecision.kind itself.
+ * Kept as a string here (not z.enum) to match the open taxonomy approach
+ * already used elsewhere — the live AI extractor invents new kind values per
+ * tool, and locking the enum here would block evolution.
+ *
+ * @derives(F-002 scope §3a)
+ */
+export const SupervisorDecisionKindSchema = z.string().min(1).max(64);
+
+/**
+ * Payload for DWI_PROPOSED: emitted at row creation by the chat extractor.
+ * Carries enough context that the audit row is reconstructable without
+ * JOIN-ing the SupervisorDecision row (the row itself can be edited via
+ * apply / dismiss, but the audit event is immutable).
+ *
+ * @derives(ADR-0003)
+ * @derives(F-002 scope §3a + §3d)
+ */
+export const DwiProposedPayloadSchema = z.object({
+  decisionId: z.string().uuid(),
+  kind: SupervisorDecisionKindSchema,
+  tier: z.enum(['NOTE', 'OPERATIONAL', 'PERSONNEL', 'EMPLOYMENT']),
+  targetId: z.string().nullable(),
+  proposedDuringAbsence: z.boolean(),
+  ackRequired: z.boolean(),
+  /**
+   * The chat thread / message that produced this proposal. Lets the audit
+   * trail point back at the conversation context even if the SupervisorDecision
+   * row is later dismissed + the originContext drops some fields.
+   */
+  sourceChatThreadId: z.string().uuid().nullable(),
+  sourceChatMessageId: z.string().uuid().nullable(),
+});
+
+/**
+ * @derives(ADR-0003)
+ */
+export type DwiProposedPayload = z.infer<typeof DwiProposedPayloadSchema>;
+
+/**
+ * Payload for DWI_APPLIED: emitted at the apply transition.
+ * `appliedBy` is the currently-responsible supervisor user-id (per F-001 binding
+ * routing) — may differ from the original `supervisorId` on the DWI row when
+ * a binding switch has happened between propose-time and apply-time.
+ *
+ * @derives(ADR-0003)
+ * @derives(F-002 scope §3b)
+ */
+export const DwiAppliedPayloadSchema = z.object({
+  decisionId: z.string().uuid(),
+  kind: SupervisorDecisionKindSchema,
+  tier: z.enum(['NOTE', 'OPERATIONAL', 'PERSONNEL', 'EMPLOYMENT']),
+  appliedAt: z.string().datetime(),
+  appliedBy: z.string().uuid(),
+  /**
+   * The original supervisorId from the DWI row at propose-time. Kept so the
+   * audit row records both ends of any binding-handoff that happened mid-flight.
+   */
+  originalSupervisorId: z.string().uuid(),
+});
+
+/**
+ * @derives(ADR-0003)
+ */
+export type DwiAppliedPayload = z.infer<typeof DwiAppliedPayloadSchema>;
+
+/**
+ * Payload for DWI_DISMISSED: emitted when the responsible supervisor explicitly
+ * rejects a PROPOSED decision via POST /decisions/:id/dismiss.
+ *
+ * @derives(ADR-0003)
+ * @derives(F-002 scope §3c)
+ */
+export const DwiDismissedPayloadSchema = z.object({
+  decisionId: z.string().uuid(),
+  kind: SupervisorDecisionKindSchema,
+  tier: z.enum(['NOTE', 'OPERATIONAL', 'PERSONNEL', 'EMPLOYMENT']),
+  dismissedAt: z.string().datetime(),
+  dismissedBy: z.string().uuid(),
+  dismissedReason: z.string().min(1).max(2000),
+  /**
+   * The original supervisorId from the DWI row at propose-time. Same rationale
+   * as DwiAppliedPayload.originalSupervisorId.
+   */
+  originalSupervisorId: z.string().uuid(),
+});
+
+/**
+ * @derives(ADR-0003)
+ */
+export type DwiDismissedPayload = z.infer<typeof DwiDismissedPayloadSchema>;
