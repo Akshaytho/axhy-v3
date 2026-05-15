@@ -86,6 +86,9 @@ describe('chat → propose_mark_absent', () => {
     expect(body.decisionCard.toolName).toBe('propose_mark_absent');
     const proposed = body.decisionCard.fields;
     expect(proposed.workerId).toBe(workerId);
+    // F-002.5: decisionId is now required on /chat/apply. The chat extractor
+    // sets it on decisionCard at propose time (F-002 §3a).
+    expect(body.decisionCard.decisionId).toBeTruthy();
 
     const applyRes = await app.inject({
       method: 'POST',
@@ -95,6 +98,7 @@ describe('chat → propose_mark_absent', () => {
         chatMessageId: body.chatMessageId,
         toolName: 'propose_mark_absent',
         toolInput: proposed,
+        decisionId: body.decisionCard.decisionId,
       },
     });
     expect(applyRes.statusCode).toBe(200);

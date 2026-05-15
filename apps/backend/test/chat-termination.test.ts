@@ -86,6 +86,8 @@ describe('chat → propose_termination', () => {
     expect(proposed.workerId).toBe(workerId);
     expect(proposed.reason).toBeTruthy();
 
+    // F-002.5: decisionId required.
+    expect(body.decisionCard.decisionId).toBeTruthy();
     const applyRes = await app.inject({
       method: 'POST',
       url: '/chat/apply',
@@ -94,6 +96,7 @@ describe('chat → propose_termination', () => {
         chatMessageId: body.chatMessageId,
         toolName: 'propose_termination',
         toolInput: proposed,
+        decisionId: body.decisionCard.decisionId,
       },
     });
     expect(applyRes.statusCode).toBe(200);

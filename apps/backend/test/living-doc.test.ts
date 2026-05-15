@@ -109,6 +109,20 @@ describe('LivingDoc — Phase 2.5 (refactored to withMultipleTenants)', () => {
         const t = tenants[0]!;
         const sup = t.supervisors[0]!;
 
+        // F-002.5: decisionId required on /chat/apply. Seed a PROPOSED row
+        // directly (mirrors what persistChatTurn would have written had this
+        // test gone through /chat/messages first).
+        const seededDecision = await prisma.supervisorDecision.create({
+          data: {
+            companyId: t.companyId,
+            supervisorId: sup.userId,
+            kind: 'LIVING_DOC_RULE',
+            tier: 'NOTE',
+            targetId: null,
+            payload: {},
+          },
+        });
+
         const res = await injectAuthed(app, sup, {
           method: 'POST',
           url: '/chat/apply',
@@ -122,6 +136,7 @@ describe('LivingDoc — Phase 2.5 (refactored to withMultipleTenants)', () => {
               description: 'Client preference, year-round.',
               scope: {},
             },
+            decisionId: seededDecision.id,
           },
         });
         expect(res.statusCode).toBe(200);
@@ -231,6 +246,18 @@ describe('LivingDoc — Phase 2.5 (refactored to withMultipleTenants)', () => {
         const tenantZero = tenants[0]!;
         const supZero = tenantZero.supervisors[0]!;
 
+        // F-002.5: decisionId required. Seed PROPOSED row for tenant 0.
+        const seededDecision = await prisma.supervisorDecision.create({
+          data: {
+            companyId: tenantZero.companyId,
+            supervisorId: supZero.userId,
+            kind: 'LIVING_DOC_RULE',
+            tier: 'NOTE',
+            targetId: null,
+            payload: {},
+          },
+        });
+
         // Tenant 0's supervisor saves a rule via REAL route
         const res = await injectAuthed(app, supZero, {
           method: 'POST',
@@ -245,6 +272,7 @@ describe('LivingDoc — Phase 2.5 (refactored to withMultipleTenants)', () => {
               description: 'Tenant 0 only.',
               scope: {},
             },
+            decisionId: seededDecision.id,
           },
         });
         expect(res.statusCode).toBe(200);

@@ -205,7 +205,11 @@ describe('POST /chat/apply with decisionId — F-002 §3b', () => {
     expect(attendance).not.toBeNull();
   });
 
-  it('back-compat: decisionId omitted → /chat/apply skips lifecycle update + domain still runs', async () => {
+  // F-002.5 + friend's required addition 2: the prior "decisionId omitted →
+  // success path" test would have normalised the stale-client behaviour. After
+  // the back-compat path was removed, missing decisionId is a hard 400 — no
+  // domain side effect, no lifecycle change.
+  it('400 BAD_INPUT when decisionId is omitted (back-compat path removed)', async () => {
     const decisionId = await seedProposed({
       kind: 'MARK_ABSENT',
       supervisorId: userA,
@@ -220,17 +224,22 @@ describe('POST /chat/apply with decisionId — F-002 §3b', () => {
         chatMessageId: randomUUID(),
         toolName: 'propose_mark_absent',
         toolInput: { workerId: workerOnSiteA, date: '2026-05-13' },
+        // intentionally NO decisionId
       },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('BAD_INPUT');
+
+    // Row stays PROPOSED.
     const row = await prisma.supervisorDecision.findUnique({ where: { id: decisionId } });
-    // No decisionId in body → lifecycle update skipped.
     expect(row!.appliedAt).toBeNull();
-    // Domain effect still produced.
+    expect(row!.dismissedAt).toBeNull();
+
+    // NO domain side effect.
     const attendance = await prisma.attendance.findFirst({
       where: { companyId, workerId: workerOnSiteA, date: new Date('2026-05-13') },
     });
-    expect(attendance).not.toBeNull();
+    expect(attendance).toBeNull();
   });
 
   it('403 NOT_RESPONSIBLE: wrong supervisor; no domain side effect', async () => {
