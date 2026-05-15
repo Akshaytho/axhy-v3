@@ -85,10 +85,12 @@ beforeAll(async () => {
     data: { companyId: companyAId, userId: callerId, role: 'SUPERVISOR' },
   });
 
-  callerToken = issueAccessToken({
+  callerToken = await issueAccessToken({
     userId: callerId,
     companyId: companyAId,
     role: 'SUPERVISOR',
+    availableRoles: ['SUPERVISOR'],
+    locale: 'en',
   });
 });
 
