@@ -20,26 +20,32 @@
 
 ## Currently awaiting approval
 
-### Slice: `same-day-supervisor-freeze` (S-001 — spec lock decision) — AWAITING_SPEC_LOCK 2026-05-16
+### Slice: `same-day-supervisor-freeze` (S-001 — spec lock decision, wording v2) — AWAITING_SPEC_LOCK 2026-05-16
+
+**Status note (2026-05-16):** Friend's first wording pass returned `CHANGES_REQUESTED on wording only, not on direction`. Direction approved. Wording v2 below addresses the change request — re-framed in business terms ("no responsibility change can take effect today") rather than narrowly around `effectiveFrom`. Awaiting friend's `SPEC LOCK APPROVED` on the v2 wording before any code lands.
 
 **Problem in simple English:** HR can switch a site's supervisor at any moment of the day. F-002 round-2 + round-3 had to engineer around the resulting stale-authority race (atomic preCheck + service + commitApply re-check inside one tx + deterministic test hook). All of that complexity exists only because responsibility can change mid-day — a rare operational edge case.
 
-**Simplest business rule:** Once the day starts, today's supervisor ownership is frozen. HR cannot change today's supervisor in the system. Any supervisor change starts tomorrow at tenant-local midnight. Same-day emergencies are handled operationally (phone, WhatsApp, the existing acting cover relationship), not by mutating system ownership for today. No account sharing.
+**Simplest business rule (v2 wording):** Once the day starts in the tenant's local timezone, no supervisor responsibility change may take effect for that site until the next tenant-local midnight. This covers new acting cover, permanent reassignment, ending the current responsible binding, or any other binding mutation that would change who is officially responsible for today. Same-day emergencies are handled operationally, not by mutating system ownership for today. No account sharing.
 
-**Code (only after spec lock):** one Zod refine in the HR binding-create service rejecting `effectiveFrom < tomorrow-midnight-tenant-local` with 400 BAD_INPUT. Same check on `reassignPermanentBinding`. Two tests (HR same-day → 400; existing routing unchanged for permanent + future-dated bindings).
+**Code (only after spec lock):** One shared API-layer guard `assertNotChangingTodaysResponsibility(tenantTimeZone, mutation)` applied at every HR binding-mutation entry point — binding-create, binding-end, `reassignPermanentBinding`, and any new path that mutates a SiteSupervisorBinding row. Rejects with 400 BAD_INPUT whenever the mutation would change who is officially responsible today. Four tests (create rejected · end rejected · reassign-with-same-day-boundary rejected · supervisor-app routing unchanged for permanent + future-dated bindings).
 
-**Why this matters before code:** the rule lands in TWO specs (responsibility model + closure spec). Once specs are locked, the code is small and obvious. Per rule 25: simplify the business rule first, engineer the simpler system second. F-002's atomicity + auth re-check stay as defense-in-depth (cost nothing now, remain correct if the policy ever loosens).
+**Why the v2 wording matters:** the rule is framed around the business outcome ("no responsibility change takes effect today"), not around the `effectiveFrom` field. That keeps a future code path from silently bypassing the rule by mutating responsibility through a different field. Per rule 25: simplify the business rule first, engineer the simpler system second. F-002's atomicity + auth re-check stay as defense-in-depth (cost nothing now, remain correct if the policy ever loosens).
 
 **Specs that need locking:**
 
 - `axhy-v3/docs/specs/2026-05-14-supervisor-responsibility-model.md` — new pick alongside the existing 9.
 - `axhy-v3/docs/specs/2026-05-15-workflow-design-closure.md` — reflect the simplification (round-2 atomicity stays as defense-in-depth, not primary mechanism).
 
-**Wording draft (single source for both specs):**
+**Wording v2 (current draft — single source for both specs):**
 
-> Same-day supervisor-freeze policy (S-001 lock, 2026-05-16). Once the day has started in the tenant's local timezone, the supervisor responsible for each site is frozen for the remainder of that day. HR can create or end SiteSupervisorBinding rows only with `effectiveFrom >= tomorrow-midnight-tenant-local`. Same-day emergencies are handled operationally (phone, WhatsApp, the existing acting cover relationship for absent supervisors), not by mutating system ownership for today. No account sharing. The atomicity + auth-re-check protections inside `/chat/apply` (F-002 round 2 + round 3) remain in place as defense-in-depth and are correct even if this policy is ever loosened.
+> Same-day supervisor-freeze policy (S-001). Once the day has started in the tenant's local timezone, no supervisor responsibility change may take effect for that site until the next tenant-local midnight. This includes new acting cover, permanent reassignment, ending the current responsible binding, or any other binding mutation that would change who is officially responsible for today. Same-day emergencies are handled operationally outside ownership-change logic. No account sharing. F-002's atomicity and auth re-check protections remain in place as defense-in-depth.
 
-**Decision needed:** `SPEC LOCK APPROVED` / `CHANGES_REQUESTED on wording` / `HOLD`. If APPROVED → spec wording lands in both specs in one commit batch, then S-001 code (Zod refine + 2 tests) lands in a second commit.
+**Wording v1 (superseded by friend's CHANGES_REQUESTED):**
+
+> ~~Same-day supervisor-freeze policy (S-001 lock, 2026-05-16). Once the day has started in the tenant's local timezone, the supervisor responsible for each site is frozen for the remainder of that day. HR can create or end SiteSupervisorBinding rows only with `effectiveFrom >= tomorrow-midnight-tenant-local`. ...~~ Friend's verbatim reason for the change: "it defines the rule in business terms · it avoids tying the policy too narrowly to one field name · it covers acting cover, permanent reassignment, and ending today's ownership · it avoids future loopholes where a new code path mutates responsibility without touching effectiveFrom in the exact way the sentence assumed."
+
+**Decision needed (on wording v2):** `SPEC LOCK APPROVED` / `CHANGES_REQUESTED on v2 wording` / `HOLD`. If APPROVED → spec wording lands in both specs in one commit batch, then S-001 code (shared API-layer guard + 4 tests) lands in a second commit.
 
 ---
 
