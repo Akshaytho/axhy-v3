@@ -61,6 +61,31 @@
     .current-slice { background: rgba(26,115,232,0.08); border-left: 4px solid #1a73e8;
                      padding: 12px 16px; margin: 12px 0; border-radius: 4px; }
     .current-slice h3 { margin-top: 0; color: #1a73e8; }
+    .active-slice-callout { background: rgba(26,115,232,0.10); border: 2px solid #1a73e8;
+                             border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .active-slice-callout h2 { color: #1a73e8; margin-top: 0; }
+    .control-section { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+                       padding: 20px; margin-bottom: 24px; }
+    .nav-control { background: var(--bg); border: 1px solid var(--border); }
+    .nav-sep { color: var(--muted); padding: 4px 4px; }
+    .note-banner { padding: 10px 14px; border-radius: 4px; font-size: 13px; margin: 8px 0; }
+    .note-banner.urgent { background: rgba(229,57,53,0.10); border-left: 4px solid #e53935; color: #c62828; font-weight: 600; }
+    .note-banner.ok { background: rgba(30,142,62,0.08); border-left: 4px solid #1e8e3e; }
+    .note { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+            padding: 12px; margin: 8px 0; }
+    .note-head { font-size: 14px; margin-bottom: 6px; }
+    .approval { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+                padding: 12px; margin: 8px 0; }
+    .approval-head { font-size: 14px; margin-bottom: 6px; }
+    details.feature { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+                       padding: 10px 12px; margin: 6px 0; }
+    details.feature summary { cursor: pointer; font-size: 14px; padding: 4px 0; }
+    details.feature[open] summary { margin-bottom: 8px; }
+    .feature-body p { font-size: 13px; margin: 4px 0; }
+    .kv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .kv-table th { text-align: left; padding: 6px 12px; width: 200px;
+                   border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 600; }
+    .kv-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); }
     .workflow-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
     .workflow-table th, .workflow-table td { text-align: left; padding: 6px 10px;
                                              border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -81,20 +106,283 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T13:33:07.632Z</strong></span>
-      <span>Commit <code>e222a221</code></span>
+      <span>Generated <strong>2026-05-15T14:35:21.452Z</strong></span>
+      <span>Commit <code>8f11d895</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
       <span>Active slice: <strong>Layer 1 implementation — routing slice paused for execution-state tracker</strong></span>
       <span class="stale">⚠ STALE — re-run <code>pnpm run handoff:build</code></span>
     </div>
   </header>
   <nav>
+    <a href="#active-slice" class="nav-control">🟦 Current slice</a>
+    <a href="#owner-notes" class="nav-control">📝 Notes</a>
+    <a href="#approvals" class="nav-control">✅ Approvals</a>
+    <a href="#feature-queue" class="nav-control">📋 Queue</a>
+    <a href="#change-history" class="nav-control">📜 History</a>
+    <span class="nav-sep">·</span>
     <a href="#summary">Summary</a>
     <a href="#persona-supervisor">Ravi (Supervisor)</a><a href="#persona-worker">Suresh (Worker)</a><a href="#persona-hr">Kavitha (HR)</a><a href="#persona-owner">Reddy (Owner)</a>
     <a href="#combined">Cross-persona</a>
     <a href="#data-model">Data model</a>
   </nav>
   <main>
+    
+  <section id="active-slice" class="active-slice-callout">
+    <h2>🟦 Current slice focus</h2>
+    <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>handoff-control-loop</code></td></tr><tr><th>Status</th><td><span class="badge" style="background:#1a73e8;color:#fff;">WIP</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code></td></tr><tr><th>Latest commit</th><td>(pending — this slice not yet committed)</td></tr><tr><th>Workflow IDs affected</th><td>none directly (meta-slice — builds the control surface around all 29 workflows)</td></tr><tr><th>Personas affected</th><td>all four (control surface is persona-spanning)</td></tr><tr><th>Files being changed</th><td><code>handoff/owner-input/*</code> (new), <code>handoff/feature-queue/*</code> (new), <code>handoff/scripts/build-handoff-artifacts.mjs</code> (extended), <code>handoff/execution-state/INDEX.md</code>, <code>handoff/README.md</code>, <code>handoff/NEXT_SESSION.md</code>, <code>.husky/pre-commit</code></td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">N/A (docs + tooling only)</span></td></tr><tr><th>Verification status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">LOCAL (generator runs; outputs valid)</span></td></tr><tr><th>Started at</th><td>2026-05-15 evening</td></tr><tr><th>Expected next state</th><td><code>AWAITING_APPROVAL</code> after surface</td></tr></table>
+  </section>
+    
+  <section id="owner-notes" class="control-section">
+    <h2>📝 Owner notes</h2>
+    <div class="note-banner urgent">⚠ 1 NEW owner note — must be acknowledged before any slice starts (rule 16 + 21).</div>
+    
+    <h3>NEW — needs acknowledgment (1)</h3>
+    
+      <div class="note">
+        <div class="note-head"><span class="badge" style="background:#e53935;color:#fff;">NEW</span> <strong>YYYY-MM-DD HH:MM — Short title</strong></div>
+        <p class="small"><strong>Affects:</strong> workflow IDs / personas / slice names</p>
+        <p>(free-form — what you want, what bothers you, what to change)</p>
+        <p class="small"><strong>Owner-suggested next:</strong> (optional — what you'd want Claude to do)</p>
+      </div>
+    
+    
+    
+    <p class="source-link small">
+      Source of truth: <a href="../owner-input/pending-notes.md">handoff/owner-input/pending-notes.md</a>.
+      To add a note: append to that file using the template at the top.
+    </p>
+  </section>
+    
+  <section id="approvals" class="control-section">
+    <h2>✅ Approval gate</h2>
+    <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
+    
+      <div class="approval">
+        <div class="approval-head"><span class="badge" style="background:#8e24aa;color:#fff;">BLOCKED</span> <strong><code>routing-foundation-read-apis</code></strong></div>
+        <p class="small"><strong>Branch:</strong> <code>feat/layer-1-core-primitives</code></p>
+        <p class="small"><strong>WIP commit:</strong> <code>84ae39c</code></p>
+        <p class="small"><strong>Workflows affected:</strong> `D17`, `F26` (read side), `F27` (read side)</p>
+        <p><strong>Built:</strong> <code>getEffectiveBinding</code> + <code>deriveWorkerPrimarySiteId</code> + <code>GET /sites/:id/effective-supervisor</code> + <code>GET /decisions/proposed-for-me</code> + 3 of 4 test files. Doc-level checks green; real-DB sweep not yet run.</p>
+        <p><strong>Not done:</strong> 4th test file <code>effective-responsibility-point-in-time.test.ts</code>; real-DB sweep; split into 3 clean commits.</p>
+        <p class="small"><strong>Owner decision:</strong> <em>_empty — needs explicit APPROVED / CHANGES_REQUESTED / HOLD once control-loop ships_</em></p>
+      </div>
+      <div class="approval">
+        <div class="approval-head"><span class="badge" style="background:#1a73e8;color:#fff;">WIP</span> <strong><code>handoff-control-loop</code></strong></div>
+        <p class="small"><strong>Branch:</strong> <code>feat/layer-1-core-primitives</code></p>
+        
+        
+        
+        
+        <p class="small"><strong>Owner decision:</strong> <em>_empty — will move to AWAITING_APPROVAL after surface_</em></p>
+      </div>
+  </section>
+    
+  <section id="feature-queue" class="control-section">
+    <h2>📋 Feature queue (upcoming slices)</h2>
+    <p class="small">In priority order. Top = next. Click any item to expand its full scope. Source: <a href="../feature-queue/INDEX.md">handoff/feature-queue/INDEX.md</a>.</p>
+    
+      <details class="feature">
+        <summary>
+          <code>F-001</code>
+          <span class="badge" style="background:#8e24aa;color:#fff;">BLOCKED</span>
+          <strong>Resume routing slice from WIP `84ae39c`</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> Closes the routing slice that was paused to build the control loop. Read API for &quot;who is currently responsible&quot; — consumed by every future routed surface.</p>
+          <p><strong>Depends on:</strong> <code>handoff-control-loop</code> slice committed + approved (this current slice).</p>
+          <p><strong>Personas:</strong> Ravi (read side), Lakshmi (acting), Anjali (gaining permanent).</p>
+          <p><strong>Workflows:</strong> D17, F26 (read), F27 (read).</p>
+          <p><strong>Entities / routes / tables:</strong> <code>apps/backend/src/lib/effective-responsibility.ts</code> (new), <code>apps/backend/src/routes/decisions.ts</code> (new), <code>apps/backend/src/routes/sites.ts</code> (+1 endpoint), <code>apps/backend/test/*</code> (+4 files).</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> (fresh local Postgres + all 10 migrations + 4 new test files green).</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-002</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>D17 SupervisorDecision writer</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> The largest workflow gap. Today chat-MVP applies decisions directly, skipping the PROPOSED → APPLIED lifecycle. Every EMPLOYMENT-tier ack, undo, dismiss, originContext-across-binding ride on this writer.</p>
+          <p><strong>Depends on:</strong> F-001 (routing read API must work for the new rows to be routable).</p>
+          <p><strong>Personas:</strong> Ravi (originator), Lakshmi/Anjali (current responsible), Kavitha (EMPLOYMENT ack gate), Suresh (subject).</p>
+          <p><strong>Workflows:</strong> D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).</p>
+          <p><strong>Entities / routes / tables:</strong> <code>apps/backend/src/routes/chat.ts</code> (extractor wires DWI write), new <code>POST /decisions/:id/apply</code>, new <code>POST /decisions/:id/dismiss</code>, <code>SupervisorDecision</code> writes.</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code>.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-003</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>Cron framework + `binding-expire-sweep`</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> Closure spec mandates several crons (<code>binding-expire-sweep</code>, <code>decision-expire-sweep</code>, <code>hr-queue-age-escalation</code>, <code>hr-availability-sweep</code>). Today only <code>reset-ai-spend</code> exists. Bindings can't auto-expire; &quot;while-you-were-out&quot; digests can't fire.</p>
+          <p><strong>Depends on:</strong> F-001.</p>
+          <p><strong>Personas:</strong> Ravi (expiry trigger), all when downstream sweeps land.</p>
+          <p><strong>Workflows:</strong> F26 (acting window expiry), C12 (decision expiry).</p>
+          <p><strong>Entities / routes / tables:</strong> <code>apps/backend/src/jobs/*</code> (new dir), cron framework module, <code>binding-expire-sweep</code> job, integration test.</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code>.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-004</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>HandoffPackage composer</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> Closure Decision 8 + §3.7 — site rules, recent complaints, active worker context, open decisions/calendar embedded into binding row. Today the column is nullable; composer doesn't exist.</p>
+          <p><strong>Depends on:</strong> F-001, F-002 (DWI writer needed for &quot;open decisions&quot; component).</p>
+          <p><strong>Personas:</strong> Lakshmi/Anjali (incoming).</p>
+          <p><strong>Workflows:</strong> F26, F27.</p>
+          <p><strong>Entities / routes / tables:</strong> <code>apps/backend/src/lib/handoff-package-composer.ts</code> (new), wires into <code>recordBindingCreated</code> flow, <code>reassignPermanentBinding</code>.</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code>.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-005</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>Admin-web HR portal scaffold</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> Closure §4 + Decision 1. 9 HR workflows are BACKEND_READY but have no HR portal surface (<code>apps/admin-web/app/hr/</code> doesn't exist).</p>
+          <p><strong>Depends on:</strong> F-001, F-002, F-003.</p>
+          <p><strong>Personas:</strong> Kavitha (primary).</p>
+          <p><strong>Workflows:</strong> H-1, H-2, H-3, H-4, H-6, H-7, H-8, H-9, E21, E23, D20/E24 (ack gate).</p>
+          <p><strong>Entities / routes / tables:</strong> <code>apps/admin-web/app/hr/{queue,bindings,seed-review,ack}/*</code> (new), wires to backend bindings + DWI APIs.</p>
+          <p><strong>Verification gate:</strong> Playwright smoke + <code>REAL_DB</code>.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-006</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>Worker mobile app scaffold</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> All 18 Suresh workflows are NOT_STARTED because <code>apps/worker-mobile/</code> doesn't exist. The structurally-invisible-worker problem from audit Round 2.</p>
+          <p><strong>Depends on:</strong> F-001, F-003 (notification dispatcher).</p>
+          <p><strong>Personas:</strong> Suresh (primary).</p>
+          <p><strong>Workflows:</strong> A1, A3, A4 (worker side), C11 (subject), E21 (initiator).</p>
+          <p><strong>Entities / routes / tables:</strong> new <code>apps/worker-mobile/</code> Expo app, auth + home + attendance screens, push setup.</p>
+          <p><strong>Verification gate:</strong> Playwright + <code>REAL_DB</code>.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-007</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>Notification dispatcher</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> Closure Decision 4 + 10 + AI budget alerts (G29). Every notification + digest + alert sits in Outbox today; no channel adapter wired.</p>
+          <p><strong>Depends on:</strong> Backend stability (no specific dep from this list).</p>
+          <p><strong>Personas:</strong> all four (anyone receiving notifications).</p>
+          <p><strong>Workflows:</strong> F26 (W-1/W-2/W-3/W-7), F27 (W-3), E21 leave-status, E24 termination, G29 budget alert, owner monthly digest.</p>
+          <p><strong>Entities / routes / tables:</strong> <code>apps/backend/src/dispatcher/handlers/*</code> (push, sms, whatsapp_out, email adapters), MSG91 webhook wiring.</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> + manual delivery confirmation on dev numbers.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-008</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>Bootstrap-seed migration + HR review UI</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> Closure Decision 6 + responsibility-model pick 8. Onboarding new tenants needs initial bindings; HR must verify them.</p>
+          <p><strong>Depends on:</strong> F-005 (HR portal must exist to show the review surface).</p>
+          <p><strong>Personas:</strong> Kavitha (review), Ravi (sees inferred portfolio at first login).</p>
+          <p><strong>Workflows:</strong> H-6, F26/F27 (after seed correction).</p>
+          <p><strong>Entities / routes / tables:</strong> new migration script, admin-web/hr/seed-review page.</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code>.</p>
+        </div>
+      </details>
+  </section>
+    
+  <section id="change-history" class="control-section">
+    <h2>📜 Change history (last 10 transitions)</h2>
+    <table class="workflow-table">
+      <thead><tr><th>When</th><th>Slice</th><th>Transition</th><th>Commit</th><th>Note</th></tr></thead>
+      <tbody>
+    <tr>
+      <td class="small">2026-05-15 evening</td>
+      <td><code>handoff-control-loop</code></td>
+      <td><code>PLANNED → WIP</code></td>
+      <td><code>_pending_</code></td>
+      <td class="small">This slice builds owner-input + feature-queue + generator extension.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 evening</td>
+      <td><code>dashboard-embed-diagrams</code></td>
+      <td><code>WIP → DONE</code></td>
+      <td><code>`8f11d89`</code></td>
+      <td class="small">Embedded 32 Mermaid diagrams into the HTML dashboard.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 evening</td>
+      <td><code>dashboard-embed-diagrams</code></td>
+      <td><code>AWAITING_APPROVAL → APPROVED</code></td>
+      <td><code>`8f11d89`</code></td>
+      <td class="small">Friend's verification: structural claims real; 2 corrections noted.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 afternoon</td>
+      <td><code>tracker-3-layer-system</code></td>
+      <td><code>WIP → DONE</code></td>
+      <td><code>`03d33dd`, `e222a22`</code></td>
+      <td class="small">Built execution-state + workflow-maps + generated + folder move.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 afternoon</td>
+      <td><code>tracker-3-layer-system</code></td>
+      <td><code>AWAITING_APPROVAL → APPROVED</code></td>
+      <td><code>n/a</code></td>
+      <td class="small">Friend: &quot;much better and directionally correct&quot;.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15 afternoon</td>
+      <td><code>routing-foundation-read-apis</code></td>
+      <td><code>WIP → BLOCKED</code></td>
+      <td><code>`84ae39c`</code></td>
+      <td class="small">Paused mid-flight to build tracker. 4th test + real-DB sweep remaining.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15</td>
+      <td><code>p1.5-future-dated-fix</code></td>
+      <td><code>WIP → APPROVED → DONE</code></td>
+      <td><code>`44a453d`</code></td>
+      <td class="small">Friend caught the endedAt-vs-effectiveUntil bug; fixed + verified.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15</td>
+      <td><code>p1.5-site-supervisor-binding</code></td>
+      <td><code>WIP → APPROVED → DONE</code></td>
+      <td><code>`9c0b3d8`, `a8eed8b`, `fe0f6f4`</code></td>
+      <td class="small">SiteSupervisorBinding table + helpers + 17 real-DB tests green.</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15</td>
+      <td><code>pr2-audit-emit-helpers</code></td>
+      <td><code>WIP → APPROVED → DONE</code></td>
+      <td><code>`f609749`, `ec40813`, `4bb9b2a`</code></td>
+      <td class="small">3 typed audit helpers + 8 real-DB test files (29/29 green).</td>
+    </tr>
+    <tr>
+      <td class="small">2026-05-15</td>
+      <td><code>pr1-layer-1-schema</code></td>
+      <td><code>WIP → APPROVED → DONE</code></td>
+      <td><code>`095c766`, `0dca836`</code></td>
+      <td class="small">Layer 1 core primitives schema (HRPod, Policy, Notification, Digest).</td>
+    </tr></tbody>
+    </table>
+    <p class="source-link small">Source: <a href="../owner-input/change-history.md">handoff/owner-input/change-history.md</a>.</p>
+  </section>
+
     <section id="summary" class="persona">
       <h2>Build-state summary (29 workflows)</h2>
       <div class="summary-grid">
@@ -2350,8 +2638,9 @@
 
     <section class="persona">
       <h2>How this dashboard stays fresh</h2>
-      <p class="small">This file is regenerated from canonical markdown by <code>handoff/scripts/build-handoff-artifacts.mjs</code>. Per execution-state/INDEX.md rule 7: any time canonical sources change, re-run <code>pnpm run handoff:build</code>. Per rule 11: never hand-edit this HTML or the JSON — they are derived artifacts only.</p>
-      <p class="small">If you want to add or change a journey diagram, edit the matching <code>handoff/workflow-maps/&lt;persona&gt;.md</code> file. If you want to record a workflow build-state change, edit the matching <code>handoff/execution-state/&lt;persona&gt;.md</code> row. Then regenerate.</p>
+      <p class="small">Regenerated from canonical markdown by <code>handoff/scripts/build-handoff-artifacts.mjs</code>. Per execution-state/INDEX.md rule 7: any time canonical sources change, re-run <code>pnpm run handoff:build</code>. Per rule 11: never hand-edit this HTML or the JSON — they are derived artifacts only.</p>
+      <p class="small">Auto-regen: <code>.husky/pre-commit</code> rebuilds + stages outputs whenever canonical files are staged. Manual regen: <code>pnpm run handoff:build</code>.</p>
+      <p class="small">Rendering: this HTML runs Mermaid via the jsdelivr CDN. <strong>Where it reliably renders:</strong> any local browser, any static-file server (e.g. <code>python3 -m http.server</code>), GitHub Pages, Vercel/Netlify static deploy. <strong>Where rendering is NOT assumed:</strong> raw GitHub web view of the HTML file (GitHub blob view doesn't reliably execute the module-script that loads Mermaid). The Mermaid <em>markdown</em> files (<code>handoff/workflow-maps/*.md</code>) DO render natively in GitHub web — that's how you'd browse the diagrams from a phone via the GitHub mobile app or web.</p>
     </section>
   </main>
   <script type="module">

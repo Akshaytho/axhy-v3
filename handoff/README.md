@@ -12,15 +12,20 @@ This folder is the **navigation + state** layer. The actual content (specs, plan
 
 ## Files in this folder
 
-| File                       | Purpose                                                                                                                                             | Update cadence                                         |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `README.md` (this file)    | Entry point. Structure, rules, anti-drift, update order, failure modes.                                                                             | Rare — only when the structure or rules change.        |
-| `NEXT_SESSION.md`          | 2-minute resume file for AI sessions. Approved-vs-Draft summary + next concrete action + what NOT to do.                                            | Every phase shift; keep it short.                      |
-| `STATUS.md`                | Living description of the project's current state + Authority Snapshot.                                                                             | Every major phase shift.                               |
-| `execution-state/INDEX.md` | **Per-workflow build state.** Persona-by-persona + combined. The workflow-truth surface — must be updated before/at-pause/after every coding slice. | Every slice (3 triggers per slice).                    |
-| `ROADMAP.md`               | What's planned next.                                                                                                                                | When the next phase is named.                          |
-| `PROMOTION_CHECKLIST.md`   | Mandatory checklist for Draft → Active promotions. Run end-to-end or do not promote.                                                                | Rare — only when the promotion process itself changes. |
-| `done/`                    | Archive subfolder. Each completed phase gets one Markdown file using the standardised template.                                                     | Append a new file when a phase closes.                 |
+| File                       | Purpose                                                                                                                                             | Update cadence                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `README.md` (this file)    | Entry point. Structure, rules, anti-drift, update order, failure modes.                                                                             | Rare — only when the structure or rules change.                |
+| `NEXT_SESSION.md`          | 2-minute resume file for AI sessions. Approved-vs-Draft summary + next concrete action + what NOT to do.                                            | Every phase shift; keep it short.                              |
+| `STATUS.md`                | Living description of the project's current state + Authority Snapshot.                                                                             | Every major phase shift.                                       |
+| `execution-state/INDEX.md` | **Per-workflow build state.** Persona-by-persona + combined. The workflow-truth surface — must be updated before/at-pause/after every coding slice. | Every slice (3 triggers per slice).                            |
+| `workflow-maps/INDEX.md`   | **Workflow architecture maps.** Journey flowcharts + cross-persona sequences + ER diagram.                                                          | Whenever flow truth changes (new step, new branch).            |
+| `owner-input/INDEX.md`     | **Control loop layer.** Owner notes + approvals + active-slice + decisions log + change history. NEW 2026-05-15 evening.                            | Every slice transition + every owner action.                   |
+| `feature-queue/INDEX.md`   | **Upcoming-slice queue.** Ordered list of next slices with scope per item.                                                                          | When a slice queues, dequeues, blocks, or finishes.            |
+| `generated/`               | **Read-only outputs** — `app-workflow-dashboard.html` + `app-workflow-state.json`. Regenerated automatically when canonical sources are staged.     | Auto via pre-commit hook; manual via `pnpm run handoff:build`. |
+| `scripts/`                 | The generator. Read-only at runtime; edited only when output schema changes.                                                                        | Rare.                                                          |
+| `ROADMAP.md`               | What's planned next.                                                                                                                                | When the next phase is named.                                  |
+| `PROMOTION_CHECKLIST.md`   | Mandatory checklist for Draft → Active promotions. Run end-to-end or do not promote.                                                                | Rare — only when the promotion process itself changes.         |
+| `done/`                    | Archive subfolder. Each completed phase gets one Markdown file using the standardised template.                                                     | Append a new file when a phase closes.                         |
 
 ## Where actual content lives
 
@@ -34,16 +39,28 @@ The handoff folder does **not** duplicate content. It points to:
 
 ## How to use this folder
 
-### Starting a new session (or onboarding)
+### Starting a new session (or onboarding) — MANDATORY READ ORDER
 
 1. Read `NEXT_SESSION.md` — 2-min resume.
 2. Read `STATUS.md` — full state.
-3. Read `execution-state/INDEX.md` — workflow-truth legend + rules. **Mandatory.**
-4. Read the persona file(s) in `execution-state/` that the next slice touches, plus `combined.md` if the slice spans personas.
-5. Read `ROADMAP.md` — what's next.
-6. Read whichever specs/plans/audits `STATUS.md` points you to. Nothing else.
+3. Read `execution-state/INDEX.md` — workflow-truth legend + 22 rules.
+4. Read `workflow-maps/INDEX.md` — diagram conventions.
+5. **Read `owner-input/INDEX.md` — control-loop rules (NEW 2026-05-15 evening).**
+6. **Read `owner-input/pending-notes.md` — scan for NEW notes. Acknowledge in your first surface message ("0 NEW notes" or "N NEW notes — first one says…").**
+7. **Read `owner-input/pending-approvals.md` — confirm no AWAITING_APPROVAL slice is blocking the intended next slice (rule 17).**
+8. **Read `owner-input/active-slice.md` — what is in flight right now.**
+9. **Read `feature-queue/INDEX.md` — what's next + dependencies.**
+10. Read the persona file(s) in both `execution-state/` and `workflow-maps/` that the slice touches.
+11. Read `combined.md` + `combined-system.md` if the slice spans personas.
+12. Read `ROADMAP.md` — phase-level forward look.
+13. Read whichever specs/plans/audits `STATUS.md` points you to. Nothing else.
 
-**If `execution-state/` and `STATUS.md` / `NEXT_SESSION.md` disagree about a workflow's state: STOP. Reconcile before any code. See `execution-state/INDEX.md` failure-mode rule 5.**
+**Reconciliation rules:**
+
+- If `execution-state/` and `STATUS.md` / `NEXT_SESSION.md` disagree → STOP. Reconcile before any code (execution-state INDEX rule 5).
+- If `owner-input/` and the dashboard disagree → markdown wins; regenerate (rule 12).
+- If there is a NEW owner note that affects the intended slice → STOP. Acknowledge it first (rule 16).
+- If there is an AWAITING_APPROVAL slice → STOP. No new slice starts until the prior one is approved (rule 17).
 
 ### Finishing a phase
 

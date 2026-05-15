@@ -7,3 +7,28 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
 pnpm exec lint-staged
+
+# -----------------------------------------------------------------------------
+# Auto-regen handoff outputs when canonical handoff sources are staged.
+# Per handoff/execution-state/INDEX.md rules 7 + 8 + 13.
+# -----------------------------------------------------------------------------
+STAGED_CANONICAL=$(git diff --cached --name-only -- \
+  'handoff/execution-state/*.md' \
+  'handoff/workflow-maps/*.md' \
+  'handoff/owner-input/*.md' \
+  'handoff/feature-queue/*.md' \
+  'handoff/README.md' \
+  'handoff/STATUS.md' \
+  'handoff/NEXT_SESSION.md' 2>/dev/null)
+
+if [ -n "$STAGED_CANONICAL" ]; then
+  echo "[handoff] canonical sources staged — regenerating outputs..."
+  pnpm run handoff:build >/dev/null 2>&1
+  HBSTATUS=$?
+  if [ "$HBSTATUS" -ne 0 ]; then
+    echo "[handoff] handoff:build FAILED (exit $HBSTATUS). Aborting commit."
+    exit "$HBSTATUS"
+  fi
+  git add handoff/generated/app-workflow-dashboard.html handoff/generated/app-workflow-state.json
+  echo "[handoff] regenerated + staged handoff/generated/"
+fi

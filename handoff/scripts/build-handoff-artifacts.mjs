@@ -35,7 +35,17 @@ const repoRoot = resolve(here, '..', '..');
 const handoff = resolve(repoRoot, 'handoff');
 const stateDir = resolve(handoff, 'execution-state');
 const mapsDir = resolve(handoff, 'workflow-maps');
+const ownerDir = resolve(handoff, 'owner-input');
+const queueDir = resolve(handoff, 'feature-queue');
 const outDir = resolve(handoff, 'generated');
+
+function safeRead(path) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return '';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Git metadata
@@ -49,9 +59,15 @@ function git(cmd) {
 }
 const sourceCommit = git('rev-parse HEAD');
 const sourceBranch = git('rev-parse --abbrev-ref HEAD');
-const lastCanonicalCommit = git(
-  'log -1 --format=%H -- handoff/execution-state handoff/workflow-maps',
-);
+// Canonical = the markdown sources of truth (NOT the generated outputs).
+const CANONICAL_PATHS = 'handoff/execution-state handoff/workflow-maps handoff/owner-input handoff/feature-queue handoff/README.md handoff/STATUS.md handoff/NEXT_SESSION.md';
+const GENERATED_PATHS = 'handoff/generated';
+const lastCanonicalCommit = git(`log -1 --format=%H -- ${CANONICAL_PATHS}`);
+const lastGeneratedCommit = git(`log -1 --format=%H -- ${GENERATED_PATHS}`);
+const lastCanonicalCommitDate = Number(git(`log -1 --format=%ct -- ${CANONICAL_PATHS}`)) || 0;
+const lastGeneratedCommitDate = Number(git(`log -1 --format=%ct -- ${GENERATED_PATHS}`)) || 0;
+// Uncommitted canonical changes are the strongest stale signal.
+const uncommittedCanonical = git(`diff --name-only HEAD -- ${CANONICAL_PATHS}`);
 
 // ---------------------------------------------------------------------------
 // Persona registry
@@ -303,9 +319,24 @@ function activeSlice() {
   }
 }
 
-function isStale() {
-  return Boolean(lastCanonicalCommit) && Boolean(sourceCommit) && lastCanonicalCommit !== sourceCommit;
+/**
+ * Stale = outputs are older than canonical sources.
+ *
+ * After regeneration + commit, outputs will be in the most recent commit and
+ * canonical will be in an earlier commit. So we compare commit DATES, not hashes.
+ * If outputs were never committed, only uncommitted canonical changes mark stale.
+ */
+function staleReason() {
+  if (uncommittedCanonical) return `Uncommitted canonical changes:\n${uncommittedCanonical}`;
+  if (!lastCanonicalCommit) return null;
+  if (!lastGeneratedCommit) return null; // first generation; not stale
+  if (lastCanonicalCommitDate > lastGeneratedCommitDate) {
+    return `Canonical commit (${lastCanonicalCommit.slice(0, 8)}) is newer than last generated-outputs commit (${lastGeneratedCommit.slice(0, 8)}).`;
+  }
+  return null;
 }
+const staleNote = staleReason();
+const isStale = Boolean(staleNote);
 
 // ---------------------------------------------------------------------------
 // Build personas (state + maps merged)
@@ -338,6 +369,117 @@ const dataModel = parseDataModel();
 const generatedAt = new Date().toISOString();
 
 // ---------------------------------------------------------------------------
+// Control-loop parsers (Layer 4 — owner-input + feature-queue)
+// ---------------------------------------------------------------------------
+
+/** Parse pending-notes.md. Each note is a `### YYYY-MM-DD ...` block with
+ *  Status / Affects / Note / Owner-suggested next action fields. */
+function parsePendingNotes() {
+  const text = safeRead(resolve(ownerDir, 'pending-notes.md'));
+  const sections = text.split(/\n###\s+/).slice(1);
+  const notes = [];
+  for (const s of sections) {
+    const title = s.split('\n')[0].trim();
+    const status = (s.match(/-\s*\*\*Status:\*\*\s*([A-Z_]+)/) || [, ''])[1];
+    if (!status) continue; // header sections like "Template" are skipped
+    const affects = (s.match(/-\s*\*\*Affects:\*\*\s*(.+)/) || [, ''])[1].trim();
+    const note = (s.match(/-\s*\*\*Note:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
+    const next = (s.match(/-\s*\*\*Owner-suggested next action:\*\*\s*(.+)/) || [, ''])[1].trim();
+    notes.push({ title, status, affects, note, next });
+  }
+  const byStatus = { NEW: [], ACKNOWLEDGED: [], APPLIED: [], DEFERRED: [] };
+  for (const n of notes) {
+    if (byStatus[n.status]) byStatus[n.status].push(n);
+  }
+  return { notes, byStatus };
+}
+
+/** Parse pending-approvals.md. Each `### Slice: \`<slice-id>\`` becomes an entry. */
+function parsePendingApprovals() {
+  const text = safeRead(resolve(ownerDir, 'pending-approvals.md'));
+  const sections = text.split(/\n###\s+Slice:\s*/).slice(1);
+  const items = [];
+  for (const s of sections) {
+    const id = (s.match(/^`([^`]+)`/) || [, ''])[1];
+    if (!id) continue;
+    const status = (s.match(/-\s*\*\*Status:\*\*\s*`?([A-Z_]+)`?/) || [, ''])[1];
+    const branch = (s.match(/-\s*\*\*Branch:\*\*\s*`?([^`\n]+)`?/) || [, ''])[1].trim();
+    const wipCommit = (s.match(/-\s*\*\*WIP commit:\*\*\s*`?([a-f0-9]{7,40})/) || [, ''])[1];
+    const workflowIds = (s.match(/-\s*\*\*Workflow IDs affected:\*\*\s*(.+)/) || [, ''])[1].trim();
+    const built = (s.match(/-\s*\*\*What was built:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
+    const notDone = (s.match(/-\s*\*\*What's NOT done:\*\*\s*(.+(?:\n(?!- \*\*)[^\n]*)*)/) || [, ''])[1].trim();
+    const ownerDecision = (s.match(/-\s*\*\*Owner decision:\*\*\s*(.+)/) || [, ''])[1].trim();
+    items.push({ id, status, branch, wipCommit, workflowIds, built, notDone, ownerDecision });
+  }
+  return items;
+}
+
+/** Parse active-slice.md — the top "## Current" table. */
+function parseActiveSlice() {
+  const text = safeRead(resolve(ownerDir, 'active-slice.md'));
+  const rows = {};
+  const tableMatch = text.match(/##\s+Current\s*\n([\s\S]+?)(?=\n##\s|\n---|\Z)/);
+  if (!tableMatch) return {};
+  for (const line of tableMatch[1].split('\n')) {
+    const m = line.match(/^\|\s*\*\*([^*]+)\*\*\s*\|\s*(.+?)\s*\|$/);
+    if (m) rows[m[1].trim()] = m[2].trim();
+  }
+  return rows;
+}
+
+/** Parse change-history.md last 10 rows. */
+function parseChangeHistory() {
+  const text = safeRead(resolve(ownerDir, 'change-history.md'));
+  const rows = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\|\s*([^|]+?)\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*(.+?)\s*\|$/);
+    if (m && !m[1].toLowerCase().includes('when')) {
+      rows.push({ when: m[1], slice: m[2], transition: m[3], commit: m[4], note: m[5] });
+    }
+    if (rows.length >= 10) break;
+  }
+  return rows;
+}
+
+/** Parse feature-queue/INDEX.md — each `### F-NNN — title` block. */
+function parseFeatureQueue() {
+  const text = safeRead(resolve(queueDir, 'INDEX.md'));
+  const sections = text.split(/\n###\s+/).slice(1);
+  const features = [];
+  for (const s of sections) {
+    const headerLine = s.split('\n')[0].trim();
+    const idMatch = headerLine.match(/^(F-\d+)\s+—\s+(.+)/);
+    if (!idMatch) continue;
+    const id = idMatch[1];
+    const title = idMatch[2];
+    const get = (label) => {
+      const re = new RegExp(`-\\s*\\*\\*${label}:\\*\\*\\s*(.+(?:\\n(?!- \\*\\*)[^\\n]*)*)`, 'm');
+      const m = s.match(re);
+      return m ? m[1].trim() : '';
+    };
+    const status = (s.match(/-\s*\*\*status:\*\*\s*`?([A-Z_]+)`?/i) || [, ''])[1];
+    features.push({
+      id,
+      title,
+      why: get('why'),
+      depends_on: get('depends on'),
+      personas: get('personas touched'),
+      workflows: get('workflows touched'),
+      entities: get('entities/routes/tables touched'),
+      verification: get('expected verification gate'),
+      status,
+    });
+  }
+  return features;
+}
+
+const pendingNotes = parsePendingNotes();
+const pendingApprovals = parsePendingApprovals();
+const activeSliceFields = parseActiveSlice();
+const changeHistory = parseChangeHistory();
+const featureQueue = parseFeatureQueue();
+
+// ---------------------------------------------------------------------------
 // JSON output
 // ---------------------------------------------------------------------------
 const json = {
@@ -347,9 +489,7 @@ const json = {
     source_commit: sourceCommit,
     source_branch: sourceBranch,
     last_canonical_commit: lastCanonicalCommit,
-    staleness_warning: isStale()
-      ? 'Generated output may be stale — canonical sources updated more recently than this generation.'
-      : null,
+    staleness_warning: isStale ? staleNote : null,
     active_slice: activeSlice(),
     generated_from: [
       'handoff/execution-state/*.md',
@@ -382,6 +522,21 @@ const json = {
     sequence_diagrams: sequences.map((s) => ({ num: s.num, title: s.title, has_diagram: Boolean(s.diagram) })),
   },
   data_model_has_er: Boolean(dataModel.erDiagram),
+  control_loop: {
+    active_slice: activeSliceFields,
+    pending_approvals: pendingApprovals,
+    pending_notes: {
+      counts: {
+        NEW: pendingNotes.byStatus.NEW.length,
+        ACKNOWLEDGED: pendingNotes.byStatus.ACKNOWLEDGED.length,
+        APPLIED: pendingNotes.byStatus.APPLIED.length,
+        DEFERRED: pendingNotes.byStatus.DEFERRED.length,
+      },
+      notes: pendingNotes.notes,
+    },
+    feature_queue: featureQueue,
+    change_history: changeHistory,
+  },
 };
 writeFileSync(resolve(outDir, 'app-workflow-state.json'), JSON.stringify(json, null, 2) + '\n');
 
@@ -444,6 +599,142 @@ function workflowTable(workflows, mapsHref) {
       <tbody>${rows}</tbody>
     </table>
     ${mapsHref ? `<p class="source-link">Edit canonical source: <a href="${mapsHref}">${mapsHref}</a></p>` : ''}`;
+}
+
+function statusBadge(value) {
+  const colors = {
+    PLANNED: '#999',
+    WIP: '#1a73e8',
+    AWAITING_APPROVAL: '#f5b400',
+    APPROVED: '#1e8e3e',
+    BLOCKED: '#8e24aa',
+    DONE: '#0b6624',
+    QUEUED: '#666',
+    READY: '#1e8e3e',
+    NEW: '#e53935',
+    ACKNOWLEDGED: '#1a73e8',
+    APPLIED: '#1e8e3e',
+    DEFERRED: '#999',
+  };
+  const fg = '#fff';
+  const bg = colors[value] || '#bdbdbd';
+  return `<span class="badge" style="background:${bg};color:${fg};">${escape(value || '—')}</span>`;
+}
+
+function activeSliceSection() {
+  if (!activeSliceFields || Object.keys(activeSliceFields).length === 0) return '';
+  const rows = Object.entries(activeSliceFields).map(([k, v]) => {
+    const isStatus = k.toLowerCase().includes('status');
+    const cell = isStatus ? statusBadge(v.replace(/`/g, '').trim()) : renderInline(v);
+    return `<tr><th>${escape(k)}</th><td>${cell}</td></tr>`;
+  }).join('');
+  return `
+  <section id="active-slice" class="active-slice-callout">
+    <h2>🟦 Current slice focus</h2>
+    <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
+    <table class="kv-table">${rows}</table>
+  </section>`;
+}
+
+function pendingNotesSection() {
+  const { byStatus, notes } = pendingNotes;
+  const newCount = byStatus.NEW.length;
+  const banner = newCount > 0
+    ? `<div class="note-banner urgent">⚠ ${newCount} NEW owner note${newCount === 1 ? '' : 's'} — must be acknowledged before any slice starts (rule 16 + 21).</div>`
+    : `<div class="note-banner ok">No NEW owner notes. Confirm at session start: "0 NEW notes" (rule 21).</div>`;
+  const renderNotes = (group, label) => group.length === 0 ? '' : `
+    <h3>${label} (${group.length})</h3>
+    ${group.map((n) => `
+      <div class="note">
+        <div class="note-head">${statusBadge(n.status)} <strong>${escape(n.title)}</strong></div>
+        ${n.affects ? `<p class="small"><strong>Affects:</strong> ${escape(n.affects)}</p>` : ''}
+        ${n.note ? `<p>${renderInline(n.note)}</p>` : ''}
+        ${n.next ? `<p class="small"><strong>Owner-suggested next:</strong> ${renderInline(n.next)}</p>` : ''}
+      </div>`).join('')}`;
+  return `
+  <section id="owner-notes" class="control-section">
+    <h2>📝 Owner notes</h2>
+    ${banner}
+    ${renderNotes(byStatus.NEW, 'NEW — needs acknowledgment')}
+    ${renderNotes(byStatus.ACKNOWLEDGED, 'ACKNOWLEDGED')}
+    ${renderNotes(byStatus.APPLIED, 'APPLIED')}
+    ${renderNotes(byStatus.DEFERRED, 'DEFERRED')}
+    <p class="source-link small">
+      Source of truth: <a href="../owner-input/pending-notes.md">handoff/owner-input/pending-notes.md</a>.
+      To add a note: append to that file using the template at the top.
+    </p>
+  </section>`;
+}
+
+function approvalsSection() {
+  if (pendingApprovals.length === 0) {
+    return `
+    <section id="approvals" class="control-section">
+      <h2>✅ Approval gate</h2>
+      <p>No pending approvals.</p>
+    </section>`;
+  }
+  return `
+  <section id="approvals" class="control-section">
+    <h2>✅ Approval gate</h2>
+    <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
+    ${pendingApprovals.map((a) => `
+      <div class="approval">
+        <div class="approval-head">${statusBadge(a.status)} <strong><code>${escape(a.id)}</code></strong></div>
+        ${a.branch ? `<p class="small"><strong>Branch:</strong> <code>${escape(a.branch)}</code></p>` : ''}
+        ${a.wipCommit ? `<p class="small"><strong>WIP commit:</strong> <code>${escape(a.wipCommit)}</code></p>` : ''}
+        ${a.workflowIds ? `<p class="small"><strong>Workflows affected:</strong> ${escape(a.workflowIds)}</p>` : ''}
+        ${a.built ? `<p><strong>Built:</strong> ${renderInline(a.built)}</p>` : ''}
+        ${a.notDone ? `<p><strong>Not done:</strong> ${renderInline(a.notDone)}</p>` : ''}
+        ${a.ownerDecision ? `<p class="small"><strong>Owner decision:</strong> <em>${renderInline(a.ownerDecision)}</em></p>` : ''}
+      </div>`).join('')}
+  </section>`;
+}
+
+function featureQueueSection() {
+  if (featureQueue.length === 0) return '';
+  return `
+  <section id="feature-queue" class="control-section">
+    <h2>📋 Feature queue (upcoming slices)</h2>
+    <p class="small">In priority order. Top = next. Click any item to expand its full scope. Source: <a href="../feature-queue/INDEX.md">handoff/feature-queue/INDEX.md</a>.</p>
+    ${featureQueue.map((f) => `
+      <details class="feature">
+        <summary>
+          <code>${escape(f.id)}</code>
+          ${statusBadge(f.status)}
+          <strong>${escape(f.title)}</strong>
+        </summary>
+        <div class="feature-body">
+          ${f.why ? `<p><strong>Why:</strong> ${renderInline(f.why)}</p>` : ''}
+          ${f.depends_on ? `<p><strong>Depends on:</strong> ${renderInline(f.depends_on)}</p>` : ''}
+          ${f.personas ? `<p><strong>Personas:</strong> ${escape(f.personas)}</p>` : ''}
+          ${f.workflows ? `<p><strong>Workflows:</strong> ${escape(f.workflows)}</p>` : ''}
+          ${f.entities ? `<p><strong>Entities / routes / tables:</strong> ${renderInline(f.entities)}</p>` : ''}
+          ${f.verification ? `<p><strong>Verification gate:</strong> ${renderInline(f.verification)}</p>` : ''}
+        </div>
+      </details>`).join('')}
+  </section>`;
+}
+
+function changeHistorySection() {
+  if (changeHistory.length === 0) return '';
+  const rows = changeHistory.map((r) => `
+    <tr>
+      <td class="small">${escape(r.when)}</td>
+      <td><code>${escape(r.slice)}</code></td>
+      <td><code>${escape(r.transition)}</code></td>
+      <td><code>${escape(r.commit)}</code></td>
+      <td class="small">${renderInline(r.note)}</td>
+    </tr>`).join('');
+  return `
+  <section id="change-history" class="control-section">
+    <h2>📜 Change history (last ${changeHistory.length} transitions)</h2>
+    <table class="workflow-table">
+      <thead><tr><th>When</th><th>Slice</th><th>Transition</th><th>Commit</th><th>Note</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="source-link small">Source: <a href="../owner-input/change-history.md">handoff/owner-input/change-history.md</a>.</p>
+  </section>`;
 }
 
 function personaSection(key, p) {
@@ -640,6 +931,31 @@ const html = `<!DOCTYPE html>
     .current-slice { background: rgba(26,115,232,0.08); border-left: 4px solid #1a73e8;
                      padding: 12px 16px; margin: 12px 0; border-radius: 4px; }
     .current-slice h3 { margin-top: 0; color: #1a73e8; }
+    .active-slice-callout { background: rgba(26,115,232,0.10); border: 2px solid #1a73e8;
+                             border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .active-slice-callout h2 { color: #1a73e8; margin-top: 0; }
+    .control-section { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+                       padding: 20px; margin-bottom: 24px; }
+    .nav-control { background: var(--bg); border: 1px solid var(--border); }
+    .nav-sep { color: var(--muted); padding: 4px 4px; }
+    .note-banner { padding: 10px 14px; border-radius: 4px; font-size: 13px; margin: 8px 0; }
+    .note-banner.urgent { background: rgba(229,57,53,0.10); border-left: 4px solid #e53935; color: #c62828; font-weight: 600; }
+    .note-banner.ok { background: rgba(30,142,62,0.08); border-left: 4px solid #1e8e3e; }
+    .note { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+            padding: 12px; margin: 8px 0; }
+    .note-head { font-size: 14px; margin-bottom: 6px; }
+    .approval { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+                padding: 12px; margin: 8px 0; }
+    .approval-head { font-size: 14px; margin-bottom: 6px; }
+    details.feature { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+                       padding: 10px 12px; margin: 6px 0; }
+    details.feature summary { cursor: pointer; font-size: 14px; padding: 4px 0; }
+    details.feature[open] summary { margin-bottom: 8px; }
+    .feature-body p { font-size: 13px; margin: 4px 0; }
+    .kv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .kv-table th { text-align: left; padding: 6px 12px; width: 200px;
+                   border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 600; }
+    .kv-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); }
     .workflow-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
     .workflow-table th, .workflow-table td { text-align: left; padding: 6px 10px;
                                              border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -664,16 +980,28 @@ const html = `<!DOCTYPE html>
       <span>Commit <code>${sourceCommit.slice(0, 8)}</code></span>
       <span>Branch <code>${sourceBranch}</code></span>
       <span>Active slice: <strong>${escape(activeSlice())}</strong></span>
-      ${isStale() ? `<span class="stale">⚠ STALE — re-run <code>pnpm run handoff:build</code></span>` : ''}
+      ${isStale ? `<span class="stale">⚠ STALE — re-run <code>pnpm run handoff:build</code></span>` : ''}
     </div>
   </header>
   <nav>
+    <a href="#active-slice" class="nav-control">🟦 Current slice</a>
+    <a href="#owner-notes" class="nav-control">📝 Notes</a>
+    <a href="#approvals" class="nav-control">✅ Approvals</a>
+    <a href="#feature-queue" class="nav-control">📋 Queue</a>
+    <a href="#change-history" class="nav-control">📜 History</a>
+    <span class="nav-sep">·</span>
     <a href="#summary">Summary</a>
     ${personaFiles.map((p) => `<a href="#persona-${p.key}">${escape(p.name)}</a>`).join('')}
     <a href="#combined">Cross-persona</a>
     <a href="#data-model">Data model</a>
   </nav>
   <main>
+    ${activeSliceSection()}
+    ${pendingNotesSection()}
+    ${approvalsSection()}
+    ${featureQueueSection()}
+    ${changeHistorySection()}
+
     <section id="summary" class="persona">
       <h2>Build-state summary (29 workflows)</h2>
       <div class="summary-grid">
@@ -711,8 +1039,9 @@ const html = `<!DOCTYPE html>
 
     <section class="persona">
       <h2>How this dashboard stays fresh</h2>
-      <p class="small">This file is regenerated from canonical markdown by <code>handoff/scripts/build-handoff-artifacts.mjs</code>. Per execution-state/INDEX.md rule 7: any time canonical sources change, re-run <code>pnpm run handoff:build</code>. Per rule 11: never hand-edit this HTML or the JSON — they are derived artifacts only.</p>
-      <p class="small">If you want to add or change a journey diagram, edit the matching <code>handoff/workflow-maps/&lt;persona&gt;.md</code> file. If you want to record a workflow build-state change, edit the matching <code>handoff/execution-state/&lt;persona&gt;.md</code> row. Then regenerate.</p>
+      <p class="small">Regenerated from canonical markdown by <code>handoff/scripts/build-handoff-artifacts.mjs</code>. Per execution-state/INDEX.md rule 7: any time canonical sources change, re-run <code>pnpm run handoff:build</code>. Per rule 11: never hand-edit this HTML or the JSON — they are derived artifacts only.</p>
+      <p class="small">Auto-regen: <code>.husky/pre-commit</code> rebuilds + stages outputs whenever canonical files are staged. Manual regen: <code>pnpm run handoff:build</code>.</p>
+      <p class="small">Rendering: this HTML runs Mermaid via the jsdelivr CDN. <strong>Where it reliably renders:</strong> any local browser, any static-file server (e.g. <code>python3 -m http.server</code>), GitHub Pages, Vercel/Netlify static deploy. <strong>Where rendering is NOT assumed:</strong> raw GitHub web view of the HTML file (GitHub blob view doesn't reliably execute the module-script that loads Mermaid). The Mermaid <em>markdown</em> files (<code>handoff/workflow-maps/*.md</code>) DO render natively in GitHub web — that's how you'd browse the diagrams from a phone via the GitHub mobile app or web.</p>
     </section>
   </main>
   <script type="module">
@@ -769,4 +1098,4 @@ console.log(`data-model ER diagram: ${dataModel.erDiagram ? 'yes' : 'no'}`);
 console.log(`total Mermaid diagrams embedded in HTML: ${totalDiagrams}`);
 console.log(`source commit: ${sourceCommit.slice(0, 8)} on ${sourceBranch}`);
 console.log(`active slice: ${activeSlice()}`);
-if (isStale()) console.log('⚠ STALE — canonical sources newer than current HEAD');
+if (isStale) console.log('⚠ STALE — canonical sources newer than current HEAD');
