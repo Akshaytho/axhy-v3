@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T16:21:46.955Z",
-    "generated_against_head": "abed07b390fdc13445a644eb70edf7c38f30b183",
+    "last_updated_at": "2026-05-15T16:24:10.759Z",
+    "generated_against_head": "c5cb5a46db713162c011aaa49b98d1be862c966e",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "abed07b390fdc13445a644eb70edf7c38f30b183",
+    "last_canonical_commit_at_gen": "c5cb5a46db713162c011aaa49b98d1be862c966e",
     "staleness_warning": null,
     "active_slice": "routing-foundation-read-apis (F-001) — most-recent activity; no new WIP slice yet (rule 18 honoured) · APPROVED — friend's verification 2026-05-15 evening; no WIP slice in flight; F-002 queued as next, scope under review",
     "generated_from": [

@@ -33,7 +33,7 @@ These reads are now ready to consume F-002's writes round-trip.
 
 ## Pointer to F-002 scope
 
-The scope artifact lives at `handoff/feature-queue/scopes/F-002.md` (new in this commit). Friend reviews + approves / change-requests / holds via the standard approval-word convention before any F-002 code lands.
+The scope artifact lives at `handoff/feature-queue/scopes/F-002.md` (landed in commit `9709b5d`). Friend reviews + approves / change-requests / holds via the standard approval-word convention before any F-002 code lands.
 
 ## Hash-truth convention (inherited from control-loop slice)
 
