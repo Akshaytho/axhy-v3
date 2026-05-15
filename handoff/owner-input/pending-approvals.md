@@ -20,7 +20,29 @@
 
 ## Currently awaiting approval
 
-_None._
+### Slice: `routing-foundation-read-apis` (F-001) — AWAITING_APPROVAL 2026-05-15 evening
+
+- **Status:** `AWAITING_APPROVAL`
+- **Branch:** `feat/layer-1-core-primitives`
+- **Last landed commit:** `7e07a24` — `test(routing): point-in-time effective-responsibility (4th test file)`
+- **Slice commits (oldest → newest):** `84ae39c` (WIP: helpers + routes + 3 of 4 tests) · `429886d` (fix: 2 route-test `issueAccessToken` calls — await + availableRoles + locale) · `7e07a24` (test: 4th test file, 3 point-in-time cases)
+- **Workflow IDs affected:** D17 (read side), F26 (read side), F27 (read side)
+- **Verification gate cleared:** `REAL_DB`. Fresh local Postgres 16 (Docker container `axhy-test-pg` on port 55432), `axhy_test` database, all 10 migrations applied via `prisma migrate deploy` (20260507 → 20260516). All 4 binding-routing test files green in one run: 8 helper + 5 sites-route + 7 decisions-route + 3 point-in-time = **23/23 cases**.
+- **Decision needed:**
+  1. Approve / change-request / hold the slice itself.
+  2. Decide the WIP-split deviation. Friend's directive said "split WIP `84ae39c` into 3 clean commits (helpers / routes / tests)". A true rebase-split would have rewritten ~12 commit hashes already cited in `change-history.md` and `pending-approvals.md` (the just-locked control-loop slice). Chose to land the completion as 2 additive commits on top instead — slice is reviewable as 3 separately-themed commits without invalidating the handoff machinery. If you prefer the actual rebase-split, easy to redo now before approval.
+- **Reproduction (for friend's spot-check):**
+  ```
+  docker exec axhy-test-pg pg_isready -U postgres
+  cd apps/backend
+  DATABASE_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
+  AXHY_DB_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
+  pnpm exec vitest run \
+    test/effective-responsibility-helper.test.ts \
+    test/sites-effective-supervisor-route.test.ts \
+    test/decisions-proposed-for-me-route.test.ts \
+    test/effective-responsibility-point-in-time.test.ts
+  ```
 
 ---
 

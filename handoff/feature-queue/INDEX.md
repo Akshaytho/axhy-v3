@@ -46,7 +46,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, F26 (read), F27 (read).
 - **entities/routes/tables touched:** `apps/backend/src/lib/effective-responsibility.ts` (new), `apps/backend/src/routes/decisions.ts` (new), `apps/backend/src/routes/sites.ts` (+1 endpoint), `apps/backend/test/*` (+4 files).
 - **expected verification gate:** `REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).
-- **status:** `WIP` (resumed from 84ae39c; active in `owner-input/active-slice.md`).
+- **status:** `AWAITING_APPROVAL` (slice complete; 23/23 tests green on fresh local Postgres 16; surfaced in `owner-input/pending-approvals.md`).
 
 ### F-002 — D17 SupervisorDecision writer
 
