@@ -20,7 +20,116 @@
 
 ## Currently awaiting approval
 
-### Slice: `chat-writes-proposed-decisions` (F-002 — round-2 R2b-iii remediation) — AWAITING_APPROVAL 2026-05-16
+### Slice: `chat-writes-proposed-decisions` (F-002 — round 3 review) — CHANGES_REQUESTED 2026-05-16
+
+- **Status:** `CHANGES_REQUESTED` (round 3). Friend's review of the round-2 AWAITING_APPROVAL packet at HEAD `fe927b2` found 2 smaller bugs introduced BY the round-2 refactor. Separately, owner has proposed a business-rule simplification (same-day supervisor freeze) that pairs with the fixes. Round-2's core transaction design is right; the cleanup is at the edges (validation on the new path + one test that's still writer-level).
+- **Branch:** `feat/layer-1-core-primitives`
+- **Last landed commit:** `fe927b2` — `docs(handoff): F-002 round-2 R2b-iii remediation → AWAITING_APPROVAL`.
+- **Friend's verbatim:** "the atomicity direction is much better now, but I would send this back for the validation regression and the missing full-route stale-auth proof before approving."
+
+#### The 2 round-3 findings (rulebook citations)
+
+| #   | Finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Rule    | Severity                           | Location                                                                                                         |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| P1  | The round-2 refactor (F-002.15) moved `/chat/apply` off `app.inject` for mark_absent / leave / swap / create_assignment. Before the refactor, the inject'd routes ran their full Zod schemas (`MarkAbsentInput`, `CreateLeaveRequestInput`, `CreateSwapRequestInput`, `CreateAssignmentInput`) — including refine-rule checks like "swap cannot have same fromWorkerId and toWorkerId" (`packages/shared-schema/src/zod/supervisor.ts:266`). After the refactor, only `CreateAssignmentInputSchema` is parsed in `/chat/apply` (chat.ts:808); the other 3 branches cast `body.toolInput` and skip the schema. Chat path now accepts invalid input that the direct route would 400. | P5      | regression — validation drift      | `apps/backend/src/routes/chat.ts:846-1000` (mark_absent / leave / swap branches all skip the full route schema). |
+| P2  | F-002.11's R2a "stale authority" test (`chat-apply-route-concurrency.test.ts:293`) directly calls `preCheckApply` + `commitApply` to simulate the binding change between phases. It does NOT go through `/chat/apply`. The round-2 packet claimed "stale authority cannot produce domain side effect without lifecycle commit" was proven on the real route path — that claim is overstated. The writer functions ARE proven safe; the route orchestration around them is only proven by transitive reasoning (preCheck + service + commit share one tx; the writer test proves the commit half).                                                                                  | P6 + P8 | test overclaim — orchestration gap | `apps/backend/test/chat-apply-route-concurrency.test.ts:293`.                                                    |
+
+#### Verified against the code
+
+- P1: `grep "safeParse" apps/backend/src/routes/chat.ts` returns 5 matches; only `CreateChatMessageInput`, `ProposeLivingDocUpdateInput`, `ApplyDecisionCardInput`, and `CreateAssignmentInputSchema` are parsed in chat.ts. `MarkAbsentInput` / `CreateLeaveRequestInput` / `CreateSwapRequestInput` are NOT — confirmed bypass.
+- P2: the test at line 293 calls `preCheckApply` then `commitApply` directly inside `withTenantContext`; no `app.inject('/chat/apply', ...)` in that case.
+
+#### Round-3 remediation plan (R3.1 + R3.2 — for owner's approval BEFORE I write code)
+
+**R3.1 — re-add strict validation in /chat/apply (P1 fix).**
+
+For each branch (mark_absent / leave / swap / create_assignment), parse `body.toolInput` with the same Zod schema the direct route uses, BEFORE entering the `withTenantContext` block:
+
+```ts
+if (body.toolName === 'propose_mark_absent') {
+  const parsedTool = MarkAbsentInputForChat.safeParse({
+    workerId: <from ti>,
+    date: ti.date ?? today,
+    status: 'ABSENT_NO_CALL',
+    reason: reasonStr,
+  });
+  if (!parsedTool.success) {
+    reply.code(400).send({ error: 'BAD_INPUT', message: parsedTool.error.message });
+    return;
+  }
+  // then tx + service call uses parsedTool.data
+}
+```
+
+Same pattern for the other 3 branches. For swap specifically, this re-adds the same-worker rejection that the schema enforces via `.refine`. The route-level schema is reused (we do NOT duplicate the schemas — single source).
+
+One subtlety: `propose_create_assignment` already uses `CreateAssignmentInputSchema.safeParse` — keep it; small cleanup to surface the parsedTool.data the same way as the others.
+
+**R3.2 — real route-level stale-auth test (P2 fix).**
+
+Two paths to choose from (your call):
+
+- **R3.2-a — minimal test-only hook.** Add an optional test hook (env-flag-gated) in `commitApply` that pauses for a side-channel binding change between preCheckApply and the UPDATE. Test fires /chat/apply via `app.inject`; while the route is paused, test commits the binding change; route resumes; assert 403 NOT_RESPONSIBLE + row stays PROPOSED + no Attendance row. Deterministic. The hook is internal to the test harness and isn't exposed in any production build path.
+- **R3.2-b — property-style timing test.** Fire N concurrent (/chat/apply + binding-change) pairs via `Promise.all`. For EACH, assert one of two consistent outcomes: (i) route returned 200 AND row APPLIED AND domain row exists AND audit shows winner, OR (ii) route returned 403/409 AND row PROPOSED AND no domain row AND no DWI_APPLIED audit. Probabilistic — relies on the timing-window distribution to exercise both outcomes across N runs. Less deterministic but doesn't add test-only hooks to production code.
+
+**Default I recommend:** R3.2-a (deterministic). It puts a small hook in the writer that's a no-op unless tests set it; the production behavior is unchanged. The hook is the kind of test infrastructure that pays for itself when concurrency tests are involved.
+
+#### Separate decision needed — same-day supervisor-freeze policy (S-001 candidate, owner's proposal)
+
+The owner has proposed (2026-05-16) adopting this business rule:
+
+> Once the day starts, supervisor ownership for today is frozen. HR cannot switch today's supervisor in the system. Any supervisor change starts tomorrow. Same-day emergencies are handled operationally, not by changing system ownership for today. No account sharing.
+
+**Why this matters here:** the entire round-2 R2b-iii complexity (atomic preCheck + service + commit inside one tx + stale-auth re-check in commitApply) exists because responsibility _could_ change mid-day. If responsibility can NEVER change mid-day, then:
+
+- The stale-auth race becomes impossible by construction (not just by code).
+- R2a's auth re-check inside commitApply becomes defense-in-depth, not the primary protection.
+- The R3.2 test becomes a defense-in-depth test, not a critical path test.
+- The R2b-iii service extractions are still valuable for atomicity (retry / double-tap safety + domain-failure rollback), but the stale-auth concern that drove their urgency goes away.
+
+**What still matters even with this policy:**
+
+- Double-tap / retry safety (still needs conditional updateMany)
+- apply vs dismiss race (still needs the DB CHECK constraint + conditional UPDATE)
+- Validation (still needs R3.1)
+- Audit (still needs the same DWI_PROPOSED/APPLIED/DISMISSED events)
+- No partial-state commits (still needs the atomic tx pattern from R2b-iii)
+- No account sharing (always)
+
+So the policy SIMPLIFIES the supervisor-binding side, but it does NOT undo round-2's atomicity work. Both are good together.
+
+**Proposed S-001 (new slice if approved):**
+
+- Enforce in HR binding-create service: `effectiveFrom >= tomorrow-midnight-tenant-local`.
+- Reject same-day bindings with 400 BAD_INPUT.
+- Update specs:
+  - `axhy-v3/docs/specs/2026-05-14-supervisor-responsibility-model.md` — add the freeze rule as a new pick.
+  - `axhy-v3/docs/specs/2026-05-15-workflow-design-closure.md` — reflect the simplification.
+- Add tests:
+  - HR cannot create a same-day binding (rejected with 400).
+  - The supervisor-app routing behavior is unchanged for any day's current binding (already permanent or pre-tomorrow scheduled).
+- Tests in F-002 that seed bindings with `effectiveFrom = now() - 60_000` are unaffected — they write directly via Prisma, not through HR's API; the policy is at the API layer.
+
+This is a SPEC decision, not just code. Owner + friend should lock the policy before code lands.
+
+#### Confidence per Rule 23
+
+- R3.1 (validation fix): 95% own. Clear pattern; re-add Zod parsing per branch. No new design.
+- R3.2-a (test hook + deterministic test): 86% own. The hook design is small but invasive enough to want a sanity check before coding.
+- R3.2-b (property-style test): 80% own. Timing-dependent; flaky-test risk.
+- S-001 (same-day freeze policy): 72% own. The engineering is straightforward (one Zod check in the HR service), but it's a SPEC change that needs owner+friend lock first. Per Rule P9 I would research how other systems model "no same-day reassignments" before locking the exact effectiveFrom check.
+
+#### Decision needed
+
+Three separate decisions:
+
+1. **R3.1 + R3.2 plan:** APPROVED / CHANGES_REQUESTED (with your pick of R3.2-a vs R3.2-b) / HOLD.
+2. **S-001 policy:** APPROVED-as-new-slice / APPROVED-fold-into-F-002 / CHANGES_REQUESTED on the policy wording / HOLD (defer).
+3. **Existing round-2 commits:** keep as-is (they are not wrong, just incomplete) — confirming this is the right shape.
+
+**No code lands until you and friend explicitly approve the round-3 plan AND the S-001 policy direction.**
+
+### Slice: `chat-writes-proposed-decisions` (F-002 — round-2 R2b-iii remediation, superseded by round 3) — was AWAITING_APPROVAL 2026-05-16
 
 - **Status:** `AWAITING_APPROVAL`. Friend's round-2 plan (approved 2026-05-16 with the control-surface cleanup as a prerequisite) is fully implemented.
 - **Branch:** `feat/layer-1-core-primitives`
