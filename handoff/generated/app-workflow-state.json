@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "metadata": {
-    "last_updated_at": "2026-05-15T13:17:11.042Z",
-    "source_commit": "d4bb4c84b0d4c37b171e4b4a7ff7f70842d3c59b",
+    "last_updated_at": "2026-05-15T13:18:09.698Z",
+    "source_commit": "03d33dd4fee01bdff6193409de7d95831673d727",
     "source_branch": "feat/layer-1-core-primitives",
-    "last_canonical_commit": "",
+    "last_canonical_commit": "03d33dd4fee01bdff6193409de7d95831673d727",
     "staleness_warning": null,
     "active_slice": "Layer 1 implementation — routing slice paused for execution-state tracker",
     "generated_from": [
