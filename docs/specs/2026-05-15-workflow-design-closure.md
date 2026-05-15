@@ -574,7 +574,7 @@ Four layers. Each layer has explicit entities + surfaces + exit criteria. Sequen
 
 ### Layer 1 · Core primitives (foundational)
 
-**Entities:** `SiteSupervisorBinding` (P1.5, already planned) · `Membership.podId` field · `HRPod` · `QueueItem` (initial as projection / view) · `Notification` · `Policy` + `PolicyValue` · `Digest` · `DecisionWorkspaceItem.originContext` + `proposedDuringAbsence` · `Worker.preferredLanguage`.
+**Entities:** `SiteSupervisorBinding` (P1.5, already planned) · `Membership.podId` field · `HRPod` · `QueueItem` (initial as projection / view) · `Notification` · `Policy` (single append-only table; reconciled 2026-05-15 from earlier `Policy + PolicyValue` two-table draft since the (key, value, setAt) shape collapses both concepts) · `Digest` · `DecisionWorkspaceItem.originContext` + `proposedDuringAbsence` · `Worker.preferredLanguage`.
 
 **Audit kinds:** All §9 additions land here.
 

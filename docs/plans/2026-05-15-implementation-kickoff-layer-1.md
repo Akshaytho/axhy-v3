@@ -26,7 +26,7 @@ Not in scope: any redesign discussion, any spec amendment, any Layer 2/3/4 work.
 
 From the closure spec:
 
-> **Entities:** `SiteSupervisorBinding` (P1.5, already planned) · `Membership.podId` field · `HRPod` · `QueueItem` (initial as projection / view) · `Notification` · `Policy` + `PolicyValue` · `Digest` · `DecisionWorkspaceItem.originContext` + `proposedDuringAbsence` · `Worker.preferredLanguage`.
+> **Entities:** `SiteSupervisorBinding` (P1.5, already planned) · `Membership.podId` field · `HRPod` · `QueueItem` (initial as projection / view) · `Notification` · `Policy` (single append-only table; reconciled 2026-05-15 from earlier `Policy + PolicyValue` draft) · `Digest` · `DecisionWorkspaceItem.originContext` + `proposedDuringAbsence` · `Worker.preferredLanguage`.
 >
 > **Audit kinds:** All §9 additions land here.
 >
@@ -47,12 +47,12 @@ From the closure spec:
 - Backfill: NULL for non-HR roles; for `role=HR`, leave NULL initially (assignment happens in Layer 2 migration).
 - Index: `(companyId, podId)` on Membership.
 
-**Migration B — Policy + PolicyValue**
+**Migration B — Policy (single append-only table; reconciled from earlier `Policy + PolicyValue` two-table draft)**
 
 - Create `Policy` table (id, companyId, key, value JSON, category, setBy, setAt, previousValueSnapshot JSON?).
 - Append-only by convention; no triggers needed (app enforces).
 - Index: `(companyId, key, setAt DESC)` for current-value lookup.
-- Seed: insert default Policy values per closure §3.6 catalogue (SLA thresholds, AI backlog chip upgrade seconds, notification channel fallback chain).
+- Seed: PolicyService (Stream C) loads default values per closure §3.6 catalogue on first run; no INSERT in this migration (schema-only PR).
 
 **Migration C — Notification**
 
@@ -106,12 +106,12 @@ For each entity below: where the code lives + what utilities are needed.
 - Add a `MembershipPodAssignmentService` utility that handles `assign(podId, membershipId)` + `reassign(podId, membershipId)` with audit emission (`MEMBERSHIP_POD_ASSIGNED` audit kind — add to enum).
 - Defer auto-rebalance logic (when supervisor's portfolio crosses pod boundaries) to Layer 2.
 
-### Policy + PolicyValue
+### Policy (single append-only table; reconciled from `Policy + PolicyValue` two-table draft)
 
 - Prisma model. Append-only writes enforced at the service layer.
 - `PolicyService` utility: `get(companyId, key)` reads current value (latest row) with caching; `set(companyId, key, value, setBy)` writes a new row + emits `POLICY_CHANGED` audit.
 - Cache: in-memory per-process with 60s TTL; invalidates on write within the same process; cross-process invalidation deferred (acceptable at single-instance launch).
-- Seed defaults at migration time per closure §3.6 catalogue.
+- Seed defaults loaded by PolicyService on first run per closure §3.6 catalogue (no INSERT in PR 1 migration).
 
 ### Notification
 
@@ -162,7 +162,7 @@ For each entity below: where the code lives + what utilities are needed.
 | ------ | --------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **A**  | Schema migrations + AuditEvent enum + audit helpers | —                                                       | Day 0                                     | Migrations A–H applied; new audit emit helpers; Zod schemas                                                                                                            |
 | **B**  | HRPod CRUD + Membership.podId service               | A                                                       | A is in main                              | HRPod model in shared-schema; admin-API routes; pod-assignment service                                                                                                 |
-| **C**  | Policy + PolicyValue service + defaults seed        | A                                                       | A is in main                              | PolicyService with cache; seed defaults; admin-API for value reads                                                                                                     |
+| **C**  | PolicyService + defaults seed (single Policy table) | A                                                       | A is in main                              | PolicyService with cache; seed defaults loaded on first run; admin-API for value reads                                                                                 |
 | **D**  | Notification entity + delivery handlers             | A                                                       | A is in main                              | NotificationService; 4 delivery channels; coalescing service                                                                                                           |
 | **E**  | Digest entity + stub composers                      | A, D                                                    | A + D in main                             | Digest model; stub composer functions; cron skeleton                                                                                                                   |
 | **F**  | Cron framework + 4 shell jobs                       | A                                                       | A is in main                              | Cron framework (extending existing reset-ai-spend pattern); shell jobs for binding-expire-sweep, decision-expire-sweep, hr-queue-age-escalation, hr-availability-sweep |
