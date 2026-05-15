@@ -8,7 +8,7 @@ import { expandOneOffToRecurring } from '@axhy/state-machines';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
-import { recordAuditEvent } from '../lib/audit-event.js';
+import { createAssignmentService } from '../lib/services/assignment-service.js';
 
 export async function registerAssignmentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/assignments', { preHandler: requireAuth }, async (req, reply) => {
@@ -49,46 +49,17 @@ export async function registerAssignmentRoutes(app: FastifyInstance): Promise<vo
       };
     }
 
-    const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-      const worker = await tx.worker.findFirst({
-        where: { id: normalized.workerId, companyId: auth.companyId },
-      });
-      if (!worker) return { kind: 'WORKER_NOT_FOUND' as const };
-      const site = await tx.site.findFirst({
-        where: { id: normalized.siteId, companyId: auth.companyId },
-      });
-      if (!site) return { kind: 'SITE_NOT_FOUND' as const };
-
-      const assignment = await tx.assignment.create({
-        data: {
-          companyId: auth.companyId,
-          workerId: normalized.workerId,
-          siteId: normalized.siteId,
-          shiftStart: normalized.shiftStart,
-          shiftEnd: normalized.shiftEnd,
-          dayMask: normalized.dayMask,
-          validFrom: new Date(normalized.validFrom),
-          validUntil: normalized.validUntil ? new Date(normalized.validUntil) : null,
-          state: 'DRAFT',
-        },
-      });
-
-      await recordAuditEvent(tx, {
+    // F-002.b (round-2 R2b-iii): the route is now a thin wrapper around
+    // createAssignmentService. The same service is called by /chat/apply
+    // INSIDE its own withTenantContext, so the lifecycle commit + domain
+    // write share one Prisma transaction. See assignment-service.ts for
+    // the implementation.
+    const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+      createAssignmentService(tx, normalized, {
         companyId: auth.companyId,
-        kind: 'ASSIGNMENT_CREATED',
-        actorId: auth.userId,
-        targetId: assignment.id,
-        payload: {
-          workerId: normalized.workerId,
-          workerName: worker.name,
-          siteId: normalized.siteId,
-          siteName: site.name,
-          dayMask: normalized.dayMask,
-        },
-      });
-
-      return { kind: 'OK' as const, assignment };
-    });
+        userId: auth.userId,
+      }),
+    );
 
     if (out.kind === 'WORKER_NOT_FOUND') {
       reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
