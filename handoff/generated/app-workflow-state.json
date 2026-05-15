@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-15T21:07:08.539Z",
-    "generated_against_head": "ab4d9a2d74c066e4d6420749c672866b9089c898",
+    "last_updated_at": "2026-05-15T21:15:25.930Z",
+    "generated_against_head": "2a0f27c48daa13d43e1a38f7b3dc90a591d09164",
     "generated_against_branch": "feat/layer-1-core-primitives",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "ab4d9a2d74c066e4d6420749c672866b9089c898",
+    "last_canonical_commit_at_gen": "2a0f27c48daa13d43e1a38f7b3dc90a591d09164",
     "staleness_warning": null,
-    "active_slice": "same-day-supervisor-freeze (S-001) · AWAITING_APPROVAL (spec lock + code + tests complete; 17/17 files, 84/84 cases green on fresh local Postgres 16; stop for review per friend's execution rule)",
+    "active_slice": "cron-framework-binding-expire-sweep (F-003) · PLANNED — AWAITING_SCOPE_APPROVAL (scope artifact draft to land at handoff/feature-queue/scopes/F-003.md; owner + friend approve picks; then code)",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,22 +1183,38 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`same-day-supervisor-freeze` (S-001)",
-      "Status": "`AWAITING_APPROVAL` (spec lock + code + tests complete; 17/17 files, 84/84 cases green on fresh local Postgres 16; stop for review per friend's execution rule)",
-      "Branch": "`feat/layer-1-core-primitives` (continues from F-002; S-001 lands on top)",
-      "Last landed commit": "`ab4d9a2` — `docs(handoff): S-001 control-surface cleanup — purge pre-code phrasing + describe delivered shape (S-001.3)`",
-      "S-001 commits (oldest→newest)": "`2835e84` (spec lock — wording v2 landed in both specs + stale control-file line cleaned) · `d234e77` (helper + wire into `reassignPermanentBinding` + 5 new tests + 4 adapted) · `8e763f8` (tracker propagation → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup — pre-code phrasing purged + feature-queue entry describes the delivered shape)",
-      "Tests status": "**17/17 test files green · 84/84 cases pass** on fresh local Postgres 16 (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new).",
-      "Verification status": "`REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all 12 migrations applied. Full sweep in one run."
+      "Slice name": "`cron-framework-binding-expire-sweep` (F-003)",
+      "Status": "`PLANNED — AWAITING_SCOPE_APPROVAL` (scope artifact draft to land at `handoff/feature-queue/scopes/F-003.md`; owner + friend approve picks; then code)",
+      "Branch": "`feat/layer-1-core-primitives` (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion",
+      "Last landed commit": "`2a0f27c` — `docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)` (S-001 closure tracker propagation; S-001 is APPROVED)",
+      "Dependencies": "F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met",
+      "Tests status": "n/a — code not started; scope phase",
+      "Verification gate": "will be `REAL_DB` once code lands"
     },
     "pending_approvals": [
       {
-        "id": "same-day-supervisor-freeze",
+        "id": "cron-framework-binding-expire-sweep",
         "kind": "slice",
         "status": "",
         "branch": "",
         "wipCommit": "",
         "lastLanded": "",
+        "workflowIds": "",
+        "blocking": "",
+        "built": "",
+        "notDone": "",
+        "ownerDecision": "",
+        "artifact": "",
+        "decisionNeeded": "",
+        "scopeType": ""
+      },
+      {
+        "id": "chat-writes-proposed-decisions",
+        "kind": "slice",
+        "status": "CHANGES_REQUESTED",
+        "branch": "feat/layer-1-core-primitives",
+        "wipCommit": "",
+        "lastLanded": "fe927b2",
         "workflowIds": "",
         "blocking": "",
         "built": "",
@@ -1245,13 +1261,13 @@
       {
         "id": "F-003",
         "title": "Cron framework + `binding-expire-sweep`",
-        "why": "Closure spec mandates several crons (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`). Today only `reset-ai-spend` exists. Bindings can't auto-expire; \"while-you-were-out\" digests can't fire.",
-        "depends_on": "F-001.",
-        "personas": "Ravi (expiry trigger), all when downstream sweeps land.",
-        "workflows": "F26 (acting window expiry), C12 (decision expiry).",
-        "entities": "`apps/backend/src/jobs/*` (new dir), cron framework module, `binding-expire-sweep` job, integration test.",
-        "verification": "`REAL_DB`.",
-        "status": "QUEUED"
+        "why": "Closure spec mandates four crons (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`); only `reset-ai-spend` exists today. Bindings can't auto-expire when `effectiveUntil` passes; \"while you were out\" digests can't fire; decisions can't auto-expire. Every downstream slice (F-004, F-005, F-007) eventually needs at least one of these sweeps to be real.",
+        "depends_on": "F-001 (APPROVED 2026-05-15) — dependency met. F-002 (APPROVED 2026-05-16) and S-001 (APPROVED 2026-05-16) not strictly required but both landed.",
+        "personas": "Ravi (sees acting binding auto-end), Lakshmi/Anjali (their cover windows close on time), Kavitha (HR queue items can later age-escalate via the same framework).",
+        "workflows": "F26 (acting binding expiry — this slice), F27 (permanent reassign expiry — same job), C12 (decision expiry — later slice on this framework).",
+        "entities": "- **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.\n  - **WIRED:** sweep sets `endedAt = effectiveUntil` on `SiteSupervisorBinding` rows where `effectiveUntil <= now() AND endedAt IS NULL`; emits `BINDING_ENDED_AUTO` AuditEvent per row (kind already in the closure-spec catalogue).\n  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + sets `endedAt`.\n  - **NO** new entity. **NO** schema change. **NO** HTTP route in this slice (scheduler invocation TBD per scope picks).",
+        "verification": "`REAL_DB` (real Postgres + sweep run + idempotency assertion).",
+        "status": "PLANNED"
       },
       {
         "id": "F-004",
@@ -1310,6 +1326,13 @@
       }
     ],
     "change_history": [
+      {
+        "when": "2026-05-16",
+        "slice": "same-day-supervisor-freeze",
+        "transition": "AWAITING_APPROVAL → APPROVED",
+        "commit": "n/a (friend's approval; no commit)",
+        "note": "Friend's file-grounded verification at HEAD `2a0f27c` cleared with no blocking findings. Verbatim: \"Final tracker propagation is clean · The last remaining control-surface mismatch is fixed · I do not see a new code bug or a new tracker-truth bug · Decision: APPROVED.\" Verification-shell limitation acknowledged (local Rollup native-module/code-signing issue prevents fresh Vitest rerun); not gating. Friend's directive: mark S-001 APPROVED + regenerate outputs + close S-001 + surface next slice in simple-English-first format. S-001 ready to be marked DONE once branch `feat/layer-1-core-primitives` merges to main (alongside F-002)."
+      },
       {
         "when": "2026-05-16",
         "slice": "chat-writes-proposed-decisions",
@@ -1372,13 +1395,6 @@
         "transition": "BLOCKED → WIP",
         "commit": "`84ae39c`",
         "note": "Resume after control-loop approval. Picks up from the original WIP commit; 4th routing test (point-in-time effective responsibility) + fresh-Postgres real-DB sweep + 3-way WIP-split (helpers / routes / tests) remain."
-      },
-      {
-        "when": "2026-05-15 evening",
-        "slice": "handoff-control-loop",
-        "transition": "AWAITING_APPROVAL → APPROVED",
-        "commit": "`03a1c22`",
-        "note": "Friend's 5th file-grounded verification pass at HEAD `091c2a6` declared the slice trustworthy enough to lock. Verbatim: \"the control-loop slice is now trustworthy enough to lock.\" Rule 23 (confidence-score-before-acting) added post-approval in `03a1c22`."
       }
     ]
   }

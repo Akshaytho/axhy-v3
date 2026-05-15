@@ -20,32 +20,26 @@
 
 ## Currently awaiting approval
 
-### Slice: `same-day-supervisor-freeze` (S-001 — code slice) — AWAITING_APPROVAL 2026-05-16
+### Slice: `cron-framework-binding-expire-sweep` (F-003 — scope approval) — AWAITING_SCOPE_APPROVAL 2026-05-16
 
-**Problem in simple English:** the spec lock said "no supervisor responsibility change may take effect for that site until the next tenant-local midnight." Without code, that statement is a description, not an invariant — any HR mutation path can still write a same-day binding.
+**Problem in simple English:** the closure spec lists four crons the system needs (`binding-expire-sweep`, `decision-expire-sweep`, `hr-queue-age-escalation`, `hr-availability-sweep`); only `reset-ai-spend` exists today. Without the framework + first sweep, bindings can't auto-expire when `effectiveUntil` passes, "while you were out" digests can't fire, decisions can't auto-expire, and HR queue items can't age-escalate. Every downstream slice eventually depends on at least one of these.
 
-**Simplest business solution:** one shared helper at the API/service layer that rejects every mutation which would change today's responsible supervisor. Framed around the business rule, not around any one field, so a future binding-mutation route can't silently bypass it.
+**Simplest business rule:** add a small cron framework that runs short idempotent "sweep" jobs on a schedule. Start with `binding-expire-sweep`: any SiteSupervisorBinding where `effectiveUntil <= now() AND endedAt IS NULL` gets `endedAt = effectiveUntil` + a `BINDING_ENDED_AUTO` AuditEvent. Idempotent (re-runs are no-ops). Future sweeps land in subsequent slices on the same framework.
 
-**Code fix (one commit, `d234e77`):**
+**Code (only after scope-artifact approval):** new `apps/backend/src/jobs/` dir + cron framework module + `binding-expire-sweep` + real-DB integration test. No new schema field. `BINDING_ENDED_AUTO` AuditEvent kind already catalogued in closure spec §11.
 
-- New `apps/backend/src/lib/same-day-freeze.ts` — pure helper module exporting `assertNotChangingTodaysResponsibility({ now?, tenantTimeZone?, effectiveFrom?, effectiveUntil? })`. Throws `SameDayFreezeError` (code `SAME_DAY_FREEZE`) on same-day timestamps. `DEFAULT_TENANT_TIME_ZONE = 'Asia/Kolkata'` (India-market product). `tomorrowMidnightInTimeZone(now, tz)` handles DST correctly by sampling the offset at the candidate instant.
-- `apps/backend/src/lib/site-supervisor-binding.ts` — `reassignPermanentBinding` calls the guard BEFORE the prior-find. `ReassignPermanentBindingInput` gains optional `tenantTimeZone`.
-- New `apps/backend/test/same-day-supervisor-freeze.test.ts` — 5 cases (4 from the slice plan + 1 helper sanity).
-- `apps/backend/test/binding-permanent-reassignment-basics.test.ts` — 3 cases adapted to use tomorrow-or-later cutovers (the only correct shape under S-001). One renamed.
+**Why scope first:** F-003 is medium-major (new infra dir + scheduling pattern + first auto-mutation of `SiteSupervisorBinding` rows). Per `feedback_plan_mode_for_medium_major_changes.md` discipline lock, scope artifact + owner approval must come BEFORE code.
 
-**Why this code is necessary:** without the helper the spec is words; with the helper any HR mutation that would change today's responsible supervisor is rejected by construction. The guard is in the service layer, not in the schema, so seed/migration paths (bootstrap-seed per responsibility-model pick 8, F-002 test seeds) continue to work — the policy is at the API layer per the spec.
+**6 open picks for owner + friend** (see `active-slice.md` for full trade-off discussion; recommended defaults in brackets):
 
-**What is NOT in this slice:**
+1. **Scheduler shape** — in-process / `node-cron` / `pg_cron` / OS-cron + HTTP endpoint? [OS-cron + HTTP endpoint, matches existing `reset-ai-spend`]
+2. **Run cadence for `binding-expire-sweep`** — every minute / every 5 min / every hour? [every minute at launch]
+3. **S-001 interaction** — does sweep count as a "responsibility change today"? [exempt — sweep bookkeeps an already-locked `effectiveUntil`, not a new mutation]
+4. **Failure handling** — partial-batch retry / one tx per row? [one tx per row at launch]
+5. **Multi-replica dedup** — Postgres advisory lock / rely on idempotency? [rely on idempotency at launch]
+6. **`BINDING_ENDED_AUTO` payload** — `{ bindingId, siteId, userId, effectiveUntil, sweptAt }`? [yes]
 
-- No HTTP routes for HR binding-create / binding-end — those are F-005 (admin-web HR portal) scope. The exported guard is ready to be called from those routes when they ship.
-- No `Company.timeZone` schema column — the helper accepts the override parameter now, so wiring is a one-line change when the column ships.
-- No removal of F-002's round-2 atomicity or round-3 auth re-check. Both stay as defense-in-depth.
-
-**Verification:** REAL_DB on fresh local Postgres 16, all 12 migrations. **17/17 test files green · 84/84 cases pass** in one sweep (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new). Reproduction snippet in `active-slice.md`.
-
-**S-001 commits:** `2835e84` (spec lock + stale control-file line cleanup) · `d234e77` (helper + wire + 5 new tests + 4 adapted) · `8e763f8` (tracker propagation → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup — pre-code phrasing purged + feature-queue entry describes the delivered shape).
-
-**Decision needed:** `APPROVED` / `CHANGES_REQUESTED` / `HOLD`. If APPROVED → S-001 moves to APPROVED and the branch is ready to merge to main (once F-002 + S-001 both APPROVED).
+**Decision needed:** `SCOPE: GO with default picks` / `SCOPE: change picks (bullet list)` / `HOLD` / `MERGE FIRST` (graduate F-002 + S-001 to DONE before starting F-003).
 
 ---
 
@@ -387,6 +381,29 @@ _None._
 ---
 
 ## Recently approved (last 5)
+
+### Slice: `same-day-supervisor-freeze` (S-001 — code slice) — APPROVED 2026-05-16
+
+- **Status:** `APPROVED`
+- **Branch:** `feat/layer-1-core-primitives`
+- **Last landed commit at approval:** `2a0f27c` — `docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)`.
+- **S-001 commit chain (oldest → newest):** `2835e84` (spec lock — wording v2 in both specs + stale control-file line cleaned) · `d234e77` (helper + wire into `reassignPermanentBinding` + 5 new tests + 4 adapted) · `8e763f8` (tracker propagation → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup — pre-code phrasing purged + feature-queue entry describes delivered shape) · `2a0f27c` (final tracker propagation — `ab4d9a2` represented across active-slice + pending-approvals + change-history + generated).
+- **Approval received:** Friend's file-grounded verification at HEAD `2a0f27c`. Verbatim: "Final tracker propagation is clean · The last remaining control-surface mismatch is fixed · I do not see a new code bug or a new tracker-truth bug · Decision: APPROVED."
+- **Friend's verification limitation noted (not gating):** could not personally rerun Vitest in their shell because of a local Rollup native-module/code-signing startup issue. Approval is file-grounded, not fresh-test-grounded.
+- **Friend's directive on approval:** mark S-001 APPROVED in canonical files · regenerate outputs · close S-001 · surface the next slice in simple-English-first format.
+- **Locked policy wording (single source, identical text in both specs):**
+
+  > Same-day supervisor-freeze policy (S-001). Once the day has started in the tenant's local timezone, no supervisor responsibility change may take effect for that site until the next tenant-local midnight. This includes new acting cover, permanent reassignment, ending the current responsible binding, or any other binding mutation that would change who is officially responsible for today. Same-day emergencies are handled operationally outside ownership-change logic. No account sharing. F-002's atomicity and auth re-check protections remain in place as defense-in-depth.
+
+- **Delivered shape:**
+  - NEW `apps/backend/src/lib/same-day-freeze.ts` — `assertNotChangingTodaysResponsibility` + `SameDayFreezeError` + DST-safe `tomorrowMidnightInTimeZone` + `DEFAULT_TENANT_TIME_ZONE = 'Asia/Kolkata'`.
+  - WIRED `reassignPermanentBinding` — guard runs BEFORE the prior-find; covers both `effectiveFrom` and `effectiveUntil`.
+  - NEW `apps/backend/test/same-day-supervisor-freeze.test.ts` — 5 cases (1 helper-level same-day `effectiveFrom`, 2 helper-level same-day `effectiveUntil`, 3 real-DB `reassignPermanentBinding`, 4 routing-unchanged, 5 helper sanity).
+  - ADAPTED `apps/backend/test/binding-permanent-reassignment-basics.test.ts` — 3 cases shifted to +36h cutovers; one renamed and refactored to query effective-at-post-cutover.
+  - Spec amendments: `docs/specs/2026-05-14-supervisor-responsibility-model.md` + `docs/specs/2026-05-15-workflow-design-closure.md` — "2026-05-16 Update" sections appended with single-source wording.
+- **Verification at approval:** REAL_DB on fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432, all 12 migrations applied). **17/17 test files green · 84/84 cases pass** in one sweep.
+- **Deferred (not in this slice):** HR binding-create + binding-end HTTP routes (F-005 admin-web HR portal scope — guard exported and ready to wire). `Company.timeZone` schema column (helper accepts override parameter today).
+- **Next:** F-003 (cron framework + `binding-expire-sweep`) surfaced as the active slice in `PLANNED — AWAITING_SCOPE_APPROVAL`. Branch ready to merge to main at owner's discretion to graduate F-002 + S-001 from APPROVED to DONE.
 
 ### Spec lock: `same-day-supervisor-freeze` (S-001 — wording v2) — SPEC LOCK APPROVED 2026-05-16
 
