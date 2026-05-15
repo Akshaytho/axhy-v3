@@ -39,6 +39,11 @@ import { tryAcquireChatSlot, releaseChatSlot } from '../lib/chat-concurrency.js'
 import { getLivingDoc } from '../lib/living-doc.js';
 import { formatLivingDocPrompt } from '../lib/living-doc-prompt.js';
 import { loadCalendarTier3 } from '../lib/calendar-context.js';
+import {
+  createProposedDecision,
+  applyProposedDecision,
+  LifecycleError,
+} from '../lib/supervisor-decision-writer.js';
 
 /**
  * Stripped system prompt — moved per-tool guidance into each tool's
@@ -205,6 +210,31 @@ async function persistChatTurn(input: {
     // because the increment is a single DB statement, no app-level
     // read-modify-write. Zero-cost paths short-circuit inside incrementSpend.
     await incrementSpend(input.companyId, input.costInr, tx);
+
+    // F-002 §3a: write PROPOSED SupervisorDecision rows for each decision card
+    // emitted by the AI loop. Done inside the SAME tx as the assistant message
+    // so a partial-success state (chat message persisted but DWI row missing,
+    // or vice versa) cannot exist. Cards without a `decisionId` are pre-F-002
+    // shapes; skip them silently. Cards with an unmapped `toolName` (e.g., new
+    // propose_* tools that haven't been added to TOOL_TO_DWI yet) also skip —
+    // createProposedDecision returns null in that case.
+    for (const card of input.decisionCards) {
+      const decisionId = (card as { decisionId?: unknown }).decisionId;
+      const toolName = (card as { toolName?: unknown }).toolName;
+      const fields = (card as { fields?: unknown }).fields;
+      if (typeof decisionId !== 'string') continue;
+      if (typeof toolName !== 'string') continue;
+      if (typeof fields !== 'object' || fields === null) continue;
+      await createProposedDecision(tx, {
+        decisionId,
+        companyId: input.companyId,
+        supervisorId: input.supervisorId,
+        toolName,
+        fields: fields as Record<string, unknown>,
+        threadId: thread.id,
+        assistantMessageId: assistantMsg.id,
+      });
+    }
 
     await recordAuditEvent(tx, {
       companyId: input.companyId,
@@ -437,6 +467,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             return {
               output: { proposed: true, fields: input, conflicts },
               decisionCardData: {
+                decisionId: randomUUID(),
+                toolName: name,
                 title: 'Confirm assignment',
                 description: 'Create assignment with these fields?',
                 fields: input,
@@ -469,6 +501,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                 fields: { workerId: wid, date: dateStr, reason, reasonDetail },
               },
               decisionCardData: {
+                decisionId: randomUUID(),
+                toolName: name,
                 title: 'Mark absent',
                 description: `Mark ${worker.name} absent on ${dateStr}?`,
                 fields: {
@@ -505,6 +539,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                 fields: { workerId: wid, fromDate, toDate, reason, reasonDetail },
               },
               decisionCardData: {
+                decisionId: randomUUID(),
+                toolName: name,
                 title: 'Leave request',
                 description: `Submit leave for ${worker.name} from ${fromDate} to ${toDate}?`,
                 fields: {
@@ -549,6 +585,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                 fields: { fromWorkerId, toWorkerId, siteId, effectiveAt, reason },
               },
               decisionCardData: {
+                decisionId: randomUUID(),
+                toolName: name,
                 title: 'Swap workers',
                 description: `Swap ${out.fw.name} → ${out.tw.name} at ${out.site.name}, effective ${effectiveAt}?`,
                 fields: {
@@ -587,6 +625,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                 fields: { workerId: wid, effectiveDate, reason, reasonDetail },
               },
               decisionCardData: {
+                decisionId: randomUUID(),
+                toolName: name,
                 title: 'Terminate worker',
                 description: `Terminate ${worker.name} effective ${effectiveDate}? Reason: ${reason}.`,
                 fields: {
@@ -611,6 +651,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             return {
               output: { proposed: true, fields: p },
               decisionCardData: {
+                decisionId: randomUUID(),
+                toolName: name,
                 // Wave 4b Phase 2.5 — Sara panel: 'Save rule for AI' is
                 // engineer-speak. Suresh-day-365 mental model is "I'm
                 // saving a note for next time."
@@ -681,6 +723,46 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
       return;
     }
+
+    // F-002 §3b: transition PROPOSED → APPLIED before the domain write when
+    // the client supplied a decisionId. If the lifecycle guards fail (NOT_FOUND,
+    // CROSS_TENANT, ALREADY_APPLIED, ALREADY_DISMISSED, NOT_RESPONSIBLE), bail
+    // before any domain write. If the client did not supply decisionId (pre-F-002
+    // mobile clients), proceed without lifecycle update — back-compat path.
+    //
+    // Known limitation: for inject-style tools (mark_absent / leave / swap /
+    // create_assignment / living_doc_update) the lifecycle commit and the
+    // domain inject are in separate transactions. If the domain inject fails
+    // AFTER the lifecycle commits, the row will be in APPLIED state with no
+    // domain effect — an orphan APPLIED row. The audit trail still tells the
+    // truth: DWI_APPLIED present, downstream domain audit absent. Acceptable
+    // for F-002 MVP; a future refactor can extract the domain logic to be
+    // tx-shareable. propose_termination already does this correctly (its tx
+    // includes both the lifecycle transition and the worker.update).
+    if (parsed.data.decisionId && parsed.data.toolName !== 'propose_termination') {
+      try {
+        await withTenantContext(prisma, auth.companyId, async (tx) =>
+          applyProposedDecision(tx, {
+            companyId: auth.companyId,
+            decisionId: parsed.data.decisionId!,
+            actorUserId: auth.userId,
+          }),
+        );
+      } catch (err) {
+        if (err instanceof LifecycleError) {
+          const httpStatus =
+            err.code === 'NOT_FOUND' || err.code === 'CROSS_TENANT'
+              ? 404
+              : err.code === 'NOT_RESPONSIBLE'
+                ? 403
+                : 409;
+          reply.code(httpStatus).send({ error: err.code });
+          return;
+        }
+        throw err;
+      }
+    }
+
     if (parsed.data.toolName === 'propose_create_assignment') {
       const inner = await app.inject({
         method: 'POST',
@@ -766,7 +848,24 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         reason: string;
         reasonDetail?: string;
       };
+      // F-002 §3b: when decisionId is provided, transition PROPOSED → APPLIED
+      // inside the SAME tx as the worker.update — true atomicity for the
+      // termination flow (the only /chat/apply branch that doesn't use inject).
       const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        if (parsed.data.decisionId) {
+          try {
+            await applyProposedDecision(tx, {
+              companyId: auth.companyId,
+              decisionId: parsed.data.decisionId,
+              actorUserId: auth.userId,
+            });
+          } catch (err) {
+            if (err instanceof LifecycleError) {
+              return { kind: 'LIFECYCLE_ERROR' as const, code: err.code };
+            }
+            throw err;
+          }
+        }
         const w = await tx.worker.findFirst({
           where: { id: wid, companyId: auth.companyId },
         });
@@ -795,6 +894,16 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         });
         return { kind: 'OK' as const, worker: updated };
       });
+      if (out.kind === 'LIFECYCLE_ERROR') {
+        const httpStatus =
+          out.code === 'NOT_FOUND' || out.code === 'CROSS_TENANT'
+            ? 404
+            : out.code === 'NOT_RESPONSIBLE'
+              ? 403
+              : 409;
+        reply.code(httpStatus).send({ error: out.code });
+        return;
+      }
       if (out.kind === 'NOT_FOUND') {
         reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
         return;
