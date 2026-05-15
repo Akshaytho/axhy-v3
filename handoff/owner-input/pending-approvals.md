@@ -43,7 +43,7 @@
 
 **Verification:** REAL_DB on fresh local Postgres 16, all 12 migrations. **17/17 test files green · 84/84 cases pass** in one sweep (15 F-002 baseline + 4 reassign-basics adapted + 5 S-001 new). Reproduction snippet in `active-slice.md`.
 
-**S-001 commits:** `2835e84` (spec lock + stale control-file line cleanup) · `d234e77` (helper + wire + 5 new tests + 4 adapted).
+**S-001 commits:** `2835e84` (spec lock + stale control-file line cleanup) · `d234e77` (helper + wire + 5 new tests + 4 adapted) · `8e763f8` (tracker propagation → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup — pre-code phrasing purged + feature-queue entry describes the delivered shape).
 
 **Decision needed:** `APPROVED` / `CHANGES_REQUESTED` / `HOLD`. If APPROVED → S-001 moves to APPROVED and the branch is ready to merge to main (once F-002 + S-001 both APPROVED).
 
