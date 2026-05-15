@@ -1,14 +1,21 @@
 /**
  * Real-DB integration test: SiteSupervisorBinding permanent-reassignment basics.
  *
- * P1.5. Covers the service helper `reassignPermanentBinding`:
- *   1. Ends the prior permanent row (sets endedAt = new row's effectiveFrom
- *      and a fixed endedReason) and creates the new permanent row atomically.
- *   2. Emits both BINDING_ENDED_SUPERSEDED_BY_PERMANENT (on old) and
- *      BINDING_CREATED (on new) audit events in the same transaction.
- *   3. Final state: exactly one active (endedAt IS NULL) permanent binding per site.
- *   4. Throws when no prior active permanent binding exists for the site
- *      (use the raw create path for the first-ever binding).
+ * P1.5. Covers the service helper `reassignPermanentBinding`. Supersession is
+ * modelled via `effectiveUntil` (planned end), NOT via `endedAt` — endedAt is
+ * reserved for manual early termination / correction. The old row stays
+ * "active" (endedAt IS NULL) until the cutover instant, supporting future-
+ * dated handoffs.
+ *
+ *   1. Cutover-now reassignment: ends old row's planned period at cutover and
+ *      creates new row at cutover; both audit events emitted atomically.
+ *   2. Final state at-the-cutover-moment: exactly one currently-effective
+ *      permanent binding per site (computed against now + the effective window,
+ *      not just endedAt IS NULL).
+ *   3. Throws when no permanent binding is effective at the requested cutover.
+ *   4. Future-dated reassignment: BEFORE the cutover instant, the old row
+ *      remains the effective active permanent binding; AFTER cutover, the
+ *      new row takes over.
  *
  * @derives(supervisor-responsibility-model §5.8 + §7)
  * @derives(workflow-design-closure §9)
@@ -105,19 +112,23 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
     expect(result.endedBindingId).toBe(firstId);
     expect(result.newBindingId).not.toBe(firstId);
 
-    // Old row: endedAt set to handoffAt, endedReason set
+    // Old row: effectiveUntil = cutover; endedAt + endedReason remain NULL
+    // (endedAt is reserved for manual early termination / correction).
     const oldRow = await prisma.siteSupervisorBinding.findUnique({ where: { id: firstId } });
-    expect(oldRow!.endedAt).not.toBeNull();
-    expect(oldRow!.endedAt!.getTime()).toBe(handoffAt.getTime());
-    expect(oldRow!.endedReason).toBe('Superseded by permanent reassignment');
+    expect(oldRow!.effectiveUntil).not.toBeNull();
+    expect(oldRow!.effectiveUntil!.getTime()).toBe(handoffAt.getTime());
+    expect(oldRow!.endedAt).toBeNull();
+    expect(oldRow!.endedReason).toBeNull();
 
-    // New row: active, userId = B
+    // New row: effectiveFrom = cutover, open-ended, userId = B
     const newRow = await prisma.siteSupervisorBinding.findUnique({
       where: { id: result.newBindingId },
     });
     expect(newRow!.userId).toBe(userB);
     expect(newRow!.actingForUserId).toBeNull();
     expect(newRow!.endedAt).toBeNull();
+    expect(newRow!.effectiveFrom.getTime()).toBe(handoffAt.getTime());
+    expect(newRow!.effectiveUntil).toBeNull();
 
     // Two audit events emitted
     const supersededEvents = await prisma.auditEvent.findMany({
@@ -132,6 +143,7 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
     expect(supersededPayload.previousUserId).toBe(userA);
     expect(supersededPayload.newUserId).toBe(userB);
     expect(supersededPayload.newBindingId).toBe(result.newBindingId);
+    expect(supersededPayload.supersededAt).toBe(handoffAt.toISOString());
 
     const createdEvents = await prisma.auditEvent.findMany({
       where: { companyId, kind: 'BINDING_CREATED', targetId: result.newBindingId },
@@ -142,7 +154,7 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
     expect(createdPayload.userId).toBe(userB);
   });
 
-  it('final state has exactly one active permanent binding per site', async () => {
+  it('after a cutover-now reassignment, exactly one permanent binding is currently effective', async () => {
     const site = await prisma.site.create({ data: { companyId, name: 'Reassign-2' } });
 
     await withTenantContext(prisma, companyId, async (tx) => {
@@ -172,19 +184,25 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
       });
     });
 
-    const activePermanent = await prisma.siteSupervisorBinding.findMany({
+    // "Currently effective" = endedAt IS NULL AND effectiveFrom <= now
+    // AND (effectiveUntil IS NULL OR effectiveUntil > now). This is the
+    // query shape consumers will use; "endedAt IS NULL" alone is not enough.
+    const now = new Date();
+    const currentlyEffective = await prisma.siteSupervisorBinding.findMany({
       where: {
         companyId,
         siteId: site.id,
         actingForUserId: null,
         endedAt: null,
+        effectiveFrom: { lte: now },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }],
       },
     });
-    expect(activePermanent).toHaveLength(1);
-    expect(activePermanent[0].userId).toBe(userB);
+    expect(currentlyEffective).toHaveLength(1);
+    expect(currentlyEffective[0].userId).toBe(userB);
   });
 
-  it('throws when no prior active permanent binding exists for the site', async () => {
+  it('throws when no permanent binding is effective at the requested cutover', async () => {
     const site = await prisma.site.create({ data: { companyId, name: 'Reassign-Empty' } });
 
     await expect(
@@ -199,6 +217,98 @@ describe('SiteSupervisorBinding — permanent reassignment', () => {
           reassignedBy: hrUserId,
         });
       }),
-    ).rejects.toThrow(/no active permanent binding/i);
+    ).rejects.toThrow(/no permanent binding is effective/i);
+  });
+
+  it('future-dated reassignment leaves the old row currently-effective until cutover', async () => {
+    const site = await prisma.site.create({ data: { companyId, name: 'Reassign-Future' } });
+    const cutover = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // +7 days
+
+    // Initial permanent binding to user A, open-ended, started 10 days ago.
+    const oldId = await withTenantContext(prisma, companyId, async (tx) => {
+      const b = await tx.siteSupervisorBinding.create({
+        data: {
+          companyId,
+          siteId: site.id,
+          userId: userA,
+          actingForUserId: null,
+          effectiveFrom: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+          effectiveUntil: null,
+          reason: 'Initial portfolio assignment',
+          createdBy: hrUserId,
+        },
+      });
+      return b.id;
+    });
+
+    // Schedule a future-dated reassignment to user B at the cutover instant.
+    const result = await withTenantContext(prisma, companyId, async (tx) => {
+      return reassignPermanentBinding(tx, {
+        companyId,
+        siteId: site.id,
+        newUserId: userB,
+        effectiveFrom: cutover,
+        effectiveUntil: null,
+        reason: 'Scheduled handoff in 7 days',
+        reassignedBy: hrUserId,
+      });
+    });
+
+    // BEFORE cutover (i.e., right now): old row is still the currently
+    // effective permanent binding.
+    const now = new Date();
+    const effectiveNow = await prisma.siteSupervisorBinding.findMany({
+      where: {
+        companyId,
+        siteId: site.id,
+        actingForUserId: null,
+        endedAt: null,
+        effectiveFrom: { lte: now },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }],
+      },
+    });
+    expect(effectiveNow).toHaveLength(1);
+    expect(effectiveNow[0].id).toBe(oldId);
+    expect(effectiveNow[0].userId).toBe(userA);
+
+    // Old row's endedAt is still NULL — supersession used effectiveUntil,
+    // not endedAt. effectiveUntil is bounded at the cutover instant.
+    const oldRow = await prisma.siteSupervisorBinding.findUnique({ where: { id: oldId } });
+    expect(oldRow!.endedAt).toBeNull();
+    expect(oldRow!.endedReason).toBeNull();
+    expect(oldRow!.effectiveUntil).not.toBeNull();
+    expect(oldRow!.effectiveUntil!.getTime()).toBe(cutover.getTime());
+
+    // New row exists but is not yet effective (effectiveFrom is in the future).
+    const newRow = await prisma.siteSupervisorBinding.findUnique({
+      where: { id: result.newBindingId },
+    });
+    expect(newRow!.effectiveFrom.getTime()).toBe(cutover.getTime());
+    expect(newRow!.endedAt).toBeNull();
+    expect(newRow!.effectiveFrom.getTime()).toBeGreaterThan(Date.now());
+
+    // AFTER cutover (simulated by querying with future "now"): new row takes over.
+    const future = new Date(cutover.getTime() + 60_000); // 1 min past cutover
+    const effectiveAfter = await prisma.siteSupervisorBinding.findMany({
+      where: {
+        companyId,
+        siteId: site.id,
+        actingForUserId: null,
+        endedAt: null,
+        effectiveFrom: { lte: future },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: future } }],
+      },
+    });
+    expect(effectiveAfter).toHaveLength(1);
+    expect(effectiveAfter[0].id).toBe(result.newBindingId);
+    expect(effectiveAfter[0].userId).toBe(userB);
+
+    // Both audit events emitted at scheduling time (not at cutover time).
+    const supersededEvents = await prisma.auditEvent.findMany({
+      where: { companyId, kind: 'BINDING_ENDED_SUPERSEDED_BY_PERMANENT', targetId: oldId },
+    });
+    expect(supersededEvents).toHaveLength(1);
+    const payload = supersededEvents[0].payload as Record<string, unknown>;
+    expect(payload.supersededAt).toBe(cutover.toISOString());
   });
 });

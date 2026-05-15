@@ -96,14 +96,27 @@ export async function recordBindingEndedSupersededByPermanent(
 // ---------------------------------------------------------------------------
 // Service helper: reassignPermanentBinding
 //
-// Atomic three-step operation: (1) find the prior active permanent binding for
-// the site, (2) set its endedAt + endedReason, (3) insert the new permanent
-// binding. Emits BINDING_ENDED_SUPERSEDED_BY_PERMANENT on the old row +
+// Atomic three-step operation:
+//   (1) find the permanent binding effective at the requested cutover instant
+//       (effectiveFrom <= cutover < COALESCE(effectiveUntil, +infinity),
+//        endedAt IS NULL, actingForUserId IS NULL);
+//   (2) bound its planned end by setting effectiveUntil = cutover instant
+//       (NOT endedAt — endedAt is reserved for manual early termination /
+//       correction / actual after-the-fact ending; supersession via permanent
+//       reassignment uses effectiveUntil so the old row stays "active" until
+//       the cutover moment, supporting future-dated handoffs);
+//   (3) insert the new permanent binding with effectiveFrom = cutover instant.
+// Emits BINDING_ENDED_SUPERSEDED_BY_PERMANENT on the old row +
 // BINDING_CREATED on the new row, both inside the same transaction.
 //
+// The old + new rows are temporally adjacent but disjoint thanks to the
+// EXCLUDE constraint's half-open tstzrange ([effectiveFrom, effectiveUntil)
+// with the new row's [cutover, ...) starting exactly where the old row ends).
+//
 // Caller is responsible for opening the transaction (typically via
-// withTenantContext). Throws if no prior active permanent binding exists for
-// the site — use the raw create path for the first-ever binding.
+// withTenantContext). Throws if no permanent binding is effective at the
+// requested cutover instant for the site — use the raw create path for the
+// first-ever binding or for a future binding before any predecessor exists.
 // ---------------------------------------------------------------------------
 
 /** @derives(ADR-0003) — schema-derived; @derives(master-plan §G) — HR control plane */
@@ -128,30 +141,33 @@ export async function reassignPermanentBinding(
   tx: Prisma.TransactionClient,
   input: ReassignPermanentBindingInput,
 ): Promise<ReassignPermanentBindingResult> {
+  const cutover = input.effectiveFrom;
+
   const prior = await tx.siteSupervisorBinding.findFirst({
     where: {
       companyId: input.companyId,
       siteId: input.siteId,
       actingForUserId: null,
       endedAt: null,
+      effectiveFrom: { lte: cutover },
+      OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: cutover } }],
     },
     orderBy: { effectiveFrom: 'desc' },
   });
 
   if (!prior) {
     throw new Error(
-      `reassignPermanentBinding: no active permanent binding found for site ${input.siteId}`,
+      `reassignPermanentBinding: no permanent binding is effective at ${cutover.toISOString()} for site ${input.siteId}`,
     );
   }
 
-  const endedAt = input.effectiveFrom;
-
+  // Bound the old row's planned end at the cutover instant.
+  // We do NOT touch endedAt — that field is reserved for manual early
+  // termination / correction. The old row stays "active" (endedAt IS NULL)
+  // until the cutover instant, when its effectiveUntil takes over.
   await tx.siteSupervisorBinding.update({
     where: { id: prior.id },
-    data: {
-      endedAt,
-      endedReason: 'Superseded by permanent reassignment',
-    },
+    data: { effectiveUntil: cutover },
   });
 
   const newRow = await tx.siteSupervisorBinding.create({
@@ -160,7 +176,7 @@ export async function reassignPermanentBinding(
       siteId: input.siteId,
       userId: input.newUserId,
       actingForUserId: null,
-      effectiveFrom: input.effectiveFrom,
+      effectiveFrom: cutover,
       effectiveUntil: input.effectiveUntil ?? null,
       reason: input.reason,
       createdBy: input.reassignedBy,
@@ -176,7 +192,7 @@ export async function reassignPermanentBinding(
       previousUserId: prior.userId,
       newBindingId: newRow.id,
       newUserId: input.newUserId,
-      endedAt: endedAt.toISOString(),
+      supersededAt: cutover.toISOString(),
       reassignedBy: input.reassignedBy,
       reason: input.reason,
     },
@@ -191,7 +207,7 @@ export async function reassignPermanentBinding(
       userId: input.newUserId,
       actingForUserId: null,
       kind: 'PERMANENT',
-      effectiveFrom: input.effectiveFrom.toISOString(),
+      effectiveFrom: cutover.toISOString(),
       effectiveUntil: input.effectiveUntil?.toISOString() ?? null,
       reason: input.reason,
       createdBy: input.reassignedBy,
