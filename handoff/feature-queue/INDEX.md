@@ -58,7 +58,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `CHANGES_REQUESTED` (friend's production-grade review surfaced 4 safety findings — orphan APPLIED, stale PROPOSED via optional decisionId, partial routing migration, check-then-act race. Remediation plan surfaced in `owner-input/pending-approvals.md`; no fix code until plan approved).
+- **status:** `AWAITING_APPROVAL` (remediation complete; 7 fix commits landed addressing all 4 findings; 61/61 tests green incl. apply-vs-apply + apply-vs-dismiss concurrency + DB CHECK constraint + new-kind binding-change tests; P10 failure matrix filled in `owner-input/pending-approvals.md`).
 
 ### F-003 — Cron framework + `binding-expire-sweep`
 
