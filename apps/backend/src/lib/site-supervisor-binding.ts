@@ -16,9 +16,11 @@ import {
   BindingCreatedPayloadSchema,
   BindingEndedManualPayloadSchema,
   BindingEndedSupersededByPermanentPayloadSchema,
+  BindingEndedAutoPayloadSchema,
   type BindingCreatedPayload,
   type BindingEndedManualPayload,
   type BindingEndedSupersededByPermanentPayload,
+  type BindingEndedAutoPayload,
 } from '@axhy/shared-schema';
 
 import { recordAuditEvent } from './audit-event.js';
@@ -66,6 +68,33 @@ export async function recordBindingEndedManual(
   await recordAuditEvent(tx, {
     companyId: input.companyId,
     kind: 'BINDING_ENDED_MANUAL',
+    actorId: input.actorId,
+    targetId: payload.bindingId,
+    payload: payload as Prisma.InputJsonValue,
+  });
+}
+
+/**
+ * Typed audit-emit helper for BINDING_ENDED_AUTO. Used by the F-003
+ * `binding-expire-sweep` cron job. Validates payload via Zod before insert.
+ *
+ * @derives(ADR-0003) — schema-derived; @derives(master-plan §L) — bug-prevention discipline
+ */
+export type RecordBindingEndedAutoInput = {
+  companyId: string;
+  actorId: string;
+  payload: BindingEndedAutoPayload;
+};
+
+/** @derives(ADR-0003) — schema-derived; @derives(master-plan §L) — bug-prevention discipline */
+export async function recordBindingEndedAuto(
+  tx: Prisma.TransactionClient,
+  input: RecordBindingEndedAutoInput,
+): Promise<void> {
+  const payload = BindingEndedAutoPayloadSchema.parse(input.payload);
+  await recordAuditEvent(tx, {
+    companyId: input.companyId,
+    kind: 'BINDING_ENDED_AUTO',
     actorId: input.actorId,
     targetId: payload.bindingId,
     payload: payload as Prisma.InputJsonValue,

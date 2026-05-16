@@ -28,6 +28,7 @@ import pino from 'pino';
 
 import { prisma } from '../lib/prisma.js';
 import { maybeResetAiSpend } from '../jobs/reset-ai-spend.js';
+import { maybeRunBindingExpireSweep } from '../jobs/binding-expire-sweep.js';
 
 import { HANDLERS, REGISTERED_TOPICS } from './handlers/registry.js';
 
@@ -179,6 +180,14 @@ export function startDispatcher(opts?: {
     // the outbox-poll loop.
     await maybeResetAiSpend(client, log).catch((err: unknown) => {
       log.error({ err }, 'reset-ai-spend dispatch wrapper crashed');
+    });
+    // F-003 — binding-expire-sweep, piggybacked on the same dispatcher tick.
+    // Same pattern as reset-ai-spend: in-memory cadence marker so the actual
+    // sweep work fires every 5 minutes even though tick runs every ~2s.
+    // Failure-tolerant inside maybeRunBindingExpireSweep so a sweep failure
+    // never breaks the outbox-poll loop.
+    await maybeRunBindingExpireSweep(client, log).catch((err: unknown) => {
+      log.error({ err }, 'binding-expire-sweep dispatch wrapper crashed');
     });
     inFlight = processOnce(client, log).catch((err: unknown) => {
       log.error({ err }, 'dispatcher batch crashed');
