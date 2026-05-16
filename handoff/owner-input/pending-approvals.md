@@ -20,7 +20,25 @@
 
 ## Currently awaiting approval
 
-### Slice: `f-006a-onesignal-identity-lifecycle` (F-006a — mobile shell + OneSignal identity linking) — SCOPE_APPROVED 2026-05-17 00:56 (code phase in flight)
+### Slice: `f-006a-onesignal-identity-lifecycle` (F-006a — mobile shell + OneSignal identity linking) — CODE_AWAITING_APPROVAL 2026-05-17 01:25
+
+**Status update 2026-05-17 01:25:** Code phase complete on `feat/f-006a-onesignal-identity-lifecycle` (not yet pushed; no merge per blanket no-push-without-review feedback rule). Stop at AWAITING_APPROVAL per friend's directive. Unit-test sweep 42/42 green via `pnpm --filter @axhy/mobile test` (the 15 F-006a-new cases land inside that total: `lib/identity-lifecycle.test.ts` 10 cases + `components/PushPermissionPrompt.test.ts` 5 cases on the pure `buildPromptOutcomeRunner` factory — vitest include glob is `components/**/*.test.ts`, so the factory is what the test covers; the React component is a thin wrapper). Mobile typecheck: only pre-existing `localStorage` errors in `lib/auth-store.ts` (web-fallback shim sans DOM lib; not introduced by F-006a). Manual smoke plan: `handoff/owner-input/f-006a-manual-smoke.md` (4 scenarios, requires real device + OneSignal sandbox project — flagged for owner to run before merge).
+
+**Files landed on the branch (planned for code commit):**
+
+- NEW `apps/mobile/lib/identity-lifecycle.ts` — ONE ordered sequence (`onIdentifiedLogin` / `onAppLogout` / `onColdStartReady`) + `shouldCallOneSignal()` + `_resolveOneSignal()` + `NonSupervisorRoleNotSupportedError`. JWT-scoped role rule: `authResult.memberships[0]?.role === 'SUPERVISOR'`.
+- NEW `apps/mobile/components/PushPermissionPrompt.tsx` — explainer modal + pure `buildPromptOutcomeRunner` factory owning the exactly-once-navigation contract via `outcomeFiredRef`.
+- NEW `apps/mobile/lib/identity-lifecycle.test.ts` (10 cases) + `apps/mobile/components/PushPermissionPrompt.test.ts` (5 cases).
+- EDIT `apps/mobile/app/(auth)/otp.tsx` — replaces `setTokens(...)` with `onIdentifiedLogin(result)`; surfaces `NonSupervisorRoleNotSupportedError.message` inline; mounts `<PushPermissionPrompt>` after identified login completes.
+- EDIT `apps/mobile/app/(supervisor)/profile.tsx` — replaces `clearTokens()` with `onAppLogout()`.
+- EDIT `apps/mobile/app/index.tsx` — wires `onColdStartReady(tokens)` after `getTokens()` returns non-null; uses returned route for `<Redirect>`.
+- EDIT `apps/mobile/lib/auth-store.ts` — JSDoc warning: do NOT call `setTokens`/`clearTokens` directly from login/logout flows.
+- MIGRATE `apps/mobile/app.json` → `apps/mobile/app.config.ts` (per Pick 6 lock; conditional `onesignal-expo-plugin` entry when `EXPO_PUBLIC_ONESIGNAL_APP_ID` is set; `@expo/config-types` typing avoided since it's not in deps).
+- EDIT `apps/mobile/package.json` — adds `react-native-onesignal ^5.2.0` + `jwt-decode ^4.0.0` (dependencies) + `onesignal-expo-plugin ^2.0.0` (devDependencies — note the npm name is `onesignal-expo-plugin`, NOT `@onesignal/onesignal-expo-plugin`; the v6 scope artifact used the scoped name but the registry serves it unscoped).
+
+**Friend's SCOPE: APPROVED verdict 2026-05-17 00:56 verbatim:** "APPROVED. v6 is clean enough to move forward. What is now correct: JWT-scoped role truth is honest and internally consistent; worker-only vs mixed-role future paths are clearly separated; app.json -> app.config.ts migration is explicit; test surface is current-only and recounted cleanly; no stale old-scope spillover remains. No blocking scope issues remain for F-006a. Proceed to code on feat/f-006a-onesignal-identity-lifecycle and stop at AWAITING_APPROVAL after unit tests + manual smoke are documented."
+
+### Slice: `f-006a-onesignal-identity-lifecycle` — original SCOPE_APPROVED block (preserved for traceability)
 
 **Friend's SCOPE: APPROVED verdict 2026-05-17 00:56 verbatim:** "APPROVED. v6 is clean enough to move forward. What is now correct: JWT-scoped role truth is honest and internally consistent; worker-only vs mixed-role future paths are clearly separated; app.json -> app.config.ts migration is explicit; test surface is current-only and recounted cleanly; no stale old-scope spillover remains. No blocking scope issues remain for F-006a. Proceed to code on feat/f-006a-onesignal-identity-lifecycle and stop at AWAITING_APPROVAL after unit tests + manual smoke are documented."
 
