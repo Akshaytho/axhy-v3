@@ -36,7 +36,7 @@
 
 **7 picks for owner + friend** (see `active-slice.md` for full trade-off; CLOSED items already determined by spec / friend's fix; recommended defaults in brackets):
 
-1. **Scheduler shape** [OS-cron + HTTP endpoint, matches existing `reset-ai-spend`]
+1. **Scheduler shape** [**CORRECTED 2026-05-16 pre-code:** piggyback on the existing outbox dispatcher tick — add `maybeRunBindingExpireSweep` next to `maybeResetAiSpend` in `dispatcher/index.ts:180`, gated by an in-memory 5-min marker. Original wording said "OS-cron + HTTP"; pre-code read of the repo revealed the actual existing pattern is dispatcher-tick piggyback. Direction unchanged.]
 2. **Run cadence** — **CLOSED: every 5 minutes** per closure spec §10 line 560 (the prior "every minute" recommendation was a spec contradiction and is withdrawn)
 3. **S-001 interaction** [sweep is exempt — responsibility switch already happened at read-time when `effectiveUntil` passed; sweep emits side-effect audit only]
 4. **Failure handling and transaction shape** — **one tx per row** (per-row side effects are independent; whole-sweep tx would amplify a single failure into total rollback). Same picks 4 + Code section — no more contradiction.
