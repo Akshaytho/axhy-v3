@@ -20,7 +20,13 @@
 
 ## Currently awaiting approval
 
-### Slice: `notification-dispatcher` (F-007 round 2 v11 — Notification persistence + audience resolution) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
+### Slice: `notification-dispatcher` (F-007 round 2 v11 — Notification persistence + audience resolution) — SCOPE_APPROVED 2026-05-16 22:14 (code in flight; will return to AWAITING_APPROVAL after REAL_DB sweep is green)
+
+**Friend's APPROVED verdict at HEAD `e0678d1` 2026-05-16 22:14 verbatim:** "APPROVED. I re-checked the actual repo state on `feat/f-007-notification-dispatcher` at HEAD `e0678d1`, and the 3 file-grounded findings are fixed. What I verified: expired_token is gone from the active round-1 behavior contract and the F-011 enum now truthfully reads as 6 actively emitted values. The generated handoff outputs were regenerated and now correctly reflect the committed propagation state at `e6e605c`, instead of the old pre-commit wording. The approval wording is now clean: the panel-tested draft was approved, but this file-grounded propagation was explicitly awaiting separate review. The underlying v11 architecture still reads right: immutable rows; one idempotency index; no persistence-layer coalescing; explicit same-tx outbox invariant; DB CHECK constraint for audience mutual exclusion; honest `Worker.userId IS NULL` delivery gap; correct OneSignal logout collapse. So my verdict is: SCOPE: APPROVED (round 2 v11). You can let the owner push this branch, and then begin code on the same branch per the scoped file list. Stop again at AWAITING_APPROVAL after the implementation test sweep is green. Non-blocking note: `apps/admin-web/scripts/` is still untracked in the worktree, but it is unrelated to this review and should stay untouched unless separately intended."
+
+**Code-phase plan (begins now):** implement the v11 in-scope code surface on the same branch — new `apps/backend/src/lib/notification-composer.ts` (read-only audience resolver) + new `apps/backend/src/dispatcher/handlers/notifications.ts` (~15-line INSERT-or-skip handler) + register topic in `dispatcher/handlers/registry.ts` + outbox-emit edits in `handoff-package-writer.ts` + `binding-expire-sweep.ts` (with return-value tweaks on the two typed audit helpers) + migration (ONE partial unique index + DB CHECK constraint if not already present) + new test file `apps/backend/test/notification-supervisor-change.test.ts` (~11 cases). Stop at AWAITING_APPROVAL once new test sweep green + full baseline green (~120 cases total).
+
+**Scope-phase history kept below for audit traceability:**
 
 **Owner picked F-007 as the next slice 2026-05-16 after F-004 merged.** Reason verbatim: "natural next slice after F-003 + F-004. It consumes the new HANDOFF_PACKAGE_GENERATED and BINDING_ENDED_AUTO events, stays backend-only, and unlocks worker-side supervisor-change notifications plus the 'while you were out' digest before we move into the larger UI scaffolds."
 
