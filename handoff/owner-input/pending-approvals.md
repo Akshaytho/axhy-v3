@@ -20,20 +20,47 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-package-composer` (F-004 — scope artifact drafted) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
+### Slice: `handoff-package-composer` (F-004 — scope artifact REVISED, round 2) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
 
-**Status note (2026-05-16):** Owner directed `SCOPE: GO with default picks` after F-003 closed DONE. Scope artifact drafted at [handoff/feature-queue/scopes/F-004.md](handoff/feature-queue/scopes/F-004.md) on branch `feat/f-004-handoff-package-composer` (forked from main `62471c6`). The artifact includes the rule-26 existing-pattern survey with grep/read evidence + 7 locked picks + 4 open questions surfaced from the survey + a clean "decision needed on this scope" closer. No code lands until both owner + friend sign off on the scope artifact.
+**Status note (2026-05-16 round 2):** Round-1 was CHANGES_REQUESTED by owner + friend for 3 drifts from closure spec §3.7. After deep discussion (R6-as-real-user walkthrough + 4-rule-layer model + ownership-truth-vs-consumers clarification + mechanism X/Y/Z evaluation), owner locked the revised direction:
 
-**What the scope artifact captures:**
+- **Mechanism Z (locked).** Acting cover writes `binding.handoffPackage` only. Permanent rebind writes `binding.handoffPackage` AND copies outgoing's site-scoped `LivingDoc.siteRules` entries into incoming's `LivingDoc.siteRules` (preserving `scope.siteId`) AND appends 1 "handover from [outgoing] on [date]" summary entry to incoming's `LivingDoc.freeNotes`. Owner verbatim reason: "X-only doesn't make the existing R6 site-rules UI useful; Y-only loses the spec-level handover record; Z gives both."
+- **CalendarEntry filter (locked).** STRICT option (a): include only entries whose `payload.siteId` EXPLICITLY matches this site. Ambiguous = skip. "Missing context is safer than wrong context for a handoff."
+- **4-rule-layer model (locked).** F-004 only handles **layer 3** (site-specific supervisor rules from outgoing's LivingDoc.siteRules). Layer 1 (company-permanent rules) + Layer 2 (HR/pod rules) stay LIVE-fetched, OUT of F-004. Layer 4 (personal/private notes) stays personal.
+- **Three explicit non-claims (caught by friend's audit of the previous claim wording):**
+  - Binding ownership-truth switching (via F-001's `getEffectiveBinding`) does NOT mean all consumers are wired. Future surfaces (F-005 HR portal, supervisor-mobile "Read the handoff" panel from closure §5.2.8, portfolio-delta banner §5.2.7, "while you were out" digest §5.2.6, F-007 notification dispatcher) still need their own slices.
+  - F-004 producing `binding.handoffPackage` JSON is NOT the same thing as "incoming LivingDoc updated". Mechanism Z's LivingDoc-merge step is the explicit write path that bridges the two.
+  - Long-horizon planning ("next month / 6 months") is a LIVE chat-tool query concern, NOT a handoffPackage concern. handoffPackage stays bounded at 14 days per spec.
 
-- **Rule-26 survey (§2):** four mandatory questions answered with file:line citations. Found two patterns in adjacent code (typed audit-emit `record*` with Zod-parse-then-write vs inline-compose-into-Json column `originContext`); recommended hybrid that matches `record*` shape but returns the typed payload instead of void. No new pattern category — extends repo reality.
-- **7 picks locked (§3):** Zod payload schema; single composer; 90-day complaints; site-scoped open decisions; +7-day calendar interpreted as Assignment×dayMask×validity expansion; atomic compose-and-write; 3-axis test coverage.
-- **4 open questions surfaced (§4):** (Q1) siteRules content given the Site model has no dedicated rules field today; (Q2) worker-targeted decision derivation via `deriveWorkerPrimarySiteId`; (Q3) `CalendarEntry` exclusion correctness; (Q4) JSON-size cap. Recommended defaults given; final lock awaits sign-off.
-- **In-scope file inventory (§5):** new `handoff-package-composer.ts` + new `HandoffPackagePayloadSchema` + wire into `reassignPermanentBinding` + new test file. No schema migration. No HTTP route.
-- **Out-of-scope (§6):** downstream consumers (digest UI / HR portal handoff card / supervisor-mobile rendering / F-007 notification dispatcher), historical backfill, richer rules schema.
-- **Confidence assessment (§7):** ~92% own on overall scope; ~75% on Open Q1 (siteRules); ~85% on Open Q2 (worker-targeted derivation).
+**Scope artifact:** [handoff/feature-queue/scopes/F-004.md](handoff/feature-queue/scopes/F-004.md) — revised in place (round-2 marker in header). Branch `feat/f-004-handoff-package-composer` (from main `62471c6`).
 
-**Decision needed:** `SCOPE: APPROVED` (default picks + recommended open-Q answers → code begins immediately) / `SCOPE: CHANGES_REQUESTED on pick N or Open Q N` / `HOLD`.
+**What the revised scope locks (8 picks):**
+
+| #   | Pick                     | Locked value (summary)                                                                                                                                                                                              |
+| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Payload shape            | EXACTLY closure spec §3.7: `generatedAt, outgoingSupervisorId?, incomingSupervisorId, siteId, siteRules STRING[], recentComplaints[], activeWorkers[], openItems[], packageSizeBytes`. Zod schema in shared-schema. |
+| 2   | siteRules source         | Outgoing's `LivingDoc.siteRules` filtered by `scope.siteId === thisSite AND state === ACTIVE AND visibility ∈ {COMPANY, SUPERVISOR_OWN}` (WORKER_OWN excluded defensively). Project to `ruleText` string.           |
+| 3   | Recent-complaints window | 90 days, siteId-scoped, include both open + resolved.                                                                                                                                                               |
+| 4   | activeWorkers shape      | `{ workerId, name, primaryShifts, recentFlags (30d), recentDecisions (30d) }`.                                                                                                                                      |
+| 5   | openItems composition    | ONE typed list, items `{ kind: 'DECISION' \| 'CALENDAR_ENTRY', ... }`, 14-day forward window.                                                                                                                       |
+| 6   | CalendarEntry filter     | STRICT option (a): explicit `payload.siteId` only; ambiguous skipped.                                                                                                                                               |
+| 7   | Atomic compose-and-write | All composer reads + binding-row create + (on permanent) LivingDoc writes + audit emits in ONE tx.                                                                                                                  |
+| 8   | Mechanism Z              | Acting = binding.handoffPackage only. Permanent = binding.handoffPackage + N LivingDoc.siteRules copies + 1 LivingDoc.freeNotes summary. All in same tx as binding create.                                          |
+
+**4 small mechanical Open Qs** (recommended defaults given; not blockers):
+
+- Q1: `LivingDocRule.createdBy` enum doesn't have a literal "system*handover" value. Default: use 'supervisor' (Anjali IS the owner going forward); preserve provenance in `source.pattern: "handover_from*<outgoingSupervisorId>"`.
+- Q2: First-ever binding for a site → `outgoingSupervisorId: null`, empty siteRules, summary entry still written.
+- Q3: 100KB size-cap truncation strategy — code-stage detail; serialize-measure-truncate-repeat.
+- Q4: Idempotency on replay — use deterministic rule IDs (uuid-v5 from binding + original-rule id) so re-application is no-op.
+
+**Audit emits on write:** 1× `HANDOFF_PACKAGE_GENERATED` (always — kind already in enum at audit-event.ts:84). N× `LIVING_DOC_RULE_ADDED` (permanent rebind only; same forward-compat path chat.ts:1273-1284 already uses).
+
+**Confidence:** ~93% overall; ~80% on Q1, ~85% on Q4.
+
+**Test plan:** 8 real-DB integration cases — acting binding / permanent reassign / first-ever / empty-state / cross-tenant / STRICT calendar filter (with & without payload.siteId) / idempotent replay.
+
+**Decision needed:** `SCOPE: APPROVED (round-2 revision)` → code begins immediately on `feat/f-004-handoff-package-composer`. `SCOPE: CHANGES_REQUESTED on pick N or Open Q N` → I update + re-surface. `HOLD` → F-004 pauses.
 
 ---
 
