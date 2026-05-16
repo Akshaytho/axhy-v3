@@ -207,6 +207,93 @@ export type BindingEndedSupersededByPermanentPayload = z.infer<
 >;
 
 // ============================================================================
+// F-004 HANDOFF_PACKAGE_GENERATED + LIVING_DOC_RULE_ADDED (handover-copy variant)
+// @derives(F-004 scope round-4 v4)
+// @derives(workflow-design-closure §3.7 — amended 2026-05-16 for schemaVersion)
+// ============================================================================
+
+/**
+ * Payload for HANDOFF_PACKAGE_GENERATED: emitted exactly once per binding-create
+ * (acting OR permanent OR reassignment-supersession). Carries the binding id +
+ * compose-time metadata so historical inspection doesn't need to JOIN against
+ * the binding row (which may have been cascade-deleted) or parse the JSON blob.
+ *
+ * @derives(ADR-0003)
+ * @derives(workflow-design-closure §9 + §3.7)
+ * @derives(F-004 scope round-4 v4)
+ */
+export const HandoffPackageGeneratedPayloadSchema = z.object({
+  bindingId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  outgoingSupervisorId: z.string().uuid().nullable(),
+  incomingSupervisorId: z.string().uuid(),
+  schemaVersion: z.literal(1),
+  generatedAt: z.string().datetime(),
+  packageSizeBytes: z.number().int().nonnegative(),
+  /** True iff this binding's permanent-rebind path also wrote N LIVING_DOC_RULE_ADDED. */
+  livingDocCopyApplied: z.boolean(),
+  /**
+   * Total number of LivingDoc entries written by the handover side effects on
+   * THIS binding's writer call:
+   *   - On permanent rebind WITH outgoing supervisor: N copied site-scoped
+   *     `siteRules` entries + 1 `freeNotes` summary entry. So the typical
+   *     value here is `N + 1`, where N is the count of outgoing's matching
+   *     site rules.
+   *   - On first-ever binding (no outgoing supervisor, Q2 = (b) locked): 0.
+   *   - On acting cover: 0.
+   *
+   * Was "number of L3 siteRule entries copied" in F-004 round 1; widened in
+   * round 2 when the summary entry was restored per spec §3.7 "Surfaced to".
+   */
+  livingDocRulesCopied: z.number().int().nonnegative(),
+});
+
+/**
+ * Inferred HandoffPackageGeneratedPayload type.
+ * @derives(ADR-0003)
+ */
+export type HandoffPackageGeneratedPayload = z.infer<typeof HandoffPackageGeneratedPayloadSchema>;
+
+/**
+ * Payload for LIVING_DOC_RULE_ADDED emitted by F-004's mechanism-Z permanent-
+ * rebind copy path. Same field set the existing chat.ts emit uses (per the
+ * forward-compat untyped path at chat.ts:1273-1284), but typed here so the
+ * F-004 writer can call a `recordLivingDocRuleAddedByHandover` helper for
+ * compile-time payload safety.
+ *
+ * Two `section` variants are emitted by F-004's writer:
+ *   - `site_rules`: emitted for each outgoing site-scoped siteRule copied
+ *     into incoming's LivingDoc. `sourcePattern = "handover_from_<outgoingId>"`.
+ *   - `free_notes`: emitted once for the handover-summary entry per binding.
+ *     `sourcePattern = "handover_summary_<outgoingId>"`.
+ *
+ * Consumers can discriminate by `section` or by `sourcePattern` prefix
+ * (`handover_from_*` vs `handover_summary_*`). Distinct from the chat-path
+ * emit by the presence of `bindingId` + `sourcePattern`.
+ *
+ * @derives(ADR-0003)
+ * @derives(F-004 scope round-4 v4 pick 8 mechanism Z)
+ * @derives(F-004 round-2 review 2026-05-16 — free_notes section added)
+ */
+export const LivingDocRuleAddedByHandoverPayloadSchema = z.object({
+  section: z.enum(['site_rules', 'free_notes']),
+  visibility: z.enum(['COMPANY', 'SUPERVISOR_OWN']),
+  ruleText: z.string().min(1),
+  version: z.number().int().nonnegative(),
+  bindingId: z.string().uuid(),
+  /** "handover_from_<outgoingId>" for siteRules copies; "handover_summary_<outgoingId>" for the summary entry. */
+  sourcePattern: z.string().min(1),
+});
+
+/**
+ * Inferred LivingDocRuleAddedByHandoverPayload type.
+ * @derives(ADR-0003)
+ */
+export type LivingDocRuleAddedByHandoverPayload = z.infer<
+  typeof LivingDocRuleAddedByHandoverPayloadSchema
+>;
+
+// ============================================================================
 // F-002 SupervisorDecision lifecycle kinds (DWI_PROPOSED / APPLIED / DISMISSED)
 // AuditEvent.kind values are already catalogued in audit-event.ts.
 // @derives(F-002 scope §3d)
