@@ -125,29 +125,44 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **expected verification gate:** Playwright smoke + `REAL_DB`.
 - **status:** `QUEUED`.
 
-### F-006 — Worker mobile app scaffold
+### F-006 — Worker + supervisor mobile in-app notification panel
 
 - **id:** F-006
-- **title:** First worker mobile app screens — auth + home + attendance subject view
-- **why:** All 18 Suresh workflows are NOT_STARTED because `apps/worker-mobile/` doesn't exist. The structurally-invisible-worker problem from audit Round 2.
-- **depends on:** F-001, F-003 (notification dispatcher).
-- **personas touched:** Suresh (primary).
-- **workflows touched:** A1, A3, A4 (worker side), C11 (subject), E21 (initiator).
-- **entities/routes/tables touched:** new `apps/worker-mobile/` Expo app, auth + home + attendance screens, push setup.
+- **title:** First worker / supervisor mobile app screens — auth + home + attendance subject view + **OUR own in-app notification panel / banner consumer / unread-read state / supervisor burst-grouping UI** backed by OUR Notification table
+- **why:** All 18 Suresh workflows are NOT_STARTED because `apps/worker-mobile/` doesn't exist. The structurally-invisible-worker problem from audit Round 2. F-006 also owns the supervisor burst-grouping presentation (UI aggregation by `(outgoingSupervisorId, incomingSupervisorId, eventKind)` within a short time window) — F-007 deliberately writes immutable per-event rows; F-006 groups them at read time.
+- **Architecture rule (v8 locked, applies to F-006):** F-006 reads from OUR Notification table (`schema.prisma:931`) and writes `ackedAt` on user dismiss/read. **NOT** OneSignal in-app messages — those are a separate OneSignal feature useful for marketing pop-ups, not for our product-native notification inbox/history.
+- **depends on:** F-001, F-007 (immutable Notification rows). F-011 (OneSignal push delivery) is independent — F-006 panel works from DB regardless of push transport state.
+- **personas touched:** Suresh (primary), Ravi/Anjali/Lakshmi (supervisor panel including burst grouping for multi-site rebinds).
+- **workflows touched:** A1, A3, A4 (worker side), C11 (subject), E21 (initiator), F26/F27 (supervisor banner grouping).
+- **entities/routes/tables touched:** new `apps/worker-mobile/` Expo app, auth + home + attendance + notification-panel screens, in-app banner rendering, unread/read state from `Notification.deliveredAt IS NOT NULL AND ackedAt IS NULL`, supervisor burst-grouping UI aggregating per-site rows into "you're covering Ravi at 8 sites — tap to expand."
 - **expected verification gate:** Playwright + `REAL_DB`.
 - **status:** `QUEUED`.
 
-### F-007 — Notification dispatcher (round 1: worker-side supervisor-change)
+### F-007 — Notification dispatcher (round 2 v11 — supervisor_change persistence + audience resolution)
 
-- **id:** F-007 (round 1)
-- **title:** Convert F-003 + F-004 audit events into Notification rows; in_app_banner real + 4 log-stub channels
-- **why:** Closure Decision 4 (mandatory worker-side supervisor-change notification) + audit Suresh W-1/W-2/W-7 (largest open product gap from the year-long simulation). F-004's `HANDOFF_PACKAGE_GENERATED` + F-003's `BINDING_ENDED_AUTO` audits emit but no notification reaches the affected workers or involved supervisors.
+- **id:** F-007 (round 2 v11)
+- **title:** Convert F-003 + F-004 audit events into immutable `Notification` rows. Persistence + audience resolution only — delivery is F-011's job.
+- **why:** Closure Decision 4 (mandatory worker-side supervisor-change notification) + audit Suresh W-1/W-2/W-7 (largest open product gap from the year-long simulation). F-004's `HANDOFF_PACKAGE_GENERATED` + F-003's `BINDING_ENDED_AUTO` audits emit but no notification rows reach the affected workers or involved supervisors. F-007 is the canonical persistence layer beneath Decision 4 delivery; F-011 + F-006 + F-012 close the rest.
+- **Round-history:** round 1 → 2-v2 (worker coalescing dropped + 1-row variant removed + tracker-truth) → v3 (supervisor-coalescing replay + Device push-token) → v4 (audit semantic + Path B + handler stale + Path A/B) → v5 (payload contract + event-time + audienceWorkerId push-skip + schemaVersion + array invariant) → v6 (replay misroute + full-burst event-time + cleanup) → **v7 RESET** (drop write-time coalescing — immutable rows; store truth first, group later) → v8 (OneSignal direction change for F-011) → v9 (reachability + softened pricing) → v10 (deactivation/removal policy + cost-model rewording) → **v11** (logout collapse + collapsed eligibility rule) → comprehensive 11-voice production-readiness panel test 2026-05-16 21:35; friend APPROVED 21:36 with 5 material findings folded.
 - **depends on:** F-003 + F-004 (both DONE on main). Notification table + Zod schemas already shipped (`schema.prisma:931`, `zod/notification.ts`).
-- **personas touched:** Suresh (worker — primary, finally gets a signal when his supervisor changes); Ravi (outgoing — gets "you've handed off N sites" notification); Anjali/Lakshmi (incoming — gets "you're now covering X sites" notification).
-- **workflows touched:** F26 (acting cover; covers W-1/W-2/W-7), F27 (permanent rebind; covers W-3 transitively), Decision 4 audit-trail compliance.
-- **entities/routes/tables touched:** NEW `apps/backend/src/lib/notification-composer.ts` (`composeSupervisorChangeNotifications`). NEW `apps/backend/src/dispatcher/handlers/notifications.ts` (`handleNotificationSupervisorChange`). EDIT `dispatcher/handlers/registry.ts` (register topic). EDIT `handoff-package-writer.ts` (one-line `enqueueOutbox`). EDIT `binding-expire-sweep.ts` (one-line `enqueueOutbox`). EDIT `audit-event.ts` + `audit-payloads.ts` (typed `WorkerSupervisorChangeNotifiedPayloadSchema` + `recordWorkerSupervisorChangeNotified` helper). NEW migration: partial unique index on `Notification (companyId, COALESCE(audienceUserId, sentinel), COALESCE(audienceWorkerId, sentinel), kind, payload->>'sourceAuditId') WHERE kind='supervisor_change'` for idempotent replay.
-- **expected verification gate:** `REAL_DB` — audience resolution + coalescing + idempotent replay + cross-tenant isolation + localisation + edge cases. ~10 new tests.
-- **status:** `SCOPE_DRAFT_PENDING_REVIEW (round 1)` — scope artifact at `handoff/feature-queue/scopes/F-007.md`. 8 picks + 5 Open Qs surfaced. Owner explicit pick required on Open Q1 (5-row vs 1-row channel variant). Awaits owner + friend sign-off; no code lands until both sign off.
+- **personas touched:** Suresh (worker — primary, finally gets a row when his supervisor changes); Ravi/Anjali/Lakshmi (outgoing + incoming supervisors get rows).
+- **workflows touched:** F26 (acting cover; covers W-1/W-2/W-7), F27 (permanent rebind; covers W-3 transitively).
+- **entities/routes/tables touched:** NEW `apps/backend/src/lib/notification-composer.ts` (read-only audience resolver). NEW `apps/backend/src/dispatcher/handlers/notifications.ts` (~15-line INSERT-or-skip handler). EDIT `dispatcher/handlers/registry.ts` (register topic `notification.supervisor_change`). EDIT `handoff-package-writer.ts` + `binding-expire-sweep.ts` (one-line `enqueueOutbox` + return-value tweaks). **NO** typed audit-payload schema, **NO** `recordWorkerSupervisorChangeNotified` helper — both moved to F-011 (audit fires at delivery time, not at persistence). NEW migration: ONE partial unique index on `Notification (companyId, kind, channel, COALESCE(audienceUserId::text, ''), COALESCE(audienceWorkerId::text, ''), payload->>'sourceAuditId', payload->>'siteId') WHERE kind='supervisor_change'` for idempotent replay. **Plus DB CHECK constraint** `(audienceUserId IS NULL) <> (audienceWorkerId IS NULL)` if not already present on Notification table (v11 panel-test Vikram — P1 invariant enforced, not described).
+- **Architecture invariants (v11 — locked):** immutable rows (no write-time coalescing); single idempotency index; `push` row = INTENT for user-backed recipient (reachability is F-011's concern); `Worker.userId IS NULL` → in_app_banner only; `${var}` placeholder template with explicit escape rule; **outbox same-tx invariant (v11 panel-test Maya):** binding write + audit emit + `enqueueOutbox(tx, ...)` commit together or none commit.
+- **expected verification gate:** `REAL_DB` — ~120 cases total (109 baseline + ~11 new F-007 cases including immutable-row semantics + idempotent replay worker+supervisor + Telugu/Hindi + apostrophe rendering + cross-tenant + edge cases).
+- **status:** `SCOPE_DRAFT_PENDING_REVIEW (round 2 v11 — OneSignal direction + reachability + pricing + deactivation/removal policy + collapsed eligibility rule)` — scope artifact at `handoff/feature-queue/scopes/F-007.md`. 8 picks; no blocking owner picks; recommended defaults stand unless owner overrides. Awaits owner + friend sign-off; no code lands until both sign off.
+
+### F-007b — Supervisor burst-grouping digest (optional follow-up to F-007 + F-006)
+
+- **id:** F-007b
+- **title:** Send-time digest aggregator that batches recent supervisor-change Notification rows for one (outgoingSupervisorId, incomingSupervisorId, eventKind) pair into a single push payload.
+- **why:** F-007 writes per-event immutable rows; F-006 aggregates at read time for in-app panel. But for PUSH delivery (F-011), an 8-site rebind generates 16 push notifications to the incoming supervisor (8 events × 2 channels — push + in_app_banner per event). This is by design ("store truth first, group later") but creates a notification storm at production scale. F-007b is an optional follow-up: a send-time digest job that batches recent push rows for the same supervisor pair into a single OneSignal call ("you're now covering Ravi at 8 sites — tap to expand"). Only ships IF F-006 UI aggregation alone proves insufficient at field testing.
+- **depends on:** F-007 (immutable rows ship first) + F-011 (push delivery exists) + F-006 (UI aggregation tried first). Owner picks whether F-007b is actually needed after observing real production behavior.
+- **personas touched:** Ravi/Anjali/Lakshmi (supervisors — reduces push storm during portfolio rebalances).
+- **workflows touched:** F26 + F27 (multi-site bursts).
+- **entities/routes/tables touched:** likely a new send-time digest job in `apps/backend/src/jobs/` that batches recent unsent `Notification.channel='push'` rows for a supervisor pair within a configurable window and dispatches a single OneSignal call with a digest payload. F-007 persistence rows remain individual; digest is a send-time view over them.
+- **expected verification gate:** `REAL_DB` + production observation period.
+- **status:** `QUEUED — AWAITING_F-006_FIELD_OBSERVATION`. Optional; only built if needed.
 
 ### F-008 — Bootstrap-seed migration + HR review UI
 
@@ -195,6 +210,43 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **entities/routes/tables touched (proposed; refine at scope time):** likely additions to `HandoffPackagePayloadSchema` (or sibling), additions to mechanism-Z LivingDoc copy logic (`handoff-package-writer.ts`), new test cases.
 - **expected verification gate:** `REAL_DB` — clientPreferences-copy correctness across acting / permanent paths + cross-tenant isolation + schemaVersion bump correctness.
 - **status:** `QUEUED — AWAITING_F-004_DONE`. Owner-locked deferral 2026-05-16 (F-004 round-4 v3 panel pass, Material #2 = β).
+
+### F-011 — OneSignal mobile SDK + identity linking + push delivery adapter
+
+- **id:** F-011
+- **title:** OneSignal mobile SDK install + `OneSignal.login(external_id = User.id)` identity linking + backend push delivery adapter consuming F-007's `channel='push'` rows + delivery-time `WORKER_SUPERVISOR_CHANGE_NOTIFIED` audit emit + pre-dispatch eligibility re-check + typed `failureReason` enum.
+- **why:** Decision 4 (mandatory worker supervisor-change notification) requires real push delivery. F-007 ships the persistence rows; F-011 turns them into actual push notifications via OneSignal. Replaces an earlier "FCM/Expo + push-token on Device" plan dropped at v8 in favor of the managed-provider approach.
+- **Architecture rule (v8 locked):** our DB owns truth + audit + unread/read history + app panel; **OneSignal owns push subscription plumbing + delivery transport only**; future grouping stays read-side, not write-side. **NO** `pushToken` / `pushPlatform` / `tokenUpdatedAt` fields on `Device` — OneSignal SDK owns subscription/token lifecycle entirely.
+- **depends on:** F-007 (Notification rows exist) + F-006 (worker mobile app exists to install the SDK in). OneSignal account setup is a prerequisite operational task.
+- **personas touched:** Suresh (worker — receives actual push), Ravi/Anjali/Lakshmi (supervisors — receive actual push).
+- **workflows touched:** F26 + F27 push delivery; F-006 in-app banner remains independent (F-006 reads DB regardless of push state).
+- **entities/routes/tables touched:**
+  - **Mobile SDK install** in `apps/worker-mobile/` + `apps/supervisor-mobile/` (or wherever F-006 lands).
+  - **Identity lifecycle:** call `OneSignal.login(external_id = User.id)` on every identified app open / login. On app logout: `OneSignal.logout()` to detach the current device. On User soft-delete-and-re-create (rare): `OneSignal.logout()` on old session + re-link on next login under the new `external_id`.
+  - **Backend delivery adapter** consuming F-007's `channel='push'` rows where `deliveredAt IS NULL AND failedAt IS NULL`. Dispatches via OneSignal REST API targeting by `external_id`.
+  - **Pre-dispatch eligibility re-check (v11 — material correctness rule):** for each push row, the adapter re-fetches the target User (reference the existing schema soft-delete signal — likely `User.deletedAt`; verify against `packages/shared-schema/prisma/schema.prisma` at implementation time):
+    - User not found → stamp `failedAt + failureReason='recipient_removed'` (terminal — no retry).
+    - User soft-deleted/inactive → stamp `failedAt + failureReason='recipient_inactive'` (terminal — no retry).
+    - User active + OneSignal active subscription count = 0 → stamp `failedAt + failureReason='no_active_subscription'` (terminal — covers logout, uninstall, never-opened-app, all-tokens-expired).
+    - User active + ≥1 subscription → dispatch.
+  - **On successful delivery:** stamp `Notification.deliveredAt = now()` + emit `WORKER_SUPERVISOR_CHANGE_NOTIFIED` AuditEvent + optionally record `providerMessageId` on the row for observability.
+  - **Failure policy — typed `failureReason` enum (v11 — 6 round-1 values):** terminal-no-retry: `'no_active_subscription'` / `'recipient_inactive'` / `'recipient_removed'`. Transient-bounded-backoff-retry: `'rate_limited'` / `'provider_error'` / `'network_error'`. `'expired_token'` reserved for future use (only emitted if OneSignal returns a distinct token-dead signal not subsumed by zero-subscription state).
+- **Pricing/business note (NOT an architecture rule):** OneSignal billing is per **active mobile subscription** (MAU), NOT per User row or employee — one user with two active devices counts as 2 MAUs. Free/Growth/Professional tier boundaries are commercial details that can change; verify current OneSignal billing terms before go-live and at every scale-up decision.
+- **Owner-digest segmentation requirement (panel-test Naina + Reddy):** the owner monthly digest MUST group failed rows by `failureReason` to distinguish "transport failed — actionable" from `'no_active_subscription'` which is an onboarding/adoption signal (workers haven't installed the app yet). Without segmentation, a fresh tenant's first month will look like a 70%+ failure rate. Documented as an explicit requirement for the owner-digest slice.
+- **expected verification gate:** `REAL_DB` + OneSignal sandbox project + Playwright on mobile builds.
+- **status:** `QUEUED — AWAITING_F-007_DONE_AND_F-006_DONE`.
+
+### F-012 — SMS + WhatsApp adapter (paid channels)
+
+- **id:** F-012
+- **title:** SMS + WhatsApp delivery adapter for `Notification.channel='sms'` + `'whatsapp_out'` rows; primary use is delivering to `Worker.userId IS NULL` recipients (no OneSignal subscription possible) via `Worker.phone`.
+- **why:** Decision 4 channel chain (closure §5 line 78): push → SMS → WhatsApp-out → email. Also closes the persistent push-gap for workers with no User account (v11 panel-test Suresh Pillai). SMS/WhatsApp are PAID — owner go required before this slice opens.
+- **depends on:** F-007 (rows exist) + F-011 (push transport for primary channel exists) + owner approval on paid-channel spend.
+- **personas touched:** Suresh-without-User-account (primary — finally has a delivery path), all workers as push-fallback.
+- **workflows touched:** F26 + F27 channel-fallback chain.
+- **entities/routes/tables touched:** SMS provider integration (TBD: Twilio / Gupshup / etc.); WhatsApp Business API integration (TBD); F-007 channel-set extension to include `'sms'` + `'whatsapp_out'` rows when paid channels are live; channel-fallback retry chain logic (push fails → SMS → WhatsApp → email).
+- **expected verification gate:** `REAL_DB` + provider sandbox.
+- **status:** `QUEUED — AWAITING_OWNER_GO_ON_PAID_CHANNELS`.
 
 ---
 
