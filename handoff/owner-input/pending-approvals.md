@@ -20,7 +20,23 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-package-composer` (F-004 — CODE COMPLETE; real-DB sweep 19/19 · 106/106 green) — AWAITING_APPROVAL 2026-05-16
+### Slice: `handoff-package-composer` (F-004 — round-2 fixes; real-DB sweep 19/19 · 109/109 green) — AWAITING_APPROVAL (round 2) 2026-05-16
+
+**Friend's round-1 review at HEAD `3abf55b` 2026-05-16 caught 3 findings; all addressed in this revision:**
+
+- **(P1 #1) Permanent-rebind handover-summary entry was missing entirely.** Round 1 dropped the summary on ALL permanent rebinds, but Q2=(b) only governs first-ever binding. Spec §3.7 "Surfaced to" requires the summary on permanent rebind with an outgoing supervisor. **Fix:** writer now writes one `LivingDoc.freeNotes` entry per permanent rebind WITH outgoing supervisor: text = "Handover from \<outgoingName\> on \<date\> for \<siteName\>", source.pattern = `handover_summary_<outgoingId>`, scope.siteId = thisSite, idempotent via `deriveSummaryEntryId(bindingId)`. Test 2 asserts entry present + LIVING_DOC_RULE_ADDED count = 3 (2 siteRules + 1 summary); test 7 idempotency asserts summary entry still = 1 on replay (not 2).
+- **(P1 #2) `openItems` decisions were not site-scoped.** Round 1's composer pulled ALL PROPOSED decisions by the outgoing supervisor in the company, no site filter — could leak Ravi's other-site open decisions into Manikonda's handoff. **Fix:** composer uses the same routing pattern as `routes/decisions.ts:227`: `routingModeFor(kind)` discriminates; worker-targeted → `deriveWorkerPrimarySiteId(targetId)` must equal this site; site-targeted → `targetId` must equal this site; origin-only → excluded entirely. New test 10 verifies the cross-site cases: worker-on-other-site NOT included, site-targeted-other-site NOT, origin-only NEVER; worker-on-this-site and site-targeted-this-site ARE included.
+- **(P2 #3) Truncation was soft-fail.** Spec §3.7 line 323 wording is hard invariant. Round 1 returned oversized payload after phases 1+2 couldn't fit. **Fix:** truncation extended with phases 3a/3b/3c (drop entire activeWorkers → openItems → siteRules). If even metadata-only exceeds cap, throws new typed `HandoffPackageOversizedError` so caller's tx rolls back. New test 11 verifies throw with tiny cap; new test 12 verifies soft truncation drops complaints.
+
+**Code changes (round 2):**
+
+- `apps/backend/src/lib/handoff-package-writer.ts` — Mechanism Z restructured. Permanent rebind WITH outgoing: copy site-scoped siteRules + write ONE freeNotes summary entry (always). Q2=(b) still governs no-outgoing case. Refresh `freeNotes` via explicit `findUniqueOrThrow` to avoid upsert-return staleness during replay. New helpers `deriveSummaryEntryId(bindingId)` + shared `uuidV5FromBytes`.
+- `apps/backend/src/lib/handoff-package-composer.ts` — `readOpenItems` applies site-scoping via `routingModeFor` + `deriveWorkerPrimarySiteId`. `truncateToFitCap` extended with phases 3a/3b/3c + final throw. New exported `HandoffPackageOversizedError`.
+- `apps/backend/test/handoff-package-composer.test.ts` — 14 cases now (was 11): test 2 asserts summary; test 7 replay asserts summary still 1; new tests 10/11/12.
+
+**Full real-DB sweep:** 19/19 files · 109/109 cases pass.
+
+**Round-1 history kept below for context:**
 
 **Code slice complete on `feat/f-004-handoff-package-composer`. Full real-DB sweep:** 19/19 test files · 106/106 cases pass on fresh local Postgres 16 (95 baseline + 11 new F-004 cases).
 

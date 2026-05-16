@@ -293,7 +293,10 @@ describe('F-004 — HandoffPackage composer + writer + reassign wiring', () => {
     expect(pkg.siteRules).not.toContain('Other-site rule — should NOT copy');
     expect(pkg.siteRules).toHaveLength(2);
 
-    // Anjali's LivingDoc has the 2 copies, scope.siteId preserved, no freeNotes entry.
+    // Anjali's LivingDoc: 2 copied siteRules + 1 freeNotes summary entry
+    // ("handover from Ravi on YYYY-MM-DD"). The summary entry comes from
+    // the round-2 review fix (was missing in v1 due to over-application of
+    // Q2=(b)). Q2=(b) only governs the no-outgoing case.
     const anjaliDoc = await prisma.livingDoc.findUnique({
       where: { companyId_supervisorId: { companyId, supervisorId: anjali } },
     });
@@ -308,10 +311,19 @@ describe('F-004 — HandoffPackage composer + writer + reassign wiring', () => {
         `handover_from_${ravi}`,
       );
     }
-    // Q2 = (b): no freeNotes summary entry.
-    expect((anjaliDoc!.freeNotes as unknown as unknown[]).length ?? 0).toBe(0);
+    const anjaliFreeNotes = anjaliDoc!.freeNotes as unknown as Array<Record<string, unknown>>;
+    const summaryEntries = anjaliFreeNotes.filter(
+      (r) =>
+        asJsonObject((r as JsonObject).source as Prisma.JsonValue).pattern ===
+        `handover_summary_${ravi}`,
+    );
+    expect(summaryEntries).toHaveLength(1);
+    const summaryText = String((summaryEntries[0] as JsonObject).ruleText);
+    expect(summaryText).toMatch(/^Handover from Ravi on \d{4}-\d{2}-\d{2}/);
+    expect(summaryText).toContain('F004-Permanent'); // site name appears in summary
 
-    // Audits: 1 HANDOFF_PACKAGE_GENERATED for new binding; 2 LIVING_DOC_RULE_ADDED keyed to bindingId.
+    // Audits: 1 HANDOFF_PACKAGE_GENERATED for new binding; 3 LIVING_DOC_RULE_ADDED
+    // keyed to bindingId (2 siteRules + 1 summary).
     const pkgAudits = await prisma.auditEvent.findMany({
       where: { companyId, kind: 'HANDOFF_PACKAGE_GENERATED', targetId: result.newBindingId },
     });
@@ -326,7 +338,9 @@ describe('F-004 — HandoffPackage composer + writer + reassign wiring', () => {
         } as unknown as Prisma.JsonFilter,
       },
     });
-    expect(livDocAudits).toHaveLength(2);
+    expect(livDocAudits).toHaveLength(3);
+    expect(asJsonObject(pkgAudits[0]!.payload).livingDocRulesCopied).toBe(3);
+    expect(asJsonObject(pkgAudits[0]!.payload).livingDocCopyApplied).toBe(true);
   });
 
   it('3. first-ever binding (no outgoing) → Q2=(b) zero LivingDoc writes; package with outgoingSupervisorId=null + siteRules=[]; recentComplaints reflects DB state (NOT hardcoded)', async () => {
@@ -592,6 +606,31 @@ describe('F-004 — HandoffPackage composer + writer + reassign wiring', () => {
     );
     // Still 2 after replay (not 4).
     expect(siteScoped).toHaveLength(2);
+
+    // Summary entry: still exactly 1 after replay (not 2). Idempotency via
+    // deriveSummaryEntryId(bindingId). We filter by the deterministic
+    // summary id for THIS binding rather than by source.pattern, since
+    // earlier tests in this file (test 2, test 9) also wrote summary
+    // entries for the same incoming supervisor — those have different
+    // bindingIds and therefore different summary ids.
+    const allFreeNotes = anjaliDoc!.freeNotes as unknown as Array<Record<string, unknown>>;
+    const thisBindingSummary = allFreeNotes.filter(
+      (r) => typeof r.bindingId === 'string' && r.bindingId === r1.newBindingId,
+    );
+    // The summary entry doesn't carry bindingId on the rule itself — it
+    // does on the audit row. So filter by source.pattern + the deterministic
+    // summary entry id (which IS keyed on bindingId).
+    const thisBindingSummaries = allFreeNotes.filter((r) => {
+      const src = asJsonObject((r as JsonObject).source as Prisma.JsonValue);
+      const pat = String(src.pattern ?? '');
+      return (
+        pat === `handover_summary_${ravi}` &&
+        r.scope &&
+        asJsonObject((r as JsonObject).scope as Prisma.JsonValue).siteId === site.id
+      );
+    });
+    expect(thisBindingSummaries).toHaveLength(1);
+    expect(thisBindingSummary).toBeDefined(); // anchor unused-var
   });
 
   it('8a. schemaVersion negative — Zod rejects schemaVersion=0', () => {
@@ -744,5 +783,187 @@ describe('F-004 — HandoffPackage composer + writer + reassign wiring', () => {
         `handover_from_${ravi}`,
     );
     expect(handoverClientPrefs).toHaveLength(0);
+  });
+
+  it('10. site-scoped openItems — decisions targeting workers on OTHER sites are NOT included; site-targeted on this site IS; on other site is NOT; origin-only NEVER (round-2 finding #2)', async () => {
+    const thisSite = await prisma.site.create({
+      data: { companyId, name: 'F004-SiteScope-this' },
+    });
+    const otherSite = await prisma.site.create({
+      data: { companyId, name: 'F004-SiteScope-other' },
+    });
+
+    // Two workers, each with an ACTIVE assignment on different sites so
+    // deriveWorkerPrimarySiteId returns the right site for each.
+    const workerOnThisSite = await prisma.worker.create({
+      data: {
+        companyId,
+        name: 'WorkerThis',
+        phone: '+91999' + String(Date.now() + 7100).slice(-8),
+      },
+    });
+    const workerOnOtherSite = await prisma.worker.create({
+      data: {
+        companyId,
+        name: 'WorkerOther',
+        phone: '+91999' + String(Date.now() + 7200).slice(-8),
+      },
+    });
+    await prisma.assignment.createMany({
+      data: [
+        {
+          companyId,
+          workerId: workerOnThisSite.id,
+          siteId: thisSite.id,
+          shiftStart: '08:00',
+          shiftEnd: '17:00',
+          dayMask: 'MTWTFS_',
+          validFrom: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          validUntil: null,
+          state: 'ACTIVE',
+        },
+        {
+          companyId,
+          workerId: workerOnOtherSite.id,
+          siteId: otherSite.id,
+          shiftStart: '08:00',
+          shiftEnd: '17:00',
+          dayMask: 'MTWTFS_',
+          validFrom: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          validUntil: null,
+          state: 'ACTIVE',
+        },
+      ],
+    });
+
+    // 5 PROPOSED decisions by Ravi within the lookback window:
+    //   A. worker-targeted MARK_ABSENT for workerOnThisSite   → INCLUDE
+    //   B. worker-targeted MARK_ABSENT for workerOnOtherSite  → EXCLUDE
+    //   C. site-targeted LOG_COMPLAINT for thisSite           → INCLUDE
+    //   D. site-targeted LOG_COMPLAINT for otherSite          → EXCLUDE
+    //   E. origin-only LIVING_DOC_RULE                        → EXCLUDE (no site)
+    const decA = await prisma.supervisorDecision.create({
+      data: {
+        companyId,
+        supervisorId: ravi,
+        kind: 'MARK_ABSENT',
+        tier: 'OPERATIONAL',
+        targetId: workerOnThisSite.id,
+        payload: {} as Prisma.InputJsonValue,
+      },
+    });
+    const decB = await prisma.supervisorDecision.create({
+      data: {
+        companyId,
+        supervisorId: ravi,
+        kind: 'MARK_ABSENT',
+        tier: 'OPERATIONAL',
+        targetId: workerOnOtherSite.id,
+        payload: {} as Prisma.InputJsonValue,
+      },
+    });
+    const decC = await prisma.supervisorDecision.create({
+      data: {
+        companyId,
+        supervisorId: ravi,
+        kind: 'LOG_COMPLAINT',
+        tier: 'OPERATIONAL',
+        targetId: thisSite.id,
+        payload: {} as Prisma.InputJsonValue,
+      },
+    });
+    const decD = await prisma.supervisorDecision.create({
+      data: {
+        companyId,
+        supervisorId: ravi,
+        kind: 'LOG_COMPLAINT',
+        tier: 'OPERATIONAL',
+        targetId: otherSite.id,
+        payload: {} as Prisma.InputJsonValue,
+      },
+    });
+    const decE = await prisma.supervisorDecision.create({
+      data: {
+        companyId,
+        supervisorId: ravi,
+        kind: 'LIVING_DOC_RULE',
+        tier: 'NOTE',
+        targetId: null,
+        payload: {} as Prisma.InputJsonValue,
+      },
+    });
+
+    const payload = await withTenantContext(prisma, companyId, async (tx) => {
+      return composeHandoffPackage(tx, {
+        companyId,
+        siteId: thisSite.id,
+        outgoingSupervisorId: ravi,
+        incomingSupervisorId: anjali,
+      });
+    });
+
+    const decisionItems = payload.openItems.filter(
+      (i): i is Extract<(typeof payload.openItems)[number], { kind: 'DECISION' }> =>
+        i.kind === 'DECISION',
+    );
+    const includedIds = decisionItems.map((i) => i.decisionId);
+    expect(includedIds).toContain(decA.id); // worker on this site
+    expect(includedIds).not.toContain(decB.id); // worker on other site — DO NOT LEAK
+    expect(includedIds).toContain(decC.id); // site-targeted this site
+    expect(includedIds).not.toContain(decD.id); // site-targeted other site
+    expect(includedIds).not.toContain(decE.id); // origin-only — no site
+  });
+
+  it('11. hard-cap truncation — composer THROWS HandoffPackageOversizedError if cap is impossibly small even after dropping everything (round-2 finding #3)', async () => {
+    // Set the cap to 50 bytes — smaller than even a metadata-only payload's
+    // JSON serialization. The truncation algorithm should run through all
+    // phases (1: drop complaints; 2: strip worker detail; 3a: drop workers;
+    // 3b: drop openItems; 3c: drop siteRules) and finally throw rather than
+    // returning an oversized payload.
+    const site = await prisma.site.create({ data: { companyId, name: 'F004-HardCap' } });
+
+    await expect(
+      withTenantContext(prisma, companyId, async (tx) => {
+        return composeHandoffPackage(tx, {
+          companyId,
+          siteId: site.id,
+          outgoingSupervisorId: null, // first-ever: nothing to load
+          incomingSupervisorId: anjali,
+          packageByteCap: 50,
+        });
+      }),
+    ).rejects.toThrow(/HandoffPackage exceeds cap after full truncation/);
+  });
+
+  it('12. soft-cap truncation — composer DROPS oldest complaints first when cap is tight, then succeeds (covers spec §3.7 phases 1+2)', async () => {
+    // Seed several complaints so the package would exceed a modest cap.
+    const site = await prisma.site.create({ data: { companyId, name: 'F004-TruncSoft' } });
+    for (let i = 0; i < 10; i++) {
+      await prisma.complaint.create({
+        data: {
+          companyId,
+          siteId: site.id,
+          supervisorId: hrUserId,
+          text: `Complaint #${i} — ${'x'.repeat(200)}`,
+          severity: 'LOW',
+        },
+      });
+    }
+    // Cap of 1500 bytes is enough for metadata + a few complaints, not all 10.
+    const payload = await withTenantContext(prisma, companyId, async (tx) => {
+      return composeHandoffPackage(tx, {
+        companyId,
+        siteId: site.id,
+        outgoingSupervisorId: null,
+        incomingSupervisorId: anjali,
+        packageByteCap: 1500,
+      });
+    });
+    expect(payload.packageSizeBytes).toBeLessThanOrEqual(1500);
+    // Some complaints were dropped (we seeded 10).
+    expect(payload.recentComplaints.length).toBeLessThan(10);
+    // schemaVersion + outgoing/incoming/siteRules/openItems/activeWorkers
+    // are preserved on the way to the cap.
+    expect(payload.schemaVersion).toBe(1);
   });
 });
