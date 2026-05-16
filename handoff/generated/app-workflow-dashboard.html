@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T17:45:28.418Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>79e38aa3</code></span>
-      <span>Branch <code>main</code></span>
-      <span>Active slice: <strong>BETWEEN_SLICES — AWAITING_OWNER_PICK 2026-05-16 23:00. F-007 round 2 v11 just merged at 79e38aa; next-slice picker below. · n/a — between slices</strong></span>
+      <span>Generated <strong>2026-05-16T19:37:33.721Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>ffce21bb</code></span>
+      <span>Branch <code>feat/f-006a-onesignal-identity-lifecycle</code></span>
+      <span>Active slice: <strong>f-006a-onesignal-identity-lifecycle (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly) · SCOPE_APPROVED (round 2 v6) 2026-05-17 00:56. Friend's CODE-phase directive verbatim: &quot;Proceed to code on feat/f-006a-onesignal-identity-lifecycle and stop at AWAITING_APPROVAL after unit tests + manual smoke are documented.&quot; Code phase in progress on the branch.</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>BETWEEN_SLICES — AWAITING_OWNER_PICK</code> 2026-05-16 23:00. F-007 round 2 v11 just merged at <code>79e38aa</code>; next-slice picker below.</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — between slices</span></td></tr><tr><th>Branch</th><td><code>main</code> at <code>79e38aa</code>. Working tree clean.</td></tr><tr><th>Last landed commit</th><td><code>79e38aa</code> — <code>Merge F-007 round-2 v11 — Notification persistence + audience resolution for supervisor_change (APPROVED at HEAD cbb7646)</code></td></tr><tr><th>Dependencies</th><td>F-001 + F-002 + S-001 + F-003 + F-004 + F-007 — all DONE on main. F-007 produces the immutable Notification rows the next-slice consumers (F-011 OneSignal push delivery + F-006 worker mobile in-app panel + F-012 paid SMS/WhatsApp) will read.</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">GREEN at merge — 20/20 files · 123/123 cases on fresh local Postgres 16. F-007 added migration 20260520_f007_notification_supervisor_change_idempotency (partial unique index + DB CHECK constraint).</span></td></tr><tr><th>Verification gate</th><td>F-007 = <code>REAL_DB</code> met. Next slice picks its own gate at scope time.</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>f-006a-onesignal-identity-lifecycle</code> (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_APPROVED (round 2 v6) 2026-05-17 00:56. Friend's CODE-phase directive verbatim: &quot;Proceed to code on feat/f-006a-onesignal-identity-lifecycle and stop at AWAITING_APPROVAL after unit tests + manual smoke are documented.&quot; Code phase in progress on the branch.</span></td></tr><tr><th>Branch</th><td><code>feat/f-006a-onesignal-identity-lifecycle</code> — forked from main <code>ffce21b</code> 2026-05-17.</td></tr><tr><th>Last landed commit</th><td><code>ffce21b</code> — <code>docs(handoff): F-007 → DONE; merged to main at 79e38aa; next-slice picker surfaced (F-006+F-011 together recommended)</code></td></tr><tr><th>Dependencies</th><td>F-001 + F-002 + S-001 + F-003 + F-004 + F-007 — all DONE on main. F-006a does NOT depend on F-011 (the reverse: F-011 will consume the identity-link F-006a establishes). Owner must provision OneSignal account before EAS Build lands, but local dev + Playwright web tests work without it (no-op path).</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">WIP — 15 unit cases planned across 2 files (apps/mobile/lib/identity-lifecycle.test.ts 10 cases + apps/mobile/components/PushPermissionPrompt.test.tsx 5 cases). Run via pnpm --filter mobile test.</span></td></tr><tr><th>Verification gate</th><td>Unit tests green + manual smoke documented (real device + OneSignal sandbox project — 4 smoke scenarios). Stop at AWAITING_APPROVAL.</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -151,6 +151,20 @@
     <h2>✅ Approval gate</h2>
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
     
+      <div class="approval">
+        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>f-006a-onesignal-identity-lifecycle</code></strong></div>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+      </div>
       <div class="approval">
         <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>notification-dispatcher</code></strong></div>
         
@@ -249,21 +263,6 @@
           <p><strong>Workflows:</strong> H-1, H-2, H-3, H-4, H-6, H-7, H-8, H-9, E21, E23, D20/E24 (ack gate).</p>
           <p><strong>Entities / routes / tables:</strong> <code>apps/admin-web/app/hr/{queue,bindings,seed-review,ack}/*</code> (new), wires to backend bindings + DWI APIs.</p>
           <p><strong>Verification gate:</strong> Playwright smoke + <code>REAL_DB</code>.</p>
-        </div>
-      </details>
-      <details class="feature">
-        <summary>
-          <code>F-006</code>
-          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
-          <strong>Worker + supervisor mobile in-app notification panel</strong>
-        </summary>
-        <div class="feature-body">
-          <p><strong>Why:</strong> All 18 Suresh workflows are NOT_STARTED because <code>apps/worker-mobile/</code> doesn't exist. The structurally-invisible-worker problem from audit Round 2. F-006 also owns the supervisor burst-grouping presentation (UI aggregation by <code>(outgoingSupervisorId, incomingSupervisorId, eventKind)</code> within a short time window) — F-007 deliberately writes immutable per-event rows; F-006 groups them at read time.</p>
-          <p><strong>Depends on:</strong> F-001, F-007 (immutable Notification rows). F-011 (OneSignal push delivery) is independent — F-006 panel works from DB regardless of push transport state.</p>
-          <p><strong>Personas:</strong> Suresh (primary), Ravi/Anjali/Lakshmi (supervisor panel including burst grouping for multi-site rebinds).</p>
-          <p><strong>Workflows:</strong> A1, A3, A4 (worker side), C11 (subject), E21 (initiator), F26/F27 (supervisor banner grouping).</p>
-          <p><strong>Entities / routes / tables:</strong> new <code>apps/worker-mobile/</code> Expo app, auth + home + attendance + notification-panel screens, in-app banner rendering, unread/read state from <code>Notification.deliveredAt IS NOT NULL AND ackedAt IS NULL</code>, supervisor burst-grouping UI aggregating per-site rows into &quot;you're covering Ravi at 8 sites — tap to expand.&quot;</p>
-          <p><strong>Verification gate:</strong> Playwright + <code>REAL_DB</code>.</p>
         </div>
       </details>
       <details class="feature">

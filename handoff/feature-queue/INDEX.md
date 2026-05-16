@@ -125,18 +125,31 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **expected verification gate:** Playwright smoke + `REAL_DB`.
 - **status:** `QUEUED`.
 
-### F-006 — Worker + supervisor mobile in-app notification panel
+### F-006a — Mobile app shell + OneSignal identity linking (β-split slice 1)
 
-- **id:** F-006
-- **title:** First worker / supervisor mobile app screens — auth + home + attendance subject view + **OUR own in-app notification panel / banner consumer / unread-read state / supervisor burst-grouping UI** backed by OUR Notification table
-- **why:** All 18 Suresh workflows are NOT_STARTED because `apps/worker-mobile/` doesn't exist. The structurally-invisible-worker problem from audit Round 2. F-006 also owns the supervisor burst-grouping presentation (UI aggregation by `(outgoingSupervisorId, incomingSupervisorId, eventKind)` within a short time window) — F-007 deliberately writes immutable per-event rows; F-006 groups them at read time.
-- **Architecture rule (v8 locked, applies to F-006):** F-006 reads from OUR Notification table (`schema.prisma:931`) and writes `ackedAt` on user dismiss/read. **NOT** OneSignal in-app messages — those are a separate OneSignal feature useful for marketing pop-ups, not for our product-native notification inbox/history.
-- **depends on:** F-001, F-007 (immutable Notification rows). F-011 (OneSignal push delivery) is independent — F-006 panel works from DB regardless of push transport state.
-- **personas touched:** Suresh (primary), Ravi/Anjali/Lakshmi (supervisor panel including burst grouping for multi-site rebinds).
+- **id:** F-006a
+- **title:** Minimal mobile identity-lifecycle hook + OneSignal SDK install + identity-linking via `OneSignal.login(external_id = User.id)` on identified app open + `OneSignal.logout()` on sign-out + cold-start re-link
+- **why:** F-011 (OneSignal push delivery adapter) needs a real user identity-link on the device to target push notifications. Without F-006a's `OneSignal.login(external_id)` call, F-011 ships into a vacuum. F-006a is the smallest possible slice (~15 lines of business logic plus tests + a small explainer modal) that gives F-011 a real consumer to build against.
+- **depends on:** F-007 DONE (merged at `79e38aa`). Owner must provision OneSignal account before EAS Build lands, but local dev + Playwright web tests work without it (no-op path).
+- **personas touched:** Ravi/Anjali/Lakshmi (supervisor — only role currently supported per v6 supervisor-shell-only stance). Workers / mixed-role users surfaced "coming soon" until F-006b adds worker shell.
+- **workflows touched:** A1 (phone OTP login, already shipped) — F-006a wraps with identity-lifecycle hook.
+- **entities/routes/tables touched:** NEW `apps/mobile/lib/identity-lifecycle.ts` (~120 lines, ONE ordered sequence). NEW `apps/mobile/components/PushPermissionPrompt.tsx` (explainer modal + exactly-once nav). MIGRATE `apps/mobile/app.json` → `apps/mobile/app.config.ts` (translate + add OneSignal plugin). EDIT `otp.tsx` / `profile.tsx` / `app/index.tsx` / `auth-store.ts` JSDoc warning. Add deps `react-native-onesignal` ^5.x + `@onesignal/onesignal-expo-plugin` ^2.x + `jwt-decode` ^4.x. NO backend changes, NO schema changes.
+- **expected verification gate:** `pnpm --filter mobile test` green (15 unit cases across 2 files) + manual smoke documented (real device + OneSignal sandbox; 4 smoke scenarios).
+- **status:** `SCOPE_APPROVED (round 2 v6)` 2026-05-17 00:56 — friend's APPROVED verdict verbatim: "Proceed to code on feat/f-006a-onesignal-identity-lifecycle and stop at AWAITING_APPROVAL after unit tests + manual smoke are documented." Scope artifact at [handoff/feature-queue/scopes/F-006a.md](scopes/F-006a.md). Plan file: `/Users/thotaakshay/.claude/plans/yes-you-can-start-ancient-yao.md` (v1 → v6 review history).
+
+### F-006b — Worker + supervisor mobile in-app notification panel (β-split slice 3)
+
+- **id:** F-006b
+- **title:** Mobile in-app notification panel / banner consumer / unread-read state / supervisor burst-grouping UI + worker shell
+- **why:** Closes the Suresh audit W-1/W-2/W-7 lived-experience pain (Lakshmi appears with no signal). Renders the F-007 Notification rows as a user-facing inbox. Also opens the WORKER-only login path by adding the worker shell (currently rejected by F-006a's supervisor-shell-only routing guard).
+- **Architecture rule (v8 locked, applies to F-006b):** reads from OUR Notification table (`schema.prisma:931`) and writes `ackedAt` on user dismiss/read. **NOT** OneSignal in-app messages.
+- **Mixed-role gap (v6 honesty fix):** F-006b adds worker shell (relaxes the role guard for WORKER-scoped JWTs). F-006b does NOT close the mixed-role gap (user with both SUPERVISOR + WORKER memberships where JWT is WORKER-scoped) — that requires a separate auth-switch / backend-ordering slice not yet scoped.
+- **depends on:** F-006a + F-007 (immutable Notification rows) + supervisor UI draft (per the post-F-006a roadmap — pressure-tests backend gaps before F-006b lands).
+- **personas touched:** Suresh (primary), Ravi/Anjali/Lakshmi (supervisor panel + burst grouping for multi-site rebinds).
 - **workflows touched:** A1, A3, A4 (worker side), C11 (subject), E21 (initiator), F26/F27 (supervisor banner grouping).
-- **entities/routes/tables touched:** new `apps/worker-mobile/` Expo app, auth + home + attendance + notification-panel screens, in-app banner rendering, unread/read state from `Notification.deliveredAt IS NOT NULL AND ackedAt IS NULL`, supervisor burst-grouping UI aggregating per-site rows into "you're covering Ravi at 8 sites — tap to expand."
+- **entities/routes/tables touched:** new worker shell route group in `apps/mobile/app/(worker)/...`, in-app banner rendering, unread/read state from `Notification.deliveredAt IS NOT NULL AND ackedAt IS NULL`, supervisor burst-grouping UI aggregating per-site rows ("you're covering Ravi at 8 sites — tap to expand"). `ackedAt` write semantics decided at F-006b scope time (carry-over Open Q5 from F-006a).
 - **expected verification gate:** Playwright + `REAL_DB`.
-- **status:** `QUEUED`.
+- **status:** `QUEUED — AWAITING_F-006a_DONE`.
 
 ### F-007 — Notification dispatcher (round 2 v11 — supervisor_change persistence + audience resolution)
 
