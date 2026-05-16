@@ -13,9 +13,11 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
+    "@axhy/business-rules": "workspace:*",
     "@axhy/errors": "workspace:*",
     "@axhy/shared-schema": "workspace:*",
     "@anthropic-ai/sdk": "^0.30.0",
+    "@prisma/client": "^5.22.0",
     "openai": "^4.65.0"
   },
   "devDependencies": {

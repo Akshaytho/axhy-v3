@@ -26,23 +26,7 @@ import type { MarkAbsentOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
-import { recordAuditEvent } from '../lib/audit-event.js';
-import { enqueueOutbox } from '../lib/outbox.js';
-
-/** Days per month used for daily-pay computation. Locked at 26 per
- * master plan §B (cleaning industry standard: 6-day week, 4.33 weeks). */
-const WORKING_DAYS_PER_MONTH = 26;
-
-function computeDailyDeductPaise(
-  baseSalaryPaise: number,
-  status: 'PRESENT' | 'ABSENT_NO_CALL' | 'ABSENT_APPROVED_LEAVE' | 'HALF_DAY' | 'ON_BREAK',
-): number {
-  if (status === 'PRESENT' || status === 'ON_BREAK') return 0;
-  if (status === 'ABSENT_APPROVED_LEAVE') return 0; // approved leave = paid
-  const fullDay = Math.round(baseSalaryPaise / WORKING_DAYS_PER_MONTH);
-  if (status === 'HALF_DAY') return Math.round(fullDay / 2);
-  return fullDay; // ABSENT_NO_CALL → full deduction
-}
+import { markAbsentService } from '../lib/services/attendance-service.js';
 
 /**
  * Register worker-scoped supervisor routes on the given Fastify app.
@@ -71,82 +55,18 @@ export async function registerWorkerRoutes(app: FastifyInstance): Promise<void> 
       const { date, status, reason } = parsed.data;
 
       try {
-        const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-          const worker = await tx.worker.findFirst({
-            where: { id: workerId, companyId: auth.companyId },
-          });
-          if (!worker) {
-            return { kind: 'NOT_FOUND' as const };
-          }
+        // F-002.b (round-2 R2b-iii): route is now a thin wrapper around
+        // markAbsentService. /chat/apply (F-002.15) calls the same service
+        // INSIDE its own withTenantContext for atomic lifecycle + domain.
+        const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+          markAbsentService(
+            tx,
+            { workerId, date, status, reason: reason ?? null },
+            { companyId: auth.companyId, userId: auth.userId },
+          ),
+        );
 
-          const payDeductPaise = computeDailyDeductPaise(worker.baseSalaryPaise, status);
-
-          // Upsert Attendance — re-marking the same (worker, date) updates
-          // status + supervisor + reason. Avoids dup rows for same day.
-          const attendance = await tx.attendance.upsert({
-            where: { workerId_date: { workerId, date: new Date(date) } },
-            create: {
-              companyId: auth.companyId,
-              workerId,
-              date: new Date(date),
-              status,
-              markedBySupervisorId: auth.userId,
-              reason: reason ?? null,
-              payDeductPaise,
-            },
-            update: {
-              status,
-              markedBySupervisorId: auth.userId,
-              reason: reason ?? null,
-              payDeductPaise,
-            },
-          });
-
-          await recordAuditEvent(tx, {
-            companyId: auth.companyId,
-            kind: 'WORKER_MARKED_ABSENT',
-            actorId: auth.userId,
-            targetId: workerId,
-            payload: {
-              date,
-              status,
-              reason: reason ?? null,
-              payDeductPaise,
-              workerName: worker.name,
-            },
-          });
-
-          // Notify HR via WhatsApp (Phase C — stubbed in dispatcher today)
-          await enqueueOutbox(tx, {
-            companyId: auth.companyId,
-            topic: 'hr.worker_absent',
-            payload: {
-              workerId,
-              workerName: worker.name,
-              workerPhone: worker.phone,
-              supervisorId: auth.userId,
-              date,
-              status,
-              payDeductPaise,
-            },
-          });
-
-          // Recompute monthly running tally (Phase C — stubbed)
-          if (payDeductPaise > 0) {
-            await enqueueOutbox(tx, {
-              companyId: auth.companyId,
-              topic: 'payroll.recompute',
-              payload: { workerId, monthOf: date.slice(0, 7) }, // YYYY-MM
-            });
-          }
-
-          return {
-            kind: 'OK' as const,
-            attendance,
-          };
-        });
-
-        if (out.kind === 'NOT_FOUND') {
+        if (out.kind === 'WORKER_NOT_FOUND') {
           reply.code(404).send({
             error: 'WORKER_NOT_FOUND',
             message: 'Worker not found in this company',

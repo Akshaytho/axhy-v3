@@ -1,0 +1,42 @@
+feature: tenancy
+status: active
+description: Multi-tenant boundary anchor; every other feature scopes by companyId.
+
+owns:
+  tables:
+    - Company
+  state_machines:
+    live: []
+    planned: []
+
+routes:
+  live: []
+  planned: []
+  # No tenant-management routes at launch; Company rows are admin-managed
+  # outside the supervisor app surface. Future admin-web HR portal will
+  # expose Company-edit routes (Iteration 3+).
+
+ui:
+  surfaces: []
+  prototypes: []
+
+packages:
+  - packages/shared-schema
+
+specs:
+  - docs/invariants/multi-tenant.md
+
+tests:
+  live:
+    - apps/backend/test/cross-tenant-isolation.test.ts
+    - apps/backend/test/cross-tenant-chat.test.ts
+    - apps/backend/test/calendar-cross-tenant.test.ts
+  planned: []
+
+affects: []
+  # Tenant scoping is not a cascade. No row change in Company causally
+  # writes rows in other features at the manifest-cascade level. Listed
+  # here as a reminder that "everything depends on tenancy" is a scoping
+  # statement, not a blast-radius statement.
+
+external_references: []

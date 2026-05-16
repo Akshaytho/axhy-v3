@@ -19,3 +19,6 @@ export class AxhyError extends Error {
     this.name = 'AxhyError';
   }
 }
+
+export { safeParseOrLog } from './safe-parse.js';
+export type { SafeParseLogger, SafeParser, SafeParseContext } from './safe-parse.js';

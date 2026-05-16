@@ -105,6 +105,8 @@ describe('end-to-end magic loop (vignette 1 + 5)', () => {
     const beforeApply = await prismaRaw.assignment.findMany({ where: { companyId } });
     expect(beforeApply.length).toBe(0);
 
+    // F-002.5: decisionId required.
+    expect(chatBody.decisionCard.decisionId).toBeTruthy();
     const applyRes = await app.inject({
       method: 'POST',
       url: '/chat/apply',
@@ -113,6 +115,7 @@ describe('end-to-end magic loop (vignette 1 + 5)', () => {
         chatMessageId: chatBody.chatMessageId,
         toolName: 'propose_create_assignment',
         toolInput: proposedFields,
+        decisionId: chatBody.decisionCard.decisionId,
       },
     });
     expect(applyRes.statusCode).toBe(200);

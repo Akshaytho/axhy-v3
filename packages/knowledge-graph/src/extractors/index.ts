@@ -15,6 +15,8 @@ export type NodeKind =
   | 'ui_screen'
   | 'ui_component'
   | 'test'
+  | 'script'
+  | 'library'
   | 'i18n_key'
   | 'audit_event_kind'
   | 'master_plan_section'

@@ -1,0 +1,46 @@
+feature: hr-updates
+status: active-but-contract-incomplete
+description: HR Updates digest pattern — parent HRUpdate + child HRUpdateRule entries, push-only at launch.
+
+owns:
+  tables:
+    - HRUpdate # redesigned in P1 (Phase B.2 placeholder dropped)
+    - HRUpdateRule # new in P1; child entries for digests
+  state_machines:
+    live: []
+    planned: [] # HR ack is parallel lifecycle; no DWI state transitions per D.1 §2.5
+
+routes:
+  live: []
+  planned:
+    - POST /hr-updates # HR admin posts a single update or digest
+    - POST /hr-updates/:id/ack # supervisor acks; ackText must be ≥5 words in own voice
+    - GET /hr-updates # supervisor inbox (pending / acked sections)
+
+ui:
+  surfaces:
+    - Updates # secondary surface; NEEDS YOUR ACK / RECENT — ACKNOWLEDGED sections
+  prototypes:
+    - docs/prototypes/supervisor-mobile-r6/project/src/updates.jsx
+
+packages:
+  - packages/shared-schema
+
+specs:
+  - docs/specs/2026-05-12-hr-updates-spec.md # Active but contract-incomplete; launch policy locked
+  - docs/specs/2026-05-12-decision-entity-lock.md # D.1 §2.5 + §2.9 schema source
+  - docs/specs/2026-05-13-product-framing.md # §13 — ack as primarily operational attention
+
+tests:
+  live: []
+  planned:
+    - apps/backend/test/schema/phase-d-p1.test.ts # P1 schema-safety tests (HRUpdate drop + recreate)
+    - apps/backend/test/hr-updates/**/*.test.ts # P2 route tests
+
+affects:
+  # HR-driven writes cascade into:
+  - decisions # HR-sourced rows write to DecisionWorkspaceItem via SYSTEM writer (D.1 §2.5)
+  - audit # HR_UPDATE_POSTED and HR_UPDATE_ACKED audit events
+  - notifications # push fan-out via Outbox topic hr_update.posted (HR Updates spec §3.1)
+
+external_references: []

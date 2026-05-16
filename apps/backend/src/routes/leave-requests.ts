@@ -23,13 +23,14 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { LeaveDecisionInput } from '@axhy/shared-schema';
+import { CreateLeaveRequestInput, LeaveDecisionInput } from '@axhy/shared-schema';
 import type { LeaveDecisionOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
 import { enqueueOutbox } from '../lib/outbox.js';
+import { createLeaveRequestService } from '../lib/services/leave-request-service.js';
 
 type DecisionKind = 'approve' | 'reject';
 type DecisionRequest = FastifyRequest<{ Params: { id: string } }>;
@@ -41,6 +42,56 @@ type DecisionRequest = FastifyRequest<{ Params: { id: string } }>;
  * @derives(data-flow §5)
  */
 export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<void> {
+  app.post('/leave-requests', { preHandler: requireAuth }, async (req, reply) => {
+    const auth = req.auth;
+    if (!auth) {
+      reply.code(401).send({ error: 'AUTH_REQUIRED' });
+      return;
+    }
+    const parsed = CreateLeaveRequestInput.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+      return;
+    }
+    const { workerId, fromDate, toDate, reason } = parsed.data;
+
+    if (new Date(fromDate) > new Date(toDate)) {
+      reply.code(400).send({ error: 'BAD_RANGE', message: 'fromDate must be ≤ toDate' });
+      return;
+    }
+
+    try {
+      // F-002.b (round-2 R2b-iii): route is now a thin wrapper around
+      // createLeaveRequestService. /chat/apply (F-002.15) calls the same
+      // service INSIDE its own withTenantContext for atomic lifecycle +
+      // domain.
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+        createLeaveRequestService(
+          tx,
+          { workerId, fromDate, toDate, reason },
+          { companyId: auth.companyId, userId: auth.userId },
+        ),
+      );
+
+      if (out.kind === 'WORKER_NOT_FOUND') {
+        reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
+        return;
+      }
+
+      reply.code(201).send({
+        ok: true,
+        leaveRequestId: out.leave.id,
+        workerId: out.leave.workerId,
+        fromDate: out.leave.fromDate.toISOString().slice(0, 10),
+        toDate: out.leave.toDate.toISOString().slice(0, 10),
+        state: out.leave.state,
+      });
+    } catch (err) {
+      req.log.error({ err }, 'create-leave-request failed');
+      reply.code(500).send({ error: 'INTERNAL', message: 'Could not create leave request' });
+    }
+  });
+
   for (const action of ['approve', 'reject'] as const) {
     app.post<{ Params: { id: string } }>(
       `/leave-requests/:id/${action}`,

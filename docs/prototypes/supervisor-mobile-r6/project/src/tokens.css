@@ -1,0 +1,146 @@
+/* Axhy v3 visual system — paper + ink + terracotta
+   Generated for friend's review (panel 2026-05-06).
+   Single source; per-surface density flavors handled via .field-mobile / .web-pro classes. */
+
+:root {
+  /* Surface tones — warm paper family */
+  --paper:        #f6f1e8;
+  --paper-2:      #efe7d8;
+  --paper-3:      #e6dcc8;
+  --card:         #fdfaf3;
+  --card-edge:    rgba(40, 30, 20, 0.08);
+
+  /* Ink */
+  --ink:          #1a1612;
+  --ink-2:        #4a3f33;
+  --ink-3:        #7a6b58;
+  --ink-4:        #a89880;
+
+  /* Brand accent — terracotta */
+  --accent:       #c0492a;
+  --accent-2:     #a83d20;
+  --accent-soft:  #f5dac9;
+  --accent-ink:   #6e2410;
+
+  /* Semantic */
+  --ok:           #4a7c59;
+  --ok-soft:      #d6e5d0;
+  --warn:         #b8860b;
+  --warn-soft:    #f0e2b6;
+  --bad:          #a8341d;
+  --bad-soft:     #f0c8bd;
+  --info-ink:     #2c4a6b;
+  --info-soft:    #d5dde6;
+
+  /* Radii */
+  --r-1: 6px;
+  --r-2: 10px;
+  --r-3: 14px;
+  --r-4: 20px;
+
+  /* Shadows (warm) */
+  --sh-1: 0 1px 2px rgba(40, 30, 20, 0.06);
+  --sh-2: 0 1px 3px rgba(40,30,20,0.08), 0 4px 12px rgba(40,30,20,0.06);
+  --sh-3: 0 4px 16px rgba(40,30,20,0.12), 0 12px 32px rgba(40,30,20,0.08);
+
+  /* Motion */
+  --dur-fast: 120ms;
+  --dur:      200ms;
+  --dur-slow: 320ms;
+  --ease:           cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-quart: cubic-bezier(0.165, 0.84, 0.44, 1);
+
+  /* Type */
+  --font-sans: 'Inter', 'Noto Sans Devanagari', 'Noto Sans Telugu', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --display-weight: 600;
+}
+
+/* Inverse — for the gold-on-black surface preview tweak */
+.surface-dark {
+  --paper:    #0a0a0a;
+  --paper-2:  #131313;
+  --paper-3:  #1c1c1c;
+  --card:     #161513;
+  --card-edge: rgba(212, 175, 55, 0.15);
+  --ink:      #f5f0e1;
+  --ink-2:    #c8bfa5;
+  --ink-3:    #8a8268;
+  --ink-4:    #5a5340;
+  --accent:      #d4af37;
+  --accent-2:    #b89529;
+  --accent-soft: #2a2410;
+  --accent-ink:  #e9c95a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--paper);
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.tnum { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Type roles — web-pro defaults */
+.t-display-xl { font-size: 56px; line-height: 1.05; font-weight: var(--display-weight); letter-spacing: -1.4px; }
+.t-display-l  { font-size: 40px; line-height: 1.05; font-weight: var(--display-weight); letter-spacing: -1.0px; }
+.t-display    { font-size: 28px; line-height: 1.10; font-weight: 600; letter-spacing: -0.6px; }
+.t-heading    { font-size: 22px; line-height: 1.20; font-weight: 600; letter-spacing: -0.3px; }
+.t-subhead    { font-size: 18px; line-height: 1.30; font-weight: 500; letter-spacing: -0.1px; }
+.t-body       { font-size: 15px; line-height: 1.50; font-weight: 400; }
+.t-body-sm    { font-size: 13px; line-height: 1.45; font-weight: 500; }
+.t-caption    { font-size: 11px; line-height: 1.40; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.t-mono-l     { font-size: 15px; line-height: 1.40; font-weight: 500; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.t-mono       { font-size: 13px; line-height: 1.40; font-weight: 500; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.t-mono-sm    { font-size: 11px; line-height: 1.40; font-weight: 500; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Field-mobile bumps */
+.field-mobile .t-body    { font-size: 16px; }
+.field-mobile .t-body-sm { font-size: 14px; }
+.field-mobile .t-heading { font-size: 24px; }
+
+/* Common chrome */
+.card {
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: var(--r-3);
+  box-shadow: var(--sh-1);
+}
+
+/* Scrollbars inside artboards: keep them quiet */
+.qbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.qbar::-webkit-scrollbar-thumb { background: var(--ink-4); border-radius: 6px; opacity: .4; }
+.qbar::-webkit-scrollbar-track { background: transparent; }
+
+/* Tier chips */
+.tier {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.tier.note        { background: var(--paper-3);  color: var(--ink-3); }
+.tier.operational { background: var(--info-soft); color: var(--info-ink); }
+.tier.personnel   { background: var(--accent-soft); color: var(--accent-ink); border: 1px solid var(--accent); }
+.tier.employment  { background: var(--bad-soft); color: var(--bad); border: 1px solid var(--bad); }
+
+/* Pretty wrapping for long blocks */
+.prose p, .prose li { text-wrap: pretty; }
+
+/* Open-question margin notes */
+.qnote {
+  background: rgba(192, 73, 42, 0.06);
+  border-left: 2px solid var(--accent);
+  padding: 10px 12px 10px 14px;
+  border-radius: 0 8px 8px 0;
+  font-size: 12px; line-height: 1.45; color: var(--ink-2);
+  font-family: var(--font-mono);
+}
+.qnote .qid { color: var(--accent); font-weight: 700; margin-right: 6px; }
+.qnote .qtitle { color: var(--ink); font-weight: 600; }

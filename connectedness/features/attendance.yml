@@ -1,0 +1,42 @@
+feature: attendance
+status: active
+description: Worker attendance records (present / absent / late / etc.) and the absence-flow trigger surface.
+
+owns:
+  tables:
+    - Attendance
+  state_machines:
+    live: []
+    planned: []
+
+routes:
+  live:
+    - POST /workers/:id/mark-absent # supervisor "Mark worker absent" action (apps/backend/src/routes/workers.ts)
+  planned: []
+
+ui:
+  surfaces:
+    - Today # 3-metric floor pulse (ON SITE / SHORT / PENDING); short-tile drilldown
+  prototypes:
+    - docs/prototypes/supervisor-mobile-r6/project/src/today.jsx
+
+packages:
+  - packages/shared-schema
+
+specs:
+  - docs/specs/2026-05-09-phase-c-assignment-design.md # Attendance writer set incomplete (named gap)
+  - docs/specs/2026-05-12-supervisor-mobile-r6-design.md
+
+tests:
+  live:
+    - apps/backend/test/mark-absent.test.ts
+  planned: []
+
+affects:
+  # Attendance writes cascade into:
+  - audit # WORKER_MARKED_ABSENT audit events
+
+external_references:
+  - name: visits
+    why: Attendance may carry visitId reference for end-of-visit attendance writes
+    iteration: 3

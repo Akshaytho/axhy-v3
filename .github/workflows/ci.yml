@@ -88,6 +88,17 @@ jobs:
       - run: pnpm --filter @axhy/shared-schema exec prisma db push --accept-data-loss
       - run: pnpm test:integration
 
+  migration-safety:
+    name: Migration safety (destructive ops require precondition guard)
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Scan Prisma migrations for unguarded destructive ops
+        run: node scripts/check-migration-safety.mjs
+
   graph-build:
     name: Build knowledge graphs
     needs: install

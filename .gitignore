@@ -51,3 +51,10 @@ secrets/
 # generated
 packages/api-client/src/generated/
 packages/shared-schema/src/generated/
+
+# Wave 4b Phase 2 cleanup — 2026-05-10 (panel-debated each pattern)
+# Subsumes prior wave-specific apps/mobile/screenshots-wave-4a*/ lines.
+**/screenshots-*/
+**/scripts/screenshot-*.mjs
+apps/admin-web/render-r4.mjs
+apps/admin-web/public/design-review/

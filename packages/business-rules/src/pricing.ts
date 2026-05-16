@@ -37,6 +37,12 @@ export const PRICING = {
   pilotDays: 30,
   netDays: 30,
   aiCostCapPaisePerMonth: 500_000, // ₹5,000.00 = 500,000 paise
+  // Daily anomaly stop — Spec 2 §9 (founder-locked 2026-05-10).
+  // Distinct from aiCostCapPaisePerMonth (pricing target, untouched in Wave 4b).
+  // Daily caps catch a single runaway day; monthly cap is the pricing-anchor.
+  // @derives(spec-2 §9.5)
+  aiBudgetDailyWarnPaise: 300_000, // ₹3,000.00 — soft warn → owner outbox
+  aiBudgetDailyCapPaise: 500_000, // ₹5,000.00 — hard cap → AICostBudgetError → 429
 } as const;
 
 /**
@@ -94,6 +100,29 @@ export function computeInvoicePaise(input: {
  * @derives(master-plan §B)
  */
 export function paiseToRupees(paise: number): number {
+  return paise / 100;
+}
+
+/**
+ * Convert INR rupees → paise (rounded to nearest paise). Use when serializing
+ * a rupee-denominated number into the paise-int convention used by PRICING
+ * constants and downstream cost-tracking math.
+ *
+ * @derives(master-plan §B)
+ */
+export function paiseFromInr(inr: number): number {
+  return Math.round(inr * 100);
+}
+
+/**
+ * Convert paise → INR rupees. Lossless when input is an exact paise integer;
+ * preferred over `paiseToRupees` for numeric ratio comparisons against INR-
+ * denominated thresholds (e.g. comparing tenant aiSpendDailyInr against the
+ * paise-encoded daily cap).
+ *
+ * @derives(master-plan §B)
+ */
+export function inrFromPaise(paise: number): number {
   return paise / 100;
 }
 

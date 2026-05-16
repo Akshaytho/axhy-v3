@@ -21,6 +21,7 @@ import {
 } from './gupshup.js';
 import { handlePayrollRecompute } from './payroll.js';
 import { handleAiVerify } from './ai.js';
+import { handleOwnerAiBudgetWarning, handleOwnerAiBudgetCapped } from './owner-budget.js';
 
 export type OutboxHandler = (payload: unknown, log: FastifyBaseLogger) => Promise<void>;
 
@@ -32,6 +33,11 @@ export const HANDLERS: Record<string, OutboxHandler> = {
   'gupshup.send': handleGupshupSend,
   'payroll.recompute': handlePayrollRecompute,
   'ai.verify': handleAiVerify,
+  // Spec 2 §9.4 — owner notifications when tenant trips daily AI budget
+  // thresholds. Stubs today (info log + audit row); Phase D will swap
+  // for Slack #axhy-ops + Mr. Reddy WhatsApp via Gupshup.
+  'owner.ai_budget_warning': handleOwnerAiBudgetWarning,
+  'owner.ai_budget_capped': handleOwnerAiBudgetCapped,
 };
 
 /** All registered topic names — exported for tests / observability. */

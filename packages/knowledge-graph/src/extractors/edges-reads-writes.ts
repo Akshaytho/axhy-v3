@@ -25,6 +25,7 @@ const WRITE_OPS = new Set([
   'delete',
   'deleteMany',
 ]);
+const HTTP_METHODS_LOWER = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
 
 export async function extractReadsWrites(ctx: ExtractorContext): Promise<ExtractorOutput> {
   const edges: EdgeRecord[] = [];
@@ -37,8 +38,9 @@ export async function extractReadsWrites(ctx: ExtractorContext): Promise<Extract
 
   for (const sf of project.getSourceFiles()) {
     const relPath = sf.getFilePath().replace(ctx.repoRoot + '/', '');
-    const sourceKey = inferSourceNodeKey(relPath);
-    if (!sourceKey) continue;
+    const fallbackSourceKey = inferSourceNodeKey(relPath);
+    if (!fallbackSourceKey) continue;
+    const isRouteFile = /apps\/backend\/src\/routes\/.+\.ts$/.test(relPath);
 
     sf.forEachDescendant((node) => {
       if (!Node.isCallExpression(node)) return;
@@ -51,7 +53,11 @@ export async function extractReadsWrites(ctx: ExtractorContext): Promise<Extract
 
       const modelLowercase = modelExpr.getName();
       const root = modelExpr.getExpression().getText();
-      if (root !== 'prisma') return;
+      // Accept both `prisma.<model>.<op>()` and `tx.<model>.<op>()` because the
+      // backend convention is `withTenantContext(prisma, companyId, async (tx) => ...)` —
+      // route handlers call through `tx`, not the outer `prisma` client. Without
+      // this, route reads/writes for any tenant-scoped table go uncaptured.
+      if (root !== 'prisma' && root !== 'tx') return;
 
       const modelName = modelLowercase[0]!.toUpperCase() + modelLowercase.slice(1);
 
@@ -59,6 +65,18 @@ export async function extractReadsWrites(ctx: ExtractorContext): Promise<Extract
       if (READ_OPS.has(op)) edgeKind = 'reads';
       else if (WRITE_OPS.has(op)) edgeKind = 'writes';
       if (!edgeKind) return;
+
+      // For backend route files, walk up the AST to find the enclosing
+      // `app.METHOD('/path', ...)` call. If found, the Prisma call belongs to
+      // that specific route handler — emit srcKey as 'api_endpoint' with the
+      // resolved "METHOD /path" name. Otherwise fall back to file-path srcKey.
+      let sourceKey = fallbackSourceKey;
+      if (isRouteFile) {
+        const routeName = findEnclosingRouteName(node);
+        if (routeName) {
+          sourceKey = { kind: 'api_endpoint', name: routeName, sourcePath: relPath };
+        }
+      }
 
       // Table-level edge.
       edges.push({
@@ -95,21 +113,79 @@ export async function extractReadsWrites(ctx: ExtractorContext): Promise<Extract
   return { nodes: [], edges };
 }
 
+/**
+ * Walks up from `node` looking for an ancestor CallExpression of the form
+ * `<receiver>.METHOD('/path', ...)` where METHOD is a Fastify HTTP verb and
+ * the first argument is a string literal. Returns "METHOD /path" if found,
+ * otherwise null.
+ *
+ * Handles both `app.post('/path', ...)` and `app.post<{ Params: { id: string } }>('/path', ...)`
+ * (ts-morph treats type args as siblings of args; args[0] is still the string literal).
+ *
+ * Returns null for template-literal paths and for Prisma calls outside any route
+ * handler (file-level initialization, exported helpers).
+ */
+function findEnclosingRouteName(node: Node): string | null {
+  let cur: Node | undefined = node.getParent();
+  while (cur) {
+    if (Node.isCallExpression(cur)) {
+      const expr = cur.getExpression();
+      if (Node.isPropertyAccessExpression(expr)) {
+        const methodLower = expr.getName().toLowerCase();
+        if (HTTP_METHODS_LOWER.has(methodLower)) {
+          const args = cur.getArguments();
+          const pathArg = args[0];
+          if (pathArg && Node.isStringLiteral(pathArg)) {
+            return `${methodLower.toUpperCase()} ${pathArg.getLiteralText()}`;
+          }
+          // Found an HTTP-method call but path isn't a string literal (template
+          // literal with substitutions, variable, etc.) — give up rather than
+          // emitting a noisy raw text. Fall back to file path via caller.
+          return null;
+        }
+      }
+    }
+    cur = cur.getParent();
+  }
+  return null;
+}
+
 function inferSourceNodeKey(relPath: string): EdgeRecord['srcKey'] | null {
   if (!/\.tsx?$/.test(relPath)) return null;
+
+  // Tests come first so test files under apps/backend/test/ aren't accidentally
+  // re-classified as scripts/libraries by a more permissive prefix below.
+  if (/(^|\/)test\//.test(relPath) || /\.test\.tsx?$/.test(relPath)) {
+    return { kind: 'test', name: relPath, sourcePath: relPath };
+  }
 
   if (/apps\/backend\/src\/routes\/.+\.ts$/.test(relPath)) {
     // For backend routes, source is the api_endpoint node corresponding to this file.
     // Best-effort: use file path as identifier; full route name resolution happens
-    // when builder cross-references with extractFastifyRoutes output.
+    // when downstream tooling cross-references with extractFastifyRoutes output.
     return { kind: 'api_endpoint', name: relPath, sourcePath: relPath };
   }
+
+  // Scripts: one-shot CLIs / migration helpers / seed runners under any
+  // apps/*/scripts/ directory.
+  if (/apps\/[^/]+\/scripts\/.+\.ts$/.test(relPath)) {
+    return { kind: 'script', name: relPath, sourcePath: relPath };
+  }
+
+  // Backend libraries / middleware / dispatcher / background jobs — long-lived
+  // server-side modules that aren't direct request handlers.
+  if (/apps\/backend\/src\/(lib|middleware|dispatcher|jobs)\//.test(relPath)) {
+    return { kind: 'library', name: relPath, sourcePath: relPath };
+  }
+
   if (/apps\/[^/]+\/app\/.+\/page\.tsx?$/.test(relPath)) {
     const m = relPath.match(/^apps\/[^/]+\/app\/(.*)page\.tsx?$/);
     const route = m && m[1] ? `/${m[1].replace(/\/$/, '')}` : '/';
     return { kind: 'ui_screen', name: route, sourcePath: relPath };
   }
-  // Fallback: any other .ts/.tsx file (including test fixtures and service helpers)
-  // is treated as a generic api_endpoint source so reads/writes are still captured.
-  return { kind: 'api_endpoint', name: relPath, sourcePath: relPath };
+
+  // Fallback: any other .ts/.tsx file (UI components, package-internal helpers,
+  // etc.) is treated as a generic doc-kind source. Edges still emit so reads/writes
+  // are not lost, but the caller is no longer falsely labeled as a route.
+  return { kind: 'doc', name: relPath, sourcePath: relPath };
 }

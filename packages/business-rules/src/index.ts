@@ -13,5 +13,14 @@ export {
   isVisitBillable,
   computeInvoicePaise,
   paiseToRupees,
+  paiseFromInr,
+  inrFromPaise,
   aiCostRatio,
 } from './pricing.js';
+
+export {
+  CALENDAR_LOOKBACK_DAYS,
+  CALENDAR_MAX_ENTRIES,
+  CHAT_MAX_COMPLETION_TOKENS,
+  CHAT_HISTORY_TURN_WINDOW,
+} from './ai-budget.js';

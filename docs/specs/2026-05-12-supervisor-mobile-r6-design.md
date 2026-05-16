@@ -1,0 +1,175 @@
+---
+Status: Active
+Last validated against code: 2026-05-12
+Validated branch: feat/phase-c-wave-4b-chat-completion
+Validated commit: cfd0891
+Primary owner: founder (Akshay Thota)
+Replaces: docs/specs/2026-05-11-supervisor-mobile-r3-design.md
+Replaced by: nothing — current Active
+---
+
+> **Active 2026-05-12 (Stage 3 of Draft → Active promotion).** R6 is the canonical product surface design for the supervisor app. Supersedes R3 (`docs/specs/2026-05-11-supervisor-mobile-r3-design.md`, now Superseded). Frozen design prototype companion: `docs/prototypes/supervisor-mobile-r6/`. All 15 contradictions in §4 are Resolved (#11 resolved per Stage 2's HR Updates Active flip). Implementation work matches the visual output of the prototype; does not import its JSX.
+
+# Phase C — Supervisor Mobile R6 Design (Draft, canonical-pending-review)
+
+## 1. Provenance
+
+- Iterated R3 (2026-05-11) → R4 → R5 → R6 (2026-05-12) in `claude.ai/design`
+- Final export 2026-05-12 as a handoff bundle
+- Bundle copied verbatim into [`docs/prototypes/supervisor-mobile-r6/`](../prototypes/supervisor-mobile-r6/) (excluding the redacted `chats/chat1.md` transcript)
+- This spec was authored by Claude Code from a full JSX read of the bundle, not from the transcript
+
+## 2. Surface inventory
+
+### 5 main tabs (tab order locked 2026-05-11 per `shell.jsx:57-58`)
+
+| Tab           | Prototype file            | Highlights                                                                                                                                                                                                                                                                                                                                              |
+| ------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Today**     | `today.jsx` (418 LOC)     | Top urgency banner (NEEDS YOU NOW); 3-metric floor pulse (ON SITE / SHORT / PENDING); site cards default collapsed → tap for worker grid; `ShiftWorkerList` for multi-shift sites; worker rows wrapped in `DecisionRef` → amend flow; `FlaggedReviewSheet` modal (photos + AI flag reason + Resolve OK / Reject)                                        |
+| **Decisions** | `decisions.jsx` (530 LOC) | Tab badge shows pending count; tier-grouped sections (NEEDS YOU NOW / ROUTINE / FAILED · REVIEW); 5 tiers (note/operational/personnel/employment/review_required); FAILURE_REASON_COPY map translates typed enum to plain English; EMPLOYMENT typed-phrase ack; REVIEW_REQUIRED option picker; batch indicator                                          |
+| **Activity**  | `activity.jsx` (300 LOC)  | "{N} events · ACTIVITY · PROOF"; structured filter chips ONLY (date / site / kind), no NL search; actions hidden until row tap (Share to WhatsApp + Reverse); **30-min reverse window**; `ShareSheet` with WhatsApp text preview; weak-network banner ("LAST SYNCED {N} MIN AGO — REVERSE DISABLED")                                                    |
+| **Chat**      | `chat.jsx` (297 LOC)      | "Chat · VOICE · MESSY INPUT"; older bubbles dimmed 55% opacity (r5); voice bubble waveform + duration + lang/confidence chips; **NO inline DecisionCards** (r4) — replaced by thin "N decisions added — review in Decisions" link; capture-surface footer (mic-primary, total-pending link to Decisions); live transcription overlay; amend mode banner |
+| **Profile**   | `profile.jsx` (113 LOC)   | iOS variant only (Android/Expressive dropped per ADR-0021); avatar + name + role pill; PROFILE section (Name/Phone/Language/Company/Role/Joined); SETTINGS section (Notification prefs/Switch company/Sign out)                                                                                                                                         |
+
+### 2 secondary surfaces
+
+| Surface     | Prototype file          | Highlights                                                                                                                                                                                                                                                                                                                              |
+| ----------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Summary** | `summary.jsx` (231 LOC) | "Tuesday · End of day"; 2×2 metric tiles (CHANGES TODAY [atomic batches] / FLAGGED / LEAVE PENDING / TOMORROW · ROST); TIMELINE list → `DecisionsTodaySheet` (filter by tier); WAGES THIS WEEK card (₹1,24,300 etc. with stacked bar — worked/OT/final percentages); "Refresh from server" button; **"I'm done for today"** wrap-up CTA |
+| **Updates** | `updates.jsx` (197 LOC) | "HR · COMPANY-WIDE"; "{N} new" badge; NEEDS YOUR ACK / RECENT — ACKNOWLEDGED sections; **ack requires 5+ words in own voice** (NOT a button); **compliance digest pattern** — expandable per-rule sub-list, single ack covers all 5 rules; word counter "{N}/5 WORDS"; acknowledged updates show user's text quoted back                |
+
+### 5 sub-screens (modal overlays, not full tabs)
+
+| Sub-screen              | Prototype file                         | When triggered                                                                                                                                                                                                                          |
+| ----------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **TerminationScreen**   | `termination-screen.jsx` (116 LOC)     | EMPLOYMENT-tier decision opened from Decisions tab. Bad-tinted header, "Why this" + money implication, RECENT 10 DAYS history, typed-phrase 'TERMINATE' ack.                                                                            |
+| **MultiDayLeaveScreen** | `multi-day-leave-screen.jsx` (109 LOC) | PERSONNEL multi-day leave. Per-day cover picker (pills); WAGES IMPACT card; "Approve leave + send invites" (disabled until all days picked).                                                                                            |
+| **ReplacementPicker**   | `replacement-picker.jsx` (140 LOC)     | Triggered from Today site card menu or Decisions row. Filter chips by trait (preferred/known/etc.); candidate list with ON SHIFT badge if currently working; travel + last shift meta; **"Send invite — 2 min timer"** ephemeral state. |
+| **FlaggedReviewSheet**  | inside `today.jsx`                     | AI-flagged visits from Today urgency banner. Photos + AI flag reason + Resolve OK / Reject.                                                                                                                                             |
+| **DecisionsTodaySheet** | inside `summary.jsx`                   | Decisions-of-the-day filtered view from Summary timeline. Filter chips by tier; rows tappable for amend.                                                                                                                                |
+
+### Shared chrome (`shell.jsx`, 614 LOC — single biggest file)
+
+`window.AxhyShell` exports 14 components:
+
+- `StatusBar`, `PhoneFrame`, `TabBar` (5-tab nav with badge), `TopAppBar` (menu + title + actions), `Drawer` (slide-in left panel, 8 items)
+- `Greeting` ("Namaste, {firstName}." + sites/workers count)
+- `TierChip` (note/operational/personnel/employment — 4 tiers at chip level; `review_required` lives only in `decisions.jsx`)
+- `DecisionCard` (inline-card component — now only used in `MediumSheet` for ambiguous decisions, NOT inline in chat per r4 demotion)
+- `AmbiguousDecisionCard` (radio-button picker for AI-ambiguous suggestions)
+- `HeavySummaryCard` (heavy decision summary with "→ Open to decide" CTA)
+- `MediumSheet` (bottom sheet, drag handle, title, close)
+- `MicFAB` (floating mic button, red+pulse when listening)
+- `CaptionEyebrow`, `DecisionRef` (universal tappable wrapper routing `onAmend(decisionId)` to chat amend mode)
+
+### Drawer items (`shell.jsx:513-522`)
+
+1. My profile · Stats · streaks · prefs
+2. Memory & rules · 23 rules · 12 aliases · 8 site notes
+3. My sites · 8 sites · 3 with active rules
+4. Language · English · हिन्दी · తెలుగు
+5. Notifications · Push · WhatsApp · Email
+6. How to use Axhy · 60-sec video · examples
+7. **Temporary mode · Pause AI for the day**
+8. Sign out
+
+## 3. r3 → r6 iteration trail (extracted from JSX comments)
+
+- **r4:** Today urgency banner; Today floor pulse 5 → 3 metrics; Decisions ultra-compact row mode; Chat capture-surface footer; Chat inline DecisionCards removed (replaced by Decisions-link); Activity actions hidden until row tap
+- **r5:** Decisions tier-grouped sections (URGENT / ROUTINE / FAILED); Chat older bubbles dimmed 55% opacity
+- **r6:** Decisions body text 60 → 40 chars; Decisions worker/site meta line dropped from urgent cards
+
+## 4. Contradictions with Decision entity lock spec (Active)
+
+The Decision entity lock spec at [`docs/specs/2026-05-12-decision-entity-lock.md`](2026-05-12-decision-entity-lock.md) is itself currently Draft. The 15 items below are gaps surfaced by reading the R6 prototype against that Draft. **None are resolved by this spec.** They are inputs for the next D.1 revision plan.
+
+| #   | R6 design says                                                                                                                                                                                                       | Lock spec says                                                                                                                               | Severity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Reverse window: **30 min** ([`activity.jsx:103`](../prototypes/supervisor-mobile-r6/project/src/activity.jsx))                                                                                                       | 5 min                                                                                                                                        | Hard contradiction — pick one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 2   | `REVIEW_REQUIRED` is a **tier** with option-picker UX ([`decisions.jsx:22`](../prototypes/supervisor-mobile-r6/project/src/decisions.jsx))                                                                           | Tier enum is `NOTE/OPERATIONAL/PERSONNEL/EMPLOYMENT` only                                                                                    | **Resolved 2026-05-12 (Option A) per Phase B revision.** Keep 4-tier enum (`NOTE / OPERATIONAL / PERSONNEL / EMPLOYMENT`); do NOT add `REVIEW_REQUIRED` as a 5th tier. Add a separate `needsReview: BOOLEAN` column on `DecisionWorkspaceItem` as the resolution-mode signal. Mutually exclusive with `ackRequired` at launch (ambiguous EMPLOYMENT cases emit two sequential decisions). Immutable after extraction. AI must always emit `tier` alongside (tier = policy severity; needsReview = resolution mode; orthogonal). R6's `TIER_STYLES.review_required` becomes a UI-rendering hint computed from `needsReview = true`. Decisions Workspace urgency grouping: `tier === 'EMPLOYMENT' OR needsReview === true`. See D.1 spec §2.3 + §2.11. |
+| 3   | `UNDONE` status NOT rendered in Decisions tab                                                                                                                                                                        | Status enum includes UNDONE                                                                                                                  | **Resolved 2026-05-12 (per Phase B cleanup sweep).** D.1 §2.4 transition guard now explicitly says UNDONE rows surface in the Activity tab (via AuditEvent), NOT in the Decisions Workspace list. Workspace queries `WHERE status = 'PROPOSED'`; terminal states (APPLIED-then-UNDONE, FAILED, DISMISSED, EXPIRED) live in the Activity timeline.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 4   | `ATTENDANCE_REVERSED` is an AuditEvent kind ([`activity.jsx:27`](../prototypes/supervisor-mobile-r6/project/src/activity.jsx))                                                                                       | Not in spec's enum list                                                                                                                      | **Resolved 2026-05-12 (per Phase B cleanup sweep).** D.1 §2.4 reversal-handler note now lists `ATTENDANCE_REVERSED` and the `<APPLY_KIND>_REVERSED` family (`LEAVE_REVERSED`, `SWAP_REVERSED`, `TERMINATION_REVERSED`, `ASSIGNMENT_REVERSED`) as the typed audit-event kinds emitted on `APPLIED → UNDONE`. Activity tab consumes these.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 5   | `DecisionRef` uses synthetic IDs like `worker:${w.id}` and `site-flagged:${site.id}` ([`today.jsx:63,122`](../prototypes/supervisor-mobile-r6/project/src/today.jsx))                                                | No "latest decision for worker/site" lookup defined; tenant-scoping of synthetic IDs not specified                                           | **Resolved 2026-05-12 (Option A) per Phase B revision.** Synthetic IDs are UI intent tokens — NOT persisted decision identifiers. Backend parses `<kind>:<uuid>`, validates `companyId`-scope, threads validated subject + read-only recent-decisions context into AI prompt. Amend flow creates a fresh `PROPOSED` decision row, never mutates past ones. Launch token set: `worker`, `site`, `site-flagged`. See D.1 spec §2.7.                                                                                                                                                                                                                                                                                                                    |
+| 6   | HR ack uses **typed-words** ([`decisions.jsx:91-95`](../prototypes/supervisor-mobile-r6/project/src/decisions.jsx))                                                                                                  | HR is "Direct APPLIED, no PROPOSED step"                                                                                                     | Direct contradiction — HR ack implies HR has a PROPOSED step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 7   | **No in-app delegation / account handoff** in R6 (`shell.jsx:443-445`: backup-supervisor mode removed founder-locked 2026-05-08; "if a supervisor goes on leave, they share their account with someone trustworthy") | Phase D lock #6: `Membership.delegated` listed as an independent spec to write                                                               | **R6 surfaces a strong case to cut lock #6, but the cut is not yet a settled decision — requires explicit founder approval.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 8   | "Temporary mode" in Drawer = **Pause AI for the day** ([`shell.jsx:520`](../prototypes/supervisor-mobile-r6/project/src/shell.jsx))                                                                                  | Earlier "temporary mode scoped per Membership" memory entry was about delegation, not pause-AI                                               | **Resolved 2026-05-12 (per Phase B cleanup sweep).** Two unrelated features share the name. (1) The older `temporary mode scoped per Membership` memory entry referred to backup-supervisor delegation — **cut per contradiction #7** (Phase D lock #6). (2) R6's drawer item `Temporary mode · Pause AI for the day` (`shell.jsx:520`) is a **separate launch feature** for pausing the AI tool-use loop on the supervisor's behalf for a defined window. Pause-AI is owed as a separate small feature spec; NOT in this lock's scope. Name collision is the only commonality.                                                                                                                                                                      |
+| 9   | Note-tier decisions have **WHERE TO SAVE** sub-flow (site_rule vs working_note) with privacy semantics ([`shell.jsx:226-251`](../prototypes/supervisor-mobile-r6/project/src/shell.jsx))                             | No `noteKind`/visibility field on `DecisionWorkspaceItem`                                                                                    | **Resolved 2026-05-12 (Option A) per Phase B revision.** First-class typed `noteKind` enum column on `DecisionWorkspaceItem` (`SITE_RULE` or `WORKING_NOTE`). Default from chat AI extraction is `WORKING_NOTE` (privacy-safe). Immutable after `status = APPLIED`. `WORKING_NOTE` bodies are EXCLUDED from AuditEvent payload sanitization. Retention/scrub timing and client-portal export consumer both deferred. See D.1 spec §2.10.                                                                                                                                                                                                                                                                                                             |
+| 10  | Summary tile says "CHANGES TODAY · atomic batches" ([`summary.jsx:136`](../prototypes/supervisor-mobile-r6/project/src/summary.jsx))                                                                                 | `batchId` groups but doesn't enforce atomicity — apply can succeed/fail per row                                                              | **Resolved 2026-05-12 (per Phase B cleanup sweep, pick: drop framing).** `batchId` on `DecisionWorkspaceItem` is a **grouping signal only** — for compound utterances (chat) and bulk-mark sessions (manual). It does **NOT** enforce atomicity; individual rows within a batch may APPLY, FAIL, or DISMISS independently. R6's Summary tile label "CHANGES TODAY · atomic batches" is the prototype's UI text from the frozen artifact; launch builds should use non-atomic wording (e.g., "compound changes today"). Upgrading `batchId` to a true atomic lifecycle is **deferred indefinitely** — would fire Path 1 trigger #3 (undo/retry/expiry complicated enough that projection rows stop being trustworthy).                                |
+| 11  | HR Updates ack flow: **5+ words in own voice** ([`updates.jsx:51`](../prototypes/supervisor-mobile-r6/project/src/updates.jsx))                                                                                      | Lock models EMPLOYMENT typed-phrase ack only                                                                                                 | **Resolved 2026-05-12** by `docs/specs/2026-05-12-hr-updates-spec.md` (Active). HR Updates live outside `DecisionWorkspaceItem` per D.1 §2.5; full route + fan-out + audience + launch policy in the Active HR Updates spec.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 12  | **Compliance digest** pattern — 5 rules acked together ([`updates.jsx:42-44`](../prototypes/supervisor-mobile-r6/project/src/updates.jsx))                                                                           | One DecisionWorkspaceItem per decision                                                                                                       | **Resolved 2026-05-12 (Option A) per Phase B revision.** Parent `HRUpdate` + child `HRUpdateRule` entries. Single ack on parent covers all children; each child remains individually addressable for audit (NOT a JSON blob). Standalone HRUpdates use `body` field only — no forced child rows. Rules are append-only/immutable. Mixed-tier digest behavior deferred to the future HR Updates spec. Unblocks #11. See D.1 spec §2.9.                                                                                                                                                                                                                                                                                                                |
+| 13  | Replacement picker has **"2 min invite timer"** ephemeral state ([`replacement-picker.jsx:132`](../prototypes/supervisor-mobile-r6/project/src/replacement-picker.jsx))                                              | No invite/acceptance lifecycle modelled                                                                                                      | **Resolved 2026-05-12 (Option A) per Phase B revision.** Separate `ReplacementInvite` entity (NOT a `DecisionWorkspaceItem` — different actor model, TTL, and status semantics). Lifecycle: `SENT → ACCEPTED \| REJECTED \| EXPIRED \| CANCELLED`. 2-min TTL enforced via cron sweep (every 30s) + route-level check on accept. Hard reject after expiry — no grace window. Parallel invites deferred to product decision. Acceptance/expiry side-effects (audit events, parent-decision follow-ons) are follow-on effects, NOT part of the core entity. Path 1 trigger risk: none. See D.1 spec §2.8.                                                                                                                                               |
+| 14  | `DecisionCard` component still exists in `shell.jsx` but only renders inside `MediumSheet` for ambiguous decisions                                                                                                   | Spec §2.6 says "chat surface shows backlink, NOT inline cards" — consistent intent, but inline component is preserved for medium-sheet usage | **Resolved 2026-05-12 (per Phase B cleanup sweep).** R6's `DecisionCard` component (exported from `shell.jsx`) is preserved as a reusable UI component but rendered ONLY inside `MediumSheet` for `AmbiguousDecisionCard` flows. It is NOT rendered inline in the chat thread (per D.1 §2.6 chat row: "Inline DecisionCard JSON rendering is demoted per r3 design"). The component's continued existence in `shell.jsx` is scoped to medium-sheet usage — no contradiction with the chat-demotion lock.                                                                                                                                                                                                                                             |
+| 15  | "I'm done for today" wrap-up CTA ([`summary.jsx:206-216`](../prototypes/supervisor-mobile-r6/project/src/summary.jsx)) opens a wrap-up sheet                                                                         | No end-of-day flow modelled                                                                                                                  | **Resolved 2026-05-12 (per Phase B cleanup sweep, pick: drop from launch).** The "I'm done for today" wrap-up CTA visible in `summary.jsx:206-216` is **dropped from v3.0 launch scope**. Tracked as a v3.1/backlog feature; not specified at launch. R6 prototype's CTA button remains in the frozen design artifact for traceability; launch builds either hide the button or render as a no-op until the wrap-up flow is designed.                                                                                                                                                                                                                                                                                                                |
+
+### Severity breakdown
+
+- **Hard contradictions** (must resolve before P1 implementation): #1 (reverse window), #6 (HR ack), #7 (delegation lock)
+- **Schema gaps** (new fields/concepts needed): #4 (audit kind), #5 (synthetic IDs + tenant scoping), #9 (noteKind visibility), #11 (ackKind), #12 (digest parent), #13 (invite TTL)
+- **Framing clarifications** (spec wording, no schema change): #2, #3, #10, #14, #15
+- **Candidate lock-list reduction** (8 → 7, pending founder decision): #7 — R6 surfaces a strong case to cut lock #6 (`Membership.delegated`), but the cut is not yet a settled decision
+
+### Most consequential finding
+
+R6 design surfaces a **strong case to CUT Phase D lock #6** (`Membership.delegated`): the backup-supervisor mode is removed in the prototype per a 2026-05-08 founder-lock, with the comment "if a supervisor goes on leave, they share their account with someone trustworthy. No in-app delegation feature." The 8-lock list is therefore a **candidate** for reduction to 7. This cut is **not yet a settled decision** and requires explicit founder approval before any lock-list document is updated.
+
+## 5. What this spec is NOT
+
+- **Not a backend contract** — see the Decision entity lock spec and downstream Phase D locks for those.
+- **Not an implementation guide** — implementation matches the prototype's visual output. Coding agents should NOT copy the JSX structure; recreate visually in whatever stack fits the target codebase.
+- **Not yet Active** — R3 holds Active until this Draft is reviewed.
+- **Not a resolution of the 15 contradictions** — only a catalogue. Resolution is the next plan's job.
+
+## 6. Founder-locked decisions visible in r6 (cross-reference)
+
+- **Tab order locked 2026-05-11** (`shell.jsx:57-58`): Today / Decisions / Activity / Chat / Profile
+- **Backup-supervisor mode removed, founder-locked 2026-05-08** (`shell.jsx:443-445`): no in-app delegation feature; account-sharing is the workaround. Contradiction #7 surfaces from this lock.
+- **Android/Expressive variant dropped per ADR-0021** (`profile.jsx:2`)
+- **R3 design pass locks 2026-05-11:**
+  - Today site cards default collapsed (`today.jsx:106-109`)
+  - Activity actions hidden until row tap (`activity.jsx:34-37`)
+  - Decisions Workspace replaces inline chat cards (per chat.jsx r4 comment)
+- **R6 locks 2026-05-12:**
+  - Decisions body text 40-char limit (`decisions.jsx:83-86`)
+  - Worker/Site meta dropped from urgent cards (`decisions.jsx:135-137`)
+
+## 7. Cross-references
+
+- Doc discipline protocol: [`docs/protocols/doc-discipline.md`](../protocols/doc-discipline.md)
+- Canonical truth index: [`docs/index/canonical-truth.md`](../index/canonical-truth.md)
+- Decision entity lock (Draft, needs revision per §4 contradictions): [`docs/specs/2026-05-12-decision-entity-lock.md`](2026-05-12-decision-entity-lock.md)
+- Prototype bundle: [`docs/prototypes/supervisor-mobile-r6/`](../prototypes/supervisor-mobile-r6/)
+- R3 (still Active pending review of this Draft): [`docs/specs/2026-05-11-supervisor-mobile-r3-design.md`](2026-05-11-supervisor-mobile-r3-design.md)
+- Product framing (Draft): [`docs/specs/2026-05-13-product-framing.md`](2026-05-13-product-framing.md) — clarifying product-framing under review (supervisor operating brain, three layers of truth, low-UI rule). Does not yet govern this spec; surface-expression of today/tomorrow/week capabilities is captured there as a framing gap, not as a new R6 §4 contradiction.
+- ADR-0006 (XState v5): governs Decision entity lifecycle machine
+- ADR-0021 (single mobile app): basis for Android variant drop
+- 2026-05-08 founder-lock: backup-supervisor mode removed (no formal ADR yet — should be written if lock #6 is cut)
+
+## 8. Approval gate
+
+This spec flips Status: Draft → Active only after:
+
+1. External advisor pressure-test review (forwarded by founder)
+2. Founder explicit approval
+3. The 15 contradictions in §4 are explicitly: (a) assigned for resolution (which side moves — design or lock spec), or (b) accepted as known launch gaps with a flag in the Decision entity lock spec
+4. Decision entity lock spec is revised to reflect resolutions
+5. Founder explicitly approves OR rejects the candidate cut of Phase D lock #6 (`Membership.delegated`)
+
+Until all 5 conditions hold, R3 remains Active and this Draft cannot guide implementation.
+
+---
+
+## 2026-05-15 Update — Workflow Design Closure cross-reference
+
+Several deferred items raised by R6's design pass are now answered by `docs/specs/2026-05-15-workflow-design-closure.md` (Active but contract-incomplete; promoted 2026-05-15):
+
+- **§4 contradiction #1 reverse window (30-min vs 5-min)** → closure §12 F-P-4 proposed pick: 5-minute hard reverse + 30-minute soft-flag path (audit signal only, not reversal). Final founder pick pending.
+- **Activity tab actor + worker filters** → closure §5.2.3 R6 Activity extension specifies actor filter chip + worker filter chip + binding-event row separator.
+- **Today portfolio-delta surface** → closure §5.2.7 (banner showing "since last opened: +N sites, −M sites").
+- **HR-pending visibility section in Decisions** → closure §5.2.4.
+- **Absence mode banner + sick-author "Continue / Save as draft" prompt** → closure §5.2.5 (closes the Ravi 8c `[BROKEN]` design gap).
+- **"While you were out" digest on first open after absence** → closure §5.2.6 + §3.5 (Digest entity).
+- **Site handoff context panel on newly-bound site cards** → closure §5.2.8 + §3.7 (HandoffPackage).
+- **Batch grouping rendering on Decisions tab** → closure §5.2.9.
+- **Originator-vs-actor rendering in Activity rows** → closure §5.2.10.
+
+The new surfaces extend R6's existing tabs (Today / Decisions / Activity / Chat / Updates / Summary); they do not replace R6's locked tab order or sub-screen design.

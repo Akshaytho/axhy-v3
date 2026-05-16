@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=1280"/>
+  <title>Axhy v3 — Supervisor mobile</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@500;600&family=Noto+Sans+Telugu:wght@500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="src/tokens.css"/>
+  <style>
+    html, body {
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    body {
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font-family: inherit; }
+    @keyframes micpulse {
+      0%   { transform: scale(1);   opacity: 0.5; }
+      100% { transform: scale(1.4); opacity: 0;   }
+    }
+    /* Backdrop pattern — very subtle paper grain via a layered gradient */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(1100px 600px at 80% -10%, rgba(192,73,42,0.06), transparent 60%),
+        radial-gradient(800px 500px at -5% 110%, rgba(74,124,89,0.04), transparent 60%);
+      z-index: 0;
+    }
+    #root { position: relative; z-index: 1; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="src/data.js"></script>
+  <script type="text/babel" src="src/icons.jsx"></script>
+  <script type="text/babel" src="src/shell.jsx"></script>
+  <script type="text/babel" src="src/profile.jsx"></script>
+  <script type="text/babel" src="src/chat.jsx"></script>
+  <script type="text/babel" src="src/today.jsx"></script>
+  <script type="text/babel" src="src/decisions.jsx"></script>
+  <script type="text/babel" src="src/activity.jsx"></script>
+  <script type="text/babel" src="src/multi-day-leave-screen.jsx"></script>
+  <script type="text/babel" src="src/termination-screen.jsx"></script>
+  <script type="text/babel" src="src/replacement-picker.jsx"></script>
+  <!-- summary.jsx + updates.jsx — DEPRECATED 2026-05-11 (replaced by activity.jsx + decisions.jsx).
+       Kept on disk for now; not wired into the page. Delete after design review. -->
+  <script type="text/babel" src="src/app.jsx"></script>
+  <script type="text/babel" src="src/main.jsx"></script>
+</body>
+</html>
