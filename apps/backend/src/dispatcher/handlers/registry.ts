@@ -22,6 +22,7 @@ import {
 import { handlePayrollRecompute } from './payroll.js';
 import { handleAiVerify } from './ai.js';
 import { handleOwnerAiBudgetWarning, handleOwnerAiBudgetCapped } from './owner-budget.js';
+import { handleNotificationSupervisorChange } from './notifications.js';
 
 export type OutboxHandler = (payload: unknown, log: FastifyBaseLogger) => Promise<void>;
 
@@ -38,6 +39,11 @@ export const HANDLERS: Record<string, OutboxHandler> = {
   // for Slack #axhy-ops + Mr. Reddy WhatsApp via Gupshup.
   'owner.ai_budget_warning': handleOwnerAiBudgetWarning,
   'owner.ai_budget_capped': handleOwnerAiBudgetCapped,
+  // F-007 round-2 v11 — worker-side supervisor-change persistence.
+  // Reads source AuditEvent (HANDOFF_PACKAGE_GENERATED or BINDING_ENDED_AUTO)
+  // emitted by F-004 / F-003 in their source tx; writes immutable Notification
+  // rows per (recipient × channel × site). Delivery deferred to F-011.
+  'notification.supervisor_change': handleNotificationSupervisorChange,
 };
 
 /** All registered topic names — exported for tests / observability. */
