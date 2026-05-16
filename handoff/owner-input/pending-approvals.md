@@ -20,7 +20,13 @@
 
 ## Currently awaiting approval
 
-### Slice: `notification-dispatcher` (F-007 round 2 v11 — Notification persistence + audience resolution) — SCOPE_APPROVED 2026-05-16 22:14 (code in flight; will return to AWAITING_APPROVAL after REAL_DB sweep is green)
+### Slice: `notification-dispatcher` (F-007 round 2 v11 — Notification persistence + audience resolution) — DONE 2026-05-16 (merged to main at `79e38aa`)
+
+**Friend's final CODE: APPROVED 2026-05-16 22:58 verbatim:** "APPROVED. I re-reviewed the actual fix-up commit at HEAD `cbb7646` ... CODE: APPROVED. Owner can push this branch and merge to main."
+
+**Full F-007 commit chain (merged at `79e38aa` 2026-05-16):** `41ee9e5` (round-1 scope) · `e6e605c` (round-2 v11 scope + tracker propagation) · `e0678d1` (round-2 v11 fix-up: `expired_token` drop + regenerate + status-wording) · `aee0784` (SCOPE_APPROVED 22:14) · `4c5d9d9` (code phase, 120/120 cases) · `cbb7646` (code round-2 fix-up: P1 worker-audience point-in-time + P2 acting_end tests, 123/123 cases). 20/20 files · 123/123 cases pass on fresh local Postgres 16 (109 prior baseline + 14 new F-007).
+
+**Round-2 v11 scope-phase history kept below for audit traceability:**
 
 **Friend's APPROVED verdict at HEAD `e0678d1` 2026-05-16 22:14 verbatim:** "APPROVED. I re-checked the actual repo state on `feat/f-007-notification-dispatcher` at HEAD `e0678d1`, and the 3 file-grounded findings are fixed. What I verified: expired_token is gone from the active round-1 behavior contract and the F-011 enum now truthfully reads as 6 actively emitted values. The generated handoff outputs were regenerated and now correctly reflect the committed propagation state at `e6e605c`, instead of the old pre-commit wording. The approval wording is now clean: the panel-tested draft was approved, but this file-grounded propagation was explicitly awaiting separate review. The underlying v11 architecture still reads right: immutable rows; one idempotency index; no persistence-layer coalescing; explicit same-tx outbox invariant; DB CHECK constraint for audience mutual exclusion; honest `Worker.userId IS NULL` delivery gap; correct OneSignal logout collapse. So my verdict is: SCOPE: APPROVED (round 2 v11). You can let the owner push this branch, and then begin code on the same branch per the scoped file list. Stop again at AWAITING_APPROVAL after the implementation test sweep is green. Non-blocking note: `apps/admin-web/scripts/` is still untracked in the worktree, but it is unrelated to this review and should stay untouched unless separately intended."
 
