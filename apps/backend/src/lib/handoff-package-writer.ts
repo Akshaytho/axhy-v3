@@ -120,12 +120,22 @@ function uuidV5FromBytes(seed: string): string {
 }
 
 /**
- * Apply F-004 side effects: mechanism Z permanent-rebind LivingDoc copy
- * (N rules + N audits) + 1× HANDOFF_PACKAGE_GENERATED audit. Q2 = (b) locked:
- * no `freeNotes` summary entry. Caller is responsible for opening the tx.
+ * Apply F-004 side effects:
+ *
+ *   - Permanent rebind WITH outgoing supervisor: N site-rule copies into
+ *     incoming's `LivingDoc.siteRules` + 1 handover-summary entry into
+ *     incoming's `LivingDoc.freeNotes` + (N+1)× `LIVING_DOC_RULE_ADDED`
+ *     audits + 1× `HANDOFF_PACKAGE_GENERATED` audit.
+ *   - First-ever permanent binding (no outgoing — Q2 = (b) locked):
+ *     zero LivingDoc writes; 1× `HANDOFF_PACKAGE_GENERATED` audit only.
+ *   - Acting cover: zero LivingDoc writes;
+ *     1× `HANDOFF_PACKAGE_GENERATED` audit only.
+ *
+ * Caller is responsible for opening the tx.
  *
  * @derives(workflow-design-closure §3.7 Surfaced-to + §9)
  * @derives(F-004 scope round-4 v4 §5 pick 8)
+ * @derives(F-004 round-2 review 2026-05-16 — summary entry restored on permanent rebind with outgoing)
  */
 export async function writeHandoffPackage(
   tx: Prisma.TransactionClient,
