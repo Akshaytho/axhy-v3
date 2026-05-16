@@ -48,8 +48,8 @@ export type AuditEventInput = {
 export async function recordAuditEvent(
   tx: Prisma.TransactionClient,
   input: AuditEventInput,
-): Promise<void> {
-  await tx.auditEvent.create({
+): Promise<{ id: string }> {
+  const row = await tx.auditEvent.create({
     data: {
       companyId: input.companyId,
       kind: input.kind,
@@ -57,7 +57,9 @@ export async function recordAuditEvent(
       targetId: input.targetId ?? null,
       payload: input.payload ?? {},
     },
+    select: { id: true },
   });
+  return { id: row.id };
 }
 
 /**
