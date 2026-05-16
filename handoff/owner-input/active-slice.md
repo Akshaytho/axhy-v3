@@ -16,15 +16,15 @@
 
 ## Current
 
-| Field                  | Value                                                                                                                                                                  |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**         | `handoff-package-composer` (F-004)                                                                                                                                     |
-| **Status**             | `PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 "existing-pattern survey" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins)       |
-| **Branch**             | will fork from main after F-003 merges (the next branch is `feat/f-004-handoff-package-composer`)                                                                      |
-| **Last landed commit** | `c4c335b` — `docs(handoff): F-003 round-2 review cleanup — 3 stale doc lines fixed (no code change)` (F-003 closed APPROVED; awaits merge-to-main to graduate to DONE) |
-| **Dependencies**       | F-001 + F-002 — APPROVED + DONE on main. F-003 — APPROVED, merge-to-main next. All met.                                                                                |
-| **Tests status**       | n/a — code not started; scope phase                                                                                                                                    |
-| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                      |
+| Field                  | Value                                                                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**         | `handoff-package-composer` (F-004)                                                                                                                               |
+| **Status**             | `PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 "existing-pattern survey" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins) |
+| **Branch**             | Forks from `main` at `2bc815b` — next branch is `feat/f-004-handoff-package-composer` (created once scope is APPROVED)                                           |
+| **Last landed commit** | `2bc815b` — `Merge feat/f-003-cron-framework — F-003 cron framework + binding-expire-sweep` (F-003 now DONE on main)                                             |
+| **Dependencies**       | F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.                                    |
+| **Tests status**       | n/a — code not started; scope phase                                                                                                                              |
+| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                |
 
 ## What the F-004 scope artifact needs to lock (rule-26 "existing-pattern survey" + open picks)
 
@@ -56,11 +56,11 @@ Open picks to surface in the scope artifact (recommended defaults in brackets):
 
 ## F-002 + S-001 + F-003 closure summary (for cross-slice context)
 
-| Slice                                       | Status                                   | Approval at    | Friend's verbatim                                                                                                                        |
-| ------------------------------------------- | ---------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| F-002 (chat-writes-proposed-decisions)      | DONE (merged 2026-05-16)                 | HEAD `12c1df6` | "P1 is really fixed · P2 is really fixed enough for approval · APPROVED."                                                                |
-| S-001 (same-day-supervisor-freeze)          | DONE (merged 2026-05-16)                 | HEAD `2a0f27c` | "Final tracker propagation is clean · I do not see a new code bug or a new tracker-truth bug · Decision: APPROVED."                      |
-| F-003 (cron-framework-binding-expire-sweep) | APPROVED 2026-05-16 (merge-to-main next) | HEAD `c4c335b` | "The round-2 review cleanup is real · The stale doc lines I flagged are now fixed, and I do not see a new blocker · Decision: APPROVED." |
+| Slice                                       | Status                                | Approval at    | Friend's verbatim                                                                                                                        |
+| ------------------------------------------- | ------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| F-002 (chat-writes-proposed-decisions)      | DONE (merged 2026-05-16)              | HEAD `12c1df6` | "P1 is really fixed · P2 is really fixed enough for approval · APPROVED."                                                                |
+| S-001 (same-day-supervisor-freeze)          | DONE (merged 2026-05-16)              | HEAD `2a0f27c` | "Final tracker propagation is clean · I do not see a new code bug or a new tracker-truth bug · Decision: APPROVED."                      |
+| F-003 (cron-framework-binding-expire-sweep) | DONE (merged 2026-05-16 at `2bc815b`) | HEAD `c4c335b` | "The round-2 review cleanup is real · The stale doc lines I flagged are now fixed, and I do not see a new blocker · Decision: APPROVED." |
 
 F-003 final commit chain: `39b47b8` (scope LOCKED) · `a29f9f6` (F-002 + S-001 merge to main) · `74c1e9d` (pick 1 corrected pre-code) · `737c066` (round-1 code) · `433985d` (round-1 tracker) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1 fix: partial unique index + P2002 + 3 tests) · `802d28f` (round-2 P2 docs downgrade) · `c4c335b` (round-2 review cleanup — 3 stale doc lines). Full real-DB sweep: 18/18 files · 95/95 cases.
 

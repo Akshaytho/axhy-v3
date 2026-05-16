@@ -474,8 +474,8 @@ _None._
 
 ### Slice: `cron-framework-binding-expire-sweep` (F-003 — round-2 fixes) — APPROVED 2026-05-16
 
-- **Status:** `APPROVED` (ready to merge to main next; will graduate to DONE on merge).
-- **Branch:** `feat/f-003-cron-framework`.
+- **Status:** `DONE` (merged to main at `2bc815b` on 2026-05-16).
+- **Branch:** `feat/f-003-cron-framework` (merged into `main`).
 - **Last landed commit at approval:** `c4c335b` — `docs(handoff): F-003 round-2 review cleanup — 3 stale doc lines fixed (no code change)`.
 - **F-003 commit chain (oldest → newest):** `39b47b8` (scope LOCKED + A-vs-B record) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback) · `737c066` (round-1 code) · `433985d` (round-1 tracker propagation) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1 fix: partial unique index + P2002 catch + 3 new tests) · `802d28f` (round-2 P2 docs downgrade) · `c4c335b` (round-2 review cleanup — 3 stale doc lines fixed).
 - **Approval received:** Friend's file-grounded verification at HEAD `c4c335b`. Verbatim: "The round-2 review cleanup is real · The stale doc lines I flagged are now fixed, and I do not see a new blocker · the partial unique index + P2002 handling is a real correctness improvement, and the control surface now matches it · Decision: APPROVED."
