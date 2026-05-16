@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T06:41:58.448Z",
-    "generated_against_head": "737c066c94b87b1392cd7373cd7bc991217a9a44",
+    "last_updated_at": "2026-05-16T06:55:57.621Z",
+    "generated_against_head": "433985de1ed43cf71f56dd781c875bcc60110e7c",
     "generated_against_branch": "feat/f-003-cron-framework",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "74c1e9d704366a0c04532daeb2aa35c65c1f33fb",
+    "last_canonical_commit_at_gen": "433985de1ed43cf71f56dd781c875bcc60110e7c",
     "staleness_warning": null,
     "active_slice": "cron-framework-binding-expire-sweep (F-003) · AWAITING_APPROVAL (code slice complete on dispatcher-piggyback pattern; 18/18 test files green · 92/92 cases pass; stop for review per friend's execution rule)",
     "generated_from": [

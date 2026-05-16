@@ -95,6 +95,20 @@ These extend the rules in `handoff/execution-state/INDEX.md` (1–15).
     - **What this rule does NOT change:** the production-grade bar (rule 24 / P1–P10) is still mandatory for any complexity that DOES remain. This rule is about NOT building unnecessary complexity; it does NOT lower the bar on necessary complexity.
     - **How to apply going forward:** when scoping a new slice, ask the rare-edge-case question first. If found, surface a policy-vs-code option to the owner in the scope artifact, not after the code lands.
 
+26. **Inspect existing repo patterns BEFORE designing (Akshay rule, 2026-05-16, locked after F-003 round-1 review).** Do not design a new slice from theoretical assumptions about the codebase. Design from what the codebase actually does.
+    - **The two-line operating rule:**
+      - Before locking a design, inspect the repo for an existing pattern that solves a similar problem. Reuse it unless you can clearly explain why it's not enough.
+      - Design from the actual codebase first, not from theoretical assumptions about it.
+    - **Mandatory four questions in every scope artifact (before picks are locked):**
+      1. **What similar code already exists?** Name the files (with grep/read evidence, not from memory).
+      2. **What real runtime pattern does it use?** Read the code, not just the comments.
+      3. **Can I extend that pattern instead of introducing a new one?** Default: yes.
+      4. **If I'm changing the pattern, why is the old one not enough?** Specific reasons, not generic preferences.
+    - **Concrete example (F-003 saga):** the scope artifact claimed "OS-cron + HTTP endpoint matches existing `reset-ai-spend`." The actual existing pattern is dispatcher-tick piggyback (`maybeResetAiSpend` called inside `dispatcher/index.ts:tick`). The mismatch was caught pre-code by reading the file; under this rule, it would have been caught at scope time, before owner approval. Also: the original audit-existence-check idempotency for `BINDING_ENDED_AUTO` overclaimed multi-replica safety; a real read of similar dedup patterns in the codebase (or industry — partial unique index + `INSERT ... ON CONFLICT DO NOTHING`) would have surfaced the DB-enforced solution earlier.
+    - **What this rule does NOT change:** rules 23 (confidence-score) + 24 (production-grade) + 25 (policy-first) still apply. This rule is upstream of all three — it forces you to ground the design in repo reality before reasoning about correctness, complexity, or policy.
+    - **How to apply going forward:** every new scope artifact must include a "Existing-pattern survey" section that answers the four questions above. Skip-able only when no related code exists in the repo — and even then, state that explicitly.
+    - **Portable copy of this rule:** also lives at `/Users/thotaakshay/.claude/portable-rules-akshay.md` for transit to other projects; the project canonical here governs in-session work.
+
 ## Session-start read order (mandatory)
 
 When a new Claude session starts on Axhy v3 work:
