@@ -695,4 +695,245 @@ describe('F-007 round-2 v11 — notification-supervisor-change (real-DB)', () =>
       expect(pl.firstSourceAuditId).toBeUndefined();
     }
   });
+
+  it('12. acting_end via BINDING_ENDED_AUTO — outgoing=acting supervisor; incoming=resuming permanent supervisor (point-in-time read at effectiveUntil + 1ms)', async () => {
+    const siteId = await newSite('act-end-12');
+    await assignWorker(siteId, workerWithUserA);
+
+    // 1. Seed Anjali's permanent binding (resumes when Lakshmi's acting cover ends).
+    const permanentEffectiveFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const permanentEffectiveUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await prisma.siteSupervisorBinding.create({
+      data: {
+        companyId: companyA,
+        siteId,
+        userId: anjali,
+        actingForUserId: null,
+        effectiveFrom: permanentEffectiveFrom,
+        effectiveUntil: permanentEffectiveUntil,
+        reason: 'F-007 test seed - permanent',
+        createdBy: hrUserId,
+      },
+    });
+
+    // 2. Seed Lakshmi's acting binding that just expired.
+    const actingEffectiveUntil = new Date(Date.now() - 60_000); // 1 min ago
+    const actingBinding = await prisma.siteSupervisorBinding.create({
+      data: {
+        companyId: companyA,
+        siteId,
+        userId: lakshmi,
+        actingForUserId: anjali,
+        effectiveFrom: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        effectiveUntil: actingEffectiveUntil,
+        reason: 'F-007 test seed - acting',
+        createdBy: hrUserId,
+      },
+    });
+
+    // 3. Directly emit BINDING_ENDED_AUTO audit + invoke handler to mimic what the
+    //    F-003 sweep would do (we don't run the actual sweep — that has a 5-min
+    //    cadence gate + global behavior tested separately in binding-expire-sweep.test.ts).
+    const auditRow = await prisma.auditEvent.create({
+      data: {
+        companyId: companyA,
+        kind: 'BINDING_ENDED_AUTO',
+        actorId: hrUserId,
+        targetId: actingBinding.id,
+        payload: {
+          bindingId: actingBinding.id,
+          siteId,
+          userId: lakshmi, // outgoing = the acting supervisor whose cover ended
+          actingForUserId: anjali,
+          effectiveFrom: actingBinding.effectiveFrom.toISOString(),
+          effectiveUntil: actingEffectiveUntil.toISOString(),
+          sweptAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    // 4. Invoke handler with eventKind='acting_end'.
+    await runHandler({
+      sourceAuditId: auditRow.id,
+      bindingId: actingBinding.id,
+      eventKind: 'acting_end',
+    });
+
+    // 5. Assert: worker + outgoing (Lakshmi) + incoming (Anjali, resumed) = 3 × 2 = 6 rows.
+    const rows = await notificationsFor(actingBinding.id);
+    expect(rows).toHaveLength(6);
+
+    // Outgoing = Lakshmi (the acting supervisor whose cover just ended).
+    const lakshmiRows = rows.filter((r) => r.audienceUserId === lakshmi);
+    expect(lakshmiRows).toHaveLength(2);
+    // Incoming = Anjali (resuming permanent supervisor, found via point-in-time read).
+    const anjaliEndRows = rows.filter((r) => r.audienceUserId === anjali);
+    expect(anjaliEndRows).toHaveLength(2);
+    // Worker A row.
+    const workerARows = rows.filter((r) => r.audienceWorkerId === workerWithUserA);
+    expect(workerARows).toHaveLength(2);
+
+    // Every row carries the right eventKind + effectiveAt derived from binding.effectiveUntil.
+    for (const r of rows) {
+      expect(r.payload.eventKind).toBe('acting_end');
+      expect(r.payload.effectiveAt).toBe(actingEffectiveUntil.toISOString());
+      expect(r.payload.outgoingSupervisorId).toBe(lakshmi);
+      expect(r.payload.incomingSupervisorId).toBe(anjali);
+      expect(r.deliveredAt).toBeNull();
+      expect(r.failedAt).toBeNull();
+    }
+  });
+
+  it('13. acting_end with NO permanent supervisor at effectiveUntil → handler SKIPS entirely (Open Q4: no rows; no throw)', async () => {
+    const siteId = await newSite('act-end-no-perm-13');
+    await assignWorker(siteId, workerWithUserA);
+
+    // Acting binding just expired — but NO permanent binding exists on this site.
+    const actingEffectiveUntil = new Date(Date.now() - 60_000);
+    const actingBinding = await prisma.siteSupervisorBinding.create({
+      data: {
+        companyId: companyA,
+        siteId,
+        userId: lakshmi,
+        actingForUserId: anjali, // anjali is the actingFor target but no permanent binding exists
+        effectiveFrom: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        effectiveUntil: actingEffectiveUntil,
+        reason: 'F-007 test seed - acting, no permanent resumes',
+        createdBy: hrUserId,
+      },
+    });
+
+    const auditRow = await prisma.auditEvent.create({
+      data: {
+        companyId: companyA,
+        kind: 'BINDING_ENDED_AUTO',
+        actorId: hrUserId,
+        targetId: actingBinding.id,
+        payload: {
+          bindingId: actingBinding.id,
+          siteId,
+          userId: lakshmi,
+          actingForUserId: anjali,
+          effectiveFrom: actingBinding.effectiveFrom.toISOString(),
+          effectiveUntil: actingEffectiveUntil.toISOString(),
+          sweptAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    // Open Q4 contract: no throw, no rows, warning logged.
+    await expect(
+      runHandler({
+        sourceAuditId: auditRow.id,
+        bindingId: actingBinding.id,
+        eventKind: 'acting_end',
+      }),
+    ).resolves.toBeUndefined();
+
+    const rows = await notificationsFor(actingBinding.id);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('14. point-in-time audience — future-dated ACTIVE assignment + expired ACTIVE assignment are BOTH excluded (P1 fix)', async () => {
+    const siteId = await newSite('point-in-time-14');
+    // Make 3 distinct workers + 3 distinct assignments with different validity windows.
+    const workerPast = (
+      await prisma.worker.create({
+        data: {
+          companyId: companyA,
+          name: 'Past',
+          phone: '+91' + String(Date.now() + 4001).slice(-10),
+          baseSalaryPaise: 10000_00,
+          userId: null,
+        },
+      })
+    ).id;
+    const workerNow = (
+      await prisma.worker.create({
+        data: {
+          companyId: companyA,
+          name: 'Now',
+          phone: '+91' + String(Date.now() + 4002).slice(-10),
+          baseSalaryPaise: 10000_00,
+          userId: null,
+        },
+      })
+    ).id;
+    const workerFuture = (
+      await prisma.worker.create({
+        data: {
+          companyId: companyA,
+          name: 'Future',
+          phone: '+91' + String(Date.now() + 4003).slice(-10),
+          baseSalaryPaise: 10000_00,
+          userId: null,
+        },
+      })
+    ).id;
+    // Past: validUntil < now → excluded.
+    await prisma.assignment.create({
+      data: {
+        companyId: companyA,
+        siteId,
+        workerId: workerPast,
+        shiftStart: '08:00',
+        shiftEnd: '17:00',
+        dayMask: 'MTWTFS_',
+        validFrom: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        validUntil: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        state: 'ACTIVE',
+      },
+    });
+    // Now: validFrom < now AND validUntil = null → included.
+    await prisma.assignment.create({
+      data: {
+        companyId: companyA,
+        siteId,
+        workerId: workerNow,
+        shiftStart: '08:00',
+        shiftEnd: '17:00',
+        dayMask: 'MTWTFS_',
+        validFrom: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        validUntil: null,
+        state: 'ACTIVE',
+      },
+    });
+    // Future: validFrom > now → excluded.
+    await prisma.assignment.create({
+      data: {
+        companyId: companyA,
+        siteId,
+        workerId: workerFuture,
+        shiftStart: '08:00',
+        shiftEnd: '17:00',
+        dayMask: 'MTWTFS_',
+        validFrom: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        validUntil: null,
+        state: 'ACTIVE',
+      },
+    });
+
+    const { bindingId, sourceAuditId } = await triggerHandoffPackageGenerated({
+      cId: companyA,
+      siteId,
+      outgoingSupervisorId: ravi,
+      incomingSupervisorId: anjali,
+      kind: 'PERMANENT',
+    });
+    await runHandler({ sourceAuditId, bindingId, eventKind: 'permanent_rebind' });
+
+    // Only "Now" worker should be in the audience — Past + Future excluded by validity windows.
+    const workerRows = await prisma.notification.findMany({
+      where: {
+        companyId: companyA,
+        kind: 'supervisor_change',
+        payload: { path: ['bindingId'], equals: bindingId } as unknown as Prisma.JsonFilter,
+        audienceWorkerId: { not: null },
+      },
+    });
+    const audienceWorkerIds = new Set(workerRows.map((r) => r.audienceWorkerId));
+    expect(audienceWorkerIds).toEqual(new Set([workerNow]));
+    expect(audienceWorkerIds.has(workerPast)).toBe(false);
+    expect(audienceWorkerIds.has(workerFuture)).toBe(false);
+  });
 });

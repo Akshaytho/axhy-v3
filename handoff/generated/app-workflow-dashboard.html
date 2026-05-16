@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T17:13:48.353Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>aee07842</code></span>
+      <span>Generated <strong>2026-05-16T17:26:27.811Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>4c5d9d93</code></span>
       <span>Branch <code>feat/f-007-notification-dispatcher</code></span>
-      <span>Active slice: <strong>notification-dispatcher (F-007 round 2 v11 — Notification persistence + audience resolution for supervisor_change) · AWAITING_APPROVAL (round 2 v11 — code phase) 2026-05-16. Real-DB sweep green: **20/20 files · 120/120 cases pass** on fresh local Postgres 16 (109 prior baseline + 11 new F-007 cases). Awaits friend's file-grounded round-2 code review.</strong></span>
+      <span>Active slice: <strong>notification-dispatcher (F-007 round 2 v11 — Notification persistence + audience resolution for supervisor_change) · AWAITING_APPROVAL (round 2 v11 — code phase, round-2 fix-up) 2026-05-16. Real-DB sweep green: **20/20 files · 123/123 cases pass** on fresh local Postgres 16 (109 prior baseline + 14 new F-007 cases). Friend's round-1 code review at HEAD 4c5d9d9 surfaced 2 findings (P1 worker-audience point-in-time filter missing; P2 acting_end branch untested); both fixed in this commit. Awaits friend's re-review.</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>notification-dispatcher</code> (F-007 round 2 v11 — Notification persistence + audience resolution for <code>supervisor_change</code>)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">AWAITING_APPROVAL (round 2 v11 — code phase) 2026-05-16. Real-DB sweep green: **20/20 files · 120/120 cases pass** on fresh local Postgres 16 (109 prior baseline + 11 new F-007 cases). Awaits friend's file-grounded round-2 code review.</span></td></tr><tr><th>Branch</th><td><code>feat/f-007-notification-dispatcher</code> — forked from main <code>04c5e59</code> 2026-05-16. v11 scope + tracker propagation landed at <code>e6e605c</code>; no code yet (awaits owner + friend round-2 v11 SCOPE: APPROVED on the committed propagation before code begins).</td></tr><tr><th>Last landed commit</th><td><code>e6e605c</code> — <code>docs(handoff): F-007 round 2 v11 — Notification persistence + audience resolution (OneSignal direction; immutable rows; collapsed eligibility rule)</code></td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>notification-dispatcher</code> (F-007 round 2 v11 — Notification persistence + audience resolution for <code>supervisor_change</code>)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">AWAITING_APPROVAL (round 2 v11 — code phase, round-2 fix-up) 2026-05-16. Real-DB sweep green: **20/20 files · 123/123 cases pass** on fresh local Postgres 16 (109 prior baseline + 14 new F-007 cases). Friend's round-1 code review at HEAD 4c5d9d9 surfaced 2 findings (P1 worker-audience point-in-time filter missing; P2 acting_end branch untested); both fixed in this commit. Awaits friend's re-review.</span></td></tr><tr><th>Branch</th><td><code>feat/f-007-notification-dispatcher</code> — forked from main <code>04c5e59</code> 2026-05-16. v11 scope + tracker propagation landed at <code>e6e605c</code>; no code yet (awaits owner + friend round-2 v11 SCOPE: APPROVED on the committed propagation before code begins).</td></tr><tr><th>Last landed commit</th><td><code>e6e605c</code> — <code>docs(handoff): F-007 round 2 v11 — Notification persistence + audience resolution (OneSignal direction; immutable rows; collapsed eligibility rule)</code></td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">

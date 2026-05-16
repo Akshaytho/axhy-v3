@@ -101,11 +101,20 @@ export async function composeSupervisorChangeNotifications(
   // (a) Workers ACTIVE on this site at effectiveAt — grouped by worker so we
   //     emit one entry per distinct worker (a worker with multiple shifts on
   //     the same site is still one notification target per site per event).
+  //
+  //     **Point-in-time semantics (F-007 v11 round-2 P1 fix):** state='ACTIVE'
+  //     is necessary-but-not-sufficient — an Assignment can be marked ACTIVE
+  //     before its validFrom (future-dated assignment) or after its validUntil
+  //     (expired but not state-transitioned). Both should be excluded for an
+  //     event-time audience. The pattern matches `effective-responsibility.ts`
+  //     line 151: validFrom <= effectiveAt AND (validUntil IS NULL OR validUntil >= effectiveAt).
   const assignments = await tx.assignment.findMany({
     where: {
       companyId: input.companyId,
       siteId: input.siteId,
       state: 'ACTIVE',
+      validFrom: { lte: input.effectiveAt },
+      OR: [{ validUntil: null }, { validUntil: { gte: input.effectiveAt } }],
     },
     select: {
       worker: {
