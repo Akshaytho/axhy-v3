@@ -20,7 +20,11 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-package-composer` (F-004 — round-2 fixes; real-DB sweep 19/19 · 109/109 green) — AWAITING_APPROVAL (round 2) 2026-05-16
+_No slice currently awaiting approval. F-004 was APPROVED by friend at HEAD `ef0aadd` 2026-05-16 and merged to main at `b19e03c`. See "Recently approved" section below. The next slice has not been picked yet — see `handoff/owner-input/active-slice.md` for the between-slices picker._
+
+### (F-004 entry preserved below for audit traceability, was AWAITING_APPROVAL until 2026-05-16 — now moved to "Recently approved")
+
+### Slice: `handoff-package-composer` (F-004 — round-2 fixes; real-DB sweep 19/19 · 109/109 green) — APPROVED + MERGED 2026-05-16
 
 **Friend's round-1 review at HEAD `3abf55b` 2026-05-16 caught 3 findings; all addressed in this revision:**
 
@@ -608,6 +612,18 @@ _None._
 ---
 
 ## Recently approved (last 5)
+
+### Slice: `handoff-package-composer` (F-004 — round-2 fixes + round-2.5 doc-truth + round-2.6 comment) — APPROVED + MERGED 2026-05-16
+
+- **Status:** `DONE` (merged to main at `b19e03c` on 2026-05-16; pushed to `origin/main`).
+- **Branch:** `feat/f-004-handoff-package-composer` (merged into `main` via `--no-ff`).
+- **Last landed commit at approval:** `ef0aadd` — `docs(F-004 round-2.6): fix stale writeHandoffPackage JSDoc — summary entry IS written on permanent rebind with outgoing`.
+- **F-004 commit chain (oldest → newest):** `19b6016` (round-1 scope) · `6969be9` (round-2 scope: mechanism Z) · `5cd4105` (round-3 scope: recentComplaints shape + 100KB citation + Rule 27 locked) · `daae04b` (round-4 v1: Rule 27 v2 with pgvector 4-bucket lock) · `c8dbeaa` (F-009 queued) · `4bd9631` (round-4 v3: 9-voice panel pass) · `3f54587` (round-4 v4: spec amendment for schemaVersion + F-010 queued) · `5bbf6e2` (active-slice 9-field catch-up) · `3abf55b` (round-1 code) · `0c9bdb7` (round-2 code fixes: summary entry restored + openItems site-scoped + hard truncation) · `f5e00bd` (round-2.5 doc-truth alignment) · `ef0aadd` (round-2.6 stale comment).
+- **Approval received:** Friend's file-grounded verification at HEAD `ef0aadd`. Verbatim: "APPROVED. I verified the actual repo at HEAD `ef0aadd`. The last stale writer comment is fixed, and I do not see a new blocking issue now. F-004 is approved for merge."
+- **Real-DB sweep at approval:** 19/19 test files · 109/109 cases pass on fresh local Postgres 16 (95 baseline + 14 new F-004 cases).
+- **Spec amendment landed in chain:** `docs/specs/2026-05-15-workflow-design-closure.md §3.7` amended to add `schemaVersion INT` as canonical 9th field with consumer-handling invariant.
+- **New slices queued during F-004:** F-009 (project memory service / Postgres + pgvector retrieval) + F-010 (handoff v2 / client-context expansion). Both queued AWAITING_F-004_DONE; now eligible.
+- **Friend's directive on approval:** "F-004 is approved for merge. Next step: merge `feat/f-004-handoff-package-composer` to main, regenerate the handoff outputs if needed, and then surface the next slice." Done.
 
 ### Slice: `cron-framework-binding-expire-sweep` (F-003 — round-2 fixes) — APPROVED 2026-05-16
 
