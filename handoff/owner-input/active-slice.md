@@ -123,7 +123,7 @@ Expected: 19 files, 109 cases, all green.
 
 ## Decision needed (owner + friend, on the F-004 code slice)
 
-Code slice complete. Real-DB sweep 19/19 files · 106/106 cases pass. Awaits friend's file-grounded review.
+Code slice complete (round 2 — all 3 friend-round-1 findings addressed). Real-DB sweep 19/19 files · 109/109 cases pass. Awaits friend's file-grounded round-2 review.
 
 - `APPROVED` → F-004 ready to merge to main. Friend's standard one-line approval pattern.
 - `CHANGES_REQUESTED` → name specific findings; I fix + re-surface.

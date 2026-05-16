@@ -121,7 +121,7 @@ Expected: 19 files, 106 cases, all green.
 
 **3 code-stage notes from panel carry into implementation** (not blockers): Telugu-complaint-body sizing test case (Aanya), `Promise.all` for the 4 reads inside composer tx (Naina), `uuid-v5` namespace constant in shared-schema (Eric).
 
-**No remaining gate before code.** If owner + friend approve round 4 v4 → `SCOPE: APPROVED` → code begins on `feat/f-004-handoff-package-composer`. Test sweep target: ~105 cases (95 prior baseline + ~10 new F-004).
+**No remaining gate before code.** If owner + friend approve round 4 v4 → `SCOPE: APPROVED` → code begins on `feat/f-004-handoff-package-composer`. Test sweep target: ~109 cases (95 prior baseline + ~14 new F-004 — initial scope expected ~10–11 new cases, grew to 14 during round-2 cleanup for site-scoped decisions / hard truncation / soft truncation).
 
 **Round-4 history kept below for context:**
 
@@ -177,9 +177,9 @@ Rule 27 updated across 4 places (INDEX.md + production-grade-rulebook.md + memor
 
 **Confidence:** ~93% overall; ~80% on Q1, ~85% on Q4.
 
-**Test plan:** 8 real-DB integration cases — acting binding / permanent reassign / first-ever (asserts `siteRules: []` + that `recentComplaints` is whatever the DB held at compose time, **NOT** hardcoded `[]`; the summary-entry assertion is **conditional on owner's Q2 pick** and pinned to (a)/(b)/(c) only after owner picks) / empty-state / cross-tenant / STRICT calendar filter (with & without payload.siteId) / idempotent replay.
+**Test plan (round-2 final — 14 real-DB integration cases in `apps/backend/test/handoff-package-composer.test.ts`):** acting binding (1) / permanent reassign with summary entry assertion (2) / first-ever binding Q2=(b) zero-LivingDoc-writes (3) / empty-state defaults (4) / cross-tenant isolation (5) / STRICT CalendarEntry filter — with & without `payload.siteId` (6) / idempotent replay including summary entry idempotency (7) / 3 schemaVersion negatives (8a/8b/8c) / clientPreferences NOT transferred (9) / site-scoped openItems decisions across worker-targeted/site-targeted/origin-only (10) / hard-cap truncation throws on impossibly small cap (11) / soft truncation drops oldest complaints first (12). Total file count: 19; total test cases: 109 (95 baseline + 14 F-004).
 
-**Decision needed (round 4 v4 — Q2 locked + panel material findings resolved):** `SCOPE: APPROVED (round 4 v4)` → code begins immediately on `feat/f-004-handoff-package-composer`; stops at AWAITING_APPROVAL after new test sweep is green (~105 cases). `SCOPE: CHANGES_REQUESTED` (pick / Open Q / panel finding) → I update + re-surface. `HOLD` → F-004 pauses.
+**Decision needed (round 4 v4 — Q2 locked + panel material findings resolved):** `SCOPE: APPROVED (round 4 v4)` → code begins immediately on `feat/f-004-handoff-package-composer`; stops at AWAITING_APPROVAL after new test sweep is green (~109 cases after round-2 cleanup). `SCOPE: CHANGES_REQUESTED` (pick / Open Q / panel finding) → I update + re-surface. `HOLD` → F-004 pauses.
 
 ---
 

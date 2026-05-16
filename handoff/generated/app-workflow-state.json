@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T12:51:40.794Z",
-    "generated_against_head": "3abf55ba1f24dbf08234b3126f69160fb2670e4c",
+    "last_updated_at": "2026-05-16T13:05:20.905Z",
+    "generated_against_head": "0c9bdb7065f10fc44617a54a1796d501110152f9",
     "generated_against_branch": "feat/f-004-handoff-package-composer",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "3abf55ba1f24dbf08234b3126f69160fb2670e4c",
+    "last_canonical_commit_at_gen": "0c9bdb7065f10fc44617a54a1796d501110152f9",
     "staleness_warning": null,
     "active_slice": "handoff-package-composer (F-004) · AWAITING_APPROVAL (round 2) 2026-05-16 — friend's round-1 review at HEAD 3abf55b caught 3 findings; all addressed in this revision. Full real-DB sweep **19/19 files · 109/109 cases pass** (95 baseline + 14 new F-004 cases; was 11, grew by 3 — added site-scoped-decisions, hard-truncation-throws, and soft-truncation-drops-complaints). **Round-2 fixes:** (P1 #1) restored the permanent-rebind handover-summary entry in LivingDoc.freeNotes (round 1 over-applied Q2=(b) by dropping the summary on ALL permanent rebinds; Q2=(b) governs only the first-ever-binding case per spec §3.7 \"Surfaced to\"). Summary text \"Handover from \\<outgoingName\\> on \\<date\\> for \\<siteName\\>\"; idempotent ID via deriveSummaryEntryId(bindingId). (P1 #2) openItems decisions now SITE-SCOPED via routingModeFor + deriveWorkerPrimarySiteId (same routing pattern as routes/decisions.ts:227). worker-targeted decisions route through worker's primary site; site-targeted by targetId === siteId; origin-only excluded entirely. Round 1 leaked outgoing supervisor's PROPOSED decisions for OTHER sites into the handoff package. (P2 #3) truncation is now a HARD invariant per spec §3.7 line 323: phases 1+2 + extended phases 3a/3b/3c (drop entire activeWorkers → openItems → siteRules); if even metadata-only exceeds cap, throws HandoffPackageOversizedError so the caller's tx rolls back rather than persisting an oversized package. Round 1 returned oversized as soft-fail.",
     "generated_from": [
