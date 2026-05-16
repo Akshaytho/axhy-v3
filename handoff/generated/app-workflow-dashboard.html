@@ -106,8 +106,8 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T16:23:29.268Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>41ee9e51</code></span>
+      <span>Generated <strong>2026-05-16T16:41:30.851Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>e6e605c4</code></span>
       <span>Branch <code>feat/f-007-notification-dispatcher</code></span>
       <span>Active slice: <strong>notification-dispatcher (F-007 round 2 v11 — Notification persistence + audience resolution for supervisor_change) · SCOPE_DRAFT_PENDING_REVIEW (round 2 v11 — OneSignal direction + reachability + pricing + deactivation/removal policy + collapsed eligibility rule) 2026-05-16. Scope artifact at [handoff/feature-queue/scopes/F-007.md](../feature-queue/scopes/F-007.md). 8 picks; no blocking owner picks; recommended defaults stand unless owner overrides.</strong></span>
       
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>notification-dispatcher</code> (F-007 round 2 v11 — Notification persistence + audience resolution for <code>supervisor_change</code>)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_DRAFT_PENDING_REVIEW (round 2 v11 — OneSignal direction + reachability + pricing + deactivation/removal policy + collapsed eligibility rule) 2026-05-16. Scope artifact at [handoff/feature-queue/scopes/F-007.md](../feature-queue/scopes/F-007.md). 8 picks; no blocking owner picks; recommended defaults stand unless owner overrides.</span></td></tr><tr><th>Branch</th><td><code>feat/f-007-notification-dispatcher</code> — forked from main <code>04c5e59</code> 2026-05-16. v11 scope + tracker propagation lands as next commit; no code yet.</td></tr><tr><th>Last landed commit</th><td><code>04c5e59</code> — <code>docs(handoff): F-004 → DONE; merged to main at b19e03c; next-slice picker surfaced</code></td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>notification-dispatcher</code> (F-007 round 2 v11 — Notification persistence + audience resolution for <code>supervisor_change</code>)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_DRAFT_PENDING_REVIEW (round 2 v11 — OneSignal direction + reachability + pricing + deactivation/removal policy + collapsed eligibility rule) 2026-05-16. Scope artifact at [handoff/feature-queue/scopes/F-007.md](../feature-queue/scopes/F-007.md). 8 picks; no blocking owner picks; recommended defaults stand unless owner overrides.</span></td></tr><tr><th>Branch</th><td><code>feat/f-007-notification-dispatcher</code> — forked from main <code>04c5e59</code> 2026-05-16. v11 scope + tracker propagation landed at <code>e6e605c</code>; no code yet (awaits owner + friend round-2 v11 SCOPE: APPROVED on the committed propagation before code begins).</td></tr><tr><th>Last landed commit</th><td><code>e6e605c</code> — <code>docs(handoff): F-007 round 2 v11 — Notification persistence + audience resolution (OneSignal direction; immutable rows; collapsed eligibility rule)</code></td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -346,7 +346,7 @@
     - User active + OneSignal active subscription count = 0 → stamp <code>failedAt + failureReason='no_active_subscription'</code> (terminal — covers logout, uninstall, never-opened-app, all-tokens-expired).
     - User active + ≥1 subscription → dispatch.
   - <strong>On successful delivery:</strong> stamp <code>Notification.deliveredAt = now()</code> + emit <code>WORKER_SUPERVISOR_CHANGE_NOTIFIED</code> AuditEvent + optionally record <code>providerMessageId</code> on the row for observability.
-  - <strong>Failure policy — typed <code>failureReason</code> enum (v11 — 6 round-1 values):</strong> terminal-no-retry: <code>'no_active_subscription'</code> / <code>'recipient_inactive'</code> / <code>'recipient_removed'</code>. Transient-bounded-backoff-retry: <code>'rate_limited'</code> / <code>'provider_error'</code> / <code>'network_error'</code>. <code>'expired_token'</code> reserved for future use (only emitted if OneSignal returns a distinct token-dead signal not subsumed by zero-subscription state).</p>
+  - <strong>Failure policy — typed <code>failureReason</code> enum (v11 — 6 round-1 values, all actively emitted):</strong> terminal-no-retry (3): <code>'no_active_subscription'</code> / <code>'recipient_inactive'</code> / <code>'recipient_removed'</code>. Transient-bounded-backoff-retry (3): <code>'rate_limited'</code> / <code>'provider_error'</code> / <code>'network_error'</code>. The enum is extensible — new values are added later only when F-011 (or a future provider) actually emits them from a real signal. Do NOT pre-register ghost values.</p>
           <p><strong>Verification gate:</strong> <code>REAL_DB</code> + OneSignal sandbox project + Playwright on mobile builds.</p>
         </div>
       </details>
