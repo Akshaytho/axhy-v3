@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T07:29:15.050Z",
-    "generated_against_head": "c4c335b76a34b4b2ac3fb95d8011b3fe085fbe8a",
-    "generated_against_branch": "feat/f-003-cron-framework",
+    "last_updated_at": "2026-05-16T07:39:08.673Z",
+    "generated_against_head": "2bc815b3930b7f22908d2727a34b01164f3c2225",
+    "generated_against_branch": "main",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "c4c335b76a34b4b2ac3fb95d8011b3fe085fbe8a",
+    "last_canonical_commit_at_gen": "ad3b805ca03eba2029959e1e8c32e797b3137cd7",
     "staleness_warning": null,
     "active_slice": "handoff-package-composer (F-004) · PLANNED — AWAITING_SCOPE_APPROVAL (rule-26 \"existing-pattern survey\" required in scope artifact at handoff/feature-queue/scopes/F-004.md before code begins)",
     "generated_from": [
@@ -1185,9 +1185,9 @@
     "active_slice": {
       "Slice name": "`handoff-package-composer` (F-004)",
       "Status": "`PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 \"existing-pattern survey\" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins)",
-      "Branch": "will fork from main after F-003 merges (the next branch is `feat/f-004-handoff-package-composer`)",
-      "Last landed commit": "`c4c335b` — `docs(handoff): F-003 round-2 review cleanup — 3 stale doc lines fixed (no code change)` (F-003 closed APPROVED; awaits merge-to-main to graduate to DONE)",
-      "Dependencies": "F-001 + F-002 — APPROVED + DONE on main. F-003 — APPROVED, merge-to-main next. All met.",
+      "Branch": "Forks from `main` at `2bc815b` — next branch is `feat/f-004-handoff-package-composer` (created once scope is APPROVED)",
+      "Last landed commit": "`2bc815b` — `Merge feat/f-003-cron-framework — F-003 cron framework + binding-expire-sweep` (F-003 now DONE on main)",
+      "Dependencies": "F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.",
       "Tests status": "n/a — code not started; scope phase",
       "Verification gate": "will be `REAL_DB` once code lands"
     },
@@ -1229,7 +1229,7 @@
         "workflows": "D17, F26 (read), F27 (read).",
         "entities": "`apps/backend/src/lib/effective-responsibility.ts` (new), `apps/backend/src/routes/decisions.ts` (new), `apps/backend/src/routes/sites.ts` (+1 endpoint), `apps/backend/test/*` (+4 files).",
         "verification": "`REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).",
-        "status": "APPROVED"
+        "status": "DONE"
       },
       {
         "id": "F-002",
@@ -1240,7 +1240,7 @@
         "workflows": "D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).",
         "entities": "`apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.",
         "verification": "`REAL_DB`.",
-        "status": "APPROVED"
+        "status": "DONE"
       },
       {
         "id": "F-003",
@@ -1251,13 +1251,13 @@
         "workflows": "F26 (acting binding expiry — emits audit; switching itself is already read-time correct), F27 (permanent reassign expiry — same), C12 (decision expiry — later slice on this framework).",
         "entities": "- **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.\n  - **EMITS:** `BINDING_ENDED_AUTO` AuditEvent per binding whose `effectiveUntil` has just passed and that has not yet been processed (kind already catalogued in closure spec §11).\n  - **DOES NOT MUTATE the binding row.** `endedAt` stays NULL for auto-expired bindings — setting it would break historical point-in-time queries via `getEffectiveBinding`.\n  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + does NOT mutate the binding row + does NOT change `getEffectiveBinding` results.\n  - **NO** new entity. **NO** new Prisma model. **NO** HTTP route mutation lands. **One schema change** at round 2 (migration `20260519_f003_binding_ended_auto_dedup_index` — partial unique index on `AuditEvent` for `BINDING_ENDED_AUTO`-kind rows; narrow predicate, other kinds unaffected). The original round-1 scope said \"no schema change\" with an app-side audit-existence check; friend's round-1 P1 review correctly flagged that as race-prone, so round 2 moves the dedup guarantee to the DB.",
         "verification": "`REAL_DB` (real Postgres + sweep run + idempotency assertion + read-time-routing-unchanged assertion).",
-        "status": "APPROVED"
+        "status": "DONE"
       },
       {
         "id": "F-004",
         "title": "HandoffPackage composer",
         "why": "Closure Decision 8 + §3.7 — site rules, recent complaints (90d), active worker context, open `PROPOSED` decisions, +7-day calendar embedded into binding row. The `handoffPackage` JSON column on `SiteSupervisorBinding` already exists (nullable); the composer doesn't yet. Without it, every incoming supervisor walks in cold and every downstream surface (digest, HR portal handoff card, notification payload) has to rebuild the same context separately.",
-        "depends_on": "F-001, F-002, F-003 — all APPROVED. F-002 + S-001 + F-003 will be DONE on main once `feat/f-003-cron-framework` merges (next step).",
+        "depends_on": "F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.",
         "personas": "Lakshmi/Anjali (incoming supervisors get the package); Ravi (originating supervisor — no behavior change for him).",
         "workflows": "F26 (acting binding create), F27 (permanent reassign).",
         "entities": "NEW `apps/backend/src/lib/handoff-package-composer.ts` exporting `composeHandoffPackage(tx, args)` — tx-callable shape matching the existing `recordBindingCreated` pattern per rule 26. Wires into the existing binding-create flow + `reassignPermanentBinding`. NEW `HandoffPackagePayloadSchema` in shared-schema/zod. NO schema migration (column already exists). NO HTTP route in this slice.",

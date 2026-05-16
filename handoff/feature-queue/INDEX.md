@@ -46,7 +46,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, F26 (read), F27 (read).
 - **entities/routes/tables touched:** `apps/backend/src/lib/effective-responsibility.ts` (new), `apps/backend/src/routes/decisions.ts` (new), `apps/backend/src/routes/sites.ts` (+1 endpoint), `apps/backend/test/*` (+4 files).
 - **expected verification gate:** `REAL_DB` (fresh local Postgres + all 10 migrations + 4 new test files green).
-- **status:** `APPROVED` (friend's file-grounded verification 2026-05-15 evening; WIP-split deviation accepted; ready to be marked DONE once branch merges to main).
+- **status:** `DONE` — friend's file-grounded verification 2026-05-15 evening; WIP-split deviation accepted; merged to main at `a29f9f6` on 2026-05-16 alongside F-002 + S-001 + F-003 scope.
 
 ### S-001 — Same-day supervisor-freeze policy
 
@@ -69,7 +69,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
     4. supervisor-app routing unchanged for permanent + future-dated bindings (`getEffectiveBinding` returns userA now, userB at post-cutover);
     5. helper sanity — `tomorrowMidnightInTimeZone` returns 00:00 local in IST.
   - **ADAPTED** `apps/backend/test/binding-permanent-reassignment-basics.test.ts` (3 cases shifted to +36h cutovers; one case renamed and refactored to query effective-at-post-cutover, the only correct shape under S-001).
-- **status:** `APPROVED` — friend's file-grounded verification 2026-05-16 at HEAD `2a0f27c`. Verbatim: "Final tracker propagation is clean · I do not see a new code bug or a new tracker-truth bug · Decision: APPROVED." Final S-001 commit chain: `2835e84` (spec lock) · `d234e77` (code) · `8e763f8` (tracker → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup) · `2a0f27c` (final tracker propagation). 17/17 files · 84/84 cases pass on fresh local Postgres 16. Ready to be marked DONE once branch merges to main.
+- **status:** `DONE` — friend's file-grounded verification 2026-05-16 at HEAD `2a0f27c`. Verbatim: "Final tracker propagation is clean · I do not see a new code bug or a new tracker-truth bug · Decision: APPROVED." Final S-001 commit chain: `2835e84` (spec lock) · `d234e77` (code) · `8e763f8` (tracker → AWAITING_APPROVAL) · `ab4d9a2` (control-surface cleanup) · `2a0f27c` (final tracker propagation). 17/17 files · 84/84 cases pass on fresh local Postgres 16. Merged to main at `a29f9f6` on 2026-05-16.
 
 ### F-002 — D17 SupervisorDecision writer
 
@@ -81,7 +81,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** D17, D20 (writer side), C11 / E21 / E22 / E24 (DWI-driven kinds).
 - **entities/routes/tables touched:** `apps/backend/src/routes/chat.ts` (extractor wires DWI write), new `POST /decisions/:id/apply`, new `POST /decisions/:id/dismiss`, `SupervisorDecision` writes.
 - **expected verification gate:** `REAL_DB`.
-- **status:** `APPROVED` (friend's file-grounded verification 2026-05-16 at HEAD `12c1df6`; round-3 fixes closed both P1 + P2; 15/15 test files green, 75/75 cases pass; ready to be marked DONE once branch merges to main).
+- **status:** `DONE` — friend's file-grounded verification 2026-05-16 at HEAD `12c1df6`; round-3 fixes closed both P1 + P2; 15/15 test files green, 75/75 cases pass; merged to main at `a29f9f6` on 2026-05-16.
 
 ### F-003 — Cron framework + `binding-expire-sweep` (RE-SCOPED 2026-05-16)
 
@@ -99,14 +99,14 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
   - **NO** new entity. **NO** new Prisma model. **NO** HTTP route mutation lands. **One schema change** at round 2 (migration `20260519_f003_binding_ended_auto_dedup_index` — partial unique index on `AuditEvent` for `BINDING_ENDED_AUTO`-kind rows; narrow predicate, other kinds unaffected). The original round-1 scope said "no schema change" with an app-side audit-existence check; friend's round-1 P1 review correctly flagged that as race-prone, so round 2 moves the dedup guarantee to the DB.
 - **expected verification gate:** `REAL_DB` (real Postgres + sweep run + idempotency assertion + read-time-routing-unchanged assertion).
 - **spec amendment landed (docs-only, in the same commit as this re-scope):** two lines updated in `docs/specs/2026-05-15-workflow-design-closure.md` — §3.1 binding lifecycle (line 175) now says the `effectiveUntil`-path ACTIVE → ENDED transition is time-based and read-time-evaluated via `getEffectiveBinding`; §10 cron jobs (line 560) now says the sweep is "Side-effect emit only — NOT a responsibility switch ... does NOT mutate the binding row ... digest is a separate downstream consumer."
-- **status:** `APPROVED` — friend's file-grounded verification 2026-05-16 at HEAD `c4c335b`. Verbatim: "The round-2 review cleanup is real · The stale doc lines I flagged are now fixed, and I do not see a new blocker · Decision: APPROVED." Full F-003 commit chain: `39b47b8` (scope LOCKED) · `a29f9f6` (F-002+S-001 merge) · `74c1e9d` (pick 1 corrected pre-code) · `737c066` (round-1 code) · `433985d` (round-1 tracker) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1: partial unique index + P2002 + 3 tests) · `802d28f` (round-2 P2 docs downgrade) · `c4c335b` (round-2 review cleanup). 18/18 files · 95/95 cases pass on fresh local Postgres 16. Ready to be marked DONE once `feat/f-003-cron-framework` merges to main.
+- **status:** `DONE` — friend's file-grounded verification 2026-05-16 at HEAD `c4c335b`. Verbatim: "The round-2 review cleanup is real · The stale doc lines I flagged are now fixed, and I do not see a new blocker · Decision: APPROVED." Full F-003 commit chain: `39b47b8` (scope LOCKED) · `a29f9f6` (F-002+S-001 merge) · `74c1e9d` (pick 1 corrected pre-code) · `737c066` (round-1 code) · `433985d` (round-1 tracker) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1: partial unique index + P2002 + 3 tests) · `802d28f` (round-2 P2 docs downgrade) · `c4c335b` (round-2 review cleanup) · `ad3b805` (closure + F-004 surfacing). 18/18 files · 95/95 cases pass on fresh local Postgres 16. **Merged to main at `2bc815b` on 2026-05-16.**
 
 ### F-004 — HandoffPackage composer
 
 - **id:** F-004
 - **title:** Auto-compose `handoffPackage` JSON at every binding creation
 - **why:** Closure Decision 8 + §3.7 — site rules, recent complaints (90d), active worker context, open `PROPOSED` decisions, +7-day calendar embedded into binding row. The `handoffPackage` JSON column on `SiteSupervisorBinding` already exists (nullable); the composer doesn't yet. Without it, every incoming supervisor walks in cold and every downstream surface (digest, HR portal handoff card, notification payload) has to rebuild the same context separately.
-- **depends on:** F-001, F-002, F-003 — all APPROVED. F-002 + S-001 + F-003 will be DONE on main once `feat/f-003-cron-framework` merges (next step).
+- **depends on:** F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.
 - **personas touched:** Lakshmi/Anjali (incoming supervisors get the package); Ravi (originating supervisor — no behavior change for him).
 - **workflows touched:** F26 (acting binding create), F27 (permanent reassign).
 - **entities/routes/tables touched:** NEW `apps/backend/src/lib/handoff-package-composer.ts` exporting `composeHandoffPackage(tx, args)` — tx-callable shape matching the existing `recordBindingCreated` pattern per rule 26. Wires into the existing binding-create flow + `reassignPermanentBinding`. NEW `HandoffPackagePayloadSchema` in shared-schema/zod. NO schema migration (column already exists). NO HTTP route in this slice.
