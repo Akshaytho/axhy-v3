@@ -106,8 +106,8 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T10:54:08.647Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>daae04b5</code></span>
+      <span>Generated <strong>2026-05-16T11:02:16.090Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>ff4e0514</code></span>
       <span>Branch <code>feat/f-004-handoff-package-composer</code></span>
       <span>Active slice: <strong>handoff-package-composer (F-004) · SCOPE_DRAFT_PENDING_REVIEW (round 4) — rounds 1+2+3 all CHANGES_REQUESTED. Round-1 = 3 shape drifts (Site-metadata siteRules; openItems split into 3 buckets w/ 7-day window; dropped 4 spec-mandated fields). Round-2 = 2 more shape drifts (recentComplaints shape wrong; siteId smuggled into top-level; 100KB cited without line). Round-3 fixed the shape drifts but introduced 2 honesty-of-wording drifts: (a) pick 1 + pick 3 overclaimed &quot;EXACTLY per spec&quot; / &quot;no additions, no omissions&quot; while Open Q5's interim kind-field default is still in play — cannot claim &quot;exact spec match&quot; while one field uses an interim mapping; (b) Open Q2 smuggled a first-ever-binding summary-entry text (&quot;First binding for &lt;siteName&gt; on &lt;date&gt; — no prior supervisor context&quot;) as if spec-locked, but it is a NEW product choice without owner sign-off. **Round-4 revision 2026-05-16 late evening:** pick 1 + pick 3 reworded honestly (&quot;matches spec §3.7 line 307's field set, with kind using an interim default per Open Q5 until a dedicated schema field exists&quot;). Open Q2 reframed as a new product choice with 3 options listed (default (a): write summary; (b): write nothing; (c): owner-supplied wording) — owner must pick. **Rule 27 expanded** to lock the **Postgres + pgvector + delta/live AI-memory architecture** as the 4-bucket model: (1) exact SQL truth, (2) frozen SNAPSHOT, (3) live-or-delta-refreshed, (4) vector-retrievable memory. §0 Q3 restructured from 2-bucket (LIVE/SNAPSHOT) to 4-bucket with each data piece labeled. New row added to Q1 locked-behaviors table. Pre-design checklist Q3 + Q4 reworded across all 4 rule-locked places (INDEX.md + rulebook + memory + portable). 8 picks substance unchanged; the round-4 changes are wording-honesty + 4-bucket architecture lock; Open Q2 is now a true open choice.</strong></span>
       
@@ -294,6 +294,21 @@
           <p><strong>Workflows:</strong> H-6, F26/F27 (after seed correction).</p>
           <p><strong>Entities / routes / tables:</strong> new migration script, admin-web/hr/seed-review page.</p>
           <p><strong>Verification gate:</strong> <code>REAL_DB</code>.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-009</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>Project memory service (Postgres + pgvector retrieval layer for Claude workflow)</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> owner directive 2026-05-16 evening. Three rounds of F-004 scope drift surfaced a recurring pattern — pre-decided product behaviors (base+delta+live model; mechanism Z; spec §3.7 shape) keep getting re-debated because Claude doesn't reliably re-read the locked sources before drafting. Friend is doing the work of &quot;re-grounding Claude in already-decided facts&quot; round after round. A project memory service is the systemic fix — but it is an ENABLER, not a substitute for discipline (rule 27 still applies). Owner verbatim: &quot;vector DB = very useful; vector DB alone = not enough.&quot;</p>
+          <p><strong>Depends on:</strong> F-004 done; ideally F-005 done too (so admin-web exists if the service needs an HR-visible surface).</p>
+          <p><strong>Personas:</strong> none directly (operator-side infrastructure). Indirectly: every persona because Claude's drafts become more grounded.</p>
+          <p><strong>Workflows:</strong> none directly (workflow-design specs unchanged).</p>
+          
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> — embedding round-trip + metadata filter correctness + delta refresh idempotency + link graph traversal.</p>
         </div>
       </details>
   </section>

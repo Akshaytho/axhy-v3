@@ -161,6 +161,25 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **expected verification gate:** `REAL_DB`.
 - **status:** `QUEUED`.
 
+### F-009 — Project memory service (Postgres + pgvector retrieval layer for Claude workflow)
+
+- **id:** F-009
+- **title:** A project-scoped memory service that lets Claude retrieve founder decisions, panel locks, scope artifacts, spec sections, UI intent, audit findings, review findings, and recurring code patterns by semantic + metadata + exact-id lookup.
+- **why:** owner directive 2026-05-16 evening. Three rounds of F-004 scope drift surfaced a recurring pattern — pre-decided product behaviors (base+delta+live model; mechanism Z; spec §3.7 shape) keep getting re-debated because Claude doesn't reliably re-read the locked sources before drafting. Friend is doing the work of "re-grounding Claude in already-decided facts" round after round. A project memory service is the systemic fix — but it is an ENABLER, not a substitute for discipline (rule 27 still applies). Owner verbatim: "vector DB = very useful; vector DB alone = not enough."
+- **NOT a blocker for F-004 or any current slice.** Discipline gaps (re-reading locked behavior, checking panel files, keeping scope wording truthful) are human/design problems first; the memory service is an upgrade-path, not a replacement.
+- **depends on:** F-004 done; ideally F-005 done too (so admin-web exists if the service needs an HR-visible surface).
+- **personas touched:** none directly (operator-side infrastructure). Indirectly: every persona because Claude's drafts become more grounded.
+- **workflows touched:** none directly (workflow-design specs unchanged).
+- **entities/routes/tables touched (proposed shape — owner-locked 2026-05-16; refine at scope time):**
+  - **Table 1 — `memory_artifacts`:** `id, kind (spec | panel_note | owner_decision | review_finding | rule | ui_note | audit | code_pattern | scope_artifact), title, source_path, source_hash, created_at, updated_at, scope_tags STRING[] (e.g. f-004, handoff, r6, supervisor), persona_tags STRING[] (anjali, ravi, kavitha, suresh, reddy)`.
+  - **Table 2 — `memory_chunks`:** `id, artifact_id, chunk_text, embedding VECTOR, ordinal, metadata JSONB`. Requires `pgvector` extension on the local + Railway Postgres. Embedding model + dimension picked at scope time.
+  - **Table 3 — `memory_links`:** `from_artifact_id, to_artifact_id, relation ENUM(supports | contradicts | supersedes | implements | ui_for | review_of)`. Captures spec→audit→panel→review traceability.
+  - **Retrieval pipeline (in this order — do NOT collapse layers):** (1) exact metadata filter first (scope, persona, slice id, date range); (2) vector similarity over the filtered candidate set; (3) full-text / exact-id lookup for spec sections, file paths, commit hashes; (4) assemble compact working context (typed, deduplicated, source-cited).
+  - **Delta refresh:** when canonical files (specs, scope artifacts, panel notes, memory feedback files) change, re-chunk + re-embed only the diff; preserve link graph.
+- **Discipline warning (owner-locked):** vector retrieval is NOT a substitute for (a) canonical source of truth (the files in repo), (b) verification (rule 23 confidence check + rule 27 re-reading locked behavior before drafting), or (c) explicit owner/friend decisions. The service is a RETRIEVAL LAYER on top of canonical truth, not a replacement for it. Maps onto the rule-27 4-bucket model: this slice builds out bucket 4 (vector-retrievable memory) at the workflow-tooling layer, parallel to where rule 27 already names it at the product-data layer.
+- **expected verification gate:** `REAL_DB` — embedding round-trip + metadata filter correctness + delta refresh idempotency + link graph traversal.
+- **status:** `QUEUED — AWAITING_F-004_DONE`. Do not start before F-004 is APPROVED + DONE. Owner explicit: "Do not pause F-004 to build this first."
+
 ---
 
 ## How to add an item to the queue

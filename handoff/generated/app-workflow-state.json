@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T10:54:08.647Z",
-    "generated_against_head": "daae04b594b51a61eb70351c7b5095015fa11b29",
+    "last_updated_at": "2026-05-16T11:02:16.090Z",
+    "generated_against_head": "ff4e0514f746c502361be9a94693dfa53da6ae2c",
     "generated_against_branch": "feat/f-004-handoff-package-composer",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "daae04b594b51a61eb70351c7b5095015fa11b29",
+    "last_canonical_commit_at_gen": "ff4e0514f746c502361be9a94693dfa53da6ae2c",
     "staleness_warning": null,
     "active_slice": "handoff-package-composer (F-004) · SCOPE_DRAFT_PENDING_REVIEW (round 4) — rounds 1+2+3 all CHANGES_REQUESTED. Round-1 = 3 shape drifts (Site-metadata siteRules; openItems split into 3 buckets w/ 7-day window; dropped 4 spec-mandated fields). Round-2 = 2 more shape drifts (recentComplaints shape wrong; siteId smuggled into top-level; 100KB cited without line). Round-3 fixed the shape drifts but introduced 2 honesty-of-wording drifts: (a) pick 1 + pick 3 overclaimed \"EXACTLY per spec\" / \"no additions, no omissions\" while Open Q5's interim kind-field default is still in play — cannot claim \"exact spec match\" while one field uses an interim mapping; (b) Open Q2 smuggled a first-ever-binding summary-entry text (\"First binding for <siteName> on <date> — no prior supervisor context\") as if spec-locked, but it is a NEW product choice without owner sign-off. **Round-4 revision 2026-05-16 late evening:** pick 1 + pick 3 reworded honestly (\"matches spec §3.7 line 307's field set, with kind using an interim default per Open Q5 until a dedicated schema field exists\"). Open Q2 reframed as a new product choice with 3 options listed (default (a): write summary; (b): write nothing; (c): owner-supplied wording) — owner must pick. **Rule 27 expanded** to lock the **Postgres + pgvector + delta/live AI-memory architecture** as the 4-bucket model: (1) exact SQL truth, (2) frozen SNAPSHOT, (3) live-or-delta-refreshed, (4) vector-retrievable memory. §0 Q3 restructured from 2-bucket (LIVE/SNAPSHOT) to 4-bucket with each data piece labeled. New row added to Q1 locked-behaviors table. Pre-design checklist Q3 + Q4 reworded across all 4 rule-locked places (INDEX.md + rulebook + memory + portable). 8 picks substance unchanged; the round-4 changes are wording-honesty + 4-bucket architecture lock; Open Q2 is now a true open choice.",
     "generated_from": [
@@ -1306,6 +1306,17 @@
         "workflows": "H-6, F26/F27 (after seed correction).",
         "entities": "new migration script, admin-web/hr/seed-review page.",
         "verification": "`REAL_DB`.",
+        "status": "QUEUED"
+      },
+      {
+        "id": "F-009",
+        "title": "Project memory service (Postgres + pgvector retrieval layer for Claude workflow)",
+        "why": "owner directive 2026-05-16 evening. Three rounds of F-004 scope drift surfaced a recurring pattern — pre-decided product behaviors (base+delta+live model; mechanism Z; spec §3.7 shape) keep getting re-debated because Claude doesn't reliably re-read the locked sources before drafting. Friend is doing the work of \"re-grounding Claude in already-decided facts\" round after round. A project memory service is the systemic fix — but it is an ENABLER, not a substitute for discipline (rule 27 still applies). Owner verbatim: \"vector DB = very useful; vector DB alone = not enough.\"",
+        "depends_on": "F-004 done; ideally F-005 done too (so admin-web exists if the service needs an HR-visible surface).",
+        "personas": "none directly (operator-side infrastructure). Indirectly: every persona because Claude's drafts become more grounded.",
+        "workflows": "none directly (workflow-design specs unchanged).",
+        "entities": "",
+        "verification": "`REAL_DB` — embedding round-trip + metadata filter correctness + delta refresh idempotency + link graph traversal.",
         "status": "QUEUED"
       }
     ],
