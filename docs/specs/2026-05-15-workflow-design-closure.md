@@ -296,10 +296,11 @@ Six entities. Every workflow in v3 produces or consumes these. Adding new featur
 
 ### 3.7 HandoffPackage
 
-**Status:** **new in this document.** Computed-on-write JSON column on `SiteSupervisorBinding`, not a standalone table.
+**Status:** **new in this document.** Computed-on-write JSON column on `SiteSupervisorBinding`, not a standalone table. Amended 2026-05-16 (owner directive after F-004 round-4 v3 panel pass) to add the canonical `schemaVersion` field — see below.
 
 **Shape (JSON blob on `Binding.handoffPackage`):**
 
+- `schemaVersion INT` — payload-shape version; **locked at `1` for F-004**. Incremented on any future shape change to this field set. Consumers MUST inspect this field first and fail closed (or downgrade-parse, if the consumer explicitly supports the older shape) on any version they don't recognize. (Added 2026-05-16 per F-004 round-4 v3 panel finding — Maya Krishnan + Eric Chen flagged that an immutable, frozen-on-write package with no version tag would force every future consumer to field-sniff. Owner picked option γ: amend spec first, then add field.)
 - `generatedAt TIMESTAMPTZ` — when the package was composed
 - `outgoingSupervisorId UUID?` — the supervisor previously responsible (NULL on first-ever binding for a site)
 - `incomingSupervisorId UUID` — the supervisor newly responsible
@@ -321,6 +322,8 @@ Six entities. Every workflow in v3 produces or consumes these. Adding new featur
 - Package is generated synchronously with binding creation; no separate cron lag.
 - Package size capped at a Policy-configurable byte limit (default 100KB); truncation strategy: drop oldest complaints first, then activeWorkers field detail.
 - One package per binding row; never updated after creation.
+- `schemaVersion` is monotonically incremented across spec shape changes; never decremented; never reused. Consumers MUST inspect `schemaVersion` before parsing other fields and MUST fail closed on unknown versions unless they explicitly support older-shape downgrade-parse.
+- The first-class transferable handoff knowledge in v1 is `siteRules` from outgoing's LivingDoc only. **Client-side context** (`LivingDoc.clientPreferences` — building manager name, what triggers client complaints, finish standards, etc.) is intentionally NOT transferred in v1 (owner directive 2026-05-16 after F-004 round-4 v3 panel pass — Suresh Pillai FM-ops voice flagged this; owner picked option β: defer to a future "handoff v2" slice for client-context expansion). Until that slice lands, supervisors are expected to record client-specific operational points as proper site rules under L3 `siteRules` so they get transferred via mechanism Z; any pure client-preference data stays with the outgoing supervisor.
 
 ---
 

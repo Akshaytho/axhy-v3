@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T11:13:54.831Z",
-    "generated_against_head": "c8dbeaa7d0846ec0f92c8e6656d7fd5a1955412e",
+    "last_updated_at": "2026-05-16T11:37:31.178Z",
+    "generated_against_head": "4bd96319fcbdd825742238c10f550fad20b63353",
     "generated_against_branch": "feat/f-004-handoff-package-composer",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "c8dbeaa7d0846ec0f92c8e6656d7fd5a1955412e",
+    "last_canonical_commit_at_gen": "4bd96319fcbdd825742238c10f550fad20b63353",
     "staleness_warning": null,
-    "active_slice": "handoff-package-composer (F-004) · SCOPE_DRAFT_PENDING_REVIEW (round 4 v3) — rounds 1+2+3 had shape/honesty drifts; round-4 v1 added Postgres+pgvector 4-bucket lock; round-4 v2 fixed 3 scope-truth contradictions; **round-4 v3 (this revision) locks Open Q2 at (b)** — owner picked 2026-05-16: NO handover-summary entry on first-ever binding (no outgoing supervisor exists; generatedAt + outgoingSupervisorId: null already give chronology; do not add noise to freeNotes). Locked behavior on first-ever binding (permanent path): zero LivingDoc writes; only the binding row + binding.handoffPackage JSON state change; 1× HANDOFF_PACKAGE_GENERATED audit fires; zero LIVING_DOC_RULE_ADDED audits. **Final gate before code:** real panel pass on round-4 v3 scope (owner directive: do not defer panel discipline to F-005; F-004 is still in scope phase). Panel critique companion file lands at handoff/feature-queue/scopes/F-004-panel-review.md. If panel pass does not surface a new material issue → SCOPE: APPROVED → code begins. 8 picks substance unchanged.",
+    "active_slice": "handoff-package-composer (F-004)",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,13 +1183,7 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`handoff-package-composer` (F-004)",
-      "Status": "`SCOPE_DRAFT_PENDING_REVIEW (round 4 v3)` — rounds 1+2+3 had shape/honesty drifts; round-4 v1 added Postgres+pgvector 4-bucket lock; round-4 v2 fixed 3 scope-truth contradictions; **round-4 v3 (this revision) locks Open Q2 at (b)** — owner picked 2026-05-16: NO handover-summary entry on first-ever binding (no outgoing supervisor exists; `generatedAt` + `outgoingSupervisorId: null` already give chronology; do not add noise to `freeNotes`). Locked behavior on first-ever binding (permanent path): zero LivingDoc writes; only the binding row + `binding.handoffPackage` JSON state change; 1× `HANDOFF_PACKAGE_GENERATED` audit fires; zero `LIVING_DOC_RULE_ADDED` audits. **Final gate before code:** real panel pass on round-4 v3 scope (owner directive: do not defer panel discipline to F-005; F-004 is still in scope phase). Panel critique companion file lands at `handoff/feature-queue/scopes/F-004-panel-review.md`. If panel pass does not surface a new material issue → SCOPE: APPROVED → code begins. 8 picks substance unchanged.",
-      "Branch": "`feat/f-004-handoff-package-composer` — forked from main `62471c6` 2026-05-16 to host the scope artifact draft + the eventual code slice (no code yet)",
-      "Last landed commit": "`62471c6` — `docs(handoff): F-004 branch-base wording → current main HEAD edf6172 (was stale at 2bc815b)` (last commit on main before this branch forked)",
-      "Dependencies": "F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.",
-      "Tests status": "n/a — code not started; scope phase",
-      "Verification gate": "will be `REAL_DB` once code lands"
+      "Slice name": "`handoff-package-composer` (F-004)"
     },
     "pending_approvals": [
       {
@@ -1317,6 +1311,17 @@
         "workflows": "none directly (workflow-design specs unchanged).",
         "entities": "",
         "verification": "`REAL_DB` — embedding round-trip + metadata filter correctness + delta refresh idempotency + link graph traversal.",
+        "status": "QUEUED"
+      },
+      {
+        "id": "F-010",
+        "title": "Handoff v2 / client-context expansion",
+        "why": "F-004 round-4 v3 panel pass surfaced (Suresh Pillai, FM ops 22yr field) that client-side context — building manager name, what triggers the client's complaints, finish standards, escalation paths — is at least as load-bearing for the incoming supervisor on day-1 as the operational site rules. Audit Ravi Month 9b's pain (\"Anjali rediscovers lobby-mop-twice-daily via complaint\") generalizes to client context: she'll also rediscover \"Mr. Rao calls Reddy directly when the kitchen-floor isn't waxed by 6:30 AM\" the same way. F-004 deliberately stays strict-spec (siteRules only); F-010 expands the transfer model with proper design instead of ad-hoc bolt-on.",
+        "depends_on": "F-004 done.",
+        "personas": "Anjali (incoming on permanent rebind — primary benefit); Ravi (outgoing — no behavior change for him).",
+        "workflows": "F27 (permanent reassign primarily); F26 acting cover may also benefit, but cover is temporary so the client-context value is lower.",
+        "entities": "",
+        "verification": "`REAL_DB` — clientPreferences-copy correctness across acting / permanent paths + cross-tenant isolation + schemaVersion bump correctness.",
         "status": "QUEUED"
       }
     ],
