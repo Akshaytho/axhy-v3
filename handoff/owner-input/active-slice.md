@@ -26,27 +26,36 @@
 | **Tests status**       | n/a — code not started; scope phase                                                                                                                                                                                                                                                                                                                                                                            |
 | **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                                                                                                                                                                                                                                                              |
 
-## What the F-004 scope artifact needs to lock (rule-26 "existing-pattern survey" + open picks)
+## 8 picks locked in the round-2 scope artifact
 
-Per rule 26 (inspect existing repo patterns BEFORE designing), the scope artifact must answer these four questions with grep/read evidence BEFORE picks are locked:
+Full text + rule-26 survey citations live in [handoff/feature-queue/scopes/F-004.md](handoff/feature-queue/scopes/F-004.md). Summary:
 
-1. **What similar code already exists?** Candidates to read: `recordBindingCreated` + `recordBindingEndedAuto` + `recordAuditEvent` in `apps/backend/src/lib/site-supervisor-binding.ts` (tx-callable pattern), `getEffectiveBinding` in `effective-responsibility.ts` (read pattern), the existing `originContext` JSON capture in chat.ts (similar compose-into-JSON-column shape).
-2. **What real runtime pattern does it use?** Read each candidate; identify the actual signature shape, error shape, audit-emit conventions.
-3. **Can I extend that pattern instead of introducing a new one?** Default: yes — `composeHandoffPackage(tx, args)` should match the tx-callable shape of `recordBindingCreated`.
-4. **If I'm changing the pattern, why is the old one not enough?** No anticipated divergence.
+1. **Payload shape** — EXACTLY closure spec §3.7. Zod `HandoffPackagePayloadSchema`: `generatedAt`, `outgoingSupervisorId?` (NULL on first-ever binding), `incomingSupervisorId`, `siteId`, `siteRules: string[]`, `recentComplaints[]`, `activeWorkers[]`, `openItems[]`, `packageSizeBytes`.
+2. **siteRules source** — outgoing's `LivingDoc.siteRules` filtered by `scope.siteId === thisSite AND state === ACTIVE AND visibility ∈ {COMPANY, SUPERVISOR_OWN}`. Project to `ruleText`.
+3. **Recent-complaints window** — 90 days, siteId-scoped, includes open + resolved.
+4. **activeWorkers shape** — `{ workerId, name, primaryShifts, recentFlags (30d), recentDecisions (30d) }` per spec.
+5. **openItems composition** — ONE typed list. Items: `{ kind: 'DECISION' | 'CALENDAR_ENTRY', ... }`. Window: **14 days** forward.
+6. **CalendarEntry filter (STRICT)** — include only entries with explicit `payload.siteId === thisSiteId` AND `entry.supervisorId === outgoingSupervisorId`. Ambiguous → skip.
+7. **Atomic compose-and-write** — all reads + binding row create + (on permanent) LivingDoc writes + audit emits in ONE tx.
+8. **Mechanism Z (owner-locked) — two write paths by binding kind:**
+   - **Acting cover:** write `binding.handoffPackage` only.
+   - **Permanent rebind:** write `binding.handoffPackage` + copy outgoing's site-scoped `LivingDoc.siteRules` into incoming's `LivingDoc.siteRules` (preserving scope.siteId, source.pattern = "handover*from*<outgoingId>") + append 1 handover-summary entry to incoming's `LivingDoc.freeNotes`.
 
-Open picks to surface in the scope artifact (recommended defaults in brackets):
+## 4 small open mechanical questions (recommended defaults given; not blockers)
 
-1. **What goes into the JSON?** Closure spec §3.7 + Decision 8 name 4–5 components: site rules / recent complaints (90 days) / active worker list / open decisions / 7-day calendar. Lock the exact field shape via a Zod schema [yes — `HandoffPackagePayloadSchema` in shared-schema/zod].
-2. **Acting vs permanent vs reassign — same composer?** Single composer with arg variants, vs three composers? [single composer; the difference is just which binding row gets the JSON].
-3. **Recent-complaints window** [90 days per Decision 8].
-4. **Open-decisions filter** [PROPOSED on this site, regardless of `targetId` worker — the incoming supervisor needs site-scoped not worker-scoped].
-5. **Calendar window** [+7 days from binding `effectiveFrom`].
-6. **Failure handling** — if any sub-query fails, fail the whole binding-create tx (atomic compose-and-write) [yes — handoff context is part of the binding's truth; partial state is worse than no binding].
-7. **Test coverage** — at minimum: acting create / permanent create / `reassignPermanentBinding` with all 4 components populated · empty-state defaults (no complaints / no calendar) · cross-tenant isolation (composer doesn't leak across companyId).
+Q1 — `LivingDocRule.createdBy` enum doesn't have "system_handover". Default: use `'supervisor'`; provenance preserved in `source.pattern`. Q2 — first-ever binding for a site → `outgoingSupervisorId: null`, empty siteRules, summary entry still written. Q3 — 100KB size-cap truncation strategy (code-stage detail). Q4 — idempotency on replay via deterministic rule IDs (uuid-v5).
 
-## What this slice does NOT do
+## Audit emits on write
 
+- 1× `HANDOFF_PACKAGE_GENERATED` (always — kind already in `audit-event.ts:84`).
+- N× `LIVING_DOC_RULE_ADDED` (permanent rebind only; same forward-compat path `chat.ts:1273-1284` already uses).
+
+## What this slice does NOT do (3 explicit non-claims caught by friend's audit)
+
+- **Binding ownership-truth switching does NOT mean all consumer surfaces are wired.** `getEffectiveBinding` from F-001 gives the truth (Anjali is now responsible for Manikonda). Every consumer surface that wants to render that — Today site cards, Decisions tab, complaints feed, notifications, the future "Read the handoff →" panel (closure §5.2.8), the portfolio-delta banner (§5.2.7), "while you were out" digest (§5.2.6), F-005 HR portal handoff card, F-007 notification dispatcher — **still has to be implemented to use that truth correctly.** F-004 only produces the snapshot + does the permanent-rebind LivingDoc transfer; rendering surfaces are later slices.
+- **F-004's `binding.handoffPackage` write is NOT the same thing as "incoming LivingDoc updated".** Mechanism Z's explicit LivingDoc-merge step on permanent rebind is what bridges the two. Acting cover deliberately does NOT merge into incoming's LivingDoc (cover is temporary; merging would muddle their personal context for sites they normally manage).
+- **Long-horizon planning (next month / 6 months) is a LIVE chat-tool query concern, NOT a handoffPackage concern.** handoffPackage's `openItems` stays bounded at 14 days by design (the cover-letter horizon). Supervisor asks "any plans next month?" → chat tool queries Assignment / CalendarEntry tables live. handoffPackage is not the place to store long-horizon data.
+- **Layer-1 (company-permanent rules) and Layer-2 (HR/pod rules) stay LIVE-fetched.** Both stay OUT of F-004. Company rules live in `HRUpdate` + `HRUpdateRule` entities; HR/pod rules are a future entity. F-004 only handles **layer 3** (site-specific supervisor rules from outgoing's LivingDoc).
 - Does not introduce the "while you were out" digest UI or notification fan-out — those are downstream consumers (later slices).
 - Does not introduce the HR portal handoff card surface — that's F-005 (admin-web HR portal).
 - Does not touch supervisor-mobile rendering of the package — that's later.
