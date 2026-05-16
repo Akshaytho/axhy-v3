@@ -99,19 +99,19 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
   - **NO** new entity. **NO** new Prisma model. **NO** HTTP route mutation lands. **One schema change** at round 2 (migration `20260519_f003_binding_ended_auto_dedup_index` — partial unique index on `AuditEvent` for `BINDING_ENDED_AUTO`-kind rows; narrow predicate, other kinds unaffected). The original round-1 scope said "no schema change" with an app-side audit-existence check; friend's round-1 P1 review correctly flagged that as race-prone, so round 2 moves the dedup guarantee to the DB.
 - **expected verification gate:** `REAL_DB` (real Postgres + sweep run + idempotency assertion + read-time-routing-unchanged assertion).
 - **spec amendment landed (docs-only, in the same commit as this re-scope):** two lines updated in `docs/specs/2026-05-15-workflow-design-closure.md` — §3.1 binding lifecycle (line 175) now says the `effectiveUntil`-path ACTIVE → ENDED transition is time-based and read-time-evaluated via `getEffectiveBinding`; §10 cron jobs (line 560) now says the sweep is "Side-effect emit only — NOT a responsibility switch ... does NOT mutate the binding row ... digest is a separate downstream consumer."
-- **status:** `AWAITING_APPROVAL` (round 2) — friend's round-1 P1 fixed via DB-enforced partial unique index (`AuditEvent_binding_ended_auto_dedup` on (companyId, kind, targetId) WHERE kind='BINDING_ENDED_AUTO' AND targetId IS NOT NULL) + P2002 catch in the per-row emit (`cd490d7`). Friend's round-1 P2 fixed by downgrading the docs/claims to match what tests actually prove + adding 3 new dedup tests (Promise.all concurrent emit · direct DB unique-violation · partial-index narrowness). Rule 26 (inspect existing repo patterns BEFORE designing) locked in `3e2f6bf` as upstream prevention. 18/18 test files green · 95/95 cases pass on fresh local Postgres 16 (84 prior baseline + 11 F-003 cases). Awaits friend's round-2 file-grounded review.
+- **status:** `APPROVED` — friend's file-grounded verification 2026-05-16 at HEAD `c4c335b`. Verbatim: "The round-2 review cleanup is real · The stale doc lines I flagged are now fixed, and I do not see a new blocker · Decision: APPROVED." Full F-003 commit chain: `39b47b8` (scope LOCKED) · `a29f9f6` (F-002+S-001 merge) · `74c1e9d` (pick 1 corrected pre-code) · `737c066` (round-1 code) · `433985d` (round-1 tracker) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1: partial unique index + P2002 + 3 tests) · `802d28f` (round-2 P2 docs downgrade) · `c4c335b` (round-2 review cleanup). 18/18 files · 95/95 cases pass on fresh local Postgres 16. Ready to be marked DONE once `feat/f-003-cron-framework` merges to main.
 
 ### F-004 — HandoffPackage composer
 
 - **id:** F-004
 - **title:** Auto-compose `handoffPackage` JSON at every binding creation
-- **why:** Closure Decision 8 + §3.7 — site rules, recent complaints, active worker context, open decisions/calendar embedded into binding row. Today the column is nullable; composer doesn't exist.
-- **depends on:** F-001, F-002 (DWI writer needed for "open decisions" component).
-- **personas touched:** Lakshmi/Anjali (incoming).
-- **workflows touched:** F26, F27.
-- **entities/routes/tables touched:** `apps/backend/src/lib/handoff-package-composer.ts` (new), wires into `recordBindingCreated` flow, `reassignPermanentBinding`.
-- **expected verification gate:** `REAL_DB`.
-- **status:** `QUEUED`.
+- **why:** Closure Decision 8 + §3.7 — site rules, recent complaints (90d), active worker context, open `PROPOSED` decisions, +7-day calendar embedded into binding row. The `handoffPackage` JSON column on `SiteSupervisorBinding` already exists (nullable); the composer doesn't yet. Without it, every incoming supervisor walks in cold and every downstream surface (digest, HR portal handoff card, notification payload) has to rebuild the same context separately.
+- **depends on:** F-001, F-002, F-003 — all APPROVED. F-002 + S-001 + F-003 will be DONE on main once `feat/f-003-cron-framework` merges (next step).
+- **personas touched:** Lakshmi/Anjali (incoming supervisors get the package); Ravi (originating supervisor — no behavior change for him).
+- **workflows touched:** F26 (acting binding create), F27 (permanent reassign).
+- **entities/routes/tables touched:** NEW `apps/backend/src/lib/handoff-package-composer.ts` exporting `composeHandoffPackage(tx, args)` — tx-callable shape matching the existing `recordBindingCreated` pattern per rule 26. Wires into the existing binding-create flow + `reassignPermanentBinding`. NEW `HandoffPackagePayloadSchema` in shared-schema/zod. NO schema migration (column already exists). NO HTTP route in this slice.
+- **expected verification gate:** `REAL_DB` — composition correctness across acting / permanent / reassign paths + empty-state defaults + cross-tenant isolation.
+- **status:** `PLANNED — AWAITING_SCOPE_APPROVAL` — active slice. Rule-26 "existing-pattern survey" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` BEFORE picks are locked. 7 open picks surfaced in `handoff/owner-input/active-slice.md` with recommended defaults.
 
 ### F-005 — Admin-web HR portal scaffold
 
