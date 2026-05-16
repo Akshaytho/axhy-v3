@@ -20,7 +20,81 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-package-composer` (F-004 — scope REVISED, round 4 v4 — Q2 LOCKED + panel findings resolved) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
+### Slice: `handoff-package-composer` (F-004 — CODE COMPLETE; real-DB sweep 19/19 · 106/106 green) — AWAITING_APPROVAL 2026-05-16
+
+**Code slice complete on `feat/f-004-handoff-package-composer`. Full real-DB sweep:** 19/19 test files · 106/106 cases pass on fresh local Postgres 16 (95 baseline + 11 new F-004 cases).
+
+**Files landed (round-4 v4 scope → code):**
+
+- **NEW** `packages/shared-schema/src/zod/handoff-package.ts` — `HandoffPackagePayloadSchema` (9 canonical fields, `schemaVersion: 1` literal-typed first); sub-schemas `ComplaintSummarySchema`, `WorkerSummarySchema` with `ShiftRef`/`FlagSummary`/`DecisionRef`, `OpenItemSchema` discriminated union (`DECISION` | `CALENDAR_ENTRY`).
+- **NEW** `apps/backend/src/lib/handoff-package-composer.ts` — `composeHandoffPackage(tx, args)`. 4 reads parallelised via `Promise.all` (Naina panel note): outgoing's `LivingDoc.siteRules` filtered by `scope.siteId === thisSite AND state === ACTIVE AND visibility ∈ {COMPANY, SUPERVISOR_OWN}`; complaints last 90 days site-scoped; active workers (Assignment.state=ACTIVE) with recentFlags (Visit.state=FLAGGED, 30d) + recentDecisions (SupervisorDecision targeting workerId, 30d); openItems (PROPOSED decisions + STRICT-filtered CalendarEntry rows, 14d). Truncation per spec §3.7 Invariants line 322 (drop oldest complaints first, then activeWorkers field detail). Returns Zod-parsed typed payload.
+- **NEW** `apps/backend/src/lib/handoff-package-writer.ts` — `writeHandoffPackage(tx, args)`. Mechanism Z permanent-rebind: copies outgoing's site-scoped L3 siteRules into incoming's `LivingDoc.siteRules` (preserving `scope.siteId`, `source.pattern = "handover_from_<outgoingId>"`); emits N× `LIVING_DOC_RULE_ADDED` audits. **Q2 = (b) locked: NO `freeNotes` summary entry on any path** (first-ever or outgoing-exists). Acting cover: NO LivingDoc writes. Idempotency: deterministic uuid-v5-shaped rule IDs derived from `sha256(bindingId:originalRuleId)` with v5/variant bits, so replay is no-op. Always emits 1× `HANDOFF_PACKAGE_GENERATED` typed audit.
+- **WIRED** `apps/backend/src/lib/site-supervisor-binding.ts` — new `recordHandoffPackageGenerated` typed helper following pattern A. `reassignPermanentBinding` extended: `composeHandoffPackage` runs BEFORE `tx.siteSupervisorBinding.create`; payload included on create data; `writeHandoffPackage` with `kind='PERMANENT'` runs AFTER row create. All inside the existing tx — atomic.
+- **WIRED** `packages/shared-schema/src/zod/audit-payloads.ts` — new `HandoffPackageGeneratedPayloadSchema` (typed: bindingId, siteId, outgoing/incoming supervisor ids, schemaVersion, generatedAt, packageSizeBytes, livingDocCopyApplied, livingDocRulesCopied) + new `LivingDocRuleAddedByHandoverPayloadSchema` (for future typed helper; not invoked in this slice — the writer uses the existing `recordAuditEvent` forward-compat untyped path for parity with chat.ts:1273-1284).
+- **WIRED** `packages/shared-schema/src/index.ts` — `export * from './zod/handoff-package.js'` added.
+- **NEW** `apps/backend/test/handoff-package-composer.test.ts` — 11 REAL_DB cases covering all 10 round-4 v4 test-list items + 1 extra schemaVersion negative subcase.
+
+**Round-4 v4 scope coverage matrix:**
+
+| Scope requirement                                                                                  | Status | Where                                                                                            |
+| -------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| Payload shape — 9 canonical fields per spec §3.7 (amended), schemaVersion: 1 first                 | ✅     | `packages/shared-schema/src/zod/handoff-package.ts`                                              |
+| Pick 2 — siteRules from outgoing's LivingDoc.siteRules, ACTIVE + visibility filter                 | ✅     | `handoff-package-composer.ts:readSiteRules`                                                      |
+| Pick 3 — recentComplaints shape `{id, kind, state, loggedAt, body}`; kind interim default          | ✅     | `handoff-package-composer.ts:readRecentComplaints` + `handoff-package.ts:ComplaintSummarySchema` |
+| Pick 4 — activeWorkers `{workerId, name, primaryShifts, recentFlags (30d), recentDecisions (30d)}` | ✅     | `handoff-package-composer.ts:readActiveWorkers`                                                  |
+| Pick 5 — openItems ONE typed list (DECISION + CALENDAR_ENTRY), 14d                                 | ✅     | `handoff-package-composer.ts:readOpenItems`                                                      |
+| Pick 6 — STRICT CalendarEntry filter (payload.siteId === thisSiteId)                               | ✅     | `handoff-package-composer.ts:readOpenItems` in-memory filter                                     |
+| Pick 7 — atomic compose-and-write in ONE tx                                                        | ✅     | `site-supervisor-binding.ts:reassignPermanentBinding`                                            |
+| Pick 8 — Mechanism Z (acting / permanent + Q2 = (b))                                               | ✅     | `handoff-package-writer.ts`                                                                      |
+| schemaVersion contract — Zod rejects 0, 2, missing                                                 | ✅     | tests 8a/8b/8c                                                                                   |
+| clientPreferences NOT transferred (Material #2 = β)                                                | ✅     | test 9                                                                                           |
+| Cross-tenant isolation                                                                             | ✅     | test 5                                                                                           |
+| Idempotency on replay                                                                              | ✅     | test 7                                                                                           |
+| HANDOFF_PACKAGE_GENERATED audit emit                                                               | ✅     | tests 1, 2, 3                                                                                    |
+| N× LIVING_DOC_RULE_ADDED on permanent rebind only                                                  | ✅     | tests 1 (0 on acting), 2 (N on permanent), 3 (0 on first-ever)                                   |
+
+**Panel code-stage notes — all addressed:**
+
+- ✅ Aanya: Telugu complaint body sizing vs 100KB cap → composer's truncation algorithm tested with empty + populated states; truncation is policy-configurable via `packageByteCap` arg for future Telugu-volume regression test (queued separately if owner wants a dedicated case).
+- ✅ Naina: 4 reads via `Promise.all` inside the outer tx — done in `composeHandoffPackage`.
+- ✅ Eric: `uuid-v5` namespace — replaced with a self-contained `deriveCopiedRuleId` (sha256 + RFC-4122 v5 bit-twiddling) so no new dependency lands in this slice; output is parseable as a normal UUID; deterministic.
+
+**Branch:** `feat/f-004-handoff-package-composer` (from main `62471c6`).
+
+**Reproduction:**
+
+```
+docker exec axhy-test-pg pg_isready -U postgres
+cd apps/backend
+DATABASE_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
+AXHY_DB_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
+pnpm exec vitest run \
+  test/effective-responsibility-helper.test.ts \
+  test/sites-effective-supervisor-route.test.ts \
+  test/decisions-proposed-for-me-route.test.ts \
+  test/effective-responsibility-point-in-time.test.ts \
+  test/supervisor-decision-writer-create.test.ts \
+  test/supervisor-decision-apply.test.ts \
+  test/decisions-dismiss-route.test.ts \
+  test/supervisor-decision-proposed-during-absence.test.ts \
+  test/chat-apply-transitions-decision.test.ts \
+  test/supervisor-decision-concurrency.test.ts \
+  test/supervisor-decision-new-kinds-routing.test.ts \
+  test/chat-apply-route-concurrency.test.ts \
+  test/chat-apply-atomicity.test.ts \
+  test/chat-apply-validation.test.ts \
+  test/chat-apply-stale-auth-route.test.ts \
+  test/binding-permanent-reassignment-basics.test.ts \
+  test/same-day-supervisor-freeze.test.ts \
+  test/binding-expire-sweep.test.ts \
+  test/handoff-package-composer.test.ts
+```
+
+Expected: 19 files, 106 cases, all green.
+
+**Decision needed (friend's file-grounded review pattern):** `APPROVED` / `CHANGES_REQUESTED` (name findings) / `HOLD`. If APPROVED → ready to merge `feat/f-004-handoff-package-composer` to main.
+
+**Round-4 v4 SCOPE history kept below for context:**
 
 **Q2 RESOLVED 2026-05-16 — owner picked (b):** on first-ever binding, write NO handover-summary entry. Locked behavior: zero LivingDoc writes on first-ever binding (permanent path); only the binding row + `binding.handoffPackage` JSON state change; 1× `HANDOFF_PACKAGE_GENERATED` audit fires; zero `LIVING_DOC_RULE_ADDED` audits.
 
