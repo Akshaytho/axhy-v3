@@ -317,3 +317,37 @@ owner could choose to disallow operationally," surface that as an explicit choic
   complexity that remains).
 - It does NOT mean adopt a policy that's hard to operationally enforce (e.g. "never have concurrent users" is not a
   real policy). The policy has to be sustainable in the field.
+
+---
+
+## Companion rule: inspect existing repo patterns BEFORE designing (locked 2026-05-16 after F-003 round-1)
+
+Locked alongside rule 26 in `handoff/owner-input/INDEX.md`. Upstream of rules 23–25: before reasoning about confidence, production-grade enforcement, or policy-vs-code, you must first ground the design in what the codebase actually does.
+
+**The two-line operating rule:**
+
+- Before locking a design, inspect the repo for an existing pattern that solves a similar problem. Reuse it unless you can clearly explain why it's not enough.
+- Design from the actual codebase first, not from theoretical assumptions about it.
+
+**Four questions every scope artifact must answer (before picks are locked):**
+
+1. **What similar code already exists?** Name the files with grep/read evidence — not from memory.
+2. **What real runtime pattern does it use?** Read the code, not just the comments.
+3. **Can I extend that pattern instead of introducing a new one?** Default: yes.
+4. **If I'm changing the pattern, why is the old one not enough?** Specific reasons, not generic preferences.
+
+**Concrete example (F-003 saga, the rule's origin):**
+
+The scope artifact claimed "OS-cron + HTTP endpoint matches existing `reset-ai-spend`." The actual existing pattern is dispatcher-tick piggyback (`maybeResetAiSpend` is called inside `dispatcher/index.ts:tick`, gated by an in-memory marker). The wording mismatch was caught pre-code by reading the file; under this rule it would have been caught at scope time, before owner approval.
+
+Separately: the original audit-existence-check idempotency for `BINDING_ENDED_AUTO` overclaimed multi-replica safety. A real read of similar dedup patterns in the codebase (or industry — partial unique index + `INSERT ... ON CONFLICT DO NOTHING`) would have surfaced the DB-enforced solution earlier. Two repo-grounding misses in one slice.
+
+**How to apply during scoping:**
+
+Every new scope artifact (`handoff/feature-queue/scopes/F-XXX.md`) must include a section titled "Existing-pattern survey" that answers the four questions above with grep/read evidence. Skip-able only when no related code exists in the repo — and even then, state that explicitly.
+
+**What this rule does NOT mean:**
+
+- It does NOT mean copy patterns mechanically without judgment — existing patterns can be wrong, and you can still choose to introduce a new one. The rule is about GROUNDING the decision in repo reality, not about defaulting to the existing pattern blindly.
+- It does NOT mean spend a day surveying the whole repo for every slice. The survey is targeted: only the patterns most adjacent to the slice's problem domain.
+- It does NOT replace rules 23 (confidence-score), 24 (production-grade), or 25 (policy-first). It is upstream of all three: do the repo survey first, then apply the other rules to the grounded design.
