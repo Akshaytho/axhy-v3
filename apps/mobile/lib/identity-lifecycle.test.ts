@@ -330,3 +330,55 @@ describe('identity-lifecycle — init-before-use ordering (friend P1 round-2)', 
     expect(callOrder).toEqual(['OneSignal.initialize', 'OneSignal.login']);
   });
 });
+
+describe('identity-lifecycle — init failure + concurrency (friend P1+P2 round-3)', () => {
+  // Case 16: friend's P1 round-3 — when OneSignal.initialize throws, the
+  // lifecycle paths MUST NOT proceed to call login/logout/requestPermission
+  // against an un-initialized SDK. _resolveOneSignal() returns null on
+  // init failure; onIdentifiedLogin sees null and skips OneSignal.login;
+  // setTokens still runs (auth never depends on push lifecycle).
+  it('init failure (initialize throws) → _resolveOneSignal returns null → onIdentifiedLogin skips OneSignal.login', async () => {
+    oneSignalInitialize.mockImplementation(() => {
+      throw new Error('native module failed to load');
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await onIdentifiedLogin(makeAuthResult([{ role: 'SUPERVISOR' }]));
+
+    // initialize was attempted exactly once + threw.
+    expect(oneSignalInitialize).toHaveBeenCalledTimes(1);
+    // BUT login was NEVER called against the un-initialized SDK.
+    expect(oneSignalLogin).not.toHaveBeenCalled();
+    // Auth flow still succeeded (setTokens ran).
+    expect(mockedSetTokens).toHaveBeenCalledTimes(1);
+    // Failure was logged.
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  // Case 17: friend's P2 round-3 — concurrent warm-up + first-chokepoint
+  // must call OneSignal.initialize exactly ONCE. The bare-boolean latch
+  // round-2 had a TOCTOU race: both callers observe `false`, both await
+  // the import, both call initialize. The promise-latch fix has the first
+  // caller cache the promise; subsequent callers await the SAME promise.
+  it('concurrent initializeOneSignal calls (warm-up + chokepoint race) result in exactly ONE OneSignal.initialize invocation', async () => {
+    // Slow the SDK import + initialize so concurrent callers actually overlap.
+    oneSignalInitialize.mockImplementation((_id: string) => {
+      // synchronous call inside the IIFE; the overlap window is the
+      // dynamic import + the await-resolution. With the promise latch,
+      // only the first caller schedules the work.
+    });
+
+    const results = await Promise.all([
+      initializeOneSignal(),
+      initializeOneSignal(),
+      initializeOneSignal(),
+      initializeOneSignal(),
+    ]);
+
+    expect(oneSignalInitialize).toHaveBeenCalledTimes(1);
+    expect(oneSignalInitialize).toHaveBeenCalledWith('test-app-id');
+    // All callers observe the same successful init result.
+    expect(results).toEqual([true, true, true, true]);
+  });
+});

@@ -112,63 +112,87 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutValue: T): Promi
 /**
  * One-shot runtime initialization of the OneSignal JS SDK.
  *
- * Friend's CODE-phase P1 (2026-05-17): the lifecycle hooks call
- * `OneSignal.login` / `OneSignal.logout` / `OneSignal.Notifications.requestPermission`
- * directly. None of those have any effect until the SDK has been
- * initialized with the App ID — `app.config.ts` only wires the native
- * build plugin, not the runtime JS surface.
+ * Friend's CODE-phase P1 round-1 (2026-05-17 01:25): the lifecycle hooks
+ * call `OneSignal.login` / `OneSignal.logout` /
+ * `OneSignal.Notifications.requestPermission` directly. None of those have
+ * any effect until the SDK has been initialized with the App ID —
+ * `app.config.ts` only wires the native build plugin, not the runtime JS
+ * surface.
  *
- * **Friend's CODE-phase round-2 P1 (2026-05-17 01:51):** the load-bearing
+ * Friend's CODE-phase P1 round-2 (2026-05-17 01:51): the load-bearing
  * init-before-use guarantee lives inside `_resolveOneSignal()`, not the
  * root layout's `useEffect`. React mounts child effects before parent
  * effects, so an authed cold-start in `app/index.tsx` could otherwise call
- * `OneSignal.login` before `_layout.tsx` had a chance to init. The
- * chokepoint pattern (`_resolveOneSignal()` awaits init first) makes the
- * ordering guarantee independent of React effect ordering. The root layout
- * still fires `initializeOneSignal()` on mount as a warm-up so the first
- * real lifecycle call doesn't pay the init latency.
+ * `OneSignal.login` before `_layout.tsx` had a chance to init.
  *
- * No-ops cleanly when `shouldCallOneSignal()` is false (web / no App ID).
- * Idempotent across repeated calls via a module-level latch — accidental
- * second invocations from React StrictMode / fast refresh / re-mount / the
- * warm-up + chokepoint combo are safe.
+ * **Friend's CODE-phase P1+P2 round-3 (2026-05-17 02:50):** two correctness
+ * gaps remained: (P1) the bare-boolean latch flipped to `true` on success
+ * but failure paths returned silently — `_resolveOneSignal()` still
+ * proceeded to return a live SDK handle against an un-initialized SDK; and
+ * (P2) a `if (oneSignalInitialized) return` boolean check is not
+ * concurrency-safe — the warm-up in `_layout.tsx` + the first chokepoint
+ * call in `_resolveOneSignal()` can both observe `false`, both start the
+ * `await import(...)`, and both call `OneSignal.initialize(appId)` before
+ * either flips the latch.
+ *
+ * **Round-3 fix:** the latch is now a `Promise<boolean>` instead of a
+ * bare boolean. The first caller starts the work + caches the promise;
+ * subsequent callers (including a concurrent warm-up + chokepoint pair)
+ * await the SAME promise. The promise resolves to `true` only when the
+ * SDK was actually initialized; on any failure path
+ * (`shouldCallOneSignal()` false / missing App ID / SDK module load fail /
+ * missing `initialize` function / `initialize` throws) it resolves to
+ * `false`, and the chokepoint `_resolveOneSignal()` then returns `null` so
+ * downstream `login` / `logout` / `requestPermission` calls never happen
+ * against an un-initialized SDK.
+ *
+ * Init failure is session-sticky — once `initPromise` resolves to `false`,
+ * subsequent calls reuse that result and continue to no-op. Real-device
+ * init failures are usually deterministic (missing native module, bad
+ * App ID format), so retrying within the same session would just burn
+ * CPU; the next process launch gets a fresh promise.
  *
  * @derives(F-006a CODE-phase friend P1 round-1 fix 2026-05-17 01:25)
  * @derives(F-006a CODE-phase friend P1 round-2 fix 2026-05-17 01:51)
+ * @derives(F-006a CODE-phase friend P1+P2 round-3 fix 2026-05-17 02:50)
  */
-let oneSignalInitialized = false;
+let initPromise: Promise<boolean> | null = null;
 
-export async function initializeOneSignal(): Promise<void> {
-  if (oneSignalInitialized) return;
-  if (!shouldCallOneSignal()) {
-    console.warn(
-      '[identity-lifecycle] OneSignal initialize skipped (web or no app id); push lifecycle will no-op this session.',
-    );
-    return;
-  }
-  const appId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
-  if (!appId) return; // belt-and-braces; shouldCallOneSignal already covered this
-  try {
-    const mod = (await import('react-native-onesignal')) as unknown as {
-      OneSignal?: { initialize?: (id: string) => void };
-    };
-    const fn = mod.OneSignal?.initialize;
-    if (typeof fn !== 'function') {
+export function initializeOneSignal(): Promise<boolean> {
+  if (initPromise) return initPromise;
+  initPromise = (async (): Promise<boolean> => {
+    if (!shouldCallOneSignal()) {
       console.warn(
-        '[identity-lifecycle] OneSignal.initialize missing on SDK; lifecycle will no-op',
+        '[identity-lifecycle] OneSignal initialize skipped (web or no app id); push lifecycle will no-op this session.',
       );
-      return;
+      return false;
     }
-    fn(appId);
-    oneSignalInitialized = true;
-  } catch (err) {
-    console.warn('[identity-lifecycle] OneSignal.initialize threw; lifecycle will no-op', err);
-  }
+    const appId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+    if (!appId) return false; // belt-and-braces; shouldCallOneSignal already covered this
+    try {
+      const mod = (await import('react-native-onesignal')) as unknown as {
+        OneSignal?: { initialize?: (id: string) => void };
+      };
+      const fn = mod.OneSignal?.initialize;
+      if (typeof fn !== 'function') {
+        console.warn(
+          '[identity-lifecycle] OneSignal.initialize missing on SDK; lifecycle will no-op',
+        );
+        return false;
+      }
+      fn(appId);
+      return true;
+    } catch (err) {
+      console.warn('[identity-lifecycle] OneSignal.initialize threw; lifecycle will no-op', err);
+      return false;
+    }
+  })();
+  return initPromise;
 }
 
 /** @internal — test-only escape hatch to reset the init latch between cases. */
 export function _resetOneSignalInitializedForTests(): void {
-  oneSignalInitialized = false;
+  initPromise = null;
 }
 
 /**
@@ -195,8 +219,12 @@ export async function _resolveOneSignal(): Promise<{
 } | null> {
   if (!shouldCallOneSignal()) return null;
   // Init-before-use boundary: every lifecycle path lands here before its
-  // first SDK call. Idempotent, so the root-layout warm-up is harmless.
-  await initializeOneSignal();
+  // first SDK call. If init did not actually succeed (missing function,
+  // threw, or any failure path), return null so downstream callers no-op
+  // instead of hitting login/logout against an un-initialized SDK
+  // (friend's CODE-phase P1 round-3 fix 2026-05-17 02:50).
+  const initOk = await initializeOneSignal();
+  if (!initOk) return null;
   try {
     const mod = (await import('react-native-onesignal')) as unknown as {
       OneSignal?: {
