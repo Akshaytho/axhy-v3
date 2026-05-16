@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T07:17:24.316Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>802d28f0</code></span>
+      <span>Generated <strong>2026-05-16T07:29:15.050Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>c4c335b7</code></span>
       <span>Branch <code>feat/f-003-cron-framework</code></span>
-      <span>Active slice: <strong>cron-framework-binding-expire-sweep (F-003) · AWAITING_APPROVAL (round 2 — friend's round-1 P1 fixed via DB-enforced partial unique index + P2002 catch; rule 26 locked; round-1 P2 docs claims downgraded to match what tests actually prove. 18/18 test files green · 95/95 cases pass — was 92, +3 new dedup cases.)</strong></span>
+      <span>Active slice: <strong>handoff-package-composer (F-004) · PLANNED — AWAITING_SCOPE_APPROVAL (rule-26 &quot;existing-pattern survey&quot; required in scope artifact at handoff/feature-queue/scopes/F-004.md before code begins)</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>cron-framework-binding-expire-sweep</code> (F-003)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">AWAITING_APPROVAL (round 2 — friend's round-1 P1 fixed via DB-enforced partial unique index + P2002 catch; rule 26 locked; round-1 P2 docs claims downgraded to match what tests actually prove. 18/18 test files green · 95/95 cases pass — was 92, +3 new dedup cases.)</span></td></tr><tr><th>Branch</th><td><code>feat/f-003-cron-framework</code> (forked from main <code>a29f9f6</code> after F-002 + S-001 merged DONE)</td></tr><tr><th>Last landed commit</th><td><code>cd490d7</code> — <code>fix(jobs): F-003 round-2 P1 — DB-enforced BINDING_ENDED_AUTO dedup (partial unique index + P2002 catch + 3 new tests)</code></td></tr><tr><th>F-003 commits (oldest→newest)</th><td><code>39b47b8</code> (scope LOCKED + A-vs-B record on feat/layer-1-core-primitives) · <code>a29f9f6</code> (merge of F-001 + F-002 + S-001 + scope to main) · <code>74c1e9d</code> (pick 1 corrected pre-code — dispatcher-tick piggyback) · <code>737c066</code> (round-1 code slice) · <code>433985d</code> (round-1 tracker propagation) · <code>3e2f6bf</code> (rule 26 locked) · <code>cd490d7</code> (round-2 P1 fix: partial unique index + P2002 catch + 3 tests)</td></tr><tr><th>Dependencies</th><td>F-001 + F-002 + S-001 — all APPROVED + DONE (merged to main at <code>a29f9f6</code>)</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">**18/18 test files green · 95/95 cases pass** on fresh local Postgres 16 (84 prior baseline + 11 F-003 cases: 8 original + 3 new dedup cases). One full sweep, ~20s.</span></td></tr><tr><th>Verification gate</th><td><code>REAL_DB</code> — fresh local Postgres 16 (Docker container <code>axhy-test-pg</code>, port 55432), all migrations applied.</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>handoff-package-composer</code> (F-004)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">PLANNED — AWAITING_SCOPE_APPROVAL (rule-26 &quot;existing-pattern survey&quot; required in scope artifact at handoff/feature-queue/scopes/F-004.md before code begins)</span></td></tr><tr><th>Branch</th><td>will fork from main after F-003 merges (the next branch is <code>feat/f-004-handoff-package-composer</code>)</td></tr><tr><th>Last landed commit</th><td><code>c4c335b</code> — <code>docs(handoff): F-003 round-2 review cleanup — 3 stale doc lines fixed (no code change)</code> (F-003 closed APPROVED; awaits merge-to-main to graduate to DONE)</td></tr><tr><th>Dependencies</th><td>F-001 + F-002 — APPROVED + DONE on main. F-003 — APPROVED, merge-to-main next. All met.</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — code not started; scope phase</span></td></tr><tr><th>Verification gate</th><td>will be <code>REAL_DB</code> once code lands</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -152,25 +152,11 @@
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
     
       <div class="approval">
-        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>cron-framework-binding-expire-sweep</code></strong></div>
+        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>handoff-package-composer</code></strong></div>
         
         
         
         
-        
-        
-        
-        
-        
-        
-        
-      </div>
-      <div class="approval">
-        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">CHANGES_REQUESTED</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>chat-writes-proposed-decisions</code></strong></div>
-        
-        
-        <p class="small"><strong>Branch:</strong> <code>feat/layer-1-core-primitives</code></p>
-        <p class="small"><strong>Last landed commit:</strong> <code>fe927b2</code></p>
         
         
         
@@ -219,7 +205,7 @@
       <details class="feature">
         <summary>
           <code>F-003</code>
-          <span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span>
+          <span class="badge" style="background:#1e8e3e;color:#fff;">APPROVED</span>
           <strong>Cron framework + `binding-expire-sweep` (RE-SCOPED 2026-05-16)</strong>
         </summary>
         <div class="feature-body">
@@ -238,16 +224,16 @@
       <details class="feature">
         <summary>
           <code>F-004</code>
-          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <span class="badge" style="background:#999;color:#fff;">PLANNED</span>
           <strong>HandoffPackage composer</strong>
         </summary>
         <div class="feature-body">
-          <p><strong>Why:</strong> Closure Decision 8 + §3.7 — site rules, recent complaints, active worker context, open decisions/calendar embedded into binding row. Today the column is nullable; composer doesn't exist.</p>
-          <p><strong>Depends on:</strong> F-001, F-002 (DWI writer needed for &quot;open decisions&quot; component).</p>
-          <p><strong>Personas:</strong> Lakshmi/Anjali (incoming).</p>
-          <p><strong>Workflows:</strong> F26, F27.</p>
-          <p><strong>Entities / routes / tables:</strong> <code>apps/backend/src/lib/handoff-package-composer.ts</code> (new), wires into <code>recordBindingCreated</code> flow, <code>reassignPermanentBinding</code>.</p>
-          <p><strong>Verification gate:</strong> <code>REAL_DB</code>.</p>
+          <p><strong>Why:</strong> Closure Decision 8 + §3.7 — site rules, recent complaints (90d), active worker context, open <code>PROPOSED</code> decisions, +7-day calendar embedded into binding row. The <code>handoffPackage</code> JSON column on <code>SiteSupervisorBinding</code> already exists (nullable); the composer doesn't yet. Without it, every incoming supervisor walks in cold and every downstream surface (digest, HR portal handoff card, notification payload) has to rebuild the same context separately.</p>
+          <p><strong>Depends on:</strong> F-001, F-002, F-003 — all APPROVED. F-002 + S-001 + F-003 will be DONE on main once <code>feat/f-003-cron-framework</code> merges (next step).</p>
+          <p><strong>Personas:</strong> Lakshmi/Anjali (incoming supervisors get the package); Ravi (originating supervisor — no behavior change for him).</p>
+          <p><strong>Workflows:</strong> F26 (acting binding create), F27 (permanent reassign).</p>
+          <p><strong>Entities / routes / tables:</strong> NEW <code>apps/backend/src/lib/handoff-package-composer.ts</code> exporting <code>composeHandoffPackage(tx, args)</code> — tx-callable shape matching the existing <code>recordBindingCreated</code> pattern per rule 26. Wires into the existing binding-create flow + <code>reassignPermanentBinding</code>. NEW <code>HandoffPackagePayloadSchema</code> in shared-schema/zod. NO schema migration (column already exists). NO HTTP route in this slice.</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> — composition correctness across acting / permanent / reassign paths + empty-state defaults + cross-tenant isolation.</p>
         </div>
       </details>
       <details class="feature">

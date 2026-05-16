@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T07:17:24.316Z",
-    "generated_against_head": "802d28f0f2834f659edc0930c9019b2f37adc4ef",
+    "last_updated_at": "2026-05-16T07:29:15.050Z",
+    "generated_against_head": "c4c335b76a34b4b2ac3fb95d8011b3fe085fbe8a",
     "generated_against_branch": "feat/f-003-cron-framework",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "802d28f0f2834f659edc0930c9019b2f37adc4ef",
+    "last_canonical_commit_at_gen": "c4c335b76a34b4b2ac3fb95d8011b3fe085fbe8a",
     "staleness_warning": null,
-    "active_slice": "cron-framework-binding-expire-sweep (F-003) · AWAITING_APPROVAL (round 2 — friend's round-1 P1 fixed via DB-enforced partial unique index + P2002 catch; rule 26 locked; round-1 P2 docs claims downgraded to match what tests actually prove. 18/18 test files green · 95/95 cases pass — was 92, +3 new dedup cases.)",
+    "active_slice": "handoff-package-composer (F-004) · PLANNED — AWAITING_SCOPE_APPROVAL (rule-26 \"existing-pattern survey\" required in scope artifact at handoff/feature-queue/scopes/F-004.md before code begins)",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,39 +1183,22 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`cron-framework-binding-expire-sweep` (F-003)",
-      "Status": "`AWAITING_APPROVAL` (round 2 — friend's round-1 P1 fixed via DB-enforced partial unique index + P2002 catch; rule 26 locked; round-1 P2 docs claims downgraded to match what tests actually prove. 18/18 test files green · 95/95 cases pass — was 92, +3 new dedup cases.)",
-      "Branch": "`feat/f-003-cron-framework` (forked from main `a29f9f6` after F-002 + S-001 merged DONE)",
-      "Last landed commit": "`cd490d7` — `fix(jobs): F-003 round-2 P1 — DB-enforced BINDING_ENDED_AUTO dedup (partial unique index + P2002 catch + 3 new tests)`",
-      "F-003 commits (oldest→newest)": "`39b47b8` (scope LOCKED + A-vs-B record on feat/layer-1-core-primitives) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback) · `737c066` (round-1 code slice) · `433985d` (round-1 tracker propagation) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1 fix: partial unique index + P2002 catch + 3 tests)",
-      "Dependencies": "F-001 + F-002 + S-001 — all APPROVED + DONE (merged to main at `a29f9f6`)",
-      "Tests status": "**18/18 test files green · 95/95 cases pass** on fresh local Postgres 16 (84 prior baseline + 11 F-003 cases: 8 original + 3 new dedup cases). One full sweep, ~20s.",
-      "Verification gate": "`REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all migrations applied."
+      "Slice name": "`handoff-package-composer` (F-004)",
+      "Status": "`PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 \"existing-pattern survey\" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins)",
+      "Branch": "will fork from main after F-003 merges (the next branch is `feat/f-004-handoff-package-composer`)",
+      "Last landed commit": "`c4c335b` — `docs(handoff): F-003 round-2 review cleanup — 3 stale doc lines fixed (no code change)` (F-003 closed APPROVED; awaits merge-to-main to graduate to DONE)",
+      "Dependencies": "F-001 + F-002 — APPROVED + DONE on main. F-003 — APPROVED, merge-to-main next. All met.",
+      "Tests status": "n/a — code not started; scope phase",
+      "Verification gate": "will be `REAL_DB` once code lands"
     },
     "pending_approvals": [
       {
-        "id": "cron-framework-binding-expire-sweep",
+        "id": "handoff-package-composer",
         "kind": "slice",
         "status": "",
         "branch": "",
         "wipCommit": "",
         "lastLanded": "",
-        "workflowIds": "",
-        "blocking": "",
-        "built": "",
-        "notDone": "",
-        "ownerDecision": "",
-        "artifact": "",
-        "decisionNeeded": "",
-        "scopeType": ""
-      },
-      {
-        "id": "chat-writes-proposed-decisions",
-        "kind": "slice",
-        "status": "CHANGES_REQUESTED",
-        "branch": "feat/layer-1-core-primitives",
-        "wipCommit": "",
-        "lastLanded": "fe927b2",
         "workflowIds": "",
         "blocking": "",
         "built": "",
@@ -1268,18 +1251,18 @@
         "workflows": "F26 (acting binding expiry — emits audit; switching itself is already read-time correct), F27 (permanent reassign expiry — same), C12 (decision expiry — later slice on this framework).",
         "entities": "- **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.\n  - **EMITS:** `BINDING_ENDED_AUTO` AuditEvent per binding whose `effectiveUntil` has just passed and that has not yet been processed (kind already catalogued in closure spec §11).\n  - **DOES NOT MUTATE the binding row.** `endedAt` stays NULL for auto-expired bindings — setting it would break historical point-in-time queries via `getEffectiveBinding`.\n  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + does NOT mutate the binding row + does NOT change `getEffectiveBinding` results.\n  - **NO** new entity. **NO** new Prisma model. **NO** HTTP route mutation lands. **One schema change** at round 2 (migration `20260519_f003_binding_ended_auto_dedup_index` — partial unique index on `AuditEvent` for `BINDING_ENDED_AUTO`-kind rows; narrow predicate, other kinds unaffected). The original round-1 scope said \"no schema change\" with an app-side audit-existence check; friend's round-1 P1 review correctly flagged that as race-prone, so round 2 moves the dedup guarantee to the DB.",
         "verification": "`REAL_DB` (real Postgres + sweep run + idempotency assertion + read-time-routing-unchanged assertion).",
-        "status": "AWAITING_APPROVAL"
+        "status": "APPROVED"
       },
       {
         "id": "F-004",
         "title": "HandoffPackage composer",
-        "why": "Closure Decision 8 + §3.7 — site rules, recent complaints, active worker context, open decisions/calendar embedded into binding row. Today the column is nullable; composer doesn't exist.",
-        "depends_on": "F-001, F-002 (DWI writer needed for \"open decisions\" component).",
-        "personas": "Lakshmi/Anjali (incoming).",
-        "workflows": "F26, F27.",
-        "entities": "`apps/backend/src/lib/handoff-package-composer.ts` (new), wires into `recordBindingCreated` flow, `reassignPermanentBinding`.",
-        "verification": "`REAL_DB`.",
-        "status": "QUEUED"
+        "why": "Closure Decision 8 + §3.7 — site rules, recent complaints (90d), active worker context, open `PROPOSED` decisions, +7-day calendar embedded into binding row. The `handoffPackage` JSON column on `SiteSupervisorBinding` already exists (nullable); the composer doesn't yet. Without it, every incoming supervisor walks in cold and every downstream surface (digest, HR portal handoff card, notification payload) has to rebuild the same context separately.",
+        "depends_on": "F-001, F-002, F-003 — all APPROVED. F-002 + S-001 + F-003 will be DONE on main once `feat/f-003-cron-framework` merges (next step).",
+        "personas": "Lakshmi/Anjali (incoming supervisors get the package); Ravi (originating supervisor — no behavior change for him).",
+        "workflows": "F26 (acting binding create), F27 (permanent reassign).",
+        "entities": "NEW `apps/backend/src/lib/handoff-package-composer.ts` exporting `composeHandoffPackage(tx, args)` — tx-callable shape matching the existing `recordBindingCreated` pattern per rule 26. Wires into the existing binding-create flow + `reassignPermanentBinding`. NEW `HandoffPackagePayloadSchema` in shared-schema/zod. NO schema migration (column already exists). NO HTTP route in this slice.",
+        "verification": "`REAL_DB` — composition correctness across acting / permanent / reassign paths + empty-state defaults + cross-tenant isolation.",
+        "status": "PLANNED"
       },
       {
         "id": "F-005",
