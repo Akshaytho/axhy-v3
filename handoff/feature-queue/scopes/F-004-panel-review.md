@@ -1,6 +1,21 @@
-# F-004 — Panel review (round-4 v3 scope)
+# F-004 — Panel review (round-4 v3 scope) — RESOLVED 2026-05-16
 
-> **Status:** Adversarial panel pass on F-004 round-4 v3 scope (Q2 locked at (b); 8 picks + 5 Open Qs; rule-27 §0 with pgvector 4-bucket lock; rule-26 existing-pattern survey). Owner directive 2026-05-16: run panel pass BEFORE code starts, do not defer to F-005. Voices below frame the 1-year-horizon question (`feedback_panel_thinks_one_year_horizon.md`) AND the end-of-wave "what's in the spec that didn't ship?" adversarial question (`feedback_adversarial_panel_at_wave_end.md`). Panel voices named per `v3_panel.md` (full bios in master plan §C).
+> **Status:** Adversarial panel pass DONE. Both material findings RESOLVED by owner picks 2026-05-16:
+>
+> - **Material #1 (Maya + Eric — no `schemaVersion`)** → owner picked **γ**. Closure spec §3.7 amended in the same commit chain to add `schemaVersion INT` as the canonical 9th field, locked at 1 for F-004; consumer-handling invariant added.
+> - **Material #2 (Suresh Pillai — `clientPreferences` not transferred)** → owner picked **β**. F-004 stays strict (siteRules only). A new slice **F-010 — handoff v2 / client-context expansion** is queued in the feature queue for a clean first-class client-context transfer pattern. Interim guidance recorded in closure §3.7 Invariants + F-004 non-claims: supervisors record client-specific operational points as proper site rules so they transfer via mechanism Z.
+>
+> Owner verbatim on rejecting option γ for Material #2: "do not stuff client preferences into siteRules.ruleText — that will create semantic mess."
+>
+> Code-stage notes (3) carry forward into the implementation file: Telugu-complaint-body sizing test, `Promise.all` for the 4 reads, `uuid-v5` namespace constant.
+>
+> The original panel-pass record (below) is kept verbatim for audit traceability.
+
+---
+
+## Original adversarial panel pass on round-4 v3 (for audit)
+
+Owner directive 2026-05-16: run panel pass BEFORE code starts, do not defer to F-005. Voices below frame the 1-year-horizon question (`feedback_panel_thinks_one_year_horizon.md`) AND the end-of-wave "what's in the spec that didn't ship?" adversarial question (`feedback_adversarial_panel_at_wave_end.md`). Panel voices named per `v3_panel.md` (full bios in master plan §C).
 
 ## Method
 

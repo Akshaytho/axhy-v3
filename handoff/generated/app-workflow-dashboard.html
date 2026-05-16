@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T11:13:54.831Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>c8dbeaa7</code></span>
+      <span>Generated <strong>2026-05-16T11:37:31.178Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>4bd96319</code></span>
       <span>Branch <code>feat/f-004-handoff-package-composer</code></span>
-      <span>Active slice: <strong>handoff-package-composer (F-004) · SCOPE_DRAFT_PENDING_REVIEW (round 4 v3) — rounds 1+2+3 had shape/honesty drifts; round-4 v1 added Postgres+pgvector 4-bucket lock; round-4 v2 fixed 3 scope-truth contradictions; **round-4 v3 (this revision) locks Open Q2 at (b)** — owner picked 2026-05-16: NO handover-summary entry on first-ever binding (no outgoing supervisor exists; generatedAt + outgoingSupervisorId: null already give chronology; do not add noise to freeNotes). Locked behavior on first-ever binding (permanent path): zero LivingDoc writes; only the binding row + binding.handoffPackage JSON state change; 1× HANDOFF_PACKAGE_GENERATED audit fires; zero LIVING_DOC_RULE_ADDED audits. **Final gate before code:** real panel pass on round-4 v3 scope (owner directive: do not defer panel discipline to F-005; F-004 is still in scope phase). Panel critique companion file lands at handoff/feature-queue/scopes/F-004-panel-review.md. If panel pass does not surface a new material issue → SCOPE: APPROVED → code begins. 8 picks substance unchanged.</strong></span>
+      <span>Active slice: <strong>handoff-package-composer (F-004)</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>handoff-package-composer</code> (F-004)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_DRAFT_PENDING_REVIEW (round 4 v3) — rounds 1+2+3 had shape/honesty drifts; round-4 v1 added Postgres+pgvector 4-bucket lock; round-4 v2 fixed 3 scope-truth contradictions; **round-4 v3 (this revision) locks Open Q2 at (b)** — owner picked 2026-05-16: NO handover-summary entry on first-ever binding (no outgoing supervisor exists; generatedAt + outgoingSupervisorId: null already give chronology; do not add noise to freeNotes). Locked behavior on first-ever binding (permanent path): zero LivingDoc writes; only the binding row + binding.handoffPackage JSON state change; 1× HANDOFF_PACKAGE_GENERATED audit fires; zero LIVING_DOC_RULE_ADDED audits. **Final gate before code:** real panel pass on round-4 v3 scope (owner directive: do not defer panel discipline to F-005; F-004 is still in scope phase). Panel critique companion file lands at handoff/feature-queue/scopes/F-004-panel-review.md. If panel pass does not surface a new material issue → SCOPE: APPROVED → code begins. 8 picks substance unchanged.</span></td></tr><tr><th>Branch</th><td><code>feat/f-004-handoff-package-composer</code> — forked from main <code>62471c6</code> 2026-05-16 to host the scope artifact draft + the eventual code slice (no code yet)</td></tr><tr><th>Last landed commit</th><td><code>62471c6</code> — <code>docs(handoff): F-004 branch-base wording → current main HEAD edf6172 (was stale at 2bc815b)</code> (last commit on main before this branch forked)</td></tr><tr><th>Dependencies</th><td>F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at <code>a29f9f6</code>; F-003 merged at <code>2bc815b</code>). All met.</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — code not started; scope phase</span></td></tr><tr><th>Verification gate</th><td>will be <code>REAL_DB</code> once code lands</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>handoff-package-composer</code> (F-004)</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -309,6 +309,21 @@
           <p><strong>Workflows:</strong> none directly (workflow-design specs unchanged).</p>
           
           <p><strong>Verification gate:</strong> <code>REAL_DB</code> — embedding round-trip + metadata filter correctness + delta refresh idempotency + link graph traversal.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-010</code>
+          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
+          <strong>Handoff v2 / client-context expansion</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> F-004 round-4 v3 panel pass surfaced (Suresh Pillai, FM ops 22yr field) that client-side context — building manager name, what triggers the client's complaints, finish standards, escalation paths — is at least as load-bearing for the incoming supervisor on day-1 as the operational site rules. Audit Ravi Month 9b's pain (&quot;Anjali rediscovers lobby-mop-twice-daily via complaint&quot;) generalizes to client context: she'll also rediscover &quot;Mr. Rao calls Reddy directly when the kitchen-floor isn't waxed by 6:30 AM&quot; the same way. F-004 deliberately stays strict-spec (siteRules only); F-010 expands the transfer model with proper design instead of ad-hoc bolt-on.</p>
+          <p><strong>Depends on:</strong> F-004 done.</p>
+          <p><strong>Personas:</strong> Anjali (incoming on permanent rebind — primary benefit); Ravi (outgoing — no behavior change for him).</p>
+          <p><strong>Workflows:</strong> F27 (permanent reassign primarily); F26 acting cover may also benefit, but cover is temporary so the client-context value is lower.</p>
+          
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> — clientPreferences-copy correctness across acting / permanent paths + cross-tenant isolation + schemaVersion bump correctness.</p>
         </div>
       </details>
   </section>

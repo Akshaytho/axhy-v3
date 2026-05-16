@@ -20,11 +20,18 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-package-composer` (F-004 — scope REVISED, round 4 v3 — Q2 LOCKED at (b); panel pass pending) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
+### Slice: `handoff-package-composer` (F-004 — scope REVISED, round 4 v4 — Q2 LOCKED + panel findings resolved) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
 
-**Q2 RESOLVED 2026-05-16 — owner picked (b):** on first-ever binding, write NO handover-summary entry to `LivingDoc.freeNotes`. Owner verbatim: "there is no outgoing supervisor, so this is not really a handover-from-someone case. `generatedAt` + `outgoingSupervisorId: null` on the package already give enough chronology. Do not add noise into `freeNotes`." Locked behavior: zero LivingDoc writes on first-ever binding (permanent path); only the binding row + `binding.handoffPackage` JSON state change; 1× `HANDOFF_PACKAGE_GENERATED` audit fires; zero `LIVING_DOC_RULE_ADDED` audits.
+**Q2 RESOLVED 2026-05-16 — owner picked (b):** on first-ever binding, write NO handover-summary entry. Locked behavior: zero LivingDoc writes on first-ever binding (permanent path); only the binding row + `binding.handoffPackage` JSON state change; 1× `HANDOFF_PACKAGE_GENERATED` audit fires; zero `LIVING_DOC_RULE_ADDED` audits.
 
-**Final gate before code (owner directive 2026-05-16):** run a real panel pass on the round-4 v3 scope BEFORE code starts. Panel discipline was skipped through rounds 1–4 v2; F-004 is still in scope phase so this is the cheapest time to catch product-surface issues. Companion file `handoff/feature-queue/scopes/F-004-panel-review.md` lands in the same commit chain. If the panel pass surfaces no new material issue → `SCOPE: APPROVED (round 4 v3)` → code begins on `feat/f-004-handoff-package-composer`.
+**Panel pass DONE 2026-05-16 (round 4 v3, 9-voice).** Critique at `handoff/feature-queue/scopes/F-004-panel-review.md`. 2 material findings surfaced; both RESOLVED by owner 2026-05-16:
+
+- **Material #1 (no `schemaVersion`) → owner picked γ.** Closure spec `docs/specs/2026-05-15-workflow-design-closure.md §3.7` AMENDED in this commit chain to add `schemaVersion INT` as the canonical 9th field, locked at 1 for F-004, with a new consumer-handling invariant ("MUST inspect schemaVersion first; fail closed on unknown versions unless explicit downgrade-parse support"). F-004 pick 1 + Zod schema + test list updated to reflect 9 fields. 3 new negative tests verify the version contract.
+- **Material #2 (`clientPreferences` not transferred) → owner picked β.** F-004 stays strict (siteRules-only). New **F-010 — handoff v2 / client-context expansion** queued in feature-queue for a clean first-class transfer pattern. Owner explicit rejection of option γ: "do not stuff client preferences into siteRules.ruleText — that will create semantic mess." Interim guidance recorded in closure spec §3.7 Invariants + F-004 non-claims: supervisors record client-specific operational points as proper site rules. 1 new test case verifies `clientPreferences` NOT transferred.
+
+**3 code-stage notes from panel carry into implementation** (not blockers): Telugu-complaint-body sizing test case (Aanya), `Promise.all` for the 4 reads inside composer tx (Naina), `uuid-v5` namespace constant in shared-schema (Eric).
+
+**No remaining gate before code.** If owner + friend approve round 4 v4 → `SCOPE: APPROVED` → code begins on `feat/f-004-handoff-package-composer`. Test sweep target: ~105 cases (95 prior baseline + ~10 new F-004).
 
 **Round-4 history kept below for context:**
 
@@ -82,7 +89,7 @@ Rule 27 updated across 4 places (INDEX.md + production-grade-rulebook.md + memor
 
 **Test plan:** 8 real-DB integration cases — acting binding / permanent reassign / first-ever (asserts `siteRules: []` + that `recentComplaints` is whatever the DB held at compose time, **NOT** hardcoded `[]`; the summary-entry assertion is **conditional on owner's Q2 pick** and pinned to (a)/(b)/(c) only after owner picks) / empty-state / cross-tenant / STRICT calendar filter (with & without payload.siteId) / idempotent replay.
 
-**Decision needed (round 4 v3 — Q2 already locked at (b)):** **panel pass on round-4 v3 scope before code starts** (companion file `handoff/feature-queue/scopes/F-004-panel-review.md`). If panel surfaces no new material issue → `SCOPE: APPROVED (round 4 v3)` → code begins immediately on `feat/f-004-handoff-package-composer`; stops at AWAITING_APPROVAL after new test sweep is green. `SCOPE: CHANGES_REQUESTED` (panel finding / pick / Open Q) → I update + re-surface. `HOLD` → F-004 pauses.
+**Decision needed (round 4 v4 — Q2 locked + panel material findings resolved):** `SCOPE: APPROVED (round 4 v4)` → code begins immediately on `feat/f-004-handoff-package-composer`; stops at AWAITING_APPROVAL after new test sweep is green (~105 cases). `SCOPE: CHANGES_REQUESTED` (pick / Open Q / panel finding) → I update + re-surface. `HOLD` → F-004 pauses.
 
 ---
 
