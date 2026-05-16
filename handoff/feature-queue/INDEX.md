@@ -137,17 +137,17 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **expected verification gate:** Playwright + `REAL_DB`.
 - **status:** `QUEUED`.
 
-### F-007 — Notification dispatcher
+### F-007 — Notification dispatcher (round 1: worker-side supervisor-change)
 
-- **id:** F-007
-- **title:** Outbox dispatcher delivers to push + SMS + WhatsApp + in-app
-- **why:** Closure Decision 4 + 10 + AI budget alerts (G29). Every notification + digest + alert sits in Outbox today; no channel adapter wired.
-- **depends on:** Backend stability (no specific dep from this list).
-- **personas touched:** all four (anyone receiving notifications).
-- **workflows touched:** F26 (W-1/W-2/W-3/W-7), F27 (W-3), E21 leave-status, E24 termination, G29 budget alert, owner monthly digest.
-- **entities/routes/tables touched:** `apps/backend/src/dispatcher/handlers/*` (push, sms, whatsapp_out, email adapters), MSG91 webhook wiring.
-- **expected verification gate:** `REAL_DB` + manual delivery confirmation on dev numbers.
-- **status:** `QUEUED`.
+- **id:** F-007 (round 1)
+- **title:** Convert F-003 + F-004 audit events into Notification rows; in_app_banner real + 4 log-stub channels
+- **why:** Closure Decision 4 (mandatory worker-side supervisor-change notification) + audit Suresh W-1/W-2/W-7 (largest open product gap from the year-long simulation). F-004's `HANDOFF_PACKAGE_GENERATED` + F-003's `BINDING_ENDED_AUTO` audits emit but no notification reaches the affected workers or involved supervisors.
+- **depends on:** F-003 + F-004 (both DONE on main). Notification table + Zod schemas already shipped (`schema.prisma:931`, `zod/notification.ts`).
+- **personas touched:** Suresh (worker — primary, finally gets a signal when his supervisor changes); Ravi (outgoing — gets "you've handed off N sites" notification); Anjali/Lakshmi (incoming — gets "you're now covering X sites" notification).
+- **workflows touched:** F26 (acting cover; covers W-1/W-2/W-7), F27 (permanent rebind; covers W-3 transitively), Decision 4 audit-trail compliance.
+- **entities/routes/tables touched:** NEW `apps/backend/src/lib/notification-composer.ts` (`composeSupervisorChangeNotifications`). NEW `apps/backend/src/dispatcher/handlers/notifications.ts` (`handleNotificationSupervisorChange`). EDIT `dispatcher/handlers/registry.ts` (register topic). EDIT `handoff-package-writer.ts` (one-line `enqueueOutbox`). EDIT `binding-expire-sweep.ts` (one-line `enqueueOutbox`). EDIT `audit-event.ts` + `audit-payloads.ts` (typed `WorkerSupervisorChangeNotifiedPayloadSchema` + `recordWorkerSupervisorChangeNotified` helper). NEW migration: partial unique index on `Notification (companyId, COALESCE(audienceUserId, sentinel), COALESCE(audienceWorkerId, sentinel), kind, payload->>'sourceAuditId') WHERE kind='supervisor_change'` for idempotent replay.
+- **expected verification gate:** `REAL_DB` — audience resolution + coalescing + idempotent replay + cross-tenant isolation + localisation + edge cases. ~10 new tests.
+- **status:** `SCOPE_DRAFT_PENDING_REVIEW (round 1)` — scope artifact at `handoff/feature-queue/scopes/F-007.md`. 8 picks + 5 Open Qs surfaced. Owner explicit pick required on Open Q1 (5-row vs 1-row channel variant). Awaits owner + friend sign-off; no code lands until both sign off.
 
 ### F-008 — Bootstrap-seed migration + HR review UI
 
