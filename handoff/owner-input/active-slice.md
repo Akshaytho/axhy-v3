@@ -6,73 +6,77 @@
 
 ## In simple English
 
-**Problem:** when HR creates a binding (acting cover, permanent rebind) or when an acting binding's `effectiveUntil` fires, F-003 + F-004 emit AuditEvent rows but **no notification reaches the affected workers or the involved supervisors**. The Suresh audit (W-1 / W-2 / W-7) flagged this as the largest open product gap: workers walk into a site and a different person is supervising, with no signal at all. The Notification table + Zod schemas already exist (`Notification` model in `schema.prisma:931`, `NotificationKindSchema` in `zod/notification.ts`) — what's missing is the writer that turns the audit events into Notification rows.
+**Problem:** when HR creates a binding (acting cover, permanent rebind) or when an acting binding's `effectiveUntil` fires, F-003 + F-004 emit AuditEvent rows but **no notification reaches the affected workers or the involved supervisors**. The Suresh audit (W-1 / W-2 / W-7) flagged this as the largest open product gap. The Notification table + Zod schemas already exist; what's missing is the writer that turns the audit events into Notification rows.
 
-**Simplest business rule:** when `HANDOFF_PACKAGE_GENERATED` (F-004) or `BINDING_ENDED_AUTO` (F-003) fires, F-007 fans out per closure §7 audience rules — affected workers (`Assignment.state='ACTIVE'` on the site at the event timestamp) + outgoing supervisor + incoming supervisor. Each audience entry gets one Notification row per channel (`in_app_banner` real + `push`/`sms`/`whatsapp_out`/`email` log-stub per Open Q1). Coalesce multi-binding events for the same supervisor pair within a 60-second window (closure §7). Emit `WORKER_SUPERVISOR_CHANGE_NOTIFIED` audit per worker row (closure Decision 4). No new schema table; partial unique index added for idempotent replay.
+**Simplest business rule (v11 — locked):** when `HANDOFF_PACKAGE_GENERATED` (F-004) or `BINDING_ENDED_AUTO` (F-003) fires, F-007 fans out per closure §7 audience rules — affected workers (`Assignment.state='ACTIVE'` on the site at the event timestamp) + outgoing supervisor (may be null) + incoming supervisor (never null). **Every (recipient × channel × site × source-event) produces exactly one immutable Notification row.** Channel set per recipient = `push` + `in_app_banner` (with ONE exception: `Worker.userId IS NULL` recipients get only `in_app_banner`, since OneSignal has no derivable `external_id` for them). **NO coalescing in persistence** — multi-site bursts produce N source events → N row sets; supervisor burst grouping is presentation-side (F-006 UI / optional F-007b digest). **NO `WORKER_SUPERVISOR_CHANGE_NOTIFIED` audit emit from F-007** — that audit fires at delivery time in F-011, not at persistence time. Idempotent replay via ONE partial unique index `(companyId, kind, channel, COALESCE(audienceUserId), COALESCE(audienceWorkerId), siteId, sourceAuditId)`. v11 panel-test Maya invariant LOCKED EXPLICIT: the binding write, audit emit, and `enqueueOutbox(tx, ...)` happen in the same DB transaction; if any one fails, none commit.
 
-**Code (only after scope-artifact approval):** new `apps/backend/src/lib/notification-composer.ts` (`composeSupervisorChangeNotifications`) + new dispatcher handler at `apps/backend/src/dispatcher/handlers/notifications.ts`. One-line edits to `handoff-package-writer.ts` + `binding-expire-sweep.ts` adding `enqueueOutbox(tx, { topic: 'notification.supervisor_change', payload: { sourceAuditId, bindingId, eventKind } })` inside their existing txs. Real-DB integration tests verify audience resolution + coalescing + idempotent replay + cross-tenant isolation + localisation + edge cases.
+**Code (only after round-2 v11 scope-artifact approval):** new `apps/backend/src/lib/notification-composer.ts` (read-only audience resolver) + new dispatcher handler `apps/backend/src/dispatcher/handlers/notifications.ts` (INSERT-or-skip-on-P2002, ~15 lines of business logic). One-line edits to `handoff-package-writer.ts` + `binding-expire-sweep.ts` adding `enqueueOutbox(tx, { topic: 'notification.supervisor_change', payload: { sourceAuditId, bindingId, eventKind } })` inside their existing txs (plus return-value tweaks on `recordHandoffPackageGenerated` + `recordBindingEndedAuto` to return `{ id }`). Migration adds ONE partial unique index for idempotency + a DB CHECK constraint `(audienceUserId IS NULL) <> (audienceWorkerId IS NULL)` if not already present (P1 — invariants enforced, not described). Real-DB integration tests verify immutable-row semantics + idempotent replay + cross-tenant isolation + Telugu/Hindi localisation with apostrophe + edge cases.
 
-**Why this code is necessary:** Decision 4 (closure §5) makes worker-side supervisor-change notification MANDATORY. The audit pain (Suresh Month 8a / 9a) is concrete: Lakshmi appears at Suresh's site, no notification, no way to know who to call when something goes wrong. F-007 is the natural F-003/F-004 consumer — it tests whether the audit events that F-003/F-004 emit are sufficient shape for downstream notification needs (vertical-slice feedback loop per `feedback_vertical_slices_not_backend_first.md`).
+**Why this code is necessary:** Decision 4 (closure §5) makes worker-side supervisor-change notification MANDATORY. The audit pain (Suresh Month 8a / 9a) is concrete: Lakshmi appears at Suresh's site, no notification, no way to know who to call when something goes wrong. F-007 is the canonical persistence layer beneath that future delivery — Decision 4 compliance lands across F-007 (persistence) + F-011 (OneSignal SDK + delivery adapter + delivery-time audit emit) + F-006 (worker mobile in-app panel) + optionally F-012 (paid SMS/WhatsApp).
 
 ## Current
 
-| Field                  | Value                                                                                                                                                                                                                                                                                                                                            |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Slice name**         | `notification-dispatcher` (F-007 round 1 — worker-side supervisor-change only)                                                                                                                                                                                                                                                                   |
-| **Status**             | `SCOPE_DRAFT_PENDING_REVIEW` 2026-05-16 — scope artifact at [handoff/feature-queue/scopes/F-007.md](handoff/feature-queue/scopes/F-007.md). 8 picks + 5 open Qs surfaced. Owner explicitly picks Open Q1 (5-channel rows per audience vs in_app_banner-only). Code does not start until owner + friend sign off.                                 |
-| **Branch**             | `feat/f-007-notification-dispatcher` — forked from main `04c5e59` 2026-05-16 to host the scope artifact + the eventual code slice (no code yet)                                                                                                                                                                                                  |
-| **Last landed commit** | `04c5e59` — `docs(handoff): F-004 → DONE; merged to main at b19e03c; next-slice picker surfaced` (last commit on main before this branch forked)                                                                                                                                                                                                 |
-| **Dependencies**       | F-001 + F-002 + S-001 + F-003 + F-004 — all DONE on main. F-007 consumes F-004's `HANDOFF_PACKAGE_GENERATED` audit + F-003's `BINDING_ENDED_AUTO` audit. Notification table + Zod schemas already shipped (no migration). Closure spec §7 audience rules + Decision 4 (mandatory worker-side supervisor-change notification) lock the behaviour. |
-| **Tests status**       | n/a — code not started; scope phase                                                                                                                                                                                                                                                                                                              |
-| **Verification gate**  | will be `REAL_DB` once code lands (~120 cases total: 109 prior baseline + ~10 new F-007 cases)                                                                                                                                                                                                                                                   |
+| Field                  | Value                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**         | `notification-dispatcher` (F-007 round 2 v11 — Notification persistence + audience resolution for `supervisor_change`)                                                                                                                                                                                                                             |
+| **Status**             | `SCOPE_DRAFT_PENDING_REVIEW (round 2 v11 — OneSignal direction + reachability + pricing + deactivation/removal policy + collapsed eligibility rule)` 2026-05-16. Scope artifact at [handoff/feature-queue/scopes/F-007.md](../feature-queue/scopes/F-007.md). 8 picks; no blocking owner picks; recommended defaults stand unless owner overrides. |
+| **Branch**             | `feat/f-007-notification-dispatcher` — forked from main `04c5e59` 2026-05-16. v11 scope + tracker propagation lands as next commit; no code yet.                                                                                                                                                                                                   |
+| **Last landed commit** | `04c5e59` — `docs(handoff): F-004 → DONE; merged to main at b19e03c; next-slice picker surfaced`                                                                                                                                                                                                                                                   |
+| **Dependencies**       | F-001 + F-002 + S-001 + F-003 + F-004 — all DONE on main. F-007 consumes F-004's `HANDOFF_PACKAGE_GENERATED` + F-003's `BINDING_ENDED_AUTO`. Notification table + Zod schemas already shipped — only ONE partial unique index migration (+ possibly a DB CHECK constraint if not already present) for idempotent replay.                           |
+| **Tests status**       | n/a — code not started; scope-artifact phase                                                                                                                                                                                                                                                                                                       |
+| **Verification gate**  | will be `REAL_DB` once code lands (~120 cases total: 109 prior baseline + ~11 new F-007 cases)                                                                                                                                                                                                                                                     |
 
-## §0 Pre-decided product behavior (rule 27, locked in F-007 scope)
+## §0 Pre-decided product behavior (rule 27, locked in F-007 v11 scope)
 
-Full §0 lives in [handoff/feature-queue/scopes/F-007.md §0](handoff/feature-queue/scopes/F-007.md). Summary of the owner-locked product behaviors F-007 must conform to:
+Full §0 lives in [handoff/feature-queue/scopes/F-007.md §0](../feature-queue/scopes/F-007.md). Summary of the owner-locked product behaviors F-007 must conform to:
 
-- **Worker MUST be notified when their supervisor changes (closure Decision 4 — locked).** Push + in-app banner + SMS fallback. Localised to worker's `preferredLanguage`. Fires on every binding change to a worker's site.
-- **Event-driven, audience-resolved (closure §7).** Outbox topic fires → audience resolution job → Notification rows → channel handlers per row.
-- **Audience per kind (closure §7):** `supervisor_change` → affected workers + outgoing supervisor + incoming supervisor.
-- **Coalescing rule:** multi-binding events for the same supervisor pair within a short window → one notification per audience member.
-- **Channel fallback chain:** push → SMS → WhatsApp-out → email. in_app_banner is parallel (always-on).
-- **Localisation:** rendered in recipient's `User.preferredLanguage` / `Worker.preferredLanguage`.
-- **Vertical-slices methodology (locked 2026-05-16 in `feedback_vertical_slices_not_backend_first.md`):** F-007 is a real consumer of F-003/F-004 emits, not more abstract backend. Backend-only is fine here because the consumer surface IS the production code path (worker-app banner; future channel adapters).
+- **Worker MUST be notified when their supervisor changes (closure Decision 4 — locked).** Push + in-app banner (+ SMS fallback in F-012). Localised. Multi-site workers receive one notification per site, NOT aggregated (Decision 4 line 80 verbatim).
+- **F-007 produces persistence + audience-resolved Notification rows; delivery is separate.** Vertical-slices methodology (`feedback_vertical_slices_not_backend_first.md`). Round 1 = groundwork beneath Decision 4 delivery.
+- **Immutable rows; no write-time coalescing (v7 reset).** Every (source event × recipient × channel × site) = one row. Grouping is presentation-side (F-006 / F-007b).
+- **OneSignal is the managed push provider (v8).** Our DB owns truth + audit + history + panel; OneSignal owns push subscription plumbing + delivery transport. F-006 reads OUR Notification table, NOT OneSignal in-app messages.
+- **Channel set = push + in_app_banner**, with `Worker.userId IS NULL` exception (in_app_banner only).
+- **`push` = push INTENT row** for a user-backed recipient; reachability is checked at F-011 dispatch time, not F-007 write time.
+- **Outbox + same-tx invariant (v11 panel-test Maya LOCKED):** binding write + audit emit + `enqueueOutbox(tx, ...)` commit together or none commit.
+- **Localisation:** rendered via `${var}` placeholder with escape rule for `${`, `}`, `\\`, single/double-quote, devanagari combining marks. Worker source: `Worker.preferredLanguage`. Supervisor source: `User.locale`. Fallback Policy → 'hi'.
 
-## 8 picks proposed in the scope artifact
+## 8 picks proposed in the round-2 v11 scope artifact
 
-Full text + rule-26 existing-pattern survey + rule-27 §0 (4-bucket Q3) live in [handoff/feature-queue/scopes/F-007.md](handoff/feature-queue/scopes/F-007.md). Summary:
+Full text + rule-26 existing-pattern survey + rule-27 §0 (4-bucket Q3) live in [handoff/feature-queue/scopes/F-007.md](../feature-queue/scopes/F-007.md). Summary:
 
-1. **Source events subscribed** — `HANDOFF_PACKAGE_GENERATED` (F-004) + `BINDING_ENDED_AUTO` (F-003). Other binding kinds covered transitively or deferred.
-2. **Architecture** — Pattern A (outbox emit inside source tx). One-line `enqueueOutbox` addition in F-004's `writeHandoffPackage` + F-003's sweep. Dispatcher handler `notification.supervisor_change` calls `composeSupervisorChangeNotifications`.
-3. **Notification kind + payload shape** — `kind: 'supervisor_change'`; payload `{ messageKey, messageVars, sourceAuditId, bindingId, siteId, outgoingSupervisorId, incomingSupervisorId, eventKind }`. Template rendered per recipient.preferredLanguage at read time.
-4. **Audience resolution** — workers ACTIVE on site at event time + outgoing + incoming. Workers without User get `audienceWorkerId` only.
-5. **Channels per audience entry** — Open Q1 owner pick: 5-row (in_app_banner real + 4 log-stub) OR 1-row (in_app_banner only).
-6. **Coalescing** — 60-second sliding window per (companyId, outgoing, incoming, recipient). Payload's `bindingId` + `siteId` become arrays.
-7. **Idempotent replay** — partial unique index on `Notification (companyId, COALESCE(audienceUserId, sentinel), COALESCE(audienceWorkerId, sentinel), kind, payload->>'sourceAuditId') WHERE kind='supervisor_change'`. P2002 → handler treats as no-op race-loser.
-8. **WORKER_SUPERVISOR_CHANGE_NOTIFIED audit** — one per worker Notification row. Supervisor-side notifications don't emit this audit (worker-compliance-specific).
+1. **Source events subscribed** — `HANDOFF_PACKAGE_GENERATED` (F-004) + `BINDING_ENDED_AUTO` (F-003).
+2. **Architecture** — Pattern A (outbox emit inside source tx). One-line `enqueueOutbox` additions in F-004 + F-003. **v11 panel-test Maya invariant LOCKED:** same-tx atomicity.
+3. **Notification kind + payload shape** — `kind: 'supervisor_change'`. Single flat Zod record (NO discriminated union). `schemaVersion: 1` first field. Fields: `messageKey + messageVars + eventKind + bindingId + outgoingSupervisorId + incomingSupervisorId + siteId + sourceAuditId + effectiveAt`. No parallel arrays, no `firstSourceAuditId`, no `recipientKind` (audience FK on the row already encodes it).
+4. **Audience resolution** — workers ACTIVE on site at event `effectiveAt` + outgoing + incoming. Workers without `User` get `audienceWorkerId` only.
+5. **Channels per audience entry** — `push` + `in_app_banner` (with `Worker.userId IS NULL` → in_app_banner only). `push` = INTENT; reachability is F-011's concern.
+6. **Coalescing** — NONE in persistence. Workers + supervisors both one-per-(recipient, channel, siteId, sourceAuditId). Grouping is presentation-side.
+7. **Idempotent replay** — ONE partial unique index `(companyId, kind, channel, COALESCE(audienceUserId::text, ''), COALESCE(audienceWorkerId::text, ''), payload->>'sourceAuditId', payload->>'siteId') WHERE kind='supervisor_change'`. P2002 → handler logs `idempotent_skip` and continues. **v11 panel-test Vikram (P1):** also add DB CHECK constraint `(audienceUserId IS NULL) <> (audienceWorkerId IS NULL)` if not already present.
+8. **No audit emit from F-007 round 1** — `WORKER_SUPERVISOR_CHANGE_NOTIFIED` fires in F-011 at delivery time.
 
-## 5 small open Qs (recommended defaults; Open Q1 is the only blocker)
+## 3 open Qs (recommended defaults; no blockers)
 
-- **Q1 BLOCKER** — channels per audience entry: 5-row variant vs 1-row variant. Recommended: 1-row (in_app_banner only) — friend's vertical-slice rule favours narrow scope; expand when real channel adapters land. Alternative 5-row variant creates rows for future adapters' observability. Owner picks.
-- **Q2** — template source: (a) hardcoded Record<lang, string> in composer (default; 1 slice's worth of strings); (b) Policy table; (c) i18n file. Default (a) for round 1.
-- **Q3** — round-1 language coverage: 'hi' + 'en' default; other languages fall back to 'hi'.
+- **Q2** — template source: hardcoded `Record<lang, string>` in composer for round 1; Policy-driven future sub-slice.
+- **Q3** — round-1 language coverage: 'hi' + 'en' + 'te'; others fall back to 'hi'.
 - **Q4** — F-003 BINDING_ENDED_AUTO with no permanent-supervisor-at-end: skip notification, warning log, no throw.
-- **Q5** — log-stub channel records (if Q1 picks 5-row): handlers set `deliveredAt` immediately for observability + worker-app rendering.
+
+**Round 2 v11 has no blocking owner picks** — Open Q1 (5-row vs 1-row) was REMOVED with the v2 channel-set decision; Open Q5 (log-stub semantics) was REMOVED because v11 doesn't fake delivery.
 
 ## Audit emits on F-007 run
 
-- N× `WORKER_SUPERVISOR_CHANGE_NOTIFIED` (one per worker Notification row — Decision 4 audit-trail compliance).
-- N× new Notification rows persisted (sets up worker-app reads + downstream Digest composer).
+- **ZERO audit emits from F-007 round 1.** `WORKER_SUPERVISOR_CHANGE_NOTIFIED` fires at delivery time in F-011, not at persistence time in F-007. Tests assert this count stays 0 after every scenario.
+- N× new Notification rows persisted (sets up F-011 delivery + F-006 worker-app reads + downstream Digest composer).
 
 ## What this slice does NOT do (explicit non-claims)
 
-- Does NOT wire real Gupshup / FCM / Twilio / SES channel adapters — deferred to a Phase C sub-slice per master plan §G.7.
-- Does NOT implement other notification kinds (termination_applied, leave_status, replacement_invite, flag_alert, hr_update, ai_budget_alert) — round 2+ sub-slices.
-- Does NOT build the worker-app banner UI — F-006 (worker mobile scaffold).
-- Does NOT build the Digest composer ("while you were out", monthly owner) — separate slice; F-007 emits the source Notification rows.
-- Does NOT implement the channel-fallback retry chain (push fails → SMS → WhatsApp → email) — lands with real channel adapters.
-- Does NOT add Policy-driven per-tenant overrides — closure-spec defaults verbatim in round 1.
-- Does NOT touch F-001 / F-002 / S-001 / F-003 / F-004 behaviour. F-003 + F-004 each gain ONE outbox-emit line; no other change.
+- Does NOT install OneSignal SDK or build the push delivery adapter — **F-011** (OneSignal mobile SDK + identity linking via `OneSignal.login(external_id = User.id)` + provider delivery adapter + pre-dispatch eligibility re-check + typed `failureReason` enum + delivery-time `WORKER_SUPERVISOR_CHANGE_NOTIFIED` audit emit).
+- Does NOT build the worker / supervisor mobile in-app notification panel — **F-006** (our own panel, NOT OneSignal in-app messages; reads OUR Notification table; writes `ackedAt` on dismiss/read).
+- Does NOT build supervisor burst grouping UI — **F-006** (UI aggregation) or optional future **F-007b** (send-time digest).
+- Does NOT add SMS / WhatsApp adapters — **F-012** (paid; AWAITING_OWNER_GO_ON_PAID_CHANNELS; primary use: deliver to `Worker.userId IS NULL` recipients via `Worker.phone`).
+- Does NOT implement other notification kinds (`termination_applied`, `leave_status`, `replacement_invite`, `flag_alert`, `hr_update`, `ai_budget_alert`) — round 2+ sub-slices of F-007.
+- Does NOT build the Digest composer ("while you were out", monthly owner) — separate slice; F-007 emits the source rows.
+- Does NOT extend `Device` with `pushToken` / `pushPlatform` / `tokenUpdatedAt` — OneSignal SDK owns subscription/token lifecycle entirely.
+- Does NOT lock OneSignal pricing thresholds into the architecture artifact — billing is per active mobile subscription (1 user × 2 devices = 2 MAUs); verify current OneSignal billing before go-live / scale-up decisions.
+- Does NOT solve the persistent push-delivery gap for `Worker.userId IS NULL` recipients (v11 panel-test Suresh Pillai): no `external_id` → no OneSignal subscription → no push delivery, ever, even after F-011 ships. `in_app_banner` is also unreachable for them until F-006 worker login flow creates a User. Real resolution: F-012 SMS via `Worker.phone` OR future user-creation/login path.
+- Does NOT touch F-001 / F-002 / S-001 / F-003 / F-004 behaviour beyond one outbox-emit line each + return-value tweaks on two typed audit helpers.
 
 ## Reproduction (current baseline, pre-F-007 code)
 
@@ -103,13 +107,13 @@ pnpm exec vitest run \
   test/handoff-package-composer.test.ts
 ```
 
-Expected: 19 files, 109 cases, all green. F-007 adds `test/notification-supervisor-change.test.ts` (~10 cases) → 20 files / ~120 cases.
+Expected: 19 files, 109 cases, all green. F-007 adds `test/notification-supervisor-change.test.ts` (~11 cases) → 20 files / ~120 cases total.
 
 ## Decision needed (owner + friend, before any F-007 code)
 
-- `SCOPE: APPROVED (round 1)` + **owner picks Open Q1 (5-row vs 1-row)** → I begin code immediately on `feat/f-007-notification-dispatcher`. Stop at `AWAITING_APPROVAL` after new test sweep is green (~120 cases).
+- `SCOPE: APPROVED (round 2 v11)` (8 picks + 3 open-Q recommended defaults stand) → I begin code immediately on `feat/f-007-notification-dispatcher`. Stop at `AWAITING_APPROVAL` after new test sweep is green (~120 cases).
 - `SCOPE: CHANGES_REQUESTED on pick N or Open Q N` → I update + re-surface.
-- `HOLD` → F-007 pauses; surface a different next slice instead (F-005 admin HR portal / F-006 worker mobile / F-009 project memory / F-010 handoff v2).
+- `HOLD` → F-007 pauses; surface a different next slice instead.
 
 ## F-001..F-004 closure summary (for cross-slice context)
 
