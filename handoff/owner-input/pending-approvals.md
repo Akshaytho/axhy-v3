@@ -20,7 +20,9 @@
 
 ## Currently awaiting approval
 
-### Slice: `cron-framework-binding-expire-sweep` (F-003 — scope approval, RE-SCOPED 2026-05-16) — AWAITING_SCOPE_APPROVAL 2026-05-16
+### Slice: `cron-framework-binding-expire-sweep` (F-003 — scope LOCKED 2026-05-16) — SCOPE_LOCKED, code slice next
+
+**Status note (2026-05-16):** Owner approved Approach A (polling sweep, every 5 minutes, idempotent via audit-existence check, one tx per row) AND explicitly rejected Approach B (one-time scheduled trigger per binding) after a head-to-head comparison on cost / complexity / failure recovery / edit-cancel handling / Railway-stack fit. Permanent record in `handoff/feature-queue/scopes/F-003.md` §3. All 7 picks locked there. Owner verbatim: "Stay with A. Add this comparison into the tracker/scope artifact so we have a permanent record of why we rejected the more complex per-binding trigger design." Code slice may begin; stops at `AWAITING_APPROVAL`.
 
 **Status note (2026-05-16 evening):** owner directed a re-scope after friend caught 2 contradictions in the prior draft (transaction shape inconsistent, cadence inconsistent with closure spec §10). Owner's directive: cron is NOT the source of truth for supervisor switching — that's already time-based via `getEffectiveBinding`'s read-time predicate. Cron is for post-expiry side effects only (audit emit, later digest, later notifications). This matches Oracle / Workday / SAP effective-dating patterns: source-of-truth is date-based; scheduled jobs handle side effects.
 

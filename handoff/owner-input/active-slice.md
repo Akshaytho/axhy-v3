@@ -31,15 +31,15 @@ This matches mature enterprise patterns: Oracle / Workday / SAP all use effectiv
 
 ## Current
 
-| Field                  | Value                                                                                                                                                                                                |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**         | `cron-framework-binding-expire-sweep` (F-003)                                                                                                                                                        |
-| **Status**             | `PLANNED — AWAITING_SCOPE_APPROVAL` (scope artifact draft to land at `handoff/feature-queue/scopes/F-003.md`; owner + friend approve picks; then code)                                               |
-| **Branch**             | `feat/layer-1-core-primitives` (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion |
-| **Last landed commit** | `2a0f27c` — `docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)` (S-001 closure tracker propagation; S-001 is APPROVED)                                                           |
-| **Dependencies**       | F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met                                                                                                      |
-| **Tests status**       | n/a — code not started; scope phase                                                                                                                                                                  |
-| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                                                    |
+| Field                  | Value                                                                                                                                                                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**         | `cron-framework-binding-expire-sweep` (F-003)                                                                                                                                                                                                        |
+| **Status**             | `SCOPE_LOCKED — READY FOR CODE` (owner approved A polling-sweep + rejected B one-time-trigger 2026-05-16; scope artifact landed at `handoff/feature-queue/scopes/F-003.md` with permanent A-vs-B record; all 7 picks locked; code slice starts next) |
+| **Branch**             | `feat/layer-1-core-primitives` (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion                                                 |
+| **Last landed commit** | `2a0f27c` — `docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)` (S-001 closure tracker propagation; S-001 is APPROVED)                                                                                                           |
+| **Dependencies**       | F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met                                                                                                                                                      |
+| **Tests status**       | n/a — code not started; scope phase                                                                                                                                                                                                                  |
+| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                                                                                                    |
 
 ## Two contradictions in the prior draft (caught by friend 2026-05-16, fixed here)
 
@@ -119,10 +119,7 @@ Expected: 17 files, 84 cases, all green.
 
 ## Decision needed (owner + friend, before any F-003 code)
 
-- `SCOPE: GO with default picks (1: OS-cron + HTTP endpoint · 2: CLOSED at every 5 minutes per closure spec §10 line 560 · 3: sweep exempt from S-001 · 4: one tx per row · 5: rely on idempotency · 6: BINDING_ENDED_AUTO payload as above · 7: idempotency-marker = audit-existence check, no schema change)` → I draft the scope artifact at `handoff/feature-queue/scopes/F-003.md` capturing the picks; on owner sign-off, code begins.
-- `SCOPE: change picks` → name what to change.
-- `HOLD` → F-003 pauses; surface a different next slice instead (e.g. F-004 HandoffPackage composer, F-005 HR portal scaffold, or a separate cleanup).
-- `MERGE FIRST` → owner merges `feat/layer-1-core-primitives` to main first to graduate F-002 + S-001 from APPROVED to DONE; F-003 picks up after.
+**Scope locked 2026-05-16.** Owner approved Approach A (polling sweep) + rejected Approach B (one-time scheduled trigger per binding) with permanent record in `handoff/feature-queue/scopes/F-003.md` §3. All 7 picks locked there. The next commit begins the code slice; it stops at `AWAITING_APPROVAL` per the locked execution rule. Owner's `MERGE FIRST` option remains independent — can be exercised before or after the F-003 code slice at owner's discretion.
 
 ## Hash-truth convention
 
