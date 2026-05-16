@@ -20,7 +20,39 @@
 
 ## Currently awaiting approval
 
-### Slice: `cron-framework-binding-expire-sweep` (F-003 — scope LOCKED 2026-05-16) — SCOPE_LOCKED, code slice next
+### Slice: `cron-framework-binding-expire-sweep` (F-003 — code complete) — AWAITING_APPROVAL 2026-05-16
+
+**Problem in simple English:** when an acting supervisor's `effectiveUntil` passes, responsibility flips back to the underlying binding automatically (already correct via `getEffectiveBinding`'s read-time predicate). But there was no scheduled trigger emitting a `BINDING_ENDED_AUTO` audit row, which downstream slices (digest, notifications, audit-trail reports) eventually need.
+
+**Simplest business solution:** piggyback on the existing outbox dispatcher tick (same pattern as `maybeResetAiSpend`). In-memory marker gates real work to every 5 minutes. For each expired binding without a `BINDING_ENDED_AUTO` audit, emit one. Per-row tx. No row mutation. No new HTTP route. No new schema column.
+
+**Code fix (one commit, `737c066`):**
+
+- NEW `apps/backend/src/jobs/binding-expire-sweep.ts` — `maybeRunBindingExpireSweep` with first-boot path + 5-min cadence gate + per-row tx + audit-existence idempotency + defense-in-depth re-check inside each tx.
+- WIRED `apps/backend/src/dispatcher/index.ts:tick` — one new call next to `maybeResetAiSpend`, same `.catch()` wrapper.
+- NEW `packages/shared-schema/src/zod/audit-payloads.ts` — `BindingEndedAutoPayloadSchema` + type.
+- WIRED `apps/backend/src/lib/site-supervisor-binding.ts` — `recordBindingEndedAuto` typed helper.
+- NEW `apps/backend/test/binding-expire-sweep.test.ts` — 8 real-DB integration cases.
+
+**Why this code is necessary:** without the audit emit, future consumers (notification dispatcher F-007, "while you were out" digest, audit-trail reports) have no signal that a binding expired. The audit is the durable event that downstream features consume. The sweep deliberately does NOT mutate the binding row (would break historical point-in-time queries via `getEffectiveBinding`) and deliberately does NOT decide who is the current supervisor (that's already time-based via read-time predicate).
+
+**What is NOT in this slice:**
+
+- No other sweep jobs (decision-expire, flagged-visit-auto-escalate, hr-queue-age-escalation, hr-availability-sweep) — separate later slices on the same framework.
+- No "while you were out" digest — separate downstream-consumer slice.
+- No notification dispatcher — separate F-007 slice.
+- No row mutation, no `endedAt` write on auto-expired bindings.
+- No HR API changes, no S-001 guard changes.
+
+**Verification:** REAL_DB on fresh local Postgres 16, all migrations applied. **18/18 test files green · 92/92 cases pass** in one sweep (84 prior baseline + 8 F-003 new). Reproduction snippet in `active-slice.md`.
+
+**F-003 commits:** `39b47b8` (scope LOCKED + A-vs-B record on prior branch) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback) · `737c066` (code slice).
+
+**Decision needed:** `APPROVED` / `CHANGES_REQUESTED` / `HOLD`. If APPROVED → ready to merge `feat/f-003-cron-framework` to main.
+
+---
+
+### Spec-lock checkpoint preserved (kept for cross-slice audit, superseded by AWAITING_APPROVAL above)
 
 **Status note (2026-05-16):** Owner approved Approach A (polling sweep, every 5 minutes, idempotent via audit-existence check, one tx per row) AND explicitly rejected Approach B (one-time scheduled trigger per binding) after a head-to-head comparison on cost / complexity / failure recovery / edit-cancel handling / Railway-stack fit. Permanent record in `handoff/feature-queue/scopes/F-003.md` §3. All 7 picks locked there. Owner verbatim: "Stay with A. Add this comparison into the tracker/scope artifact so we have a permanent record of why we rejected the more complex per-binding trigger design." Code slice may begin; stops at `AWAITING_APPROVAL`.
 

@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T06:26:21.128Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>a29f9f6c</code></span>
+      <span>Generated <strong>2026-05-16T06:41:58.448Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>737c066c</code></span>
       <span>Branch <code>feat/f-003-cron-framework</code></span>
-      <span>Active slice: <strong>cron-framework-binding-expire-sweep (F-003) · SCOPE_LOCKED — READY FOR CODE (owner approved A polling-sweep + rejected B one-time-trigger 2026-05-16; scope artifact landed at handoff/feature-queue/scopes/F-003.md with permanent A-vs-B record; all 7 picks locked; code slice starts next)</strong></span>
+      <span>Active slice: <strong>cron-framework-binding-expire-sweep (F-003) · AWAITING_APPROVAL (code slice complete on dispatcher-piggyback pattern; 18/18 test files green · 92/92 cases pass; stop for review per friend's execution rule)</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>cron-framework-binding-expire-sweep</code> (F-003)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_LOCKED — READY FOR CODE (owner approved A polling-sweep + rejected B one-time-trigger 2026-05-16; scope artifact landed at handoff/feature-queue/scopes/F-003.md with permanent A-vs-B record; all 7 picks locked; code slice starts next)</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code> (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion</td></tr><tr><th>Last landed commit</th><td><code>2a0f27c</code> — <code>docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)</code> (S-001 closure tracker propagation; S-001 is APPROVED)</td></tr><tr><th>Dependencies</th><td>F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — code not started; scope phase</span></td></tr><tr><th>Verification gate</th><td>will be <code>REAL_DB</code> once code lands</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>cron-framework-binding-expire-sweep</code> (F-003)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">AWAITING_APPROVAL (code slice complete on dispatcher-piggyback pattern; 18/18 test files green · 92/92 cases pass; stop for review per friend's execution rule)</span></td></tr><tr><th>Branch</th><td><code>feat/f-003-cron-framework</code> (forked from main <code>a29f9f6</code> after F-002 + S-001 merged DONE)</td></tr><tr><th>Last landed commit</th><td><code>737c066</code> — <code>feat(jobs): binding-expire-sweep + dispatcher wire-in + audit payload schema (F-003.1, 8 tests / 92/92 cases green)</code></td></tr><tr><th>F-003 commits (oldest→newest)</th><td><code>39b47b8</code> (scope LOCKED + A-vs-B record on feat/layer-1-core-primitives) · <code>a29f9f6</code> (merge of F-001 + F-002 + S-001 + scope to main) · <code>74c1e9d</code> (pick 1 corrected pre-code — dispatcher-tick piggyback, not OS-cron + HTTP) · <code>737c066</code> (code slice)</td></tr><tr><th>Dependencies</th><td>F-001 + F-002 + S-001 — all APPROVED + DONE (merged to main at <code>a29f9f6</code>)</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">**18/18 test files green · 92/92 cases pass** on fresh local Postgres 16 (84 baseline + 8 F-003 new). One full sweep, ~20s.</span></td></tr><tr><th>Verification gate</th><td><code>REAL_DB</code> — fresh local Postgres 16 (Docker container <code>axhy-test-pg</code>, port 55432), all migrations applied.</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -219,7 +219,7 @@
       <details class="feature">
         <summary>
           <code>F-003</code>
-          <span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_LOCKED</span>
+          <span class="badge" style="background:#f5b400;color:#fff;">AWAITING_APPROVAL</span>
           <strong>Cron framework + `binding-expire-sweep` (RE-SCOPED 2026-05-16)</strong>
         </summary>
         <div class="feature-body">

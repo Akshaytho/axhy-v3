@@ -31,15 +31,16 @@ This matches mature enterprise patterns: Oracle / Workday / SAP all use effectiv
 
 ## Current
 
-| Field                  | Value                                                                                                                                                                                                                                                |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**         | `cron-framework-binding-expire-sweep` (F-003)                                                                                                                                                                                                        |
-| **Status**             | `SCOPE_LOCKED — READY FOR CODE` (owner approved A polling-sweep + rejected B one-time-trigger 2026-05-16; scope artifact landed at `handoff/feature-queue/scopes/F-003.md` with permanent A-vs-B record; all 7 picks locked; code slice starts next) |
-| **Branch**             | `feat/layer-1-core-primitives` (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion                                                 |
-| **Last landed commit** | `2a0f27c` — `docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)` (S-001 closure tracker propagation; S-001 is APPROVED)                                                                                                           |
-| **Dependencies**       | F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met                                                                                                                                                      |
-| **Tests status**       | n/a — code not started; scope phase                                                                                                                                                                                                                  |
-| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                                                                                                    |
+| Field                             | Value                                                                                                                                                                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Slice name**                    | `cron-framework-binding-expire-sweep` (F-003)                                                                                                                                                                                                          |
+| **Status**                        | `AWAITING_APPROVAL` (code slice complete on dispatcher-piggyback pattern; 18/18 test files green · 92/92 cases pass; stop for review per friend's execution rule)                                                                                      |
+| **Branch**                        | `feat/f-003-cron-framework` (forked from main `a29f9f6` after F-002 + S-001 merged DONE)                                                                                                                                                               |
+| **Last landed commit**            | `737c066` — `feat(jobs): binding-expire-sweep + dispatcher wire-in + audit payload schema (F-003.1, 8 tests / 92/92 cases green)`                                                                                                                      |
+| **F-003 commits (oldest→newest)** | `39b47b8` (scope LOCKED + A-vs-B record on feat/layer-1-core-primitives) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback, not OS-cron + HTTP) · `737c066` (code slice) |
+| **Dependencies**                  | F-001 + F-002 + S-001 — all APPROVED + DONE (merged to main at `a29f9f6`)                                                                                                                                                                              |
+| **Tests status**                  | **18/18 test files green · 92/92 cases pass** on fresh local Postgres 16 (84 baseline + 8 F-003 new). One full sweep, ~20s.                                                                                                                            |
+| **Verification gate**             | `REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all migrations applied.                                                                                                                                             |
 
 ## Two contradictions in the prior draft (caught by friend 2026-05-16, fixed here)
 
@@ -119,7 +120,85 @@ Expected: 17 files, 84 cases, all green.
 
 ## Decision needed (owner + friend, before any F-003 code)
 
-**Scope locked 2026-05-16.** Owner approved Approach A (polling sweep) + rejected Approach B (one-time scheduled trigger per binding) with permanent record in `handoff/feature-queue/scopes/F-003.md` §3. All 7 picks locked there. The next commit begins the code slice; it stops at `AWAITING_APPROVAL` per the locked execution rule. Owner's `MERGE FIRST` option remains independent — can be exercised before or after the F-003 code slice at owner's discretion.
+**Code slice complete 2026-05-16.** Scope locked at `39b47b8` (Approach A approved, B rejected, A-vs-B record permanently in `handoff/feature-queue/scopes/F-003.md` §3). Pick 1 corrected pre-code at `74c1e9d` (dispatcher-tick piggyback, not OS-cron). Code landed at `737c066`. F-002 + S-001 merged to main at `a29f9f6` (now DONE). F-003 awaits friend's file-grounded review.
+
+## How the F-003 scope picks map to the landed code
+
+| Pick                   | Locked value                                                                             | Where it lands in code                                                                                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Scheduler shape     | Dispatcher-tick piggyback (corrected pre-code)                                           | `apps/backend/src/dispatcher/index.ts:tick` adds `maybeRunBindingExpireSweep` next to `maybeResetAiSpend`. Same `.catch()` wrapper. No HTTP route, no OS-cron entry.                  |
+| 2. Run cadence         | Every 5 min (per closure spec §10 line 560)                                              | `SWEEP_INTERVAL_MS = 5 * 60 * 1000` in `binding-expire-sweep.ts`. In-memory `lastSweepInstant` marker gates the sweep work even though dispatcher tick fires every ~2s.               |
+| 3. S-001 interaction   | Sweep exempt                                                                             | Sweep does not mutate the binding row, only emits an audit. Documented at the top of `binding-expire-sweep.ts`.                                                                       |
+| 4. Transaction shape   | One tx per row                                                                           | `emitAuditForOneBinding` wraps each row in its own `client.$transaction(...)`. Per-row failure caught + logged + counted; batch continues.                                            |
+| 5. Multi-replica dedup | Rely on idempotency                                                                      | Audit-existence check inside the per-row tx is the dedup mechanism. Verified by test case 8 (pre-seeded audit row → skipped).                                                         |
+| 6. Audit payload       | `{ bindingId, siteId, userId, actingForUserId, effectiveFrom, effectiveUntil, sweptAt }` | New `BindingEndedAutoPayloadSchema` in `packages/shared-schema/src/zod/audit-payloads.ts`. Validated via `recordBindingEndedAuto` typed helper in `site-supervisor-binding.ts`.       |
+| 7. Idempotency marker  | Audit-existence check (no schema change)                                                 | `findBindingsNeedingAuditEmit` queries expired bindings, then filters out those that already have a `BINDING_ENDED_AUTO` audit row. Defense-in-depth re-check inside each per-row tx. |
+
+## What landed (file inventory)
+
+- **NEW** `apps/backend/src/jobs/binding-expire-sweep.ts` — `maybeRunBindingExpireSweep` + `_resetSweepMarkerForTesting` + internal helpers (`emitAuditForOneBinding`, `findBindingsNeedingAuditEmit`).
+- **WIRED** `apps/backend/src/dispatcher/index.ts` — added import + one line in `tick()` calling the sweep next to `maybeResetAiSpend`, both `.catch()`-wrapped so a failure never breaks the outbox-poll loop.
+- **NEW** `packages/shared-schema/src/zod/audit-payloads.ts` — `BindingEndedAutoPayloadSchema` + `BindingEndedAutoPayload` type.
+- **WIRED** `apps/backend/src/lib/site-supervisor-binding.ts` — `recordBindingEndedAuto` typed helper (Zod-parses payload + hardcodes kind).
+- **NEW** `apps/backend/test/binding-expire-sweep.test.ts` — 8 real-DB integration cases (audit emit · idempotency · no-mutate · routing-unchanged · skip-manually-ended · first-boot · cadence gate · pre-seeded-audit skip + other-row continues).
+
+## What this slice does NOT do (preserved from scope §6)
+
+- Does not implement `decision-expire-sweep`, `flagged-visit-auto-escalate`, `hr-queue-age-escalation`, `hr-availability-sweep` — separate later slices on the same framework.
+- Does not implement the "while you were out" digest — separate downstream-consumer slice.
+- Does not introduce a new entity. `BINDING_ENDED_AUTO` audit kind already catalogued (closure spec §11).
+- Does not mutate the binding row (`endedAt` stays NULL on auto-expired rows — historical point-in-time queries via `getEffectiveBinding` continue to work).
+- Does not change the S-001 guard.
+- Does not push or merge `feat/f-003-cron-framework` — that's a separate ops step after friend's approval.
+
+## P10 failure matrix for F-003
+
+| Question                                                       | Answer                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What invariants does this slice introduce?                     | (1) Every binding whose `effectiveUntil` has passed gets exactly one `BINDING_ENDED_AUTO` audit row. (2) The sweep does not mutate the binding row. (3) Re-running the sweep is a no-op.                                                                                                                               |
+| How is each invariant enforced?                                | (1) `findBindingsNeedingAuditEmit` filters expired rows that already have audit, then emits one audit per remaining row. (2) Sweep code never writes to `siteSupervisorBinding` — only reads. (3) Audit-existence check at both the find-step and inside each per-row tx (defense-in-depth).                           |
+| What happens on per-row failure?                               | Per-row catch logs + increments `failed` counter; the batch continues with remaining rows. Next sweep tick picks the failed row up again automatically (the audit-existence predicate filters out rows that succeeded).                                                                                                |
+| What happens on batch-level failure (e.g. find query crashes)? | Outer catch logs + returns `{ran: false}` WITHOUT advancing the marker. Next tick retries the whole batch. The dispatcher's outbox-poll loop continues unaffected.                                                                                                                                                     |
+| What happens on multi-replica races?                           | Both replicas' find queries return the same candidate set. Each runs per-row tx with a defense-in-depth audit-existence re-check inside the tx — only the first replica's tx commits the audit; the second's re-check finds the audit already exists and returns early. No duplicate audits, no constraint violations. |
+| What happens for getEffectiveBinding consumers?                | Unchanged. The sweep does not mutate the binding row; `endedAt` stays NULL. Historical queries at `at < effectiveUntil` continue to return the binding correctly. Verified by test case 4.                                                                                                                             |
+| What happens for S-001 interaction?                            | Sweep is exempt. The S-001 guard runs on writes that set `effectiveFrom` / `effectiveUntil`; the sweep emits side-effect audit only and does not call any HR API path.                                                                                                                                                 |
+| What is still deferred?                                        | Other sweep jobs (decision-expire, flagged-visit-auto-escalate, hr-queue-age-escalation, hr-availability-sweep); "while you were out" digest; notification dispatcher F-007; multi-replica advisory lock; `Company.timeZone` column.                                                                                   |
+
+## Reproduction (full 18-file sweep)
+
+```
+docker exec axhy-test-pg pg_isready -U postgres
+cd apps/backend
+DATABASE_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
+AXHY_DB_URL="postgres://postgres:test@localhost:55432/axhy_test?schema=axhy" \
+pnpm exec vitest run \
+  test/effective-responsibility-helper.test.ts \
+  test/sites-effective-supervisor-route.test.ts \
+  test/decisions-proposed-for-me-route.test.ts \
+  test/effective-responsibility-point-in-time.test.ts \
+  test/supervisor-decision-writer-create.test.ts \
+  test/supervisor-decision-apply.test.ts \
+  test/decisions-dismiss-route.test.ts \
+  test/supervisor-decision-proposed-during-absence.test.ts \
+  test/chat-apply-transitions-decision.test.ts \
+  test/supervisor-decision-concurrency.test.ts \
+  test/supervisor-decision-new-kinds-routing.test.ts \
+  test/chat-apply-route-concurrency.test.ts \
+  test/chat-apply-atomicity.test.ts \
+  test/chat-apply-validation.test.ts \
+  test/chat-apply-stale-auth-route.test.ts \
+  test/binding-permanent-reassignment-basics.test.ts \
+  test/same-day-supervisor-freeze.test.ts \
+  test/binding-expire-sweep.test.ts
+```
+
+Expected: 18 files, 92 cases, all green (84 prior baseline + 8 new F-003 cases).
+
+## Decision needed on F-003 code
+
+- `APPROVED` → slice moves to APPROVED; ready to merge `feat/f-003-cron-framework` to main.
+- `CHANGES_REQUESTED` (bullet list) → name what to change.
+- `HOLD` → F-003 code pauses; next slice instead.
 
 ## Hash-truth convention
 
