@@ -110,6 +110,61 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutValue: T): Promi
 }
 
 /**
+ * One-shot runtime initialization of the OneSignal JS SDK.
+ *
+ * Friend's CODE-phase P1 (2026-05-17): the lifecycle hooks call
+ * `OneSignal.login` / `OneSignal.logout` / `OneSignal.Notifications.requestPermission`
+ * directly. None of those have any effect until the SDK has been
+ * initialized with the App ID — `app.config.ts` only wires the native
+ * build plugin, not the runtime JS surface.
+ *
+ * Must be called once per cold-start, BEFORE any identified-login or
+ * permission-prompt call. Root layout (`apps/mobile/app/_layout.tsx`)
+ * fires it on mount.
+ *
+ * No-ops cleanly when `shouldCallOneSignal()` is false (web / no App ID).
+ * Idempotent across repeated calls via a module-level latch — accidental
+ * second invocations from React StrictMode / fast refresh / re-mount are
+ * safe.
+ *
+ * @derives(F-006a CODE-phase friend P1 fix 2026-05-17)
+ */
+let oneSignalInitialized = false;
+
+export async function initializeOneSignal(): Promise<void> {
+  if (oneSignalInitialized) return;
+  if (!shouldCallOneSignal()) {
+    console.warn(
+      '[identity-lifecycle] OneSignal initialize skipped (web or no app id); push lifecycle will no-op this session.',
+    );
+    return;
+  }
+  const appId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+  if (!appId) return; // belt-and-braces; shouldCallOneSignal already covered this
+  try {
+    const mod = (await import('react-native-onesignal')) as unknown as {
+      OneSignal?: { initialize?: (id: string) => void };
+    };
+    const fn = mod.OneSignal?.initialize;
+    if (typeof fn !== 'function') {
+      console.warn(
+        '[identity-lifecycle] OneSignal.initialize missing on SDK; lifecycle will no-op',
+      );
+      return;
+    }
+    fn(appId);
+    oneSignalInitialized = true;
+  } catch (err) {
+    console.warn('[identity-lifecycle] OneSignal.initialize threw; lifecycle will no-op', err);
+  }
+}
+
+/** @internal — test-only escape hatch to reset the init latch between cases. */
+export function _resetOneSignalInitializedForTests(): void {
+  oneSignalInitialized = false;
+}
+
+/**
  * Dynamically resolve the OneSignal SDK so the module is import-safe on
  * web (where the native SDK throws at import time). Tests mock this via
  * vi.mock('react-native-onesignal').

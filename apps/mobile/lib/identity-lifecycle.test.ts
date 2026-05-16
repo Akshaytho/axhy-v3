@@ -26,6 +26,8 @@ import {
   onAppLogout,
   onColdStartReady,
   shouldCallOneSignal,
+  initializeOneSignal,
+  _resetOneSignalInitializedForTests,
   NonSupervisorRoleNotSupportedError,
 } from './identity-lifecycle';
 
@@ -45,11 +47,14 @@ vi.mock('jwt-decode', () => ({
   jwtDecode: vi.fn(() => ({ userId: 'user-uuid-123' })),
 }));
 
-// Mock react-native-onesignal — `_resolveOneSignal()` dynamically imports it.
+// Mock react-native-onesignal — `_resolveOneSignal()` + `initializeOneSignal()`
+// dynamically import it.
+const oneSignalInitialize = vi.fn((_id: string) => {});
 const oneSignalLogin = vi.fn(async (_id: string) => {});
 const oneSignalLogout = vi.fn(async () => {});
 vi.mock('react-native-onesignal', () => ({
   OneSignal: {
+    initialize: (id: string) => oneSignalInitialize(id),
     login: (id: string) => oneSignalLogin(id),
     logout: () => oneSignalLogout(),
   },
@@ -75,12 +80,14 @@ beforeEach(() => {
   mockedClearTokens.mockClear();
   mockedJwtDecode.mockReset();
   mockedJwtDecode.mockReturnValue({ userId: 'user-uuid-123' });
+  oneSignalInitialize.mockReset();
   oneSignalLogin.mockReset();
   oneSignalLogin.mockResolvedValue(undefined);
   oneSignalLogout.mockReset();
   oneSignalLogout.mockResolvedValue(undefined);
   (Platform as { OS: string }).OS = 'ios';
   process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID = 'test-app-id';
+  _resetOneSignalInitializedForTests();
 });
 
 afterEach(() => {
@@ -238,5 +245,42 @@ describe('identity-lifecycle — onColdStartReady', () => {
     expect(mockedClearTokens).toHaveBeenCalledTimes(1);
     expect(oneSignalLogin).not.toHaveBeenCalled();
     expect(result.route).toBe('/(auth)/phone');
+  });
+});
+
+describe('identity-lifecycle — initializeOneSignal (friend P1 fix)', () => {
+  // Case 11: native + App ID present → SDK initialize called exactly once,
+  // even if initializeOneSignal() is invoked multiple times.
+  it('calls OneSignal.initialize(appId) exactly once; idempotent across repeated calls', async () => {
+    await initializeOneSignal();
+    await initializeOneSignal();
+    await initializeOneSignal();
+
+    expect(oneSignalInitialize).toHaveBeenCalledTimes(1);
+    expect(oneSignalInitialize).toHaveBeenCalledWith('test-app-id');
+  });
+
+  // Case 12: web platform → init skipped entirely, warning logged
+  it('on web platform: skips OneSignal.initialize; warning logged', async () => {
+    (Platform as { OS: string }).OS = 'web';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await initializeOneSignal();
+
+    expect(oneSignalInitialize).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  // Case 13: no App ID → init skipped, warning logged
+  it('with no EXPO_PUBLIC_ONESIGNAL_APP_ID: skips OneSignal.initialize; warning logged', async () => {
+    delete process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await initializeOneSignal();
+
+    expect(oneSignalInitialize).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });

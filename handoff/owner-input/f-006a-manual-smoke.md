@@ -4,6 +4,29 @@
 
 > Pre-requisite: owner provisions a OneSignal app (free tier, sandbox-only). Note the App ID. Set `EXPO_PUBLIC_ONESIGNAL_APP_ID=<that-id>` in EAS Build dev profile env. Without it the SDK calls no-op cleanly + auth still succeeds, but none of the smoke scenarios below can be observed in the OneSignal dashboard.
 
+## Scenario 0 — Confirm SDK initializes on app boot (friend's CODE-phase P1)
+
+The lifecycle hooks call `OneSignal.login` / `OneSignal.logout` /
+`Notifications.requestPermission` directly — none of those have any effect
+unless the JS SDK has been initialized first. `apps/mobile/app/_layout.tsx`
+fires `initializeOneSignal()` from `apps/mobile/lib/identity-lifecycle.ts`
+once on mount; this scenario confirms it actually runs on a real device.
+
+1. Launch the app for the first time after install.
+2. Tail the dev console (`pnpm --filter @axhy/mobile dev` Metro logs, or
+   the Xcode / Android Studio device console).
+3. **Expected (App ID configured):** no warning log; OneSignal subscription
+   row appears in the OneSignal dashboard within ~30s (anonymous at this
+   point — no identified login yet).
+4. **Expected (App ID NOT configured, sanity):** console shows
+   `[identity-lifecycle] OneSignal initialize skipped (web or no app id); push lifecycle will no-op this session.`
+5. Repeat the launch (force-quit + relaunch). Confirm no duplicate-init
+   side effect — the module-level latch makes `initializeOneSignal()`
+   idempotent across mounts.
+
+**Pass criteria:** with App ID set, the device appears as an anonymous
+subscription in OneSignal before Scenario 1's OTP login runs.
+
 ## Scenario 1 — First install + identified login
 
 1. Fresh install of dev build on iOS sim (or device) — confirm previous install is removed.
