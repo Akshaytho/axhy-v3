@@ -20,6 +20,41 @@
 
 ## Currently awaiting approval
 
+### Slice: `f-006a-onesignal-identity-lifecycle` (F-006a — mobile shell + OneSignal identity linking) — SCOPE_APPROVED 2026-05-17 00:56 (code phase in flight)
+
+**Friend's SCOPE: APPROVED verdict 2026-05-17 00:56 verbatim:** "APPROVED. v6 is clean enough to move forward. What is now correct: JWT-scoped role truth is honest and internally consistent; worker-only vs mixed-role future paths are clearly separated; app.json -> app.config.ts migration is explicit; test surface is current-only and recounted cleanly; no stale old-scope spillover remains. No blocking scope issues remain for F-006a. Proceed to code on feat/f-006a-onesignal-identity-lifecycle and stop at AWAITING_APPROVAL after unit tests + manual smoke are documented."
+
+**Scope artifact:** [handoff/feature-queue/scopes/F-006a.md](../feature-queue/scopes/F-006a.md). Branch: `feat/f-006a-onesignal-identity-lifecycle` from main `ffce21b`. Plan file: `/Users/thotaakshay/.claude/plans/yes-you-can-start-ancient-yao.md` (v1 → v6 review history; 6 rounds).
+
+**Round-2 v6 scope locks (8 picks, summary):**
+
+| #   | Pick                                    | Locked value (summary)                                                                                                                                                                                                                                                                                                                                                              |
+| --- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | OneSignal SDK choice                    | `react-native-onesignal` ^5.x via `@onesignal/onesignal-expo-plugin` ^2.x (managed Expo plugin).                                                                                                                                                                                                                                                                                    |
+| 2   | Identity-lifecycle contract             | ONE ordered sequence in `apps/mobile/lib/identity-lifecycle.ts`. `onIdentifiedLogin` → JWT-role check → setTokens → JWT decode → conditional `OneSignal.login`; `onAppLogout` → conditional logout (3s timeout) → clearTokens; `onColdStartReady` → defensive role check → conditional re-link. JWT-scoped role rule (v4): accept ONLY when `memberships[0].role === 'SUPERVISOR'`. |
+| 3   | `external_id`                           | `User.id` (UUID, tenant-scoped via User.companyId FK; decoded via `jwt-decode`).                                                                                                                                                                                                                                                                                                    |
+| 4   | Logout ordering                         | `OneSignal.logout()` BEFORE `clearTokens()` (3s timeout, falls open).                                                                                                                                                                                                                                                                                                               |
+| 5   | Permission prompt UX + exactly-once nav | Pre-prompt explainer modal → OS native prompt; navigation fires exactly once across all 5 branches.                                                                                                                                                                                                                                                                                 |
+| 6   | App ID configuration                    | `EXPO_PUBLIC_ONESIGNAL_APP_ID` env var read at build time by `app.config.ts`. **This PR migrates `app.json` → `app.config.ts`.**                                                                                                                                                                                                                                                    |
+| 7   | Cold-start re-link                      | `onColdStartReady` from `app/index.tsx`. Idempotent.                                                                                                                                                                                                                                                                                                                                |
+| 8   | NO panel UX / NO `ackedAt` writes       | F-006b territory.                                                                                                                                                                                                                                                                                                                                                                   |
+
+**5 open Qs** — none blocking. Q1 jwt-decode library (default 4.x). Q2 env-var convention. Q3 prompt copy. Q4 + Q5 carry-overs for future slices (User.deletedAt vs User.status for F-011; ackedAt semantic for F-006b).
+
+**Test plan (per v6 in-scope test list):** 15 unit cases across 2 files — `apps/mobile/lib/identity-lifecycle.test.ts` (10 cases) + `apps/mobile/components/PushPermissionPrompt.test.tsx` (5 cases). Run via `pnpm --filter mobile test`.
+
+**Manual smoke plan (real device + OneSignal sandbox project):** 4 scenarios — first install + OTP login + permission prompt + external_id appears in dashboard; sign-out + subscription detached; user-switch on same device; cold-start re-link.
+
+**Confidence:** ~92% overall. <90% sub-decisions: Q3 prompt copy ~85% (Sara-design pass would help); Q1 jwt-decode library ~88%; Pick 1 plugin install ~88% (depends on owner provisioning OneSignal account before EAS Build).
+
+**Explicit non-claims (v6):** F-006a does NOT ship the backend OneSignal delivery adapter (F-011), in-app panel UI (F-006b), token rotation / auth-switch (separate slice not yet scoped), worker-only login (F-006b), F-011 INDEX entry `User.deletedAt` → `User.status` fix (Open Q4 for F-011 scope phase), full mobile E2E tests (Maestro/Detox; separate slice), Settings → Notifications toggle (F-006b), backend changes of any kind.
+
+**Decision needed (after code phase, at AWAITING_APPROVAL):**
+
+- `CODE: APPROVED` → merge to main; F-006a → DONE; next slice surfaces (supervisor UI draft per the updated roadmap).
+- `CODE: CHANGES_REQUESTED on file/test N` → update + re-surface.
+- `HOLD` → F-006a pauses pre-merge.
+
 ### Slice: `notification-dispatcher` (F-007 round 2 v11 — Notification persistence + audience resolution) — DONE 2026-05-16 (merged to main at `79e38aa`)
 
 **Friend's final CODE: APPROVED 2026-05-16 22:58 verbatim:** "APPROVED. I re-reviewed the actual fix-up commit at HEAD `cbb7646` ... CODE: APPROVED. Owner can push this branch and merge to main."
