@@ -20,7 +20,13 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-package-composer` (F-004 — scope artifact REVISED, round 4) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
+### Slice: `handoff-package-composer` (F-004 — scope REVISED, round 4 v3 — Q2 LOCKED at (b); panel pass pending) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
+
+**Q2 RESOLVED 2026-05-16 — owner picked (b):** on first-ever binding, write NO handover-summary entry to `LivingDoc.freeNotes`. Owner verbatim: "there is no outgoing supervisor, so this is not really a handover-from-someone case. `generatedAt` + `outgoingSupervisorId: null` on the package already give enough chronology. Do not add noise into `freeNotes`." Locked behavior: zero LivingDoc writes on first-ever binding (permanent path); only the binding row + `binding.handoffPackage` JSON state change; 1× `HANDOFF_PACKAGE_GENERATED` audit fires; zero `LIVING_DOC_RULE_ADDED` audits.
+
+**Final gate before code (owner directive 2026-05-16):** run a real panel pass on the round-4 v3 scope BEFORE code starts. Panel discipline was skipped through rounds 1–4 v2; F-004 is still in scope phase so this is the cheapest time to catch product-surface issues. Companion file `handoff/feature-queue/scopes/F-004-panel-review.md` lands in the same commit chain. If the panel pass surfaces no new material issue → `SCOPE: APPROVED (round 4 v3)` → code begins on `feat/f-004-handoff-package-composer`.
+
+**Round-4 history kept below for context:**
 
 **Status note (2026-05-16 round 4):** Rounds 1+2+3 all CHANGES_REQUESTED. Round-1 had 3 shape drifts (Site-metadata siteRules; openItems split into 3 buckets w/ 7-day window; dropped 4 spec-mandated fields). Round-2 had 2 more shape drifts + 1 citation gap (recentComplaints shape wrong; siteId smuggled; 100KB cited without line). Round-3 fixed the shape drifts but **friend caught 2 honesty-of-wording drifts on file-grounded review**:
 
@@ -65,7 +71,7 @@ Rule 27 updated across 4 places (INDEX.md + production-grade-rulebook.md + memor
 **5 small mechanical Open Qs** — Q2 is a TRUE BLOCKER (code waits for owner pick); Q1/Q3/Q4/Q5 have recommended defaults that hold unless owner overrides:
 
 - Q1: `LivingDocRule.createdBy` enum doesn't have a literal "system*handover" value. Default: use 'supervisor'; preserve provenance in `source.pattern: "handover_from*<outgoingSupervisorId>"`.
-- **Q2 (BLOCKER — code does not start until owner picks):** what to do for first-ever binding's summary entry. **Mechanical truth (not the open part):** `siteRules: []` is GUARANTEED (no outgoing LivingDoc to read from); `recentComplaints` is queried `siteId`-scoped as usual and may be empty OR non-empty depending on pre-binding site history (e.g. bootstrap-seed window) — **NOT hardcoded `[]`**; `activeWorkers` + `openItems` queried as usual; copy loop runs zero iterations. **Open part:** whether to write a handover-summary entry at all, and what wording. **3 options — owner picks:** (a) Write summary "First binding for `<siteName>` on `<date>` — no prior supervisor context"; (b) Write NO summary entry; (c) Owner-supplied wording. Recommended (a) — but NOT a default-with-fallback; owner explicitly picks.
+- **Q2 LOCKED at (b) 2026-05-16 — owner picked.** Behavior: on first-ever binding, write NO handover-summary entry; only the binding row + `binding.handoffPackage` JSON. `siteRules: []` guaranteed; `recentComplaints` queried site-scoped (may be empty or non-empty); 1× `HANDOFF_PACKAGE_GENERATED` audit fires; zero `LIVING_DOC_RULE_ADDED` audits. Options (a)/(c) rejected (preserved in scope artifact for audit traceability).
 - Q3: **100KB size-cap truncation strategy is locked verbatim at spec §3.7 Invariants subsection line 322** (not invented by F-004): "Package size capped at a Policy-configurable byte limit (default 100KB); truncation strategy: drop oldest complaints first, then activeWorkers field detail." Code-stage detail.
 - Q4: Idempotency on replay — use deterministic rule IDs (uuid-v5 from binding + original-rule id) so re-application is no-op.
 - Q5: **`kind` field in ComplaintSummary is a genuine schema gap** — spec §3.7 line 307 lists `kind`; Complaint model at schema.prisma:598-623 has no `kind` column. 3 options: (a) constant `kind: "site_complaint"` everywhere — truthful since every Complaint has a non-null `siteId`; (b) map from `severity` — rejected as misleading; (c) add `Complaint.kind` column in a separate slice + ship F-004 with `(a)` as interim. Default: **(a)** unless owner wants future categorization (worker-complaint / site-complaint / client-complaint).
@@ -76,7 +82,7 @@ Rule 27 updated across 4 places (INDEX.md + production-grade-rulebook.md + memor
 
 **Test plan:** 8 real-DB integration cases — acting binding / permanent reassign / first-ever (asserts `siteRules: []` + that `recentComplaints` is whatever the DB held at compose time, **NOT** hardcoded `[]`; the summary-entry assertion is **conditional on owner's Q2 pick** and pinned to (a)/(b)/(c) only after owner picks) / empty-state / cross-tenant / STRICT calendar filter (with & without payload.siteId) / idempotent replay.
 
-**Decision needed:** `SCOPE: APPROVED (round-4 revision)` + **owner picks Open Q2 option (a/b/c)** → code begins immediately on `feat/f-004-handoff-package-composer`; stop at AWAITING_APPROVAL after new test sweep is green. `SCOPE: CHANGES_REQUESTED on pick N or Open Q N` → I update + re-surface. `HOLD` → F-004 pauses.
+**Decision needed (round 4 v3 — Q2 already locked at (b)):** **panel pass on round-4 v3 scope before code starts** (companion file `handoff/feature-queue/scopes/F-004-panel-review.md`). If panel surfaces no new material issue → `SCOPE: APPROVED (round 4 v3)` → code begins immediately on `feat/f-004-handoff-package-composer`; stops at AWAITING_APPROVAL after new test sweep is green. `SCOPE: CHANGES_REQUESTED` (panel finding / pick / Open Q) → I update + re-surface. `HOLD` → F-004 pauses.
 
 ---
 
