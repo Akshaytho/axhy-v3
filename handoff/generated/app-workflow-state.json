@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T21:33:32.865Z",
-    "generated_against_head": "65617dc85b6db326895cdb4b04aa2e4205fc4a07",
+    "last_updated_at": "2026-05-16T21:42:26.635Z",
+    "generated_against_head": "05477ae0c7f94c3b5bcb1329e380118cc31c4f2e",
     "generated_against_branch": "feat/f-006a-onesignal-identity-lifecycle",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "65617dc85b6db326895cdb4b04aa2e4205fc4a07",
+    "last_canonical_commit_at_gen": "05477ae0c7f94c3b5bcb1329e380118cc31c4f2e",
     "staleness_warning": null,
-    "active_slice": "f-006a-onesignal-identity-lifecycle (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly) · CODE_AWAITING_APPROVAL 2026-05-17 03:00 (after friend's CODE-phase P1+P2 round-3 / CHANGES_REQUESTED). Friend caught two remaining gaps: (P1) _resolveOneSignal() still returned a live SDK handle on init failure → login/logout/requestPermission could hit an un-initialized SDK; (P2) the bare-boolean latch had a TOCTOU race → concurrent warm-up + chokepoint could both call OneSignal.initialize. Round-3 fix: initializeOneSignal() now returns Promise<boolean> (success-gate), _resolveOneSignal() short-circuits to null on failure, and the latch is a Promise<boolean> so concurrent callers await the same in-flight promise. 2 new unit cases prove the contract (16 = init-failure no-op; 17 = concurrent init = 1 invocation). 49/49 tests green. Awaiting friend's CODE: APPROVED.",
+    "active_slice": "f-006a-onesignal-identity-lifecycle (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly) · CODE_APPROVED 2026-05-17 03:05. Friend's CODE: APPROVED verdict landed at HEAD 05477ae after 3 fix-up rounds (round-1 added initializeOneSignal() at root-layout useEffect; round-2 moved init-before-use into _resolveOneSignal() chokepoint; round-3 closed init-failure no-op contract + replaced bare-boolean latch with Promise<boolean> latch). 49/49 unit tests green. Friend's verbatim: \"CODE: APPROVED. No production-grade findings remain. The two blockers are now actually closed in code. ... Residual note: I could not rerun the Vitest suite locally because this machine's Rollup native optional dependency is broken, so this approval is based on direct code review rather than a fresh local green run.\" **Next:** owner runs manual smoke (handoff/owner-input/f-006a-manual-smoke.md — 5 scenarios on real device + OneSignal sandbox) → push branch → merge to main → F-006a → DONE → surface next slice (supervisor UI draft).",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,7 +1184,7 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`f-006a-onesignal-identity-lifecycle` (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly)",
-      "Status": "`CODE_AWAITING_APPROVAL` 2026-05-17 03:00 (after friend's CODE-phase P1+P2 round-3 / CHANGES_REQUESTED). Friend caught two remaining gaps: (P1) `_resolveOneSignal()` still returned a live SDK handle on init failure → `login`/`logout`/`requestPermission` could hit an un-initialized SDK; (P2) the bare-boolean latch had a TOCTOU race → concurrent warm-up + chokepoint could both call `OneSignal.initialize`. Round-3 fix: `initializeOneSignal()` now returns `Promise<boolean>` (success-gate), `_resolveOneSignal()` short-circuits to null on failure, and the latch is a `Promise<boolean>` so concurrent callers await the same in-flight promise. 2 new unit cases prove the contract (16 = init-failure no-op; 17 = concurrent init = 1 invocation). 49/49 tests green. Awaiting friend's `CODE: APPROVED`.",
+      "Status": "`CODE_APPROVED` 2026-05-17 03:05. Friend's `CODE: APPROVED` verdict landed at HEAD `05477ae` after 3 fix-up rounds (round-1 added `initializeOneSignal()` at root-layout `useEffect`; round-2 moved init-before-use into `_resolveOneSignal()` chokepoint; round-3 closed init-failure no-op contract + replaced bare-boolean latch with `Promise<boolean>` latch). 49/49 unit tests green. Friend's verbatim: \"CODE: APPROVED. No production-grade findings remain. The two blockers are now actually closed in code. ... Residual note: I could not rerun the Vitest suite locally because this machine's Rollup native optional dependency is broken, so this approval is based on direct code review rather than a fresh local green run.\" **Next:** owner runs manual smoke (`handoff/owner-input/f-006a-manual-smoke.md` — 5 scenarios on real device + OneSignal sandbox) → push branch → merge to main → F-006a → DONE → surface next slice (supervisor UI draft).",
       "Branch": "`feat/f-006a-onesignal-identity-lifecycle` — forked from main `ffce21b` 2026-05-17.",
       "Last landed commit": "`ffce21b` — `docs(handoff): F-007 → DONE; merged to main at 79e38aa; next-slice picker surfaced (F-006+F-011 together recommended)`",
       "Dependencies": "F-001 + F-002 + S-001 + F-003 + F-004 + F-007 — all DONE on main. F-006a does NOT depend on F-011 (the reverse: F-011 will consume the identity-link F-006a establishes). Owner must provision OneSignal account before EAS Build lands, but local dev + Playwright web tests work without it (no-op path).",
@@ -1192,6 +1192,22 @@
       "Verification gate": "Unit tests green + manual smoke documented (real device + OneSignal sandbox project — 4 smoke scenarios). Stop at AWAITING_APPROVAL."
     },
     "pending_approvals": [
+      {
+        "id": "f-006a-onesignal-identity-lifecycle",
+        "kind": "slice",
+        "status": "",
+        "branch": "",
+        "wipCommit": "",
+        "lastLanded": "",
+        "workflowIds": "",
+        "blocking": "",
+        "built": "",
+        "notDone": "",
+        "ownerDecision": "",
+        "artifact": "",
+        "decisionNeeded": "",
+        "scopeType": ""
+      },
       {
         "id": "f-006a-onesignal-identity-lifecycle",
         "kind": "slice",
