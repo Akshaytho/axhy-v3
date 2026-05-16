@@ -19,6 +19,10 @@
     "test:e2e": "turbo run test:e2e",
     "graph:build": "turbo run graph:build",
     "graph:audit": "turbo run graph:audit",
+    "connectedness:build": "turbo run connectedness:build",
+    "connectedness:impact": "pnpm --filter @axhy-tools/connectedness connectedness:impact",
+    "connectedness:check": "pnpm --filter @axhy-tools/connectedness connectedness:check",
+    "handoff:build": "node handoff/scripts/build-handoff-artifacts.mjs",
     "ai:eval": "turbo run ai:eval",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
@@ -41,6 +45,11 @@
     "turbo": "^2.3.0",
     "typescript": "^5.6.0"
   },
+  "pnpm": {
+    "overrides": {
+      "react-dom": "19.1.0"
+    }
+  },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
       "pnpm exec prettier --write",
@@ -49,5 +58,9 @@
     "*.{json,md,yaml,yml}": [
       "pnpm exec prettier --write"
     ]
+  },
+  "dependencies": {
+    "react-dom": "^19.1.0",
+    "react-native-web": "^0.21.2"
   }
 }

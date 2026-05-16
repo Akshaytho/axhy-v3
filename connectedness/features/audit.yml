@@ -1,0 +1,45 @@
+feature: audit
+status: active
+description: Append-only audit event log. The Activity tab's primary data source.
+
+owns:
+  tables:
+    - AuditEvent
+  state_machines:
+    live: []
+    planned: []
+
+routes:
+  live: []
+  planned: []
+  # AuditEvent is read by GET /activity (declared under decisions.yml since
+  # the Activity tab surface is owned by the decisions feature). No
+  # dedicated audit-write routes — every feature writer emits AuditEvent
+  # inline within its own route's transaction.
+
+ui:
+  surfaces:
+    - Activity # owned by decisions.yml as a surface; audit.yml is the data source
+  prototypes:
+    - docs/prototypes/supervisor-mobile-r6/project/src/activity.jsx
+
+packages:
+  - packages/shared-schema
+
+specs:
+  - docs/specs/2026-05-12-decision-entity-lock.md # D.1 §2.4 reversal-handler note (audit kinds family)
+  - docs/specs/2026-05-12-supervisor-mobile-r6-design.md # Activity tab
+
+tests:
+  live: []
+  planned:
+    - apps/backend/test/schema/phase-d-p1.test.ts # P1 schema-safety tests (AuditEvent.targetType addition)
+    - apps/backend/test/audit/**/*.test.ts # Future dedicated audit-event tests; no current tests under this path
+
+affects: []
+  # Audit is a terminal sink. Writes here do not cascade into other features.
+
+external_references: []
+  # Outbox previously held under provisional ownership here; promoted to
+  # `notifications.yml` on 2026-05-14 after CI-5 surfaced the migration trigger
+  # condition (lib/outbox.ts + 5 dispatcher handlers already exist).

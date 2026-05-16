@@ -13,10 +13,12 @@ import importPlugin from 'eslint-plugin-import';
 import unusedImports from 'eslint-plugin-unused-imports';
 
 import requireDerives from './rules/require-derives.js';
+import noRawLlmCall from './rules/no-raw-llm-call.js';
 
 export const axhyPlugin = {
   rules: {
     'require-derives': requireDerives,
+    'no-raw-llm-call': noRawLlmCall,
   },
 };
 
@@ -28,6 +30,9 @@ const baseRules = {
   'no-warning-comments': ['error', { terms: ['todo', 'fixme', 'xxx'], location: 'anywhere' }],
   // Architectural discipline — Axhy custom rules
   'axhy/require-derives': 'error',
+  // Spec 2 §9 + ADR-0023 — every LLM call must route through @axhy/ai-tools
+  // so daily-budget, cost-tracking, and surface policy run automatically.
+  'axhy/no-raw-llm-call': 'error',
   // Module hygiene
   'import/no-cycle': ['error', { maxDepth: 10 }],
   'import/order': ['warn', { 'newlines-between': 'always' }],

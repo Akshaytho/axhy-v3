@@ -4,10 +4,32 @@
  * JWT lives exclusively in expo-secure-store — never AsyncStorage,
  * never SQLite, never Zustand persisted state.
  *
+ * On web (Playwright / browser dev), expo-secure-store is a stub so we
+ * fall back to localStorage. This only affects web builds — iOS/Android
+ * always use the native secure enclave path.
+ *
  * @derives(ADR-0007)
  */
 
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+
+// Web fallback — localStorage is acceptable for Playwright screenshot runs.
+// On native, SecureStore.setItemAsync is always defined.
+const isWeb = Platform.OS === 'web';
+
+const webStore = {
+  getItem: (key: string) =>
+    Promise.resolve(typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null),
+  setItem: (key: string, value: string) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+    return Promise.resolve();
+  },
+  deleteItem: (key: string) => {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+    return Promise.resolve();
+  },
+};
 
 const KEY_ACCESS = 'axhy_access_token';
 const KEY_REFRESH = 'axhy_refresh_token';
@@ -23,9 +45,9 @@ export type StoredTokens = {
 /** @derives(ADR-0007) */
 export async function getTokens(): Promise<StoredTokens | null> {
   const [accessToken, refreshToken, activeRole] = await Promise.all([
-    SecureStore.getItemAsync(KEY_ACCESS),
-    SecureStore.getItemAsync(KEY_REFRESH),
-    SecureStore.getItemAsync(KEY_ACTIVE_ROLE),
+    isWeb ? webStore.getItem(KEY_ACCESS) : SecureStore.getItemAsync(KEY_ACCESS),
+    isWeb ? webStore.getItem(KEY_REFRESH) : SecureStore.getItemAsync(KEY_REFRESH),
+    isWeb ? webStore.getItem(KEY_ACTIVE_ROLE) : SecureStore.getItemAsync(KEY_ACTIVE_ROLE),
   ]);
 
   if (!accessToken || !refreshToken || !activeRole) return null;
@@ -36,17 +58,23 @@ export async function getTokens(): Promise<StoredTokens | null> {
 /** @derives(ADR-0007) */
 export async function setTokens(tokens: StoredTokens): Promise<void> {
   await Promise.all([
-    SecureStore.setItemAsync(KEY_ACCESS, tokens.accessToken),
-    SecureStore.setItemAsync(KEY_REFRESH, tokens.refreshToken),
-    SecureStore.setItemAsync(KEY_ACTIVE_ROLE, tokens.activeRole),
+    isWeb
+      ? webStore.setItem(KEY_ACCESS, tokens.accessToken)
+      : SecureStore.setItemAsync(KEY_ACCESS, tokens.accessToken),
+    isWeb
+      ? webStore.setItem(KEY_REFRESH, tokens.refreshToken)
+      : SecureStore.setItemAsync(KEY_REFRESH, tokens.refreshToken),
+    isWeb
+      ? webStore.setItem(KEY_ACTIVE_ROLE, tokens.activeRole)
+      : SecureStore.setItemAsync(KEY_ACTIVE_ROLE, tokens.activeRole),
   ]);
 }
 
 /** @derives(ADR-0007) */
 export async function clearTokens(): Promise<void> {
   await Promise.all([
-    SecureStore.deleteItemAsync(KEY_ACCESS),
-    SecureStore.deleteItemAsync(KEY_REFRESH),
-    SecureStore.deleteItemAsync(KEY_ACTIVE_ROLE),
+    isWeb ? webStore.deleteItem(KEY_ACCESS) : SecureStore.deleteItemAsync(KEY_ACCESS),
+    isWeb ? webStore.deleteItem(KEY_REFRESH) : SecureStore.deleteItemAsync(KEY_REFRESH),
+    isWeb ? webStore.deleteItem(KEY_ACTIVE_ROLE) : SecureStore.deleteItemAsync(KEY_ACTIVE_ROLE),
   ]);
 }

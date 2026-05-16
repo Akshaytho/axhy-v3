@@ -40,6 +40,10 @@
       "dependsOn": ["graph:build"],
       "outputs": []
     },
+    "connectedness:build": {
+      "dependsOn": ["^build"],
+      "outputs": ["connectedness/generated/**"]
+    },
     "ai:eval": {
       "dependsOn": ["^build"],
       "outputs": ["eval-results/**"]

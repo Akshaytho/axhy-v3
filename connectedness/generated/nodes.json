@@ -1,0 +1,3585 @@
+{
+  "generatedAt": "2026-05-14T10:09:40.395Z",
+  "nodes": [
+    {
+      "kind": "api_endpoint",
+      "name": "GET /calendar",
+      "sourcePath": "apps/backend/src/routes/calendar.ts:278",
+      "metadata": {
+        "method": "GET",
+        "path": "/calendar",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "GET /me",
+      "sourcePath": "apps/backend/src/routes/me.ts:17",
+      "metadata": {
+        "method": "GET",
+        "path": "/me",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "PATCH /calendar/:id",
+      "sourcePath": "apps/backend/src/routes/calendar.ts:91",
+      "metadata": {
+        "method": "PATCH",
+        "path": "/calendar/:id",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /assignments",
+      "sourcePath": "apps/backend/src/routes/assignments.ts:14",
+      "metadata": {
+        "method": "POST",
+        "path": "/assignments",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /auth/otp/request",
+      "sourcePath": "apps/backend/src/routes/auth.ts:30",
+      "metadata": {
+        "method": "POST",
+        "path": "/auth/otp/request",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /auth/otp/verify",
+      "sourcePath": "apps/backend/src/routes/auth.ts:53",
+      "metadata": {
+        "method": "POST",
+        "path": "/auth/otp/verify",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /calendar/:id/promote",
+      "sourcePath": "apps/backend/src/routes/calendar.ts:156",
+      "metadata": {
+        "method": "POST",
+        "path": "/calendar/:id/promote",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /calendar",
+      "sourcePath": "apps/backend/src/routes/calendar.ts:29",
+      "metadata": {
+        "method": "POST",
+        "path": "/calendar",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /chat/apply",
+      "sourcePath": "apps/backend/src/routes/chat.ts:673",
+      "metadata": {
+        "method": "POST",
+        "path": "/chat/apply",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /chat/messages",
+      "sourcePath": "apps/backend/src/routes/chat.ts:241",
+      "metadata": {
+        "method": "POST",
+        "path": "/chat/messages",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /leave-requests",
+      "sourcePath": "apps/backend/src/routes/leave-requests.ts:44",
+      "metadata": {
+        "method": "POST",
+        "path": "/leave-requests",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /sites/:id/complaints",
+      "sourcePath": "apps/backend/src/routes/sites.ts:37",
+      "metadata": {
+        "method": "POST",
+        "path": "/sites/:id/complaints",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /swap-requests",
+      "sourcePath": "apps/backend/src/routes/swap-requests.ts:38",
+      "metadata": {
+        "method": "POST",
+        "path": "/swap-requests",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /visits/:id/end",
+      "sourcePath": "apps/backend/src/routes/visits.ts:39",
+      "metadata": {
+        "method": "POST",
+        "path": "/visits/:id/end",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "api_endpoint",
+      "name": "POST /workers/:id/mark-absent",
+      "sourcePath": "apps/backend/src/routes/workers.ts:54",
+      "metadata": {
+        "method": "POST",
+        "path": "/workers/:id/mark-absent",
+        "app": "backend"
+      }
+    },
+    {
+      "kind": "doc",
+      "name": "migration:20260508_phase_b_domain",
+      "sourcePath": "packages/shared-schema/prisma/migrations/20260508_phase_b_domain/migration.sql",
+      "metadata": {
+        "connectednessKind": "migration",
+        "migrationName": "20260508_phase_b_domain"
+      }
+    },
+    {
+      "kind": "doc",
+      "name": "migration:20260508_phase_b_foundation",
+      "sourcePath": "packages/shared-schema/prisma/migrations/20260508_phase_b_foundation/migration.sql",
+      "metadata": {
+        "connectednessKind": "migration",
+        "migrationName": "20260508_phase_b_foundation"
+      }
+    },
+    {
+      "kind": "doc",
+      "name": "migration:20260509_phase_c_wave_1_calendar",
+      "sourcePath": "packages/shared-schema/prisma/migrations/20260509_phase_c_wave_1_calendar/migration.sql",
+      "metadata": {
+        "connectednessKind": "migration",
+        "migrationName": "20260509_phase_c_wave_1_calendar"
+      }
+    },
+    {
+      "kind": "doc",
+      "name": "migration:20260510_phase_c_wave_2a",
+      "sourcePath": "packages/shared-schema/prisma/migrations/20260510_phase_c_wave_2a/migration.sql",
+      "metadata": {
+        "connectednessKind": "migration",
+        "migrationName": "20260510_phase_c_wave_2a"
+      }
+    },
+    {
+      "kind": "doc",
+      "name": "migration:20260510_wave_4b_ai_spend_protection",
+      "sourcePath": "packages/shared-schema/prisma/migrations/20260510_wave_4b_ai_spend_protection/migration.sql",
+      "metadata": {
+        "connectednessKind": "migration",
+        "migrationName": "20260510_wave_4b_ai_spend_protection"
+      }
+    },
+    {
+      "kind": "doc",
+      "name": "migration:20260511_phase_c_wave_4b_phase_2",
+      "sourcePath": "packages/shared-schema/prisma/migrations/20260511_phase_c_wave_4b_phase_2/migration.sql",
+      "metadata": {
+        "connectednessKind": "migration",
+        "migrationName": "20260511_phase_c_wave_4b_phase_2"
+      }
+    },
+    {
+      "kind": "doc",
+      "name": "migration:20260512_phase_c_wave_4b_phase_2_5_cleanup",
+      "sourcePath": "packages/shared-schema/prisma/migrations/20260512_phase_c_wave_4b_phase_2_5_cleanup/migration.sql",
+      "metadata": {
+        "connectednessKind": "migration",
+        "migrationName": "20260512_phase_c_wave_4b_phase_2_5_cleanup"
+      }
+    },
+    {
+      "kind": "entity",
+      "name": "Assignment",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Attendance",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "AuditEvent",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "CalendarEntry",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "ChatMessage",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "ChatRequestLog",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "ChatThread",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Complaint",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Device",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "HRUpdate",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "LeaveRequest",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "LivingDoc",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Membership",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "OtpAttempt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Outbox",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Site",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "SupervisorDecision",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "SwapRequest",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "User",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Visit",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "VisitPhoto",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "entity",
+      "name": "Worker",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma",
+      "metadata": {}
+    },
+    {
+      "kind": "feature",
+      "name": "assignments",
+      "sourcePath": "connectedness/features/assignments.yml",
+      "metadata": {
+        "status": "active",
+        "description": "Assignment + CalendarEntry — the planning primitive for worker-site-shift bindings."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "attendance",
+      "sourcePath": "connectedness/features/attendance.yml",
+      "metadata": {
+        "status": "active",
+        "description": "Worker attendance records (present / absent / late / etc.) and the absence-flow trigger surface."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "audit",
+      "sourcePath": "connectedness/features/audit.yml",
+      "metadata": {
+        "status": "active",
+        "description": "Append-only audit event log. The Activity tab's primary data source."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "chat",
+      "sourcePath": "connectedness/features/chat.yml",
+      "metadata": {
+        "status": "active-but-contract-incomplete",
+        "description": "AI chat surface — message capture, extraction, tool-loop, cost-ceiling enforcement."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "decisions",
+      "sourcePath": "connectedness/features/decisions.yml",
+      "metadata": {
+        "status": "active-but-contract-incomplete",
+        "description": "Decision Workspace lifecycle — the launch decision entity for every supervisor-facing decision."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "hr-updates",
+      "sourcePath": "connectedness/features/hr-updates.yml",
+      "metadata": {
+        "status": "active-but-contract-incomplete",
+        "description": "HR Updates digest pattern — parent HRUpdate + child HRUpdateRule entries, push-only at launch."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "identity",
+      "sourcePath": "connectedness/features/identity.yml",
+      "metadata": {
+        "status": "active",
+        "description": "Users, memberships, workers, and sites — the per-tenant identity layer."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "notifications",
+      "sourcePath": "connectedness/features/notifications.yml",
+      "metadata": {
+        "status": "active-but-contract-incomplete",
+        "description": "Outbox-based dispatch substrate — push tokens, fan-out for HR + replacements + payroll + AI verification."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "replacements",
+      "sourcePath": "connectedness/features/replacements.yml",
+      "metadata": {
+        "status": "active-but-contract-incomplete",
+        "description": "ReplacementInvite serial-invite flow — one invite at a time, 2-min TTL, retry same/next worker."
+      }
+    },
+    {
+      "kind": "feature",
+      "name": "tenancy",
+      "sourcePath": "connectedness/features/tenancy.yml",
+      "metadata": {
+        "status": "active",
+        "description": "Multi-tenant boundary anchor; every other feature scopes by companyId."
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:279",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:260",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:276",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.dayMask",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:267",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "dayMask",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:259",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.shiftEnd",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:265",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "shiftEnd",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.shiftStart",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:264",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "shiftStart",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.site",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:281",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "site",
+        "type": "Site"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.siteId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:262",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "siteId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.state",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:272",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "state",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.terminatedBy",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:275",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "terminatedBy",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.terminatedReason",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:273",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "terminatedReason",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:277",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.validFrom",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:268",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "validFrom",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.validUntil",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:270",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "validUntil",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.worker",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:280",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "worker",
+        "type": "Worker"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Assignment.workerId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:261",
+      "metadata": {
+        "model": "Assignment",
+        "prismaField": "workerId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:557",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:540",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:554",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.date",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:542",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "date",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:539",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.markedBySupervisorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:547",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "markedBySupervisorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.payDeductPaise",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:553",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "payDeductPaise",
+        "type": "Int"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.reason",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:549",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "reason",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.status",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:544",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "status",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:555",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.worker",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:558",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "worker",
+        "type": "Worker"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Attendance.workerId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:541",
+      "metadata": {
+        "model": "Attendance",
+        "prismaField": "workerId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "AuditEvent.actorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:404",
+      "metadata": {
+        "model": "AuditEvent",
+        "prismaField": "actorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "AuditEvent.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:413",
+      "metadata": {
+        "model": "AuditEvent",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "AuditEvent.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:397",
+      "metadata": {
+        "model": "AuditEvent",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "AuditEvent.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:411",
+      "metadata": {
+        "model": "AuditEvent",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "AuditEvent.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:396",
+      "metadata": {
+        "model": "AuditEvent",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "AuditEvent.kind",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:401",
+      "metadata": {
+        "model": "AuditEvent",
+        "prismaField": "kind",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "AuditEvent.payload",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:410",
+      "metadata": {
+        "model": "AuditEvent",
+        "prismaField": "payload",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "AuditEvent.targetId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:407",
+      "metadata": {
+        "model": "AuditEvent",
+        "prismaField": "targetId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:251",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:229",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:248",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.date",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:233",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "date",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.editableUntil",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:241",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "editableUntil",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:228",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.kind",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:235",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "kind",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.notes",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:239",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "notes",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.payload",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:237",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "payload",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.pendingAssignmentPayload",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:247",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "pendingAssignmentPayload",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.promotedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:245",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "promotedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.promotedToId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:244",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "promotedToId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.promotedToKind",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:243",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "promotedToKind",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.supervisorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:232",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "supervisorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "CalendarEntry.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:249",
+      "metadata": {
+        "model": "CalendarEntry",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.aiResponseText",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:315",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "aiResponseText",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.cacheTokens",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:330",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "cacheTokens",
+        "type": "Int"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:336",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:308",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.costInr",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:325",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "costInr",
+        "type": "Decimal"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:333",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.decisionCard",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:319",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "decisionCard",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:307",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.idempotencyKey",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:332",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "idempotencyKey",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.modelUsed",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:323",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "modelUsed",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.role",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:311",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "role",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.thread",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:335",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "thread",
+        "type": "ChatThread"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.threadId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:309",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "threadId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.toolCalls",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:317",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "toolCalls",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.transcript",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:313",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "transcript",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatMessage.voiceConfidence",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:321",
+      "metadata": {
+        "model": "ChatMessage",
+        "prismaField": "voiceConfidence",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatRequestLog.chatMessageId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:349",
+      "metadata": {
+        "model": "ChatRequestLog",
+        "prismaField": "chatMessageId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatRequestLog.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:343",
+      "metadata": {
+        "model": "ChatRequestLog",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatRequestLog.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:350",
+      "metadata": {
+        "model": "ChatRequestLog",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatRequestLog.expiresAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:352",
+      "metadata": {
+        "model": "ChatRequestLog",
+        "prismaField": "expiresAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatRequestLog.idempotencyKey",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:345",
+      "metadata": {
+        "model": "ChatRequestLog",
+        "prismaField": "idempotencyKey",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatRequestLog.responseJson",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:347",
+      "metadata": {
+        "model": "ChatRequestLog",
+        "prismaField": "responseJson",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatThread.archivedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:297",
+      "metadata": {
+        "model": "ChatThread",
+        "prismaField": "archivedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatThread.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:299",
+      "metadata": {
+        "model": "ChatThread",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatThread.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:291",
+      "metadata": {
+        "model": "ChatThread",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatThread.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:295",
+      "metadata": {
+        "model": "ChatThread",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatThread.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:290",
+      "metadata": {
+        "model": "ChatThread",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatThread.lastMessageAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:296",
+      "metadata": {
+        "model": "ChatThread",
+        "prismaField": "lastMessageAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatThread.messages",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:300",
+      "metadata": {
+        "model": "ChatThread",
+        "prismaField": "messages",
+        "type": "ChatMessage"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "ChatThread.supervisorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:294",
+      "metadata": {
+        "model": "ChatThread",
+        "prismaField": "supervisorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.aiSpendDailyInr",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:43",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "aiSpendDailyInr",
+        "type": "Decimal"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.assignments",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:64",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "assignments",
+        "type": "Assignment"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.attendances",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:56",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "attendances",
+        "type": "Attendance"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.auditEvents",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:53",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "auditEvents",
+        "type": "AuditEvent"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.calendarEntries",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:63",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "calendarEntries",
+        "type": "CalendarEntry"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.chatMessages",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:66",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "chatMessages",
+        "type": "ChatMessage"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.chatThreads",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:65",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "chatThreads",
+        "type": "ChatThread"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.complaints",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:57",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "complaints",
+        "type": "Complaint"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:44",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.devices",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:55",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "devices",
+        "type": "Device"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.hrUpdates",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:61",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "hrUpdates",
+        "type": "HRUpdate"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:32",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.leaves",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:52",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "leaves",
+        "type": "LeaveRequest"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.livingDocs",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:60",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "livingDocs",
+        "type": "LivingDoc"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.memberships",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:47",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "memberships",
+        "type": "Membership"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.name",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:33",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "name",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.outbox",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:54",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "outbox",
+        "type": "Outbox"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.ownerName",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:38",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "ownerName",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.ownerPhone",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:36",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "ownerPhone",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.sites",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:49",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "sites",
+        "type": "Site"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.slug",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:34",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "slug",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.status",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:39",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "status",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.supervisorDecisions",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:59",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "supervisorDecisions",
+        "type": "SupervisorDecision"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.swapRequests",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:58",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "swapRequests",
+        "type": "SwapRequest"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:45",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.users",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:48",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "users",
+        "type": "User"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.visitPhotos",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:62",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "visitPhotos",
+        "type": "VisitPhoto"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.visits",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:51",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "visits",
+        "type": "Visit"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Company.workers",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:50",
+      "metadata": {
+        "model": "Company",
+        "prismaField": "workers",
+        "type": "Worker"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:592",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:576",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:589",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:575",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.resolvedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:586",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "resolvedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.resolvedBy",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:588",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "resolvedBy",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.severity",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:584",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "severity",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.site",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:593",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "site",
+        "type": "Site"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.siteId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:577",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "siteId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.supervisorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:580",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "supervisorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.text",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:582",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "text",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Complaint.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:590",
+      "metadata": {
+        "model": "Complaint",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.appVersion",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:511",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "appVersion",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:517",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:501",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:514",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:500",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.lastSeenAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:513",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "lastSeenAt",
+        "type": "DateTime",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.osVersion",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:509",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "osVersion",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.phoneModel",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:507",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "phoneModel",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.state",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:505",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "state",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:515",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.user",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:518",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "user",
+        "type": "User"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Device.userId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:502",
+      "metadata": {
+        "model": "Device",
+        "prismaField": "userId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.acknowledgedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:759",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "acknowledgedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.acknowledgedBy",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:758",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "acknowledgedBy",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.acknowledgmentPhrase",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:755",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "acknowledgmentPhrase",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.acknowledgmentRequired",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:752",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "acknowledgmentRequired",
+        "type": "Boolean"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:763",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:741",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.content",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:747",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "content",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:760",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.hrId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:743",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "hrId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:740",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.kind",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:745",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "kind",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.targetSupervisorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:750",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "targetSupervisorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "HRUpdate.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:761",
+      "metadata": {
+        "model": "HRUpdate",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:375",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:361",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:372",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.decidedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:369",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "decidedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.decidedBy",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:368",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "decidedBy",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.decisionNote",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:371",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "decisionNote",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.fromDate",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:363",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "fromDate",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:360",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.reason",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:365",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "reason",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.state",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:367",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "state",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.toDate",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:364",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "toDate",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:373",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.worker",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:376",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "worker",
+        "type": "Worker"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LeaveRequest.workerId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:362",
+      "metadata": {
+        "model": "LeaveRequest",
+        "prismaField": "workerId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.clientPreferences",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:716",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "clientPreferences",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:726",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:705",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:723",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.freeNotes",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:718",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "freeNotes",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:704",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.recurringTasks",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:717",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "recurringTasks",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.siteRules",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:714",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "siteRules",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.supervisorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:708",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "supervisorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:724",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.version",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:722",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "version",
+        "type": "Int"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "LivingDoc.workerNotes",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:715",
+      "metadata": {
+        "model": "LivingDoc",
+        "prismaField": "workerNotes",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:107",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:100",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:104",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:99",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.role",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:102",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "role",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.status",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:103",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "status",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:105",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.user",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:108",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "user",
+        "type": "User"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Membership.userId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:101",
+      "metadata": {
+        "model": "Membership",
+        "prismaField": "userId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "OtpAttempt.codeHash",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:479",
+      "metadata": {
+        "model": "OtpAttempt",
+        "prismaField": "codeHash",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "OtpAttempt.consumed",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:482",
+      "metadata": {
+        "model": "OtpAttempt",
+        "prismaField": "consumed",
+        "type": "Boolean"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "OtpAttempt.expiresAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:481",
+      "metadata": {
+        "model": "OtpAttempt",
+        "prismaField": "expiresAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "OtpAttempt.issuedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:480",
+      "metadata": {
+        "model": "OtpAttempt",
+        "prismaField": "issuedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "OtpAttempt.phone",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:478",
+      "metadata": {
+        "model": "OtpAttempt",
+        "prismaField": "phone",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:455",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:433",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:452",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.failCount",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:442",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "failCount",
+        "type": "Int"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:432",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.idempotencyKey",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:451",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "idempotencyKey",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.lastError",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:446",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "lastError",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.nextRetryAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:444",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "nextRetryAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.payload",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:437",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "payload",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.processedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:440",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "processedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.topic",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:435",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "topic",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Outbox.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:453",
+      "metadata": {
+        "model": "Outbox",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.address",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:125",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "address",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.assignments",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:140",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "assignments",
+        "type": "Assignment"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:136",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:122",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.complaints",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:138",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "complaints",
+        "type": "Complaint"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:133",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:121",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.latitude",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:127",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "latitude",
+        "type": "Decimal"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.longitude",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:128",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "longitude",
+        "type": "Decimal"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.name",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:123",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "name",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.state",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:130",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "state",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.swaps",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:139",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "swaps",
+        "type": "SwapRequest"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:134",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.visits",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:137",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "visits",
+        "type": "Visit"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Site.workdays",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:132",
+      "metadata": {
+        "model": "Site",
+        "prismaField": "workdays",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.ackedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:675",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "ackedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.ackRequired",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:674",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "ackRequired",
+        "type": "Boolean"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.appliedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:672",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "appliedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:679",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:659",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:676",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:658",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.kind",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:664",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "kind",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.payload",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:670",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "payload",
+        "type": "Json"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.supervisorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:662",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "supervisorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.targetId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:668",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "targetId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.tier",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:666",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "tier",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SupervisorDecision.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:677",
+      "metadata": {
+        "model": "SupervisorDecision",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.appliedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:627",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "appliedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:631",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:612",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:628",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.decidedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:626",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "decidedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.effectiveAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:622",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "effectiveAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.fromWorker",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:632",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "fromWorker",
+        "type": "Worker"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.fromWorkerId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:616",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "fromWorkerId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:611",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.reason",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:624",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "reason",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.site",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:634",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "site",
+        "type": "Site"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.siteId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:618",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "siteId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.state",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:620",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "state",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.supervisorId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:615",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "supervisorId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.toWorker",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:633",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "toWorker",
+        "type": "Worker"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.toWorkerId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:617",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "toWorkerId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "SwapRequest.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:629",
+      "metadata": {
+        "model": "SwapRequest",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.Company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:88",
+      "metadata": {
+        "model": "User",
+        "prismaField": "Company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:89",
+      "metadata": {
+        "model": "User",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:84",
+      "metadata": {
+        "model": "User",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.devices",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:92",
+      "metadata": {
+        "model": "User",
+        "prismaField": "devices",
+        "type": "Device"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:76",
+      "metadata": {
+        "model": "User",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.locale",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:82",
+      "metadata": {
+        "model": "User",
+        "prismaField": "locale",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.memberships",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:87",
+      "metadata": {
+        "model": "User",
+        "prismaField": "memberships",
+        "type": "Membership"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.name",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:80",
+      "metadata": {
+        "model": "User",
+        "prismaField": "name",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.phone",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:78",
+      "metadata": {
+        "model": "User",
+        "prismaField": "phone",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.status",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:83",
+      "metadata": {
+        "model": "User",
+        "prismaField": "status",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:85",
+      "metadata": {
+        "model": "User",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "User.workerProfile",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:91",
+      "metadata": {
+        "model": "User",
+        "prismaField": "workerProfile",
+        "type": "Worker"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:214",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:184",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.completedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:191",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "completedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.correctionNote",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:212",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "correctionNote",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.correctionReason",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:211",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "correctionReason",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.correctsVisitId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:207",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "correctsVisitId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:203",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.flagged",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:202",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "flagged",
+        "type": "Boolean"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:183",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.originalVisitId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:209",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "originalVisitId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.photos",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:217",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "photos",
+        "type": "VisitPhoto"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.photosAfter",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:194",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "photosAfter",
+        "type": "Int"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.photosBefore",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:193",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "photosBefore",
+        "type": "Int"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.scheduledFor",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:189",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "scheduledFor",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.site",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:216",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "site",
+        "type": "Site"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.siteId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:186",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "siteId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.startedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:190",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "startedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.state",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:188",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "state",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:204",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.verificationModel",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:200",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "verificationModel",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.verificationText",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:198",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "verificationText",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.voiceKey",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:196",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "voiceKey",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.worker",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:215",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "worker",
+        "type": "Worker"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Visit.workerId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:185",
+      "metadata": {
+        "model": "Visit",
+        "prismaField": "workerId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.aiVerifyStatus",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:790",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "aiVerifyStatus",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.aiVerifyText",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:792",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "aiVerifyText",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:796",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:781",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.createdAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:793",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "createdAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:780",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.pHash",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:788",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "pHash",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.r2Key",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:786",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "r2Key",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.side",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:784",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "side",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:794",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.visit",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:797",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "visit",
+        "type": "Visit"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "VisitPhoto.visitId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:782",
+      "metadata": {
+        "model": "VisitPhoto",
+        "prismaField": "visitId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.assignments",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:174",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "assignments",
+        "type": "Assignment"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.attendances",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:171",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "attendances",
+        "type": "Attendance"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.bankAcct",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:159",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "bankAcct",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.bankIfsc",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:157",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "bankIfsc",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.baseSalaryPaise",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:163",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "baseSalaryPaise",
+        "type": "Int"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.company",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:167",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "company",
+        "type": "Company"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.companyId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:149",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "companyId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.fromSwaps",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:172",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "fromSwaps",
+        "type": "SwapRequest"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.id",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:148",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "id",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.joinedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:164",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "joinedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.leaves",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:170",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "leaves",
+        "type": "LeaveRequest"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.name",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:153",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "name",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.phone",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:155",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "phone",
+        "type": "String",
+        "personal": true
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.state",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:161",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "state",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.toSwaps",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:173",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "toSwaps",
+        "type": "SwapRequest"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.updatedAt",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:165",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "updatedAt",
+        "type": "DateTime"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.user",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:168",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "user",
+        "type": "User"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.userId",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:151",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "userId",
+        "type": "String"
+      }
+    },
+    {
+      "kind": "field",
+      "name": "Worker.visits",
+      "sourcePath": "packages/shared-schema/prisma/schema.prisma:169",
+      "metadata": {
+        "model": "Worker",
+        "prismaField": "visits",
+        "type": "Visit"
+      }
+    }
+  ]
+}

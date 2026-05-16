@@ -1,0 +1,58 @@
+feature: assignments
+status: active
+description: Assignment + CalendarEntry — the planning primitive for worker-site-shift bindings.
+
+owns:
+  tables:
+    - Assignment
+    - CalendarEntry # 18th table; soft-state planning surface (NOTE/DEMAND/TENTATIVE/EVENT per-date)
+  state_machines:
+    live:
+      - packages/state-machines/src/assignment.ts
+      - packages/state-machines/src/calendar.ts
+    planned: []
+
+routes:
+  live:
+    - POST /assignments
+    - POST /calendar
+    - PATCH /calendar/:id
+    - POST /calendar/:id/promote
+    - GET /calendar
+  planned: []
+
+ui:
+  surfaces:
+    - Today # site cards + worker-grid for current-day assignments
+    - Summary # TOMORROW · ROST tile reads from CalendarEntry / Assignment
+  prototypes:
+    - docs/prototypes/supervisor-mobile-r6/project/src/today.jsx
+    - docs/prototypes/supervisor-mobile-r6/project/src/summary.jsx
+
+packages:
+  - packages/shared-schema
+  - packages/state-machines
+
+specs:
+  - docs/specs/2026-05-09-phase-c-assignment-design.md # Active but contract-incomplete; phantom STARTED/ENDED gap
+  - docs/specs/2026-05-12-supervisor-mobile-r6-design.md # Today + Summary surfaces
+
+tests:
+  live:
+    - apps/backend/test/assignment-create.test.ts
+    - apps/backend/test/assignment-trigger.test.ts
+    - apps/backend/test/calendar-create.test.ts
+    - apps/backend/test/calendar-edit.test.ts
+    - apps/backend/test/calendar-find.test.ts
+    - apps/backend/test/calendar-promote.test.ts
+    - apps/backend/test/calendar-cross-tenant.test.ts
+  planned: []
+
+affects:
+  # Assignment writes cascade into:
+  - attendance # Visits generated from Assignments produce Attendance writes
+
+external_references:
+  - name: visits
+    why: Each Assignment spawns Visits as workers check in; Visit/VisitPhoto unmapped until visits.yml lands
+    iteration: 3

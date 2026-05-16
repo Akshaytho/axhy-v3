@@ -29,37 +29,48 @@ datasource db {
 // ============================================================================
 
 model Company {
-  id         String   @id @default(uuid()) @db.Uuid
-  name       String
-  slug       String   @unique
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String   @unique
   /// @personal owner contact phone (E.164)
-  ownerPhone String   @db.VarChar(16)
+  ownerPhone      String   @db.VarChar(16)
   /// @personal owner contact name
-  ownerName  String
-  status     String   @default("ACTIVE")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  ownerName       String
+  status          String   @default("ACTIVE")
+  /// daily AI spend counter in INR. Resets at UTC midnight via cron.
+  /// NOT @personal — financial counter, not PII (Vinod DPDP scoping).
+  /// @derives(spec-2 §9.1) @derives(ADR-0023)
+  aiSpendDailyInr Decimal  @default(0) @db.Decimal(12, 4)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  memberships             Membership[]
-  users                   User[]
-  sites                   Site[]
-  workers                 Worker[]
-  visits                  Visit[]
-  leaves                  LeaveRequest[]
-  auditEvents             AuditEvent[]
-  outbox                  Outbox[]
-  devices                 Device[]
-  attendances             Attendance[]
-  complaints              Complaint[]
-  swapRequests            SwapRequest[]
-  supervisorDecisions     SupervisorDecision[]
-  supervisorDailyContexts SupervisorDailyContext[]
-  hrUpdates               HRUpdate[]
-  visitPhotos             VisitPhoto[]
-  calendarEntries         CalendarEntry[]
-  assignments             Assignment[]
-  chatThreads             ChatThread[]
-  chatMessages            ChatMessage[]
+  memberships            Membership[]
+  users                  User[]
+  sites                  Site[]
+  workers                Worker[]
+  visits                 Visit[]
+  leaves                 LeaveRequest[]
+  auditEvents            AuditEvent[]
+  outbox                 Outbox[]
+  devices                Device[]
+  attendances            Attendance[]
+  complaints             Complaint[]
+  swapRequests           SwapRequest[]
+  supervisorDecisions    SupervisorDecision[]
+  livingDocs             LivingDoc[]
+  hrUpdates              HRUpdate[]
+  visitPhotos            VisitPhoto[]
+  calendarEntries        CalendarEntry[]
+  assignments            Assignment[]
+  chatThreads            ChatThread[]
+  chatMessages           ChatMessage[]
+  // Layer 1 core primitives (2026-05-15)
+  hrPods                 HRPod[]
+  policies               Policy[]
+  notifications          Notification[]
+  digests                Digest[]
+  // P1.5 SiteSupervisorBinding (2026-05-15)
+  siteSupervisorBindings SiteSupervisorBinding[]
 
   @@schema("axhy")
 }
@@ -84,8 +95,11 @@ model User {
   Company     Company?     @relation(fields: [companyId], references: [id])
   companyId   String?      @db.Uuid
 
-  workerProfile Worker?
-  devices       Device[]
+  workerProfile      Worker?
+  devices            Device[]
+  // P1.5 SiteSupervisorBinding back-relations (2026-05-15)
+  supervisorBindings SiteSupervisorBinding[] @relation("BindingSupervisor")
+  actingForBindings  SiteSupervisorBinding[] @relation("BindingActingFor")
 
   @@index([companyId])
   @@schema("axhy")
@@ -97,15 +111,22 @@ model Membership {
   userId    String   @db.Uuid
   role      String
   status    String   @default("ACTIVE")
+  /// HR pod assignment (per workflow-design-closure §4). Only meaningful when
+  /// role = HR. NULL for all other roles. Layer 1 schema-only; Layer 2 wires
+  /// the queue partitioning + fallback semantics.
+  /// @derives(workflow-design-closure §4)
+  podId     String?  @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hrPod   HRPod?  @relation(fields: [podId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, userId, role])
   @@index([companyId])
   @@index([userId])
+  @@index([companyId, podId])
   @@schema("axhy")
 }
 
@@ -129,11 +150,13 @@ model Site {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
   visits      Visit[]
   complaints  Complaint[]
   swaps       SwapRequest[]
   assignments Assignment[]
+  // P1.5 SiteSupervisorBinding (2026-05-15)
+  bindings    SiteSupervisorBinding[]
 
   @@index([companyId])
   @@index([companyId, state])
@@ -141,24 +164,29 @@ model Site {
 }
 
 model Worker {
-  id              String   @id @default(uuid()) @db.Uuid
-  companyId       String   @db.Uuid
+  id                String   @id @default(uuid()) @db.Uuid
+  companyId         String   @db.Uuid
   /// optional User link — workers may exist before they get phone access
-  userId          String?  @unique @db.Uuid
+  userId            String?  @unique @db.Uuid
   /// @personal worker name as displayed
-  name            String
+  name              String
   /// @personal worker phone (E.164)
-  phone           String   @db.VarChar(16)
+  phone             String   @db.VarChar(16)
   /// @personal optional worker bank for salary
-  bankIfsc        String?  @db.VarChar(16)
+  bankIfsc          String?  @db.VarChar(16)
   /// @personal optional worker bank account
-  bankAcct        String?
+  bankAcct          String?
   /// 15-state WorkerState machine (see @axhy/state-machines)
-  state           String   @default("INVITED")
+  state             String   @default("INVITED")
   /// monthly salary in paise (₹1 = 100 paise)
-  baseSalaryPaise Int      @default(0)
-  joinedAt        DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  baseSalaryPaise   Int      @default(0)
+  /// Worker's preferred notification language (ISO 639-1: hi / te / en / bn / ta / ...).
+  /// Default 'hi'; tenant-configurable per workflow-design-closure §5.1 + Decision 4
+  /// + Policy `worker.preferred_language_default`.
+  /// @derives(workflow-design-closure §5.1, Decision 4)
+  preferredLanguage String   @default("hi") @db.VarChar(8)
+  joinedAt          DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user        User?          @relation(fields: [userId], references: [id])
@@ -200,12 +228,12 @@ model Visit {
   updatedAt         DateTime  @updatedAt
 
   /// FK to Visit being corrected — null on canonical (uncorrected) row
-  correctsVisitId   String?  @db.Uuid
+  correctsVisitId  String? @db.Uuid
   /// self-pointer to root of correction chain — equals own id on root rows
-  originalVisitId   String?  @db.Uuid
+  originalVisitId  String? @db.Uuid
   /// 'wrong-site' | 'wrong-time' | 'duplicate' | 'wrong-worker' | 'other'
-  correctionReason  String?
-  correctionNote    String?
+  correctionReason String?
+  correctionNote   String?
 
   company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   worker  Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
@@ -221,27 +249,28 @@ model Visit {
 }
 
 model CalendarEntry {
-  id             String    @id @default(uuid()) @db.Uuid
-  companyId      String    @db.Uuid
-  /// FK Membership — per-supervisor scope
-  supervisorId   String    @db.Uuid
-  date           DateTime  @db.Date
+  id                       String    @id @default(uuid()) @db.Uuid
+  companyId                String    @db.Uuid
+  /// User.id of the supervisor (composite-keyed with companyId; NOT Membership.id).
+  /// See feedback_supervisor_id_is_user_id.md (panel-locked 2026-05-10).
+  supervisorId             String    @db.Uuid
+  date                     DateTime  @db.Date
   /// 'NOTE' | 'DEMAND' | 'TENTATIVE_ASSIGNMENT' | 'EVENT'
-  kind           String
+  kind                     String
   /// kind-specific structured fields validated at app layer (Zod)
-  payload        Json      @default("{}")
+  payload                  Json      @default("{}")
   /// @personal — free-form text (PII-bearing, scrubbed on supervisor erasure)
-  notes          String?
+  notes                    String?
   /// computed: min(createdAt + 30d, promotedAt) — stored for query speed
-  editableUntil  DateTime
+  editableUntil            DateTime
   /// 'ASSIGNMENT' | 'SITE_SHIFT_REQ' | 'CHANGE_REQUEST' | null
-  promotedToKind String?
-  promotedToId   String?   @db.Uuid
-  promotedAt     DateTime?
+  promotedToKind           String?
+  promotedToId             String?   @db.Uuid
+  promotedAt               DateTime?
   /// Wave 1: stored when promoted to Assignment; Wave 2 hydrates real Assignment row from this.
   pendingAssignmentPayload Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -284,7 +313,8 @@ model Assignment {
 model ChatThread {
   id            String    @id @default(uuid()) @db.Uuid
   companyId     String    @db.Uuid
-  /// FK Membership.id (per-supervisor)
+  /// User.id of the supervisor (composite-keyed with companyId; NOT Membership.id).
+  /// See feedback_supervisor_id_is_user_id.md (panel-locked 2026-05-10).
   supervisorId  String    @db.Uuid
   createdAt     DateTime  @default(now())
   lastMessageAt DateTime?
@@ -317,6 +347,11 @@ model ChatMessage {
   modelUsed       String?
   /// Computed cost in INR
   costInr         Decimal?
+  /// OpenAI prompt_tokens_details.cached_tokens captured per call.
+  /// Null when response didn't include the field (older SDK responses);
+  /// used by ai_cost_daily view for cache-hit ratio.
+  /// @derives(spec-2 §8.3)
+  cacheTokens     Int?
   /// Idempotency-Key from request
   idempotencyKey  String?
   createdAt       DateTime @default(now())
@@ -418,26 +453,32 @@ model AuditEvent {
 /// @derives(ADR-0009) — outbox over Redis until measured pain
 /// @derives(panel-2026-05-08) — phase B.1 foundation lock
 model Outbox {
-  id          String    @id @default(uuid()) @db.Uuid
-  companyId   String    @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
+  companyId      String    @db.Uuid
   /// dotted topic name (gupshup.send, payroll.recompute, ai.verify, ...)
-  topic       String
+  topic          String
   /// payload the dispatcher hands to the topic's handler
-  payload     Json      @default("{}")
+  payload        Json      @default("{}")
   /// nullable until processed. Idempotent re-tries only run when
   /// processedAt is null AND nextRetryAt is in the past.
-  processedAt DateTime?
+  processedAt    DateTime?
   /// retry counter; >= 5 → quarantined (handler stops retrying)
-  failCount   Int       @default(0)
+  failCount      Int       @default(0)
   /// next time the dispatcher should attempt this row (for backoff)
-  nextRetryAt DateTime  @default(now())
+  nextRetryAt    DateTime  @default(now())
   /// last error message, for ops triage
-  lastError   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  lastError      String?
+  /// idempotency key for at-most-once enqueue (e.g. "${companyId}:budget_WARN:20260510").
+  /// Partial unique index on (companyId, idempotencyKey) WHERE idempotencyKey IS NOT NULL
+  /// enforces dedup at DB layer; existing rows with NULL key coexist freely.
+  /// @derives(spec-2 §9.4) @derives(ADR-0009)
+  idempotencyKey String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
+  @@unique([companyId, idempotencyKey])
   @@index([companyId])
   @@index([processedAt, nextRetryAt])
   @@index([topic])
@@ -558,7 +599,8 @@ model Complaint {
   id           String    @id @default(uuid()) @db.Uuid
   companyId    String    @db.Uuid
   siteId       String    @db.Uuid
-  /// UUID of supervisor who logged the complaint
+  /// User.id of the supervisor who logged the complaint (composite-keyed
+  /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
   supervisorId String    @db.Uuid
   /// short complaint text — supervisor's words via voice or button flow
   text         String
@@ -592,7 +634,8 @@ model Complaint {
 model SwapRequest {
   id           String    @id @default(uuid()) @db.Uuid
   companyId    String    @db.Uuid
-  /// UUID of supervisor who initiated the swap
+  /// User.id of the supervisor who initiated the swap (composite-keyed
+  /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
   supervisorId String    @db.Uuid
   fromWorkerId String    @db.Uuid
   toWorkerId   String    @db.Uuid
@@ -636,24 +679,48 @@ model SwapRequest {
 /// @derives(data-flow §5 — supervisor decision tiers)
 /// @derives(panel-2026-05-08) — Phase B.2 placeholder for Phase C AI
 model SupervisorDecision {
-  id           String    @id @default(uuid()) @db.Uuid
-  companyId    String    @db.Uuid
-  supervisorId String    @db.Uuid
+  id                    String    @id @default(uuid()) @db.Uuid
+  companyId             String    @db.Uuid
+  /// User.id of the supervisor who made the decision (composite-keyed
+  /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
+  supervisorId          String    @db.Uuid
   /// MARK_ABSENT | APPROVE_LEAVE | LOG_COMPLAINT | SWAP_WORKER | ...
-  kind         String
+  kind                  String
   /// NOTE | OPERATIONAL | PERSONNEL | EMPLOYMENT
-  tier         String
+  tier                  String
   /// flexible target — worker / site / swap / leave_request / visit
-  targetId     String?
+  targetId              String?
   /// AI-extracted reasoning + entity refs + confidence
-  payload      Json      @default("{}")
+  payload               Json      @default("{}")
   /// nullable until supervisor confirms (or rejects)
-  appliedAt    DateTime?
+  appliedAt             DateTime?
   /// EMPLOYMENT-tier requires explicit typed-words acknowledgment
-  ackRequired  Boolean   @default(false)
-  ackedAt      DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  ackRequired           Boolean   @default(false)
+  ackedAt               DateTime?
+  /// Immutable JSON snapshot at row creation containing originator's chat excerpt
+  /// + recent decisions about the worker + worker history + supervisor identity.
+  /// Required at row-creation time for tier = EMPLOYMENT; optional for other tiers.
+  /// Travels with the row across binding changes per workflow-design-closure Decision 7.
+  /// @derives(workflow-design-closure §3.2, Decision 7)
+  originContext         Json?
+  /// Auto-set TRUE at row creation when the originating supervisor is currently
+  /// inside an active acting-coverage absence window. Lets receiving acting cover +
+  /// HR review render the "proposed during absence" framing.
+  /// @derives(workflow-design-closure §3.2, Decision 7)
+  proposedDuringAbsence Boolean   @default(false)
+  /// Set when the currently-responsible supervisor explicitly rejects a PROPOSED
+  /// decision via POST /decisions/:id/dismiss. Mutually exclusive with appliedAt:
+  /// a row is in PROPOSED state iff both appliedAt IS NULL AND dismissedAt IS NULL.
+  /// State ENUM column deferred per F-002 scope Q4=(b); discriminator is the
+  /// pair (appliedAt, dismissedAt) for now.
+  /// @derives(F-002 scope §3c)
+  dismissedAt           DateTime?
+  /// Plain-text reason the responsible supervisor gave at dismiss time.
+  /// Surface in Activity tab + downstream learning for the AI extractor.
+  /// @derives(F-002 scope §3c)
+  dismissedReason       String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -661,39 +728,51 @@ model SupervisorDecision {
   @@index([companyId, supervisorId, createdAt])
   @@index([companyId, tier])
   @@index([companyId, appliedAt])
+  @@index([companyId, dismissedAt])
   @@schema("axhy")
 }
 
 /// Supervisor's daily living-doc snapshot — personal rules, today's
 /// worker status, today's sites, prior-day context. Loaded fresh at
 /// 3:30 AM by the daily-prep worker (B.6+) and cached for the day's
-/// AI chat context. Referenced by Phase C `supervisor.context_load`
-/// AI surface (per data-flow §8).
+/// Per-supervisor "living context" — the moat. Loaded into chat prompt as
+/// Tier 2 cache slot; bumped on every confirmed propose_living_doc_update.
 ///
-/// One row per (supervisor × date).
+/// Renamed from `SupervisorDailyContext` in Wave 4b Phase 2 (2026-05-11) per
+/// Spec 2 §3.5. Five JSON sections, each an array of LivingDocRule with
+/// state ('PENDING'|'ACTIVE'|'REJECTED'|'EXPIRED'); only ACTIVE filtered
+/// into prompt context this wave. PENDING/REJECTED used by Phase D nightly
+/// nano-tier extractor.
 ///
+/// @derives(spec-2 §3.5 — LivingDoc shape)
+/// @derives(spec-2 §6 — extraction paths)
 /// @derives(data-flow §8 — supervisor.context_load AI surface)
-/// @derives(panel-2026-05-08) — Phase B.2 placeholder for Phase C AI
-model SupervisorDailyContext {
-  id           String    @id @default(uuid()) @db.Uuid
-  companyId    String    @db.Uuid
-  supervisorId String    @db.Uuid
-  date         DateTime  @db.Date
-  /// snapshot of supervisor's personal rules, worker assignments, site
-  /// status — fed into AI chat as priming context
-  snapshot     Json      @default("{}")
-  /// turn-by-turn chat history (Phase C); array of { role, content, ts }
-  chatHistory  Json      @default("[]")
-  /// when the context was first loaded (typically ~3:30 AM)
-  loadedAt     DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+model LivingDoc {
+  id                String   @id @default(uuid()) @db.Uuid
+  companyId         String   @db.Uuid
+  /// User.id of the supervisor whose living context this is (composite-keyed
+  /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
+  supervisorId      String   @db.Uuid
+  /// JSON arrays of LivingDocRule per Spec 2 §3.5. Each rule:
+  ///   { id, ruleText, description, visibility, scope, createdAt,
+  ///     createdBy, state, decidedAt?, confidence?, source }
+  /// Only state='ACTIVE' filtered into prompt context this wave.
+  /// @derives(spec-2 §3.5)
+  siteRules         Json     @default("[]")
+  workerNotes       Json     @default("[]")
+  clientPreferences Json     @default("[]")
+  recurringTasks    Json     @default("[]")
+  freeNotes         Json     @default("[]")
+  /// Bumped on every successful propose_living_doc_update apply. Used as
+  /// part of OpenAI prompt_cache_key so cache busts when rules change.
+  /// @derives(spec-2 §8.2)
+  version           Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@unique([supervisorId, date])
-  @@index([companyId])
-  @@index([companyId, date])
+  @@unique([companyId, supervisorId])
   @@schema("axhy")
 }
 
@@ -767,5 +846,217 @@ model VisitPhoto {
   @@index([companyId])
   @@index([visitId])
   @@index([companyId, aiVerifyStatus])
+  @@schema("axhy")
+}
+
+// ============================================================================
+// Layer 1 core primitives (2026-05-15) — workflow-design-closure §3 + §4
+// ============================================================================
+
+/// HR pod — operational partition for queue ownership and HR coordination.
+/// Default operating target: ~200 workers + ~4 supervisors per pod (tunable per
+/// tenant via Policy `hr.pod.target_worker_count` + `hr.pod.target_supervisor_count`).
+/// Primary owner + backup owner per pod; cross-pod override allowed with audit.
+///
+/// Layer 1 schema-only. Queue partitioning + fallback semantics + lock UI ship
+/// in Layer 2 (HR coordination layer).
+///
+/// @derives(workflow-design-closure §4 HR Pod Model)
+/// @derives(workflow-design-closure Decision 1 — multi-HR coordination)
+model HRPod {
+  id                 String   @id @default(uuid()) @db.Uuid
+  companyId          String   @db.Uuid
+  name               String
+  /// User.id of the HR user who routinely handles this pod's queue. All
+  /// non-escalated queue items default to them.
+  primaryOwnerUserId String   @db.Uuid
+  /// User.id of the HR user who covers when primary is unavailable >24h
+  /// (per closure Decision 2 tier 1). NULL = no backup configured yet.
+  backupOwnerUserId  String?  @db.Uuid
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+
+  @@index([companyId])
+  @@index([companyId, primaryOwnerUserId])
+  @@schema("axhy")
+}
+
+/// Per-tenant policy / config values. Append-only — current value for a key is
+/// the most-recent row by setAt. Older rows preserved for audit / rollback.
+///
+/// Example keys: `hr.queue.urgent_sla_minutes`, `worker.preferred_language_default`,
+/// `ai.backlog.chip_upgrade_seconds`, `hr.pod.target_worker_count`,
+/// `worker.termination_appeal_days`, `notification.channel_fallback_chain`.
+///
+/// Layer 1 schema-only. PolicyService + defaults seed + admin-API for value
+/// reads ship in Layer 2 (Stream C of kickoff memo §5).
+///
+/// @derives(workflow-design-closure §3.6 Policy primitive)
+model Policy {
+  id                    String   @id @default(uuid()) @db.Uuid
+  companyId             String   @db.Uuid
+  /// Dotted key — see closure §3.6 examples.
+  key                   String
+  /// Type-appropriate value. JSON for forward-compat (strings, numbers, arrays, objects).
+  value                 Json
+  /// User.id of the user who set this value.
+  setBy                 String   @db.Uuid
+  setAt                 DateTime @default(now())
+  /// Snapshot of the previous value for this key for audit / rollback. NULL on first set.
+  previousValueSnapshot Json?
+  /// `sla` | `notification` | `worker` | `hr` | `ai` | `owner` | `handoff`.
+  category              String
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, key, setAt(sort: Desc)])
+  @@index([companyId, category])
+  @@schema("axhy")
+}
+
+/// Notification primitive — formalises outbox-driven push / SMS / WhatsApp-out /
+/// email delivery with explicit per-row tracking (deliveredAt, failedAt, ackedAt).
+/// Coalescing rules + channel fallback chain enforced by NotificationService
+/// (Stream D, Layer 1).
+///
+/// Audience: exactly one of audienceUserId or audienceWorkerId set (workers may
+/// not have a linked User).
+///
+/// @derives(workflow-design-closure §3.4 Notification primitive)
+/// @derives(workflow-design-closure §7 Notification rules)
+/// @derives(workflow-design-closure Decision 4 — worker supervisor-change notification)
+model Notification {
+  id               String    @id @default(uuid()) @db.Uuid
+  companyId        String    @db.Uuid
+  /// User.id of recipient (e.g. supervisor / HR / owner). Mutually exclusive with audienceWorkerId.
+  audienceUserId   String?   @db.Uuid
+  /// Worker.id of recipient (for workers without a linked User). Mutually exclusive with audienceUserId.
+  audienceWorkerId String?   @db.Uuid
+  /// `supervisor_change` | `termination_applied` | `leave_status` | `replacement_invite`
+  /// | `flag_alert` | `hr_update` | `ai_budget_alert` | `binding_change` | ...
+  kind             String
+  /// `push` | `sms` | `whatsapp_out` | `email` | `in_app_banner`.
+  channel          String
+  /// `URGENT` | `NEXT_DAY` | `STANDARD` | `DIGEST` (closure Decision 3).
+  priority         String    @default("STANDARD")
+  /// Content + localisation context.
+  payload          Json      @default("{}")
+  scheduledAt      DateTime  @default(now())
+  deliveredAt      DateTime?
+  failedAt         DateTime?
+  failureReason    String?
+  ackedAt          DateTime?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, audienceUserId, deliveredAt(sort: Desc)])
+  @@index([companyId, audienceWorkerId, deliveredAt(sort: Desc)])
+  @@index([companyId, kind])
+  @@index([companyId, scheduledAt])
+  @@schema("axhy")
+}
+
+/// Auto-composed multi-event rollup, distinct from individual Notification rows.
+/// Examples: owner monthly digest (closure Decision 10); supervisor
+/// "while you were out" digest (closure §5.2.6); HR team daily digest.
+///
+/// Layer 1 ships the entity + stub composers in Stream E; real composers
+/// land with their corresponding surfaces in Layers 3 + 4.
+///
+/// @derives(workflow-design-closure §3.5 Digest primitive)
+model Digest {
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @db.Uuid
+  /// User.id of the digest recipient.
+  audienceUserId  String    @db.Uuid
+  /// `owner_monthly` | `owner_incident` | `owner_annual` | `hr_team_daily`
+  /// | `supervisor_while_you_were_out`.
+  kind            String
+  /// Period start (inclusive). For owner_monthly: first of the month.
+  periodStart     DateTime
+  /// Period end (inclusive).
+  periodEnd       DateTime
+  composedAt      DateTime  @default(now())
+  /// Structured content; per-kind schema validated at app layer.
+  body            Json      @default("{}")
+  /// Plain-text rendering for WhatsApp / SMS delivery.
+  bodyText        String?
+  /// `push` | `whatsapp_out` | `email` | `in_app`.
+  deliveryChannel String?
+  deliveredAt     DateTime?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, audienceUserId, composedAt(sort: Desc)])
+  @@index([companyId, kind])
+  @@schema("axhy")
+}
+
+/// Site responsibility binding — single table for both ACTING (temporary
+/// coverage) and PERMANENT (portfolio assignment) bindings per supervisor
+/// responsibility model §7 Option A.
+///
+/// Discriminator: `actingForUserId` IS NULL → permanent portfolio;
+/// `actingForUserId` IS NOT NULL → temporary acting coverage.
+///
+/// effectiveUntil semantics:
+///   - Acting (actingForUserId IS NOT NULL): effectiveUntil REQUIRED.
+///   - Permanent (actingForUserId IS NULL): effectiveUntil OPTIONAL —
+///     NULL for open-ended portfolio; non-NULL for a future-dated planned
+///     switch (CHECK constraint enforces the acting-requires-until rule).
+///
+/// endedAt is reserved for manual early termination, supersession by a new
+/// permanent binding, or correction bookkeeping — NOT for modelling a
+/// planned future end (use effectiveUntil for that).
+///
+/// No-overlap invariant: at most one active binding of each kind per site
+/// at any moment. Acting + permanent may stack (different kind values).
+/// Enforced at DB level via Postgres EXCLUDE USING gist on
+/// (siteId, kind-discriminator, tstzrange(effectiveFrom, COALESCE(effectiveUntil,
+/// 'infinity'))) filtered by endedAt IS NULL. The discriminator is a CASE
+/// over actingForUserId and is written into the migration SQL literally
+/// (not via Prisma DSL) — see 20260516_p1_5_site_supervisor_binding.
+///
+/// @derives(workflow-design-closure §4 + §3.1 + §3.7)
+/// @derives(supervisor-responsibility-model §7 Option A + §5.8 + §9 picks 5/6)
+model SiteSupervisorBinding {
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @db.Uuid
+  siteId          String    @db.Uuid
+  /// Supervisor responsible for this binding (User.id).
+  userId          String    @db.Uuid
+  /// NULL → permanent portfolio. NOT NULL → temporary acting coverage;
+  /// references the original supervisor being covered for.
+  actingForUserId String?   @db.Uuid
+  effectiveFrom   DateTime  @db.Timestamptz(6)
+  /// REQUIRED for acting; OPTIONAL for permanent (NULL = open-ended,
+  /// non-NULL = planned future switch). DB CHECK enforces.
+  effectiveUntil  DateTime? @db.Timestamptz(6)
+  reason          String
+  /// User.id of HR member who created the binding. Plain UUID (no FK) —
+  /// audit-trail durability requires this row to survive User deletes.
+  /// Follows the Attendance.markedBySupervisorId convention.
+  createdBy       String    @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  /// Set on manual early termination / supersession / correction.
+  /// Distinct from effectiveUntil (planned end).
+  endedAt         DateTime? @db.Timestamptz(6)
+  endedReason     String?
+  /// Computed-on-write JSON snapshot of handoff context at binding creation.
+  /// Composer logic lands in a later slice — column is nullable for now.
+  /// @derives(workflow-design-closure §3.7)
+  handoffPackage  Json?
+
+  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site          Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  supervisor    User    @relation("BindingSupervisor", fields: [userId], references: [id], onDelete: Cascade)
+  actingForUser User?   @relation("BindingActingFor", fields: [actingForUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([siteId, effectiveFrom(sort: Desc)])
+  @@index([userId])
   @@schema("axhy")
 }

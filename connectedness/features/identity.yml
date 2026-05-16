@@ -1,0 +1,50 @@
+feature: identity
+status: active
+description: Users, memberships, workers, and sites — the per-tenant identity layer.
+
+owns:
+  tables:
+    - User
+    - Membership
+    - Worker
+    - Site
+  state_machines:
+    live:
+      - packages/state-machines/src/worker.ts # 15-state machine per ADR-0006
+    planned: []
+
+routes:
+  live:
+    - POST /auth/otp/request
+    - POST /auth/otp/verify
+    - GET /me
+  planned: []
+
+ui:
+  surfaces:
+    - Profile
+  prototypes:
+    - docs/prototypes/supervisor-mobile-r6/project/src/profile.jsx
+
+packages:
+  - packages/shared-schema
+  - packages/state-machines
+
+specs:
+  - docs/specs/2026-05-12-supervisor-mobile-r6-design.md
+
+tests:
+  live:
+    - apps/backend/test/auth-flow.test.ts
+    - apps/backend/test/_helpers/with-multiple-tenants.ts
+  planned: []
+
+affects: []
+  # Identity rows are referenced by other features (supervisorId on DWI,
+  # workerId on Assignment, etc.) but a row change in User/Worker does not
+  # cascade-write rows in those features. Reference is not cascade.
+
+external_references:
+  - name: otp-attempts
+    why: OtpAttempt rows are auth-infrastructure-adjacent and currently unowned (`Device` was moved to `notifications.yml` on 2026-05-14; OtpAttempt left here as an unmapped orphan until an auth-infrastructure manifest exists)
+    iteration: 3
