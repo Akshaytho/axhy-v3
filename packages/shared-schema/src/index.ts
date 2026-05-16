@@ -26,3 +26,5 @@ export * from './zod/site-supervisor-binding.js';
 export * from './zod/audit-payloads.js';
 // F-002.1 — unified decision-kind registry (single source of truth)
 export * from './zod/supervisor-decision-kinds.js';
+// F-004 — HandoffPackage payload (9 fields, schemaVersion: 1)
+export * from './zod/handoff-package.js';
