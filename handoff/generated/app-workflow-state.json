@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T16:41:30.851Z",
-    "generated_against_head": "e6e605c422b867426c4e8dfaff9b19a8b9e5b2ca",
+    "last_updated_at": "2026-05-16T16:50:04.161Z",
+    "generated_against_head": "e0678d1c6f9a22011a4edeef9303a41ae8da3376",
     "generated_against_branch": "feat/f-007-notification-dispatcher",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "e6e605c422b867426c4e8dfaff9b19a8b9e5b2ca",
+    "last_canonical_commit_at_gen": "e0678d1c6f9a22011a4edeef9303a41ae8da3376",
     "staleness_warning": null,
-    "active_slice": "notification-dispatcher (F-007 round 2 v11 — Notification persistence + audience resolution for supervisor_change) · SCOPE_DRAFT_PENDING_REVIEW (round 2 v11 — OneSignal direction + reachability + pricing + deactivation/removal policy + collapsed eligibility rule) 2026-05-16. Scope artifact at [handoff/feature-queue/scopes/F-007.md](../feature-queue/scopes/F-007.md). 8 picks; no blocking owner picks; recommended defaults stand unless owner overrides.",
+    "active_slice": "notification-dispatcher (F-007 round 2 v11 — Notification persistence + audience resolution for supervisor_change) · SCOPE_APPROVED (round 2 v11) 2026-05-16. Friend's APPROVED verdict at HEAD e0678d1 22:14 verbatim: \"SCOPE: APPROVED (round 2 v11). You can let the owner push this branch, and then begin code on the same branch per the scoped file list. Stop again at AWAITING_APPROVAL after the implementation test sweep is green.\" Code now in flight on the same branch per the v11 in-scope code surface.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,7 +1184,7 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`notification-dispatcher` (F-007 round 2 v11 — Notification persistence + audience resolution for `supervisor_change`)",
-      "Status": "`SCOPE_DRAFT_PENDING_REVIEW (round 2 v11 — OneSignal direction + reachability + pricing + deactivation/removal policy + collapsed eligibility rule)` 2026-05-16. Scope artifact at [handoff/feature-queue/scopes/F-007.md](../feature-queue/scopes/F-007.md). 8 picks; no blocking owner picks; recommended defaults stand unless owner overrides.",
+      "Status": "`SCOPE_APPROVED (round 2 v11)` 2026-05-16. Friend's APPROVED verdict at HEAD `e0678d1` 22:14 verbatim: \"SCOPE: APPROVED (round 2 v11). You can let the owner push this branch, and then begin code on the same branch per the scoped file list. Stop again at AWAITING_APPROVAL after the implementation test sweep is green.\" Code now in flight on the same branch per the v11 in-scope code surface.",
       "Branch": "`feat/f-007-notification-dispatcher` — forked from main `04c5e59` 2026-05-16. v11 scope + tracker propagation landed at `e6e605c`; no code yet (awaits owner + friend round-2 v11 SCOPE: APPROVED on the committed propagation before code begins).",
       "Last landed commit": "`e6e605c` — `docs(handoff): F-007 round 2 v11 — Notification persistence + audience resolution (OneSignal direction; immutable rows; collapsed eligibility rule)`"
     },
