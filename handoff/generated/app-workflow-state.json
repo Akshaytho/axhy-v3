@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T06:05:13.112Z",
-    "generated_against_head": "73375aa2f1a8d7897757d51597a0682942621948",
-    "generated_against_branch": "feat/layer-1-core-primitives",
+    "last_updated_at": "2026-05-16T06:26:21.128Z",
+    "generated_against_head": "a29f9f6c296fc5975623204deeb75d791308ad0d",
+    "generated_against_branch": "feat/f-003-cron-framework",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "73375aa2f1a8d7897757d51597a0682942621948",
+    "last_canonical_commit_at_gen": "39b47b82171348a30293f042a77c7c48ab8320e7",
     "staleness_warning": null,
     "active_slice": "cron-framework-binding-expire-sweep (F-003) · SCOPE_LOCKED — READY FOR CODE (owner approved A polling-sweep + rejected B one-time-trigger 2026-05-16; scope artifact landed at handoff/feature-queue/scopes/F-003.md with permanent A-vs-B record; all 7 picks locked; code slice starts next)",
     "generated_from": [
