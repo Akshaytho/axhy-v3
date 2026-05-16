@@ -351,3 +351,52 @@ Every new scope artifact (`handoff/feature-queue/scopes/F-XXX.md`) must include 
 - It does NOT mean copy patterns mechanically without judgment — existing patterns can be wrong, and you can still choose to introduce a new one. The rule is about GROUNDING the decision in repo reality, not about defaulting to the existing pattern blindly.
 - It does NOT mean spend a day surveying the whole repo for every slice. The survey is targeted: only the patterns most adjacent to the slice's problem domain.
 - It does NOT replace rules 23 (confidence-score), 24 (production-grade), or 25 (policy-first). It is upstream of all three: do the repo survey first, then apply the other rules to the grounded design.
+
+---
+
+## Companion rule: pre-decided product behavior is an input, not a topic (locked 2026-05-16 after F-004 round-2)
+
+Locked alongside rule 27 in `handoff/owner-input/INDEX.md`. Upstream of rules 23–26: before reasoning about repo patterns (rule 26), policy-vs-code (rule 25), production-grade enforcement (rule 24), or confidence (rule 23), you must first ground the design in the already-decided product behavior.
+
+**The two-line operating rule:**
+
+- Before any new backend design, restate the already-decided product behavior in simple English and confirm the draft conforms to it. If you can't restate it from memory, find it in the closure spec / audits / prior decisions log and pin it at the top of the scope artifact.
+- The owner's locked product behaviors are inputs to the design, not topics for the design. Re-designing a human concept into a backend-shaped concept is a rule-27 violation.
+
+**Mandatory 5-question pre-design checklist (must appear at the top of every scope artifact, BEFORE the rule-26 existing-pattern survey):**
+
+1. **What product behavior is already decided here?** Restate in plain English, with citation (spec section / audit scene / decisions-log entry / owner directive date).
+2. **What UI / persona surface proves it's decided?** Name the file/line/scene the surface lives at — even when the surface itself is deferred to a later slice.
+3. **Which of the 4 data buckets does each piece of state live in?** Bucket every piece of data the slice touches into one (or a labeled combination) of: **(1) exact SQL truth** — relational rows queried point-in-time; never stale; the source of operational truth. **(2) frozen SNAPSHOT** — JSON blob captured at one moment, immutable thereafter; captures judgement, not state. **(3) live-or-delta-refreshed** — read from current SQL truth on demand or invalidated on a known event. **(4) vector-retrievable memory** — embedded text searchable via pgvector similarity; layered ON TOP of bucket 1, not instead of it. Do NOT collapse buckets.
+4. **Did I redesign a human / product concept into a backend-shaped concept? OR overstate alignment to a locked behavior?** Two related failure modes. **(a) Shape redesign:** e.g. "handoff package" → not "everything we know about this site"; "context loading" → not "fresh DB query on every chat message". **(b) Honesty-of-wording:** do not claim "exact spec match" if an open question's interim default is filling a field; do not write a new product behavior as if pre-locked when it requires owner sign-off. Wording that overstates alignment is itself a rule-27 drift.
+5. **What's the cost model my design implies?** If the design queries DB / runs AI per message and an alternative loads-once-and-invalidates exists, explain why the cheaper alternative was rejected. State which buckets are read per-event vs per-message vs per-session.
+
+**The running list of locked product behaviors (additions land here as owner decides them):**
+
+- **Base + Delta + Live context model (locked 2026-05-16, owner directive after F-004 round-2 review).** Supervisor chat context is composed in layers. Base context: loaded ONCE at first chat of the day; contains stable rules + portfolio + near-horizon summary; cached for the day. Delta layer: event-invalidated during the day on complaint / decision / assignment / calendar / binding change; appended to base. Live fetch: on-demand for far-horizon queries ("next month?", "6 months?") via existing chat tool path; results NOT cached. Why it matters: loading the full DB on every message is wrong for cost AND wrong for the product. Future slices must restate this at the top of their scope artifact before designing context loading.
+- **Postgres + pgvector + delta/live AI-memory architecture (locked 2026-05-16 late evening, owner directive after F-004 round-3 review — the 4-bucket model rule-27 Q3 enforces).** Every piece of data the system touches lives in exactly one of 4 buckets:
+  - **Bucket 1 — exact SQL truth.** Relational tables queried point-in-time (Worker, Site, Assignment, Complaint, Binding, AuditEvent, LivingDocRule rows). Never stale. Source of operational truth.
+  - **Bucket 2 — frozen SNAPSHOT.** JSON blob captured at one moment, immutable thereafter (handoffPackage; originContext on DWI). Captures JUDGEMENT, not state.
+  - **Bucket 3 — live-or-delta-refreshed.** Read from current SQL truth on demand, or invalidated on a known event. Combines bucket-1 freshness with caching.
+  - **Bucket 4 — vector-retrievable memory.** Embedded text searchable via pgvector similarity (LivingDoc rule text, HRUpdate body, complaint body, AI conversation history). For "relevant" rather than "exact". Layered ON TOP of bucket 1, not instead of it.
+  - **Composition rules:** Do NOT make one frozen blob carry the whole system. Do NOT treat retrieval as a replacement for exact SQL truth. Do NOT skip snapshots in favor of "just refresh live" — handover judgement must be captured at the moment it was made. When data benefits from multiple buckets (e.g. LivingDoc rules are bucket-1 + bucket-4), label it as the combination.
+  - **Why it matters:** the drift was treating handoffPackage as if it had to carry every read concern the future AI chat will need. It doesn't. The AI chat will pull bucket-1 SQL truth for exact filters, bucket-3 delta/live for freshness, bucket-4 vector retrieval for relevant memory, AND read bucket-2 snapshots when it needs the outgoing person's judgement. The 4 buckets compose; each slice should specify which buckets it produces and which it reads.
+- **HandoffPackage = focused snapshot of outgoing supervisor's JUDGEMENT (locked closure spec §3.7 + Decision 8).** Captures what the outgoing person decided about this site at this moment (rules, recent complaints, active workers, open items in next 14 days). Truncation policy locked at spec §3.7 Invariants line 322 (100KB cap, drop oldest complaints first then activeWorkers field detail). NOT "everything we know about the site" — long-horizon planning queries stay LIVE via chat tool path, "relevant memory across sites" stays bucket-4 retrieval.
+- **4 rule layers (locked closure spec §3.7 + audit Ravi Month 9b).** Layer 1 company-permanent rules (HRUpdate / HRUpdateRule) stay LIVE-fetched (bucket-1 + 4). Layer 2 HR/pod rules stay LIVE-fetched (bucket-1 + 4). Layer 3 site-specific supervisor rules TRANSFER on permanent rebind (mechanism Z — copy to incoming LivingDoc.siteRules + handover summary in freeNotes); future bucket-4 embedding planned but not in F-004. Layer 4 personal supervisor working notes STAY with original supervisor.
+
+**Concrete examples (F-004 saga, the rule's origin):**
+
+- **Round-1 shape drift:** sourced `siteRules` from `Site` metadata instead of outgoing supervisor's `LivingDoc.siteRules` — "site rules" was re-shaped into "static site attributes" in backend thinking.
+- **Round-2 shape drift:** `recentComplaints` shape redesigned to `{id, text, severity, state, loggedAt}` instead of spec's `{id, kind, state, loggedAt, body}`; `siteId` smuggled into top-level payload despite not being in spec's listed 8 fields.
+- **Round-3 honesty drift (the new failure mode that prompted Q4 to grow):** pick 1 + pick 3 overclaimed "exact spec match" / "no additions, no omissions" while Open Q5's `kind`-field interim default is still in play. Also Open Q2 smuggled a new first-ever-binding summary-entry text as if it were spec-locked rather than a new product choice. Friend's principle: cannot claim alignment to a locked behavior while one mapping is still an interim default; cannot smuggle a new product behavior in as already-decided.
+- The base+delta+live model AND the 4-bucket pgvector model are both owner pre-existing product decisions that kept getting re-debated when they should have been pinned at the top of the artifact as locked inputs.
+
+**How to apply during scoping:**
+
+Every new scope artifact (`handoff/feature-queue/scopes/F-XXX.md`) must include a "Pre-decided product behavior" section at the TOP (before the rule-26 existing-pattern survey) that answers the 5 questions above. If a question doesn't apply (e.g., no UI surface yet), state that explicitly with the reason.
+
+**What this rule does NOT mean:**
+
+- It does NOT freeze product behavior forever. Owner can change a locked product behavior; the rule is that the design must START from the current locked state, not re-derive it.
+- It does NOT replace rules 23–26. It is upstream: ground in pre-decided product behavior FIRST, then survey existing patterns, then apply confidence / production-grade / policy-first rules to the grounded design.
+- It does NOT mean every locked behavior must be exhaustively restated in every scope artifact. Restate ONLY the behaviors the slice touches — but restate them in plain English with citation, not by reference.

@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T07:47:32.088Z",
-    "generated_against_head": "edf6172204ba9aaf3e7f8eeac55e75dd7d309371",
-    "generated_against_branch": "main",
+    "last_updated_at": "2026-05-16T13:05:20.905Z",
+    "generated_against_head": "0c9bdb7065f10fc44617a54a1796d501110152f9",
+    "generated_against_branch": "feat/f-004-handoff-package-composer",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "edf6172204ba9aaf3e7f8eeac55e75dd7d309371",
+    "last_canonical_commit_at_gen": "0c9bdb7065f10fc44617a54a1796d501110152f9",
     "staleness_warning": null,
-    "active_slice": "handoff-package-composer (F-004) · PLANNED — AWAITING_SCOPE_APPROVAL (rule-26 \"existing-pattern survey\" required in scope artifact at handoff/feature-queue/scopes/F-004.md before code begins)",
+    "active_slice": "handoff-package-composer (F-004) · AWAITING_APPROVAL (round 2) 2026-05-16 — friend's round-1 review at HEAD 3abf55b caught 3 findings; all addressed in this revision. Full real-DB sweep **19/19 files · 109/109 cases pass** (95 baseline + 14 new F-004 cases; was 11, grew by 3 — added site-scoped-decisions, hard-truncation-throws, and soft-truncation-drops-complaints). **Round-2 fixes:** (P1 #1) restored the permanent-rebind handover-summary entry in LivingDoc.freeNotes (round 1 over-applied Q2=(b) by dropping the summary on ALL permanent rebinds; Q2=(b) governs only the first-ever-binding case per spec §3.7 \"Surfaced to\"). Summary text \"Handover from \\<outgoingName\\> on \\<date\\> for \\<siteName\\>\"; idempotent ID via deriveSummaryEntryId(bindingId). (P1 #2) openItems decisions now SITE-SCOPED via routingModeFor + deriveWorkerPrimarySiteId (same routing pattern as routes/decisions.ts:227). worker-targeted decisions route through worker's primary site; site-targeted by targetId === siteId; origin-only excluded entirely. Round 1 leaked outgoing supervisor's PROPOSED decisions for OTHER sites into the handoff package. (P2 #3) truncation is now a HARD invariant per spec §3.7 line 323: phases 1+2 + extended phases 3a/3b/3c (drop entire activeWorkers → openItems → siteRules); if even metadata-only exceeds cap, throws HandoffPackageOversizedError so the caller's tx rolls back rather than persisting an oversized package. Round 1 returned oversized as soft-fail.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,9 +1184,9 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`handoff-package-composer` (F-004)",
-      "Status": "`PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 \"existing-pattern survey\" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins)",
-      "Branch": "Forks from current `main` HEAD `edf6172` — next branch is `feat/f-004-handoff-package-composer` (created once scope is APPROVED)",
-      "Last landed commit": "`edf6172` — `docs(handoff): drop one more stale pre-merge line from active-slice \"What this slice does NOT do\"` (post-merge tracker cleanup on top of F-003 merge `2bc815b`)",
+      "Status": "`AWAITING_APPROVAL (round 2)` 2026-05-16 — friend's round-1 review at HEAD `3abf55b` caught 3 findings; all addressed in this revision. Full real-DB sweep **19/19 files · 109/109 cases pass** (95 baseline + 14 new F-004 cases; was 11, grew by 3 — added site-scoped-decisions, hard-truncation-throws, and soft-truncation-drops-complaints). **Round-2 fixes:** (P1 #1) restored the permanent-rebind handover-summary entry in `LivingDoc.freeNotes` (round 1 over-applied Q2=(b) by dropping the summary on ALL permanent rebinds; Q2=(b) governs only the first-ever-binding case per spec §3.7 \"Surfaced to\"). Summary text \"Handover from \\<outgoingName\\> on \\<date\\> for \\<siteName\\>\"; idempotent ID via `deriveSummaryEntryId(bindingId)`. (P1 #2) `openItems` decisions now SITE-SCOPED via `routingModeFor` + `deriveWorkerPrimarySiteId` (same routing pattern as `routes/decisions.ts:227`). worker-targeted decisions route through worker's primary site; site-targeted by `targetId === siteId`; origin-only excluded entirely. Round 1 leaked outgoing supervisor's PROPOSED decisions for OTHER sites into the handoff package. (P2 #3) truncation is now a HARD invariant per spec §3.7 line 323: phases 1+2 + extended phases 3a/3b/3c (drop entire activeWorkers → openItems → siteRules); if even metadata-only exceeds cap, throws `HandoffPackageOversizedError` so the caller's tx rolls back rather than persisting an oversized package. Round 1 returned oversized as soft-fail.",
+      "Branch": "`feat/f-004-handoff-package-composer` — forked from main `62471c6` 2026-05-16 to host the scope artifact draft + the eventual code slice (no code yet)",
+      "Last landed commit": "`62471c6` — `docs(handoff): F-004 branch-base wording → current main HEAD edf6172 (was stale at 2bc815b)` (last commit on main before this branch forked)",
       "Dependencies": "F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.",
       "Tests status": "n/a — code not started; scope phase",
       "Verification gate": "will be `REAL_DB` once code lands"
@@ -1262,7 +1262,7 @@
         "workflows": "F26 (acting binding create), F27 (permanent reassign).",
         "entities": "NEW `apps/backend/src/lib/handoff-package-composer.ts` exporting `composeHandoffPackage(tx, args)` — tx-callable shape matching the existing `recordBindingCreated` pattern per rule 26. Wires into the existing binding-create flow + `reassignPermanentBinding`. NEW `HandoffPackagePayloadSchema` in shared-schema/zod. NO schema migration (column already exists). NO HTTP route in this slice.",
         "verification": "`REAL_DB` — composition correctness across acting / permanent / reassign paths + empty-state defaults + cross-tenant isolation.",
-        "status": "PLANNED"
+        "status": "AWAITING_APPROVAL"
       },
       {
         "id": "F-005",
@@ -1306,6 +1306,28 @@
         "workflows": "H-6, F26/F27 (after seed correction).",
         "entities": "new migration script, admin-web/hr/seed-review page.",
         "verification": "`REAL_DB`.",
+        "status": "QUEUED"
+      },
+      {
+        "id": "F-009",
+        "title": "Project memory service (Postgres + pgvector retrieval layer for Claude workflow)",
+        "why": "owner directive 2026-05-16 evening. Three rounds of F-004 scope drift surfaced a recurring pattern — pre-decided product behaviors (base+delta+live model; mechanism Z; spec §3.7 shape) keep getting re-debated because Claude doesn't reliably re-read the locked sources before drafting. Friend is doing the work of \"re-grounding Claude in already-decided facts\" round after round. A project memory service is the systemic fix — but it is an ENABLER, not a substitute for discipline (rule 27 still applies). Owner verbatim: \"vector DB = very useful; vector DB alone = not enough.\"",
+        "depends_on": "F-004 done; ideally F-005 done too (so admin-web exists if the service needs an HR-visible surface).",
+        "personas": "none directly (operator-side infrastructure). Indirectly: every persona because Claude's drafts become more grounded.",
+        "workflows": "none directly (workflow-design specs unchanged).",
+        "entities": "",
+        "verification": "`REAL_DB` — embedding round-trip + metadata filter correctness + delta refresh idempotency + link graph traversal.",
+        "status": "QUEUED"
+      },
+      {
+        "id": "F-010",
+        "title": "Handoff v2 / client-context expansion",
+        "why": "F-004 round-4 v3 panel pass surfaced (Suresh Pillai, FM ops 22yr field) that client-side context — building manager name, what triggers the client's complaints, finish standards, escalation paths — is at least as load-bearing for the incoming supervisor on day-1 as the operational site rules. Audit Ravi Month 9b's pain (\"Anjali rediscovers lobby-mop-twice-daily via complaint\") generalizes to client context: she'll also rediscover \"Mr. Rao calls Reddy directly when the kitchen-floor isn't waxed by 6:30 AM\" the same way. F-004 deliberately stays strict-spec (siteRules only); F-010 expands the transfer model with proper design instead of ad-hoc bolt-on.",
+        "depends_on": "F-004 done.",
+        "personas": "Anjali (incoming on permanent rebind — primary benefit); Ravi (outgoing — no behavior change for him).",
+        "workflows": "F27 (permanent reassign primarily); F26 acting cover may also benefit, but cover is temporary so the client-context value is lower.",
+        "entities": "",
+        "verification": "`REAL_DB` — clientPreferences-copy correctness across acting / permanent paths + cross-tenant isolation + schemaVersion bump correctness.",
         "status": "QUEUED"
       }
     ],

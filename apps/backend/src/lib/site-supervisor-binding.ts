@@ -17,14 +17,19 @@ import {
   BindingEndedManualPayloadSchema,
   BindingEndedSupersededByPermanentPayloadSchema,
   BindingEndedAutoPayloadSchema,
+  HandoffPackageGeneratedPayloadSchema,
   type BindingCreatedPayload,
   type BindingEndedManualPayload,
   type BindingEndedSupersededByPermanentPayload,
   type BindingEndedAutoPayload,
+  type HandoffPackageGeneratedPayload,
+  type HandoffPackagePayload,
 } from '@axhy/shared-schema';
 
 import { recordAuditEvent } from './audit-event.js';
 import { assertNotChangingTodaysResponsibility } from './same-day-freeze.js';
+import { composeHandoffPackage } from './handoff-package-composer.js';
+import { writeHandoffPackage } from './handoff-package-writer.js';
 
 // ---------------------------------------------------------------------------
 // Typed audit-emit helpers — BINDING_* kinds
@@ -117,6 +122,33 @@ export async function recordBindingEndedSupersededByPermanent(
   await recordAuditEvent(tx, {
     companyId: input.companyId,
     kind: 'BINDING_ENDED_SUPERSEDED_BY_PERMANENT',
+    actorId: input.actorId,
+    targetId: payload.bindingId,
+    payload: payload as Prisma.InputJsonValue,
+  });
+}
+
+/**
+ * Typed audit-emit helper for HANDOFF_PACKAGE_GENERATED. Used by the F-004
+ * `writeHandoffPackage` writer. Validates payload via Zod before insert.
+ *
+ * @derives(ADR-0003) — schema-derived; @derives(F-004 scope round-4 v4)
+ */
+export type RecordHandoffPackageGeneratedInput = {
+  companyId: string;
+  actorId: string;
+  payload: HandoffPackageGeneratedPayload;
+};
+
+/** @derives(ADR-0003) — schema-derived; @derives(F-004 scope round-4 v4) */
+export async function recordHandoffPackageGenerated(
+  tx: Prisma.TransactionClient,
+  input: RecordHandoffPackageGeneratedInput,
+): Promise<void> {
+  const payload = HandoffPackageGeneratedPayloadSchema.parse(input.payload);
+  await recordAuditEvent(tx, {
+    companyId: input.companyId,
+    kind: 'HANDOFF_PACKAGE_GENERATED',
     actorId: input.actorId,
     targetId: payload.bindingId,
     payload: payload as Prisma.InputJsonValue,
@@ -220,6 +252,18 @@ export async function reassignPermanentBinding(
     data: { effectiveUntil: cutover },
   });
 
+  // F-004 — compose the bucket-2 frozen snapshot BEFORE the new binding row
+  // create so it lands in the same atomic tx that creates the row. The
+  // outgoing supervisor is the prior row's userId (NOT NULL here — we
+  // already errored above if no prior binding was effective at the cutover).
+  const handoffPackage: HandoffPackagePayload = await composeHandoffPackage(tx, {
+    companyId: input.companyId,
+    siteId: input.siteId,
+    outgoingSupervisorId: prior.userId,
+    incomingSupervisorId: input.newUserId,
+    at: cutover,
+  });
+
   const newRow = await tx.siteSupervisorBinding.create({
     data: {
       companyId: input.companyId,
@@ -230,7 +274,30 @@ export async function reassignPermanentBinding(
       effectiveUntil: input.effectiveUntil ?? null,
       reason: input.reason,
       createdBy: input.reassignedBy,
+      handoffPackage: handoffPackage as unknown as Prisma.InputJsonValue,
     },
+  });
+
+  // F-004 mechanism Z — permanent rebind path:
+  //   1) Copy outgoing's site-scoped L3 siteRules into incoming's LivingDoc
+  //      (preserving scope.siteId; source.pattern = "handover_from_<outgoingId>")
+  //   2) Emit 1× HANDOFF_PACKAGE_GENERATED audit (always)
+  //   3) Q2 = (b): NO freeNotes summary entry (regardless of first-ever or
+  //      outgoing-exists — wait, this branch has outgoing; Q2 only governs
+  //      first-ever which goes through the plain-create path elsewhere).
+  //      In reassignPermanentBinding the outgoing supervisor exists by
+  //      construction (we errored above if not), so Q2 = (b) doesn't
+  //      kick in here. The Q2 = (b) zero-summary rule applies only to
+  //      first-ever bindings, which never go through reassignPermanentBinding.
+  await writeHandoffPackage(tx, {
+    bindingId: newRow.id,
+    companyId: input.companyId,
+    siteId: input.siteId,
+    outgoingSupervisorId: prior.userId,
+    incomingSupervisorId: input.newUserId,
+    payload: handoffPackage,
+    kind: 'PERMANENT',
+    actorId: input.reassignedBy,
   });
 
   await recordBindingEndedSupersededByPermanent(tx, {
