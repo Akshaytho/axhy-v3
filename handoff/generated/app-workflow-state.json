@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T07:06:41.914Z",
-    "generated_against_head": "cd490d745510eb4f6bba70dee0f80f86122e6f95",
+    "last_updated_at": "2026-05-16T07:17:24.316Z",
+    "generated_against_head": "802d28f0f2834f659edc0930c9019b2f37adc4ef",
     "generated_against_branch": "feat/f-003-cron-framework",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "3e2f6bf0f33e40751f1d9eae13046403c0afd1a2",
+    "last_canonical_commit_at_gen": "802d28f0f2834f659edc0930c9019b2f37adc4ef",
     "staleness_warning": null,
     "active_slice": "cron-framework-binding-expire-sweep (F-003) · AWAITING_APPROVAL (round 2 — friend's round-1 P1 fixed via DB-enforced partial unique index + P2002 catch; rule 26 locked; round-1 P2 docs claims downgraded to match what tests actually prove. 18/18 test files green · 95/95 cases pass — was 92, +3 new dedup cases.)",
     "generated_from": [
@@ -1266,7 +1266,7 @@
         "depends_on": "F-001 (APPROVED 2026-05-15) — dependency met. F-002 (APPROVED 2026-05-16) and S-001 (APPROVED 2026-05-16) not strictly required but both landed.",
         "personas": "all 4 indirectly via downstream consumers of `BINDING_ENDED_AUTO` (notification dispatcher F-007, digest generator, audit-trail reports).",
         "workflows": "F26 (acting binding expiry — emits audit; switching itself is already read-time correct), F27 (permanent reassign expiry — same), C12 (decision expiry — later slice on this framework).",
-        "entities": "- **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.\n  - **EMITS:** `BINDING_ENDED_AUTO` AuditEvent per binding whose `effectiveUntil` has just passed and that has not yet been processed (kind already catalogued in closure spec §11).\n  - **DOES NOT MUTATE the binding row.** `endedAt` stays NULL for auto-expired bindings — setting it would break historical point-in-time queries via `getEffectiveBinding`.\n  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + does NOT mutate the binding row + does NOT change `getEffectiveBinding` results.\n  - **NO** new entity. **NO** schema change in the recommended scope (pick 7 option (a) — audit-existence check). **NO** HTTP route mutation lands.",
+        "entities": "- **NEW dir:** `apps/backend/src/jobs/` — cron framework module + `binding-expire-sweep` job.\n  - **EMITS:** `BINDING_ENDED_AUTO` AuditEvent per binding whose `effectiveUntil` has just passed and that has not yet been processed (kind already catalogued in closure spec §11).\n  - **DOES NOT MUTATE the binding row.** `endedAt` stays NULL for auto-expired bindings — setting it would break historical point-in-time queries via `getEffectiveBinding`.\n  - **NEW test:** real-DB integration test verifying sweep is idempotent + emits the audit + does NOT mutate the binding row + does NOT change `getEffectiveBinding` results.\n  - **NO** new entity. **NO** new Prisma model. **NO** HTTP route mutation lands. **One schema change** at round 2 (migration `20260519_f003_binding_ended_auto_dedup_index` — partial unique index on `AuditEvent` for `BINDING_ENDED_AUTO`-kind rows; narrow predicate, other kinds unaffected). The original round-1 scope said \"no schema change\" with an app-side audit-existence check; friend's round-1 P1 review correctly flagged that as race-prone, so round 2 moves the dedup guarantee to the DB.",
         "verification": "`REAL_DB` (real Postgres + sweep run + idempotency assertion + read-time-routing-unchanged assertion).",
         "status": "AWAITING_APPROVAL"
       },

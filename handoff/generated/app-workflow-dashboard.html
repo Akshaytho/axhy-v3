@@ -106,8 +106,8 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T07:06:41.914Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>cd490d74</code></span>
+      <span>Generated <strong>2026-05-16T07:17:24.316Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>802d28f0</code></span>
       <span>Branch <code>feat/f-003-cron-framework</code></span>
       <span>Active slice: <strong>cron-framework-binding-expire-sweep (F-003) · AWAITING_APPROVAL (round 2 — friend's round-1 P1 fixed via DB-enforced partial unique index + P2002 catch; rule 26 locked; round-1 P2 docs claims downgraded to match what tests actually prove. 18/18 test files green · 95/95 cases pass — was 92, +3 new dedup cases.)</strong></span>
       
@@ -231,7 +231,7 @@
   - <strong>EMITS:</strong> <code>BINDING_ENDED_AUTO</code> AuditEvent per binding whose <code>effectiveUntil</code> has just passed and that has not yet been processed (kind already catalogued in closure spec §11).
   - <strong>DOES NOT MUTATE the binding row.</strong> <code>endedAt</code> stays NULL for auto-expired bindings — setting it would break historical point-in-time queries via <code>getEffectiveBinding</code>.
   - <strong>NEW test:</strong> real-DB integration test verifying sweep is idempotent + emits the audit + does NOT mutate the binding row + does NOT change <code>getEffectiveBinding</code> results.
-  - <strong>NO</strong> new entity. <strong>NO</strong> schema change in the recommended scope (pick 7 option (a) — audit-existence check). <strong>NO</strong> HTTP route mutation lands.</p>
+  - <strong>NO</strong> new entity. <strong>NO</strong> new Prisma model. <strong>NO</strong> HTTP route mutation lands. <strong>One schema change</strong> at round 2 (migration <code>20260519_f003_binding_ended_auto_dedup_index</code> — partial unique index on <code>AuditEvent</code> for <code>BINDING_ENDED_AUTO</code>-kind rows; narrow predicate, other kinds unaffected). The original round-1 scope said &quot;no schema change&quot; with an app-side audit-existence check; friend's round-1 P1 review correctly flagged that as race-prone, so round 2 moves the dedup guarantee to the DB.</p>
           <p><strong>Verification gate:</strong> <code>REAL_DB</code> (real Postgres + sweep run + idempotency assertion + read-time-routing-unchanged assertion).</p>
         </div>
       </details>
