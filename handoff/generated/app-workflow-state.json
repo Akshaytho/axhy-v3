@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T07:39:08.673Z",
-    "generated_against_head": "2bc815b3930b7f22908d2727a34b01164f3c2225",
+    "last_updated_at": "2026-05-16T07:39:37.907Z",
+    "generated_against_head": "bea3a3879654bb53036bbf970aab4936e353f64b",
     "generated_against_branch": "main",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "ad3b805ca03eba2029959e1e8c32e797b3137cd7",
+    "last_canonical_commit_at_gen": "bea3a3879654bb53036bbf970aab4936e353f64b",
     "staleness_warning": null,
     "active_slice": "handoff-package-composer (F-004) · PLANNED — AWAITING_SCOPE_APPROVAL (rule-26 \"existing-pattern survey\" required in scope artifact at handoff/feature-queue/scopes/F-004.md before code begins)",
     "generated_from": [

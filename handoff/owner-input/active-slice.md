@@ -51,7 +51,6 @@ Open picks to surface in the scope artifact (recommended defaults in brackets):
 - Does not introduce the HR portal handoff card surface — that's F-005 (admin-web HR portal).
 - Does not touch supervisor-mobile rendering of the package — that's later.
 - Does not modify F-003's cron framework.
-- Does not auto-merge `feat/f-003-cron-framework` to main. Merge is a separate ops step (next step after this commit per friend's directive).
 - Does not write code until the F-004 scope artifact is approved by owner + friend.
 
 ## F-002 + S-001 + F-003 closure summary (for cross-slice context)
