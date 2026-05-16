@@ -20,39 +20,46 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-package-composer` (F-004 — scope artifact REVISED, round 2) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
+### Slice: `handoff-package-composer` (F-004 — scope artifact REVISED, round 3) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
 
-**Status note (2026-05-16 round 2):** Round-1 was CHANGES_REQUESTED by owner + friend for 3 drifts from closure spec §3.7. After deep discussion (R6-as-real-user walkthrough + 4-rule-layer model + ownership-truth-vs-consumers clarification + mechanism X/Y/Z evaluation), owner locked the revised direction:
+**Status note (2026-05-16 round 3):** Round-1 was CHANGES_REQUESTED for 3 drifts from closure spec §3.7. Round-2 was CHANGES_REQUESTED again — friend caught 2 more drifts on file-grounded review of the round-2 scope:
 
-- **Mechanism Z (locked).** Acting cover writes `binding.handoffPackage` only. Permanent rebind writes `binding.handoffPackage` AND copies outgoing's site-scoped `LivingDoc.siteRules` entries into incoming's `LivingDoc.siteRules` (preserving `scope.siteId`) AND appends 1 "handover from [outgoing] on [date]" summary entry to incoming's `LivingDoc.freeNotes`. Owner verbatim reason: "X-only doesn't make the existing R6 site-rules UI useful; Y-only loses the spec-level handover record; Z gives both."
-- **CalendarEntry filter (locked).** STRICT option (a): include only entries whose `payload.siteId` EXPLICITLY matches this site. Ambiguous = skip. "Missing context is safer than wrong context for a handoff."
-- **4-rule-layer model (locked).** F-004 only handles **layer 3** (site-specific supervisor rules from outgoing's LivingDoc.siteRules). Layer 1 (company-permanent rules) + Layer 2 (HR/pod rules) stay LIVE-fetched, OUT of F-004. Layer 4 (personal/private notes) stays personal.
-- **Three explicit non-claims (caught by friend's audit of the previous claim wording):**
-  - Binding ownership-truth switching (via F-001's `getEffectiveBinding`) does NOT mean all consumers are wired. Future surfaces (F-005 HR portal, supervisor-mobile "Read the handoff" panel from closure §5.2.8, portfolio-delta banner §5.2.7, "while you were out" digest §5.2.6, F-007 notification dispatcher) still need their own slices.
-  - F-004 producing `binding.handoffPackage` JSON is NOT the same thing as "incoming LivingDoc updated". Mechanism Z's LivingDoc-merge step is the explicit write path that bridges the two.
-  - Long-horizon planning ("next month / 6 months") is a LIVE chat-tool query concern, NOT a handoffPackage concern. handoffPackage stays bounded at 14 days per spec.
+- **Mistake A — `recentComplaints` shape drift.** Round-2 used `{id, text, severity, state, loggedAt}`. Spec §3.7 **line 307** locks `{id, kind, state, loggedAt, body}`. The round-2 shape was reasoning from the backend `Complaint` model's columns (which has `text` + `severity`) instead of from the spec's locked shape. Round-3 fixes to spec verbatim: `body = Complaint.text`, `loggedAt = Complaint.createdAt`, `state = resolvedAt === null ? 'open' : 'resolved'`. `severity` dropped (not in spec's listed shape).
+- **Mistake B — `siteId` smuggled into top-level payload.** Round-2 listed `siteId: UUID` as one of the payload fields. Spec §3.7 lines 303–310 list 8 fields; `siteId` is NOT one of them. The binding row already carries `siteId`; the package is always read in the context of its binding. Adding `siteId` is denormalization NOT authorized by spec. Round-3 drops it.
+- **Mistake C — 100KB truncation cited as spec-mandated without explicit line citation.** The 100KB rule + truncation order ARE locked in spec §3.7 — but in the **Invariants subsection at line 322**, not in the Shape subsection. Friend looked at Shape and couldn't find it. Round-3 cites the exact line 322 verbatim ("Package size capped at a Policy-configurable byte limit (default 100KB); truncation strategy: drop oldest complaints first, then activeWorkers field detail").
 
-**Scope artifact:** [handoff/feature-queue/scopes/F-004.md](handoff/feature-queue/scopes/F-004.md) — revised in place (round-2 marker in header). Branch `feat/f-004-handoff-package-composer` (from main `62471c6`).
+**Meta-pattern (the rule-27 violation):** the same drift kept happening — re-shaping a locked spec field into "what feels right from the backend schema" instead of "what's locked in the spec / what the owner already decided." Owner also separately noted: "i already designed it told him many times i dont know why he is not remembering it" — referring to the base+delta+live context model, which is a pre-existing product decision the agent kept treating as new architecture to design. Locked as **rule 27** (pre-decided product behavior is an input, not a topic) in INDEX.md + production-grade-rulebook.md + memory + portable rules. Every future scope artifact must include a "Pre-decided product behavior" §0 section answering 5 questions before the rule-26 existing-pattern survey.
 
-**What the revised scope locks (8 picks):**
+**Round-3 changes in the F-004 scope artifact:**
 
-| #   | Pick                     | Locked value (summary)                                                                                                                                                                                              |
-| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Payload shape            | EXACTLY closure spec §3.7: `generatedAt, outgoingSupervisorId?, incomingSupervisorId, siteId, siteRules STRING[], recentComplaints[], activeWorkers[], openItems[], packageSizeBytes`. Zod schema in shared-schema. |
-| 2   | siteRules source         | Outgoing's `LivingDoc.siteRules` filtered by `scope.siteId === thisSite AND state === ACTIVE AND visibility ∈ {COMPANY, SUPERVISOR_OWN}` (WORKER_OWN excluded defensively). Project to `ruleText` string.           |
-| 3   | Recent-complaints window | 90 days, siteId-scoped, include both open + resolved.                                                                                                                                                               |
-| 4   | activeWorkers shape      | `{ workerId, name, primaryShifts, recentFlags (30d), recentDecisions (30d) }`.                                                                                                                                      |
-| 5   | openItems composition    | ONE typed list, items `{ kind: 'DECISION' \| 'CALENDAR_ENTRY', ... }`, 14-day forward window.                                                                                                                       |
-| 6   | CalendarEntry filter     | STRICT option (a): explicit `payload.siteId` only; ambiguous skipped.                                                                                                                                               |
-| 7   | Atomic compose-and-write | All composer reads + binding-row create + (on permanent) LivingDoc writes + audit emits in ONE tx.                                                                                                                  |
-| 8   | Mechanism Z              | Acting = binding.handoffPackage only. Permanent = binding.handoffPackage + N LivingDoc.siteRules copies + 1 LivingDoc.freeNotes summary. All in same tx as binding create.                                          |
+- **NEW §0 "Pre-decided product behavior"** at the top of the artifact answering rule-27's 5 questions: what product behavior is decided + citation; what UI surface proves it; LIVE vs SNAPSHOT bucketing of every data piece; redesign-audit of round-1 + round-2 + round-3 drifts; cost model. Pins base+delta+live context model, focused-snapshot-of-judgement framing, 4 rule layers, mechanism Z, STRICT CalendarEntry filter.
+- **Pick 1 rewritten** — "Spec §3.7 lines 303–310's listed 8 fields, no additions, no omissions"; explicit "No `siteId` on the top-level payload"; rationale spelled out.
+- **Pick 3 rewritten** — "Shape per ComplaintSummary EXACTLY per spec §3.7 line 307: `{ id, kind, state, loggedAt, body }`"; mapping from `Complaint` row spelled out; `severity` explicitly excluded; `kind` flagged as Open Q5.
+- **Open Q3 rewritten** — 100KB rule cited as spec §3.7 Invariants subsection line 322 verbatim.
+- **NEW Open Q5** — Complaint model has no `kind` column (genuine schema gap). 3 options: (a) constant `"site_complaint"`; (b) map from `severity` — rejected as misleading; (c) add `Complaint.kind` column in separate slice + use (a) as interim. Default: **(a)**.
 
-**4 small mechanical Open Qs** (recommended defaults given; not blockers):
+**Scope artifact:** [handoff/feature-queue/scopes/F-004.md](handoff/feature-queue/scopes/F-004.md) — revised in place (round-3 marker in header + new §0 + rewritten picks 1, 3 + rewritten Open Q3 + new Open Q5). Branch `feat/f-004-handoff-package-composer` (from main `62471c6`).
+
+**What the round-3 scope locks (8 picks — substance unchanged from round 2, wording fixed on picks 1 + 3):**
+
+| #   | Pick                             | Locked value (summary)                                                                                                                                                                                                                                                                      |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Payload shape                    | Spec §3.7 lines 303–310's listed 8 fields, no additions, no omissions: `generatedAt, outgoingSupervisorId?, incomingSupervisorId, siteRules STRING[], recentComplaints[], activeWorkers[], openItems[], packageSizeBytes`. **No `siteId` at top level** — binding row carries it.           |
+| 2   | siteRules source                 | Outgoing's `LivingDoc.siteRules` filtered by `scope.siteId === thisSite AND state === ACTIVE AND visibility ∈ {COMPANY, SUPERVISOR_OWN}` (WORKER_OWN excluded defensively). Project to `ruleText` string.                                                                                   |
+| 3   | Recent-complaints window + shape | 90 days, siteId-scoped (binding's siteId), include both open + resolved. Shape **EXACTLY per spec §3.7 line 307**: `{ id, kind, state, loggedAt, body }`. `body = Complaint.text`; `loggedAt = Complaint.createdAt`; `state` from `resolvedAt`. `severity` NOT included. `kind` is Open Q5. |
+| 4   | activeWorkers shape              | `{ workerId, name, primaryShifts, recentFlags (30d), recentDecisions (30d) }`.                                                                                                                                                                                                              |
+| 5   | openItems composition            | ONE typed list, items `{ kind: 'DECISION' \| 'CALENDAR_ENTRY', ... }`, 14-day forward window.                                                                                                                                                                                               |
+| 6   | CalendarEntry filter             | STRICT option (a): explicit `payload.siteId` only; ambiguous skipped.                                                                                                                                                                                                                       |
+| 7   | Atomic compose-and-write         | All composer reads + binding-row create + (on permanent) LivingDoc writes + audit emits in ONE tx.                                                                                                                                                                                          |
+| 8   | Mechanism Z                      | Acting = binding.handoffPackage only. Permanent = binding.handoffPackage + N LivingDoc.siteRules copies + 1 LivingDoc.freeNotes summary. All in same tx as binding create.                                                                                                                  |
+
+**5 small mechanical Open Qs** (recommended defaults given; not blockers):
 
 - Q1: `LivingDocRule.createdBy` enum doesn't have a literal "system*handover" value. Default: use 'supervisor' (Anjali IS the owner going forward); preserve provenance in `source.pattern: "handover_from*<outgoingSupervisorId>"`.
 - Q2: First-ever binding for a site → `outgoingSupervisorId: null`, empty siteRules, summary entry still written.
-- Q3: 100KB size-cap truncation strategy — code-stage detail; serialize-measure-truncate-repeat.
+- Q3: **100KB size-cap truncation strategy is locked verbatim at spec §3.7 Invariants subsection line 322** (not invented by F-004): "Package size capped at a Policy-configurable byte limit (default 100KB); truncation strategy: drop oldest complaints first, then activeWorkers field detail." Code-stage detail.
 - Q4: Idempotency on replay — use deterministic rule IDs (uuid-v5 from binding + original-rule id) so re-application is no-op.
+- Q5: **`kind` field in ComplaintSummary is a genuine schema gap** — spec §3.7 line 307 lists `kind`; Complaint model at schema.prisma:598-623 has no `kind` column. 3 options: (a) constant `kind: "site_complaint"` everywhere — truthful since every Complaint has a non-null `siteId`; (b) map from `severity` — rejected as misleading; (c) add `Complaint.kind` column in a separate slice + ship F-004 with `(a)` as interim. Default: **(a)** unless owner wants future categorization (worker-complaint / site-complaint / client-complaint).
 
 **Audit emits on write:** 1× `HANDOFF_PACKAGE_GENERATED` (always — kind already in enum at audit-event.ts:84). N× `LIVING_DOC_RULE_ADDED` (permanent rebind only; same forward-compat path chat.ts:1273-1284 already uses).
 
@@ -60,7 +67,7 @@
 
 **Test plan:** 8 real-DB integration cases — acting binding / permanent reassign / first-ever / empty-state / cross-tenant / STRICT calendar filter (with & without payload.siteId) / idempotent replay.
 
-**Decision needed:** `SCOPE: APPROVED (round-2 revision)` → code begins immediately on `feat/f-004-handoff-package-composer`. `SCOPE: CHANGES_REQUESTED on pick N or Open Q N` → I update + re-surface. `HOLD` → F-004 pauses.
+**Decision needed:** `SCOPE: APPROVED (round-3 revision)` (default picks + Open-Q5 default (a)) → code begins immediately on `feat/f-004-handoff-package-composer`; stop at AWAITING_APPROVAL after new test sweep is green. `SCOPE: CHANGES_REQUESTED on pick N or Open Q N` → I update + re-surface. `HOLD` → F-004 pauses.
 
 ---
 
