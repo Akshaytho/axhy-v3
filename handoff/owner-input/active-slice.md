@@ -16,15 +16,15 @@
 
 ## Current
 
-| Field                  | Value                                                                                                                                                                        |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**         | `handoff-package-composer` (F-004)                                                                                                                                           |
-| **Status**             | `PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 "existing-pattern survey" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins)             |
-| **Branch**             | Forks from current `main` HEAD `edf6172` — next branch is `feat/f-004-handoff-package-composer` (created once scope is APPROVED)                                             |
-| **Last landed commit** | `edf6172` — `docs(handoff): drop one more stale pre-merge line from active-slice "What this slice does NOT do"` (post-merge tracker cleanup on top of F-003 merge `2bc815b`) |
-| **Dependencies**       | F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.                                                |
-| **Tests status**       | n/a — code not started; scope phase                                                                                                                                          |
-| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                            |
+| Field                  | Value                                                                                                                                                                                                                                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**         | `handoff-package-composer` (F-004)                                                                                                                                                                                                                                                           |
+| **Status**             | `SCOPE_DRAFT_PENDING_REVIEW` — owner directed `SCOPE: GO with default picks` 2026-05-16; scope artifact drafted at `handoff/feature-queue/scopes/F-004.md` with rule-26 existing-pattern survey + 7 locked picks + 4 open questions surfaced. Stops here for sign-off before any code lands. |
+| **Branch**             | `feat/f-004-handoff-package-composer` — forked from main `62471c6` 2026-05-16 to host the scope artifact draft + the eventual code slice (no code yet)                                                                                                                                       |
+| **Last landed commit** | `62471c6` — `docs(handoff): F-004 branch-base wording → current main HEAD edf6172 (was stale at 2bc815b)` (last commit on main before this branch forked)                                                                                                                                    |
+| **Dependencies**       | F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.                                                                                                                                                                |
+| **Tests status**       | n/a — code not started; scope phase                                                                                                                                                                                                                                                          |
+| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                                                                                                                                            |
 
 ## What the F-004 scope artifact needs to lock (rule-26 "existing-pattern survey" + open picks)
 

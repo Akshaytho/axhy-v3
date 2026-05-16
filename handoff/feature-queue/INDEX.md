@@ -111,7 +111,7 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **workflows touched:** F26 (acting binding create), F27 (permanent reassign).
 - **entities/routes/tables touched:** NEW `apps/backend/src/lib/handoff-package-composer.ts` exporting `composeHandoffPackage(tx, args)` — tx-callable shape matching the existing `recordBindingCreated` pattern per rule 26. Wires into the existing binding-create flow + `reassignPermanentBinding`. NEW `HandoffPackagePayloadSchema` in shared-schema/zod. NO schema migration (column already exists). NO HTTP route in this slice.
 - **expected verification gate:** `REAL_DB` — composition correctness across acting / permanent / reassign paths + empty-state defaults + cross-tenant isolation.
-- **status:** `PLANNED — AWAITING_SCOPE_APPROVAL` — active slice. Rule-26 "existing-pattern survey" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` BEFORE picks are locked. 7 open picks surfaced in `handoff/owner-input/active-slice.md` with recommended defaults.
+- **status:** `SCOPE_DRAFT_PENDING_REVIEW` — owner directed `SCOPE: GO with default picks` 2026-05-16; scope artifact landed at `handoff/feature-queue/scopes/F-004.md` on branch `feat/f-004-handoff-package-composer` (forked from main `62471c6`). Includes rule-26 existing-pattern survey (4 questions answered with grep/read evidence) + 7 locked picks + 4 open questions (siteRules content, worker-targeted decision derivation, CalendarEntry exclusion, JSON size cap). Awaits friend's sign-off; no code lands until both sign off.
 
 ### F-005 — Admin-web HR portal scaffold
 
