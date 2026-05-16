@@ -20,7 +20,27 @@
 
 ## Currently awaiting approval
 
-### Slice: `cron-framework-binding-expire-sweep` (F-003 — code complete) — AWAITING_APPROVAL 2026-05-16
+### Slice: `cron-framework-binding-expire-sweep` (F-003 — round-2 fixes complete) — AWAITING_APPROVAL 2026-05-16
+
+**Status note (2026-05-16 round 2):** Friend's round-1 review at HEAD `433985d` raised two findings (P1 + P2). Both fixed here, plus rule 26 locked as upstream prevention.
+
+**Round-1 P1 — multi-replica dedup overclaim — FIXED.** Friend's verbatim: "two replicas can still emit duplicate BINDING_ENDED_AUTO rows for the same binding ... AuditEvent has no uniqueness constraint on (companyId, kind, targetId) at schema.prisma." Round-2 fix `cd490d7`: new migration `20260519_f003_binding_ended_auto_dedup_index` adds a partial unique index on `AuditEvent (companyId, kind, targetId) WHERE kind='BINDING_ENDED_AUTO' AND targetId IS NOT NULL`. `emitAuditForOneBinding` catches Prisma P2002 (unique-violation) and treats it as `{emitted: false}` (race-loser no-op). The app-side `findFirst` cheap-skip is kept as an optimisation but is no longer the correctness mechanism.
+
+**Round-1 P2 — test overclaims — FIXED via real tests + docs downgrade.** Friend's verbatim: "the locked scope says the new test should prove 'a single bad row doesn't roll back the others' ... but actual test 8 only pre-seeds an existing audit row and proves skip-vs-process in a single runner. It does not inject a row failure, and it does not run two concurrent sweepers." Round-2 fix `cd490d7` adds 3 new tests: (9) Promise.all concurrent emit on the same binding asserts exactly 1 audit row exists; (10) direct `auditEvent.create` of a duplicate row throws P2002 — proves the index is real and active at runtime, not just claimed in migration content; (11) other audit kinds with same targetId both succeed — proves the partial-index predicate is narrow. Docs claims downgraded to match what tests actually prove vs. what's reviewable via code structure.
+
+**Rule 26 locked (`3e2f6bf`).** Owner's directive after this round: "Inspect existing repo patterns BEFORE designing." Both P1 (assumed-wrong scheduler pattern; actual is dispatcher-tick piggyback) and the original P1 oversight (assumed app-level idempotency was enough; actual industry-standard is partial unique index + ON CONFLICT) trace to designing from theoretical assumptions instead of from the codebase. Rule 26 mandates a 4-question "existing-pattern survey" in every future scope artifact.
+
+**F-003 commits (oldest → newest):** `39b47b8` (scope LOCKED + A-vs-B record) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code) · `737c066` (round-1 code) · `433985d` (round-1 tracker → AWAITING_APPROVAL) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1 fix).
+
+**Verification:** REAL_DB on fresh local Postgres 16 (with the new migration applied). **18/18 test files green · 95/95 cases pass** in one sweep (84 prior baseline + 11 F-003 cases: 8 original + 3 new dedup).
+
+**Decision needed:** `APPROVED` / `CHANGES_REQUESTED` (round 3) / `HOLD`. If APPROVED → ready to merge `feat/f-003-cron-framework` to main.
+
+---
+
+### (round-1 entry preserved for audit, superseded by round-2 above)
+
+#### F-003 — round-1 code (superseded) — was AWAITING_APPROVAL 2026-05-16
 
 **Problem in simple English:** when an acting supervisor's `effectiveUntil` passes, responsibility flips back to the underlying binding automatically (already correct via `getEffectiveBinding`'s read-time predicate). But there was no scheduled trigger emitting a `BINDING_ENDED_AUTO` audit row, which downstream slices (digest, notifications, audit-trail reports) eventually need.
 

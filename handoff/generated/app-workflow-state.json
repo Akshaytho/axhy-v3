@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T06:55:57.621Z",
-    "generated_against_head": "433985de1ed43cf71f56dd781c875bcc60110e7c",
+    "last_updated_at": "2026-05-16T07:06:41.914Z",
+    "generated_against_head": "cd490d745510eb4f6bba70dee0f80f86122e6f95",
     "generated_against_branch": "feat/f-003-cron-framework",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "433985de1ed43cf71f56dd781c875bcc60110e7c",
+    "last_canonical_commit_at_gen": "3e2f6bf0f33e40751f1d9eae13046403c0afd1a2",
     "staleness_warning": null,
-    "active_slice": "cron-framework-binding-expire-sweep (F-003) · AWAITING_APPROVAL (code slice complete on dispatcher-piggyback pattern; 18/18 test files green · 92/92 cases pass; stop for review per friend's execution rule)",
+    "active_slice": "cron-framework-binding-expire-sweep (F-003) · AWAITING_APPROVAL (round 2 — friend's round-1 P1 fixed via DB-enforced partial unique index + P2002 catch; rule 26 locked; round-1 P2 docs claims downgraded to match what tests actually prove. 18/18 test files green · 95/95 cases pass — was 92, +3 new dedup cases.)",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,12 +1184,12 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`cron-framework-binding-expire-sweep` (F-003)",
-      "Status": "`AWAITING_APPROVAL` (code slice complete on dispatcher-piggyback pattern; 18/18 test files green · 92/92 cases pass; stop for review per friend's execution rule)",
+      "Status": "`AWAITING_APPROVAL` (round 2 — friend's round-1 P1 fixed via DB-enforced partial unique index + P2002 catch; rule 26 locked; round-1 P2 docs claims downgraded to match what tests actually prove. 18/18 test files green · 95/95 cases pass — was 92, +3 new dedup cases.)",
       "Branch": "`feat/f-003-cron-framework` (forked from main `a29f9f6` after F-002 + S-001 merged DONE)",
-      "Last landed commit": "`737c066` — `feat(jobs): binding-expire-sweep + dispatcher wire-in + audit payload schema (F-003.1, 8 tests / 92/92 cases green)`",
-      "F-003 commits (oldest→newest)": "`39b47b8` (scope LOCKED + A-vs-B record on feat/layer-1-core-primitives) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback, not OS-cron + HTTP) · `737c066` (code slice)",
+      "Last landed commit": "`cd490d7` — `fix(jobs): F-003 round-2 P1 — DB-enforced BINDING_ENDED_AUTO dedup (partial unique index + P2002 catch + 3 new tests)`",
+      "F-003 commits (oldest→newest)": "`39b47b8` (scope LOCKED + A-vs-B record on feat/layer-1-core-primitives) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback) · `737c066` (round-1 code slice) · `433985d` (round-1 tracker propagation) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1 fix: partial unique index + P2002 catch + 3 tests)",
       "Dependencies": "F-001 + F-002 + S-001 — all APPROVED + DONE (merged to main at `a29f9f6`)",
-      "Tests status": "**18/18 test files green · 92/92 cases pass** on fresh local Postgres 16 (84 baseline + 8 F-003 new). One full sweep, ~20s.",
+      "Tests status": "**18/18 test files green · 95/95 cases pass** on fresh local Postgres 16 (84 prior baseline + 11 F-003 cases: 8 original + 3 new dedup cases). One full sweep, ~20s.",
       "Verification gate": "`REAL_DB` — fresh local Postgres 16 (Docker container `axhy-test-pg`, port 55432), all migrations applied."
     },
     "pending_approvals": [
