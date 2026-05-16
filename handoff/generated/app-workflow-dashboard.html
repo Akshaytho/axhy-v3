@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-15T21:45:33.771Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>a2507125</code></span>
+      <span>Generated <strong>2026-05-16T06:05:13.112Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>73375aa2</code></span>
       <span>Branch <code>feat/layer-1-core-primitives</code></span>
-      <span>Active slice: <strong>cron-framework-binding-expire-sweep (F-003) · PLANNED — AWAITING_SCOPE_APPROVAL (scope artifact draft to land at handoff/feature-queue/scopes/F-003.md; owner + friend approve picks; then code)</strong></span>
+      <span>Active slice: <strong>cron-framework-binding-expire-sweep (F-003) · SCOPE_LOCKED — READY FOR CODE (owner approved A polling-sweep + rejected B one-time-trigger 2026-05-16; scope artifact landed at handoff/feature-queue/scopes/F-003.md with permanent A-vs-B record; all 7 picks locked; code slice starts next)</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>cron-framework-binding-expire-sweep</code> (F-003)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">PLANNED — AWAITING_SCOPE_APPROVAL (scope artifact draft to land at handoff/feature-queue/scopes/F-003.md; owner + friend approve picks; then code)</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code> (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion</td></tr><tr><th>Last landed commit</th><td><code>2a0f27c</code> — <code>docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)</code> (S-001 closure tracker propagation; S-001 is APPROVED)</td></tr><tr><th>Dependencies</th><td>F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — code not started; scope phase</span></td></tr><tr><th>Verification gate</th><td>will be <code>REAL_DB</code> once code lands</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>cron-framework-binding-expire-sweep</code> (F-003)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_LOCKED — READY FOR CODE (owner approved A polling-sweep + rejected B one-time-trigger 2026-05-16; scope artifact landed at handoff/feature-queue/scopes/F-003.md with permanent A-vs-B record; all 7 picks locked; code slice starts next)</span></td></tr><tr><th>Branch</th><td><code>feat/layer-1-core-primitives</code> (current) — note: F-002 + S-001 are both APPROVED on this branch but not yet DONE (DONE = merged to main); merge to main is a separate ops step at owner's discretion</td></tr><tr><th>Last landed commit</th><td><code>2a0f27c</code> — <code>docs(handoff): propagate ab4d9a2 into S-001 control surface (S-001.4)</code> (S-001 closure tracker propagation; S-001 is APPROVED)</td></tr><tr><th>Dependencies</th><td>F-001 (APPROVED 2026-05-15), F-002 (APPROVED 2026-05-16), S-001 (APPROVED 2026-05-16) — all met</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">n/a — code not started; scope phase</span></td></tr><tr><th>Verification gate</th><td>will be <code>REAL_DB</code> once code lands</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -219,7 +219,7 @@
       <details class="feature">
         <summary>
           <code>F-003</code>
-          <span class="badge" style="background:#999;color:#fff;">PLANNED</span>
+          <span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_LOCKED</span>
           <strong>Cron framework + `binding-expire-sweep` (RE-SCOPED 2026-05-16)</strong>
         </summary>
         <div class="feature-body">
