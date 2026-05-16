@@ -64,7 +64,7 @@
 - No row mutation, no `endedAt` write on auto-expired bindings.
 - No HR API changes, no S-001 guard changes.
 
-**Verification:** REAL_DB on fresh local Postgres 16, all migrations applied. **18/18 test files green · 92/92 cases pass** in one sweep (84 prior baseline + 8 F-003 new). Reproduction snippet in `active-slice.md`.
+**Verification:** REAL_DB on fresh local Postgres 16 (with the round-2 migration applied). **18/18 test files green · 95/95 cases pass** in one sweep (84 prior baseline + 11 F-003 cases: 8 original + 3 round-2 dedup). Reproduction snippet in `active-slice.md`.
 
 **F-003 commits:** `39b47b8` (scope LOCKED + A-vs-B record on prior branch) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback) · `737c066` (code slice).
 
@@ -74,7 +74,7 @@
 
 ### Spec-lock checkpoint preserved (kept for cross-slice audit, superseded by AWAITING_APPROVAL above)
 
-**Status note (2026-05-16):** Owner approved Approach A (polling sweep, every 5 minutes, idempotent via audit-existence check, one tx per row) AND explicitly rejected Approach B (one-time scheduled trigger per binding) after a head-to-head comparison on cost / complexity / failure recovery / edit-cancel handling / Railway-stack fit. Permanent record in `handoff/feature-queue/scopes/F-003.md` §3. All 7 picks locked there. Owner verbatim: "Stay with A. Add this comparison into the tracker/scope artifact so we have a permanent record of why we rejected the more complex per-binding trigger design." Code slice may begin; stops at `AWAITING_APPROVAL`.
+**Status note (2026-05-16):** Owner approved Approach A (polling sweep, every 5 minutes, one tx per row) AND explicitly rejected Approach B (one-time scheduled trigger per binding) after a head-to-head comparison on cost / complexity / failure recovery / edit-cancel handling / Railway-stack fit. Permanent record in `handoff/feature-queue/scopes/F-003.md` §3. The original round-1 pick 7 (idempotency via app-side audit-existence check, no schema change) was correctly flagged by friend as race-prone for concurrent dispatcher replicas; round-2 fix `cd490d7` replaced it with a DB-enforced partial unique index — see the "F-003 round-2 fixes complete" entry above for details. Owner verbatim at scope lock: "Stay with A. Add this comparison into the tracker/scope artifact so we have a permanent record of why we rejected the more complex per-binding trigger design."
 
 **Status note (2026-05-16 evening):** owner directed a re-scope after friend caught 2 contradictions in the prior draft (transaction shape inconsistent, cadence inconsistent with closure spec §10). Owner's directive: cron is NOT the source of truth for supervisor switching — that's already time-based via `getEffectiveBinding`'s read-time predicate. Cron is for post-expiry side effects only (audit emit, later digest, later notifications). This matches Oracle / Workday / SAP effective-dating patterns: source-of-truth is date-based; scheduled jobs handle side effects.
 
