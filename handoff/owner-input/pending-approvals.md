@@ -20,29 +20,20 @@
 
 ## Currently awaiting approval
 
-### Slice: `handoff-package-composer` (F-004 — scope approval) — AWAITING_SCOPE_APPROVAL 2026-05-16
+### Slice: `handoff-package-composer` (F-004 — scope artifact drafted) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
 
-**Problem in simple English:** when HR creates a binding, the incoming supervisor walks in cold. They need site rules, recent complaints, active worker list, open decisions, calendar entries. The `handoffPackage` JSON column on `SiteSupervisorBinding` exists (nullable) but no code populates it.
+**Status note (2026-05-16):** Owner directed `SCOPE: GO with default picks` after F-003 closed DONE. Scope artifact drafted at [handoff/feature-queue/scopes/F-004.md](handoff/feature-queue/scopes/F-004.md) on branch `feat/f-004-handoff-package-composer` (forked from main `62471c6`). The artifact includes the rule-26 existing-pattern survey with grep/read evidence + 7 locked picks + 4 open questions surfaced from the survey + a clean "decision needed on this scope" closer. No code lands until both owner + friend sign off on the scope artifact.
 
-**Simplest business solution:** auto-compose the JSON at every binding-create / reassign moment, inside the same tx that creates the binding row. Downstream surfaces (digest, HR portal handoff card, notification payload) read from the column directly — compose-once-at-write-time, not rebuilt by each consumer.
+**What the scope artifact captures:**
 
-**Code (only after scope-artifact approval):** NEW `apps/backend/src/lib/handoff-package-composer.ts` exporting `composeHandoffPackage(tx, args)` — tx-callable shape matching `recordBindingCreated` per rule 26. Wires into binding-create flow + `reassignPermanentBinding`. NEW `HandoffPackagePayloadSchema` in `@axhy/shared-schema`. No schema migration. No HTTP route.
+- **Rule-26 survey (§2):** four mandatory questions answered with file:line citations. Found two patterns in adjacent code (typed audit-emit `record*` with Zod-parse-then-write vs inline-compose-into-Json column `originContext`); recommended hybrid that matches `record*` shape but returns the typed payload instead of void. No new pattern category — extends repo reality.
+- **7 picks locked (§3):** Zod payload schema; single composer; 90-day complaints; site-scoped open decisions; +7-day calendar interpreted as Assignment×dayMask×validity expansion; atomic compose-and-write; 3-axis test coverage.
+- **4 open questions surfaced (§4):** (Q1) siteRules content given the Site model has no dedicated rules field today; (Q2) worker-targeted decision derivation via `deriveWorkerPrimarySiteId`; (Q3) `CalendarEntry` exclusion correctness; (Q4) JSON-size cap. Recommended defaults given; final lock awaits sign-off.
+- **In-scope file inventory (§5):** new `handoff-package-composer.ts` + new `HandoffPackagePayloadSchema` + wire into `reassignPermanentBinding` + new test file. No schema migration. No HTTP route.
+- **Out-of-scope (§6):** downstream consumers (digest UI / HR portal handoff card / supervisor-mobile rendering / F-007 notification dispatcher), historical backfill, richer rules schema.
+- **Confidence assessment (§7):** ~92% own on overall scope; ~75% on Open Q1 (siteRules); ~85% on Open Q2 (worker-targeted derivation).
 
-**Why this code is necessary:** without the composer, the column is a permanently-empty promise. Every downstream feature that needs handoff context would have to compose it themselves at read time — slower, harder to keep consistent, would force the composer's logic to be rebuilt in every consumer. Compose-once-at-write is the right shape per Closure spec Decision 8 + §3.7.
-
-**Why scope first:** F-004 is medium-major (new helper + Zod payload schema + wiring into two existing binding paths + new tests). Per `feedback_plan_mode_for_medium_major_changes.md` discipline lock, scope artifact + owner approval before code. The scope artifact must also include the rule-26 "existing-pattern survey" answering the 4 mandatory questions (similar code, real runtime pattern, can-extend-not-replace, why-change-if-changing).
-
-**Open picks (recommended defaults in brackets; see active-slice.md for full discussion):**
-
-1. JSON payload schema — locked via Zod `HandoffPackagePayloadSchema` [yes]
-2. Single composer with arg variants vs three composers [single composer]
-3. Recent-complaints window [90 days per Decision 8]
-4. Open-decisions filter — site-scoped vs worker-scoped [site-scoped — incoming supervisor needs site context]
-5. Calendar window [+7 days from binding `effectiveFrom`]
-6. Failure handling — atomic compose-and-write [atomic; partial state is worse than no binding]
-7. Test coverage [acting / permanent / reassign × full / empty / cross-tenant]
-
-**Decision needed:** `SCOPE: GO with default picks` (I draft `handoff/feature-queue/scopes/F-004.md` with rule-26 survey + the 7 picks + open-questions, then start code on `feat/f-004-handoff-package-composer`) / `SCOPE: change picks` / `HOLD` / `MERGE FIRST` (merge F-003 to main first before any F-004 scope work).
+**Decision needed:** `SCOPE: APPROVED` (default picks + recommended open-Q answers → code begins immediately) / `SCOPE: CHANGES_REQUESTED on pick N or Open Q N` / `HOLD`.
 
 ---
 
