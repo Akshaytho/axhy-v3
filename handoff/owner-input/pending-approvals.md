@@ -20,7 +20,17 @@
 
 ## Currently awaiting approval
 
-### Slice: `f-006a-onesignal-identity-lifecycle` (F-006a — mobile shell + OneSignal identity linking) — CODE_AWAITING_APPROVAL 2026-05-17 03:00 (round-3 fix-up after friend's CODE-phase P1+P2 round-3 / CHANGES_REQUESTED)
+### Slice: `f-006a-onesignal-identity-lifecycle` (F-006a — mobile shell + OneSignal identity linking) — CODE_APPROVED 2026-05-17 03:05 (awaiting owner manual smoke + merge)
+
+**Friend's CODE: APPROVED verdict 2026-05-17 03:05 verbatim:** "CODE: APPROVED. No production-grade findings remain. The two blockers are now actually closed in code: The init-failure no-op contract is real now. apps/mobile/lib/identity-lifecycle.ts (line 161) returns Promise<boolean>, and \_resolveOneSignal() (line 216) bails out on false before exposing any SDK handle. That means failed init can no longer fall through into login / logout / requestPermission. The latch is concurrency-safe now. Replacing the bare boolean with the shared initPromise in apps/mobile/lib/identity-lifecycle.ts (line 159) closes the warm-up vs chokepoint double-init race. The new tests cover the missing paths I previously called out: init-before-login ordering plus init-throw and concurrent callers in apps/mobile/lib/identity-lifecycle.test.ts (line 288) and apps/mobile/lib/identity-lifecycle.test.ts (line 334). Residual note: I could not rerun the Vitest suite locally because this machine's Rollup native optional dependency is broken (@rollup/rollup-darwin-x64 load/code-sign issue), so this approval is based on direct code review rather than a fresh local green run."
+
+**HEAD on `feat/f-006a-onesignal-identity-lifecycle`:** `05477ae` (5 commits ahead of main `ffce21b`: `a0f4c03` → `3dc3ec6` → `e04620a` → `65617dc` → `05477ae`). 49/49 unit tests green locally at 2026-05-17 03:03. Friend's Rollup native-dep note is friend's local-machine issue, not ours.
+
+**Next:** owner runs manual smoke per `handoff/owner-input/f-006a-manual-smoke.md` (5 scenarios on real device + OneSignal sandbox). Once smoke is green, owner pushes the branch + merges to main → F-006a → DONE → surface next slice (supervisor UI draft per the updated roadmap).
+
+**Earlier status (superseded by APPROVED):** 2026-05-17 03:00 = round-3 fix-up + 49/49; 01:55 = round-2 + 47/47; 01:40 = round-1 + 45/45; 01:25 = original code phase + 42/42.
+
+### Slice: `f-006a-onesignal-identity-lifecycle` — round-3 history block (preserved for traceability)
 
 **Friend's CODE-phase P1+P2 round-3 verbatim 2026-05-17 02:50 (CHANGES_REQUESTED):**
 
