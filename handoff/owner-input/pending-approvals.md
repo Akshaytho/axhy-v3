@@ -20,7 +20,41 @@
 
 ## Currently awaiting approval
 
-_No slice currently awaiting approval. F-004 was APPROVED by friend at HEAD `ef0aadd` 2026-05-16 and merged to main at `b19e03c`. See "Recently approved" section below. The next slice has not been picked yet — see `handoff/owner-input/active-slice.md` for the between-slices picker._
+### Slice: `notification-dispatcher` (F-007 round 1 — worker-side supervisor-change) — SCOPE_DRAFT_PENDING_REVIEW 2026-05-16
+
+**Owner picked F-007 as the next slice 2026-05-16 after F-004 merged.** Reason verbatim: "natural next slice after F-003 + F-004. It consumes the new HANDOFF_PACKAGE_GENERATED and BINDING_ENDED_AUTO events, stays backend-only, and unlocks worker-side supervisor-change notifications plus the 'while you were out' digest before we move into the larger UI scaffolds."
+
+**Vertical-slices methodology locked alongside this pick** (memory `feedback_vertical_slices_not_backend_first.md`): F-007 is a real consumer of F-003/F-004 emits, not more abstract backend. After F-007, recommended order is F-005 admin HR portal → F-006 worker mobile → F-008 / F-009 / F-010.
+
+**Scope artifact:** [handoff/feature-queue/scopes/F-007.md](handoff/feature-queue/scopes/F-007.md). Branch: `feat/f-007-notification-dispatcher` from main `04c5e59`.
+
+**Round-1 scope locks (8 picks, proposed; subject to owner + friend review):**
+
+| #   | Pick                                      | Locked value (summary)                                                                                                                                                                                                  |
+| --- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Source events subscribed                  | `HANDOFF_PACKAGE_GENERATED` (F-004) + `BINDING_ENDED_AUTO` (F-003). Other binding kinds deferred to round 2 sub-slices.                                                                                                 |
+| 2   | Architecture                              | Pattern A — outbox emit inside source tx. One-line `enqueueOutbox` addition in `writeHandoffPackage` + `binding-expire-sweep`.                                                                                          |
+| 3   | Notification kind + payload               | `kind: 'supervisor_change'`. Payload: `{ messageKey, messageVars, sourceAuditId, bindingId, siteId, outgoingSupervisorId, incomingSupervisorId, eventKind }`.                                                           |
+| 4   | Audience resolution                       | Workers ACTIVE on site at event time (`Assignment.state='ACTIVE'`) + outgoing supervisor + incoming supervisor (per closure §7 verbatim).                                                                               |
+| 5   | Channels per audience entry               | **Open Q1 BLOCKER** — owner picks: 5-row variant (in_app_banner real + 4 log-stub) OR 1-row (in_app_banner only).                                                                                                       |
+| 6   | Coalescing                                | 60-second sliding window per (companyId, outgoing, incoming, recipient). Payload's `bindingId` + `siteId` become arrays. Closes Ravi Month 8a `[CONFUSING]`.                                                            |
+| 7   | Idempotent replay                         | Partial unique index on `Notification (companyId, COALESCE(audienceUserId, sentinel), COALESCE(audienceWorkerId, sentinel), kind, payload->>'sourceAuditId') WHERE kind='supervisor_change'`. P2002 → no-op race-loser. |
+| 8   | `WORKER_SUPERVISOR_CHANGE_NOTIFIED` audit | One per worker Notification row (Decision 4 audit-trail compliance). Supervisor-side notifications don't emit this audit.                                                                                               |
+
+**5 small open Qs** — only Q1 is a blocker (owner picks 5-row vs 1-row). Others have recommended defaults:
+
+- Q2 template source — default (a) hardcoded Record<lang,string> in composer.
+- Q3 language coverage — default 'hi' + 'en'; fall back to 'hi'.
+- Q4 BINDING_ENDED_AUTO with no permanent supervisor — skip notification, warning log, no throw.
+- Q5 log-stub channels — set `deliveredAt` immediately for observability.
+
+**Test plan:** ~10 new REAL_DB cases — acting binding start / acting binding end (BINDING_ENDED_AUTO) / permanent rebind / multi-binding coalescing / idempotent replay / worker without User / cross-tenant isolation / localisation / first-ever-binding (null outgoing) / missing permanent supervisor at acting-end. Total sweep target: ~120 cases (109 baseline + ~10 new F-007).
+
+**Confidence:** ~88% overall; Open Q1 (5-row vs 1-row) ~75% owner-directional. Architecture pick (Pattern A) ~92% — matches existing convention.
+
+**Explicit non-claims (round 1 only):** real Gupshup/FCM/Twilio wiring → Phase C. Other notification kinds (termination, leave, replacement, flag, hr_update, ai_budget) → round 2+ sub-slices. Worker-app banner UI → F-006. Digest composer → separate slice. Channel-fallback retry chain → lands with real adapters. Policy-driven per-tenant overrides → with Policy admin surface.
+
+**Decision needed:** `SCOPE: APPROVED (round 1)` + **owner picks Open Q1 option** → code begins immediately on `feat/f-007-notification-dispatcher`; stops at AWAITING_APPROVAL after new test sweep is green (~120 cases). `SCOPE: CHANGES_REQUESTED on pick N or Open Q N` → I update + re-surface. `HOLD` → F-007 pauses.
 
 ### (F-004 entry preserved below for audit traceability, was AWAITING_APPROVAL until 2026-05-16 — now moved to "Recently approved")
 

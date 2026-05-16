@@ -106,10 +106,10 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T13:15:16.780Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>b19e03c2</code></span>
-      <span>Branch <code>main</code></span>
-      <span>Active slice: <strong>n/a — between slices, awaiting owner pick · BETWEEN_SLICES — AWAITING_OWNER_PICK 2026-05-16. F-004 DONE; merged to main at b19e03c (pushed to origin). Friend's final approval at HEAD ef0aadd 2026-05-16: &quot;APPROVED. F-004 is approved for merge.&quot;</strong></span>
+      <span>Generated <strong>2026-05-16T13:31:55.948Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>04c5e593</code></span>
+      <span>Branch <code>feat/f-007-notification-dispatcher</code></span>
+      <span>Active slice: <strong>notification-dispatcher (F-007 round 1 — worker-side supervisor-change only) · SCOPE_DRAFT_PENDING_REVIEW 2026-05-16 — scope artifact at [handoff/feature-queue/scopes/F-007.md](handoff/feature-queue/scopes/F-007.md). 8 picks + 5 open Qs surfaced. Owner explicitly picks Open Q1 (5-channel rows per audience vs in_app_banner-only). Code does not start until owner + friend sign off.</strong></span>
       
     </div>
   </header>
@@ -131,7 +131,7 @@
   <section id="active-slice" class="active-slice-callout">
     <h2>🟦 Current slice focus</h2>
     <p class="small">Mirrors <a href="../owner-input/active-slice.md">handoff/owner-input/active-slice.md</a> — the single source of truth for what is in flight right now.</p>
-    <table class="kv-table"><tr><th>Slice name</th><td><code>n/a</code> — between slices, awaiting owner pick</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">BETWEEN_SLICES — AWAITING_OWNER_PICK 2026-05-16. F-004 DONE; merged to main at b19e03c (pushed to origin). Friend's final approval at HEAD ef0aadd 2026-05-16: &quot;APPROVED. F-004 is approved for merge.&quot;</span></td></tr><tr><th>Branch</th><td><code>main</code> (clean, up-to-date with <code>origin/main</code>)</td></tr><tr><th>Last landed commit</th><td><code>b19e03c</code> — <code>Merge F-004 — HandoffPackage composer + writer + reassignPermanentBinding wiring (round 2 APPROVED)</code> on main</td></tr><tr><th>Dependencies cleared</th><td>F-001 + F-002 + S-001 + F-003 + F-004 — all DONE on main. Spec §3.7 amended for <code>schemaVersion</code>. F-009 + F-010 unblocked. F-007 unblocked (its main upstream was F-004's audit emit, now live).</td></tr><tr><th>Tests status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">19 test files / 109 cases on main; baseline for any next slice</span></td></tr><tr><th>Verification gate</th><td>n/a until a slice is picked</td></tr></table>
+    <table class="kv-table"><tr><th>Slice name</th><td><code>notification-dispatcher</code> (F-007 round 1 — worker-side supervisor-change only)</td></tr><tr><th>Status</th><td><span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_DRAFT_PENDING_REVIEW 2026-05-16 — scope artifact at [handoff/feature-queue/scopes/F-007.md](handoff/feature-queue/scopes/F-007.md). 8 picks + 5 open Qs surfaced. Owner explicitly picks Open Q1 (5-channel rows per audience vs in_app_banner-only). Code does not start until owner + friend sign off.</span></td></tr><tr><th>Branch</th><td><code>feat/f-007-notification-dispatcher</code> — forked from main <code>04c5e59</code> 2026-05-16 to host the scope artifact + the eventual code slice (no code yet)</td></tr><tr><th>Last landed commit</th><td><code>04c5e59</code> — <code>docs(handoff): F-004 → DONE; merged to main at b19e03c; next-slice picker surfaced</code> (last commit on main before this branch forked)</td></tr></table>
   </section>
     
   <section id="owner-notes" class="control-section">
@@ -151,6 +151,20 @@
     <h2>✅ Approval gate</h2>
     <p class="small">Owner must write <code>APPROVED</code> / <code>CHANGES_REQUESTED</code> / <code>HOLD</code> in <a href="../owner-input/pending-approvals.md">handoff/owner-input/pending-approvals.md</a> for each item below. Rule 17: no next slice starts while any item here is <code>AWAITING_APPROVAL</code>.</p>
     
+      <div class="approval">
+        <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>notification-dispatcher</code></strong></div>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+      </div>
       <div class="approval">
         <div class="approval-head"><span class="badge" style="background:#bdbdbd;color:#fff;">—</span> <span class="badge" style="background:#0ea5e9;color:#fff">SLICE</span> <strong><code>handoff-package-composer</code></strong></div>
         
@@ -269,16 +283,16 @@
       <details class="feature">
         <summary>
           <code>F-007</code>
-          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
-          <strong>Notification dispatcher</strong>
+          <span class="badge" style="background:#bdbdbd;color:#fff;">SCOPE_DRAFT_PENDING_REVIEW</span>
+          <strong>Notification dispatcher (round 1: worker-side supervisor-change)</strong>
         </summary>
         <div class="feature-body">
-          <p><strong>Why:</strong> Closure Decision 4 + 10 + AI budget alerts (G29). Every notification + digest + alert sits in Outbox today; no channel adapter wired.</p>
-          <p><strong>Depends on:</strong> Backend stability (no specific dep from this list).</p>
-          <p><strong>Personas:</strong> all four (anyone receiving notifications).</p>
-          <p><strong>Workflows:</strong> F26 (W-1/W-2/W-3/W-7), F27 (W-3), E21 leave-status, E24 termination, G29 budget alert, owner monthly digest.</p>
-          <p><strong>Entities / routes / tables:</strong> <code>apps/backend/src/dispatcher/handlers/*</code> (push, sms, whatsapp_out, email adapters), MSG91 webhook wiring.</p>
-          <p><strong>Verification gate:</strong> <code>REAL_DB</code> + manual delivery confirmation on dev numbers.</p>
+          <p><strong>Why:</strong> Closure Decision 4 (mandatory worker-side supervisor-change notification) + audit Suresh W-1/W-2/W-7 (largest open product gap from the year-long simulation). F-004's <code>HANDOFF_PACKAGE_GENERATED</code> + F-003's <code>BINDING_ENDED_AUTO</code> audits emit but no notification reaches the affected workers or involved supervisors.</p>
+          <p><strong>Depends on:</strong> F-003 + F-004 (both DONE on main). Notification table + Zod schemas already shipped (<code>schema.prisma:931</code>, <code>zod/notification.ts</code>).</p>
+          <p><strong>Personas:</strong> Suresh (worker — primary, finally gets a signal when his supervisor changes); Ravi (outgoing — gets &quot;you've handed off N sites&quot; notification); Anjali/Lakshmi (incoming — gets &quot;you're now covering X sites&quot; notification).</p>
+          <p><strong>Workflows:</strong> F26 (acting cover; covers W-1/W-2/W-7), F27 (permanent rebind; covers W-3 transitively), Decision 4 audit-trail compliance.</p>
+          <p><strong>Entities / routes / tables:</strong> NEW <code>apps/backend/src/lib/notification-composer.ts</code> (<code>composeSupervisorChangeNotifications</code>). NEW <code>apps/backend/src/dispatcher/handlers/notifications.ts</code> (<code>handleNotificationSupervisorChange</code>). EDIT <code>dispatcher/handlers/registry.ts</code> (register topic). EDIT <code>handoff-package-writer.ts</code> (one-line <code>enqueueOutbox</code>). EDIT <code>binding-expire-sweep.ts</code> (one-line <code>enqueueOutbox</code>). EDIT <code>audit-event.ts</code> + <code>audit-payloads.ts</code> (typed <code>WorkerSupervisorChangeNotifiedPayloadSchema</code> + <code>recordWorkerSupervisorChangeNotified</code> helper). NEW migration: partial unique index on <code>Notification (companyId, COALESCE(audienceUserId, sentinel), COALESCE(audienceWorkerId, sentinel), kind, payload-&gt;&gt;'sourceAuditId') WHERE kind='supervisor_change'</code> for idempotent replay.</p>
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> — audience resolution + coalescing + idempotent replay + cross-tenant isolation + localisation + edge cases. ~10 new tests.</p>
         </div>
       </details>
       <details class="feature">

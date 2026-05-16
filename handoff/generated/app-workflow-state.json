@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T13:15:16.780Z",
-    "generated_against_head": "b19e03c26f148b64afc41b7e65d3cac103912705",
-    "generated_against_branch": "main",
+    "last_updated_at": "2026-05-16T13:31:55.948Z",
+    "generated_against_head": "04c5e593ab89f1d881d462903a429630ddab0a0d",
+    "generated_against_branch": "feat/f-007-notification-dispatcher",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "f5e00bda6db9e6ede4d57adb1f9c4e38a8a13ecc",
+    "last_canonical_commit_at_gen": "04c5e593ab89f1d881d462903a429630ddab0a0d",
     "staleness_warning": null,
-    "active_slice": "n/a — between slices, awaiting owner pick · BETWEEN_SLICES — AWAITING_OWNER_PICK 2026-05-16. F-004 DONE; merged to main at b19e03c (pushed to origin). Friend's final approval at HEAD ef0aadd 2026-05-16: \"APPROVED. F-004 is approved for merge.\"",
+    "active_slice": "notification-dispatcher (F-007 round 1 — worker-side supervisor-change only) · SCOPE_DRAFT_PENDING_REVIEW 2026-05-16 — scope artifact at [handoff/feature-queue/scopes/F-007.md](handoff/feature-queue/scopes/F-007.md). 8 picks + 5 open Qs surfaced. Owner explicitly picks Open Q1 (5-channel rows per audience vs in_app_banner-only). Code does not start until owner + friend sign off.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,15 +1183,28 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`n/a` — between slices, awaiting owner pick",
-      "Status": "`BETWEEN_SLICES — AWAITING_OWNER_PICK` 2026-05-16. F-004 DONE; merged to main at `b19e03c` (pushed to origin). Friend's final approval at HEAD `ef0aadd` 2026-05-16: \"APPROVED. F-004 is approved for merge.\"",
-      "Branch": "`main` (clean, up-to-date with `origin/main`)",
-      "Last landed commit": "`b19e03c` — `Merge F-004 — HandoffPackage composer + writer + reassignPermanentBinding wiring (round 2 APPROVED)` on main",
-      "Dependencies cleared": "F-001 + F-002 + S-001 + F-003 + F-004 — all DONE on main. Spec §3.7 amended for `schemaVersion`. F-009 + F-010 unblocked. F-007 unblocked (its main upstream was F-004's audit emit, now live).",
-      "Tests status": "19 test files / 109 cases on main; baseline for any next slice",
-      "Verification gate": "n/a until a slice is picked"
+      "Slice name": "`notification-dispatcher` (F-007 round 1 — worker-side supervisor-change only)",
+      "Status": "`SCOPE_DRAFT_PENDING_REVIEW` 2026-05-16 — scope artifact at [handoff/feature-queue/scopes/F-007.md](handoff/feature-queue/scopes/F-007.md). 8 picks + 5 open Qs surfaced. Owner explicitly picks Open Q1 (5-channel rows per audience vs in_app_banner-only). Code does not start until owner + friend sign off.",
+      "Branch": "`feat/f-007-notification-dispatcher` — forked from main `04c5e59` 2026-05-16 to host the scope artifact + the eventual code slice (no code yet)",
+      "Last landed commit": "`04c5e59` — `docs(handoff): F-004 → DONE; merged to main at b19e03c; next-slice picker surfaced` (last commit on main before this branch forked)"
     },
     "pending_approvals": [
+      {
+        "id": "notification-dispatcher",
+        "kind": "slice",
+        "status": "",
+        "branch": "",
+        "wipCommit": "",
+        "lastLanded": "",
+        "workflowIds": "",
+        "blocking": "",
+        "built": "",
+        "notDone": "",
+        "ownerDecision": "",
+        "artifact": "",
+        "decisionNeeded": "",
+        "scopeType": ""
+      },
       {
         "id": "handoff-package-composer",
         "kind": "slice",
@@ -1288,14 +1301,14 @@
       },
       {
         "id": "F-007",
-        "title": "Notification dispatcher",
-        "why": "Closure Decision 4 + 10 + AI budget alerts (G29). Every notification + digest + alert sits in Outbox today; no channel adapter wired.",
-        "depends_on": "Backend stability (no specific dep from this list).",
-        "personas": "all four (anyone receiving notifications).",
-        "workflows": "F26 (W-1/W-2/W-3/W-7), F27 (W-3), E21 leave-status, E24 termination, G29 budget alert, owner monthly digest.",
-        "entities": "`apps/backend/src/dispatcher/handlers/*` (push, sms, whatsapp_out, email adapters), MSG91 webhook wiring.",
-        "verification": "`REAL_DB` + manual delivery confirmation on dev numbers.",
-        "status": "QUEUED"
+        "title": "Notification dispatcher (round 1: worker-side supervisor-change)",
+        "why": "Closure Decision 4 (mandatory worker-side supervisor-change notification) + audit Suresh W-1/W-2/W-7 (largest open product gap from the year-long simulation). F-004's `HANDOFF_PACKAGE_GENERATED` + F-003's `BINDING_ENDED_AUTO` audits emit but no notification reaches the affected workers or involved supervisors.",
+        "depends_on": "F-003 + F-004 (both DONE on main). Notification table + Zod schemas already shipped (`schema.prisma:931`, `zod/notification.ts`).",
+        "personas": "Suresh (worker — primary, finally gets a signal when his supervisor changes); Ravi (outgoing — gets \"you've handed off N sites\" notification); Anjali/Lakshmi (incoming — gets \"you're now covering X sites\" notification).",
+        "workflows": "F26 (acting cover; covers W-1/W-2/W-7), F27 (permanent rebind; covers W-3 transitively), Decision 4 audit-trail compliance.",
+        "entities": "NEW `apps/backend/src/lib/notification-composer.ts` (`composeSupervisorChangeNotifications`). NEW `apps/backend/src/dispatcher/handlers/notifications.ts` (`handleNotificationSupervisorChange`). EDIT `dispatcher/handlers/registry.ts` (register topic). EDIT `handoff-package-writer.ts` (one-line `enqueueOutbox`). EDIT `binding-expire-sweep.ts` (one-line `enqueueOutbox`). EDIT `audit-event.ts` + `audit-payloads.ts` (typed `WorkerSupervisorChangeNotifiedPayloadSchema` + `recordWorkerSupervisorChangeNotified` helper). NEW migration: partial unique index on `Notification (companyId, COALESCE(audienceUserId, sentinel), COALESCE(audienceWorkerId, sentinel), kind, payload->>'sourceAuditId') WHERE kind='supervisor_change'` for idempotent replay.",
+        "verification": "`REAL_DB` — audience resolution + coalescing + idempotent replay + cross-tenant isolation + localisation + edge cases. ~10 new tests.",
+        "status": "SCOPE_DRAFT_PENDING_REVIEW"
       },
       {
         "id": "F-008",
