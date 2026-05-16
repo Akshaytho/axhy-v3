@@ -232,7 +232,19 @@ export const HandoffPackageGeneratedPayloadSchema = z.object({
   packageSizeBytes: z.number().int().nonnegative(),
   /** True iff this binding's permanent-rebind path also wrote N LIVING_DOC_RULE_ADDED. */
   livingDocCopyApplied: z.boolean(),
-  /** Number of L3 siteRule entries copied into incoming's LivingDoc (0 on acting cover + first-ever binding). */
+  /**
+   * Total number of LivingDoc entries written by the handover side effects on
+   * THIS binding's writer call:
+   *   - On permanent rebind WITH outgoing supervisor: N copied site-scoped
+   *     `siteRules` entries + 1 `freeNotes` summary entry. So the typical
+   *     value here is `N + 1`, where N is the count of outgoing's matching
+   *     site rules.
+   *   - On first-ever binding (no outgoing supervisor, Q2 = (b) locked): 0.
+   *   - On acting cover: 0.
+   *
+   * Was "number of L3 siteRule entries copied" in F-004 round 1; widened in
+   * round 2 when the summary entry was restored per spec §3.7 "Surfaced to".
+   */
   livingDocRulesCopied: z.number().int().nonnegative(),
 });
 
@@ -249,20 +261,28 @@ export type HandoffPackageGeneratedPayload = z.infer<typeof HandoffPackageGenera
  * F-004 writer can call a `recordLivingDocRuleAddedByHandover` helper for
  * compile-time payload safety.
  *
- * Distinct from the chat-path emit in `bindingId` + `sourcePattern` fields,
- * which the chat path doesn't have. The audit consumer can discriminate via
- * `sourcePattern === 'handover_from_*'` when needed.
+ * Two `section` variants are emitted by F-004's writer:
+ *   - `site_rules`: emitted for each outgoing site-scoped siteRule copied
+ *     into incoming's LivingDoc. `sourcePattern = "handover_from_<outgoingId>"`.
+ *   - `free_notes`: emitted once for the handover-summary entry per binding.
+ *     `sourcePattern = "handover_summary_<outgoingId>"`.
+ *
+ * Consumers can discriminate by `section` or by `sourcePattern` prefix
+ * (`handover_from_*` vs `handover_summary_*`). Distinct from the chat-path
+ * emit by the presence of `bindingId` + `sourcePattern`.
  *
  * @derives(ADR-0003)
  * @derives(F-004 scope round-4 v4 pick 8 mechanism Z)
+ * @derives(F-004 round-2 review 2026-05-16 — free_notes section added)
  */
 export const LivingDocRuleAddedByHandoverPayloadSchema = z.object({
-  section: z.literal('site_rules'),
+  section: z.enum(['site_rules', 'free_notes']),
   visibility: z.enum(['COMPANY', 'SUPERVISOR_OWN']),
   ruleText: z.string().min(1),
   version: z.number().int().nonnegative(),
   bindingId: z.string().uuid(),
-  sourcePattern: z.string().min(1), // "handover_from_<outgoingSupervisorId>"
+  /** "handover_from_<outgoingId>" for siteRules copies; "handover_summary_<outgoingId>" for the summary entry. */
+  sourcePattern: z.string().min(1),
 });
 
 /**
