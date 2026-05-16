@@ -95,9 +95,9 @@ export type RecordBindingEndedAutoInput = {
 export async function recordBindingEndedAuto(
   tx: Prisma.TransactionClient,
   input: RecordBindingEndedAutoInput,
-): Promise<void> {
+): Promise<{ id: string }> {
   const payload = BindingEndedAutoPayloadSchema.parse(input.payload);
-  await recordAuditEvent(tx, {
+  return recordAuditEvent(tx, {
     companyId: input.companyId,
     kind: 'BINDING_ENDED_AUTO',
     actorId: input.actorId,
@@ -144,9 +144,9 @@ export type RecordHandoffPackageGeneratedInput = {
 export async function recordHandoffPackageGenerated(
   tx: Prisma.TransactionClient,
   input: RecordHandoffPackageGeneratedInput,
-): Promise<void> {
+): Promise<{ id: string }> {
   const payload = HandoffPackageGeneratedPayloadSchema.parse(input.payload);
-  await recordAuditEvent(tx, {
+  return recordAuditEvent(tx, {
     companyId: input.companyId,
     kind: 'HANDOFF_PACKAGE_GENERATED',
     actorId: input.actorId,

@@ -59,6 +59,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { recordBindingEndedAuto } from '../lib/site-supervisor-binding.js';
+import { enqueueOutbox } from '../lib/outbox.js';
 
 const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -226,7 +227,7 @@ async function emitAuditForOneBinding(
       if (alreadyEmitted) {
         return { emitted: false };
       }
-      await recordBindingEndedAuto(tx, {
+      const { id: sourceAuditId } = await recordBindingEndedAuto(tx, {
         companyId: binding.companyId,
         actorId: SYSTEM_ACTOR_ID,
         payload: {
@@ -237,6 +238,21 @@ async function emitAuditForOneBinding(
           effectiveFrom: binding.effectiveFrom.toISOString(),
           effectiveUntil: binding.effectiveUntil!.toISOString(),
           sweptAt: new Date().toISOString(),
+        },
+      });
+      // F-007 outbox emit (per pick 2 — Pattern A). Maya invariant LOCKED:
+      // the binding-end audit + outbox enqueue commit together in this tx, or
+      // not at all. F-007's handler will pick up this outbox row, resolve the
+      // resuming permanent supervisor at effectiveUntil + 1ms, and INSERT
+      // immutable Notification rows for the affected workers + outgoing
+      // (this binding's userId) + incoming (the resuming permanent supervisor).
+      await enqueueOutbox(tx, {
+        companyId: binding.companyId,
+        topic: 'notification.supervisor_change',
+        payload: {
+          sourceAuditId,
+          bindingId: binding.id,
+          eventKind: 'acting_end',
         },
       });
       return { emitted: true };
