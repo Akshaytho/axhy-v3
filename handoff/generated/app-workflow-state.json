@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T19:37:33.721Z",
-    "generated_against_head": "ffce21bbcc25b86a3ccf799eaea07c7c2f81eab2",
+    "last_updated_at": "2026-05-16T19:59:19.915Z",
+    "generated_against_head": "a0f4c03090a53916abe8f129a2c39ef8ae9454cc",
     "generated_against_branch": "feat/f-006a-onesignal-identity-lifecycle",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "ffce21bbcc25b86a3ccf799eaea07c7c2f81eab2",
+    "last_canonical_commit_at_gen": "a0f4c03090a53916abe8f129a2c39ef8ae9454cc",
     "staleness_warning": null,
-    "active_slice": "f-006a-onesignal-identity-lifecycle (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly) · SCOPE_APPROVED (round 2 v6) 2026-05-17 00:56. Friend's CODE-phase directive verbatim: \"Proceed to code on feat/f-006a-onesignal-identity-lifecycle and stop at AWAITING_APPROVAL after unit tests + manual smoke are documented.\" Code phase in progress on the branch.",
+    "active_slice": "f-006a-onesignal-identity-lifecycle (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly) · CODE_AWAITING_APPROVAL 2026-05-17 01:25. Code phase complete on feat/f-006a-onesignal-identity-lifecycle (no push, no merge). 42/42 unit tests green (incl. the 15 F-006a-new cases). Manual smoke plan documented at handoff/owner-input/f-006a-manual-smoke.md — owner runs on real device + OneSignal sandbox before merge. Awaiting friend's CODE: APPROVED.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1184,14 +1184,30 @@
   "control_loop": {
     "active_slice": {
       "Slice name": "`f-006a-onesignal-identity-lifecycle` (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly)",
-      "Status": "`SCOPE_APPROVED (round 2 v6)` 2026-05-17 00:56. Friend's CODE-phase directive verbatim: \"Proceed to code on feat/f-006a-onesignal-identity-lifecycle and stop at AWAITING_APPROVAL after unit tests + manual smoke are documented.\" Code phase in progress on the branch.",
+      "Status": "`CODE_AWAITING_APPROVAL` 2026-05-17 01:25. Code phase complete on `feat/f-006a-onesignal-identity-lifecycle` (no push, no merge). 42/42 unit tests green (incl. the 15 F-006a-new cases). Manual smoke plan documented at `handoff/owner-input/f-006a-manual-smoke.md` — owner runs on real device + OneSignal sandbox before merge. Awaiting friend's `CODE: APPROVED`.",
       "Branch": "`feat/f-006a-onesignal-identity-lifecycle` — forked from main `ffce21b` 2026-05-17.",
       "Last landed commit": "`ffce21b` — `docs(handoff): F-007 → DONE; merged to main at 79e38aa; next-slice picker surfaced (F-006+F-011 together recommended)`",
       "Dependencies": "F-001 + F-002 + S-001 + F-003 + F-004 + F-007 — all DONE on main. F-006a does NOT depend on F-011 (the reverse: F-011 will consume the identity-link F-006a establishes). Owner must provision OneSignal account before EAS Build lands, but local dev + Playwright web tests work without it (no-op path).",
-      "Tests status": "WIP — 15 unit cases planned across 2 files (`apps/mobile/lib/identity-lifecycle.test.ts` 10 cases + `apps/mobile/components/PushPermissionPrompt.test.tsx` 5 cases). Run via `pnpm --filter mobile test`.",
+      "Tests status": "GREEN — 15 F-006a unit cases passing inside a 42/42 total via `pnpm --filter @axhy/mobile test`. Files: `apps/mobile/lib/identity-lifecycle.test.ts` (10 cases) + `apps/mobile/components/PushPermissionPrompt.test.ts` (5 cases on the pure `buildPromptOutcomeRunner` factory — vitest include glob is `components/**/*.test.ts`, so the .ts extension matters; the React component itself is a thin wrapper around the factory).",
       "Verification gate": "Unit tests green + manual smoke documented (real device + OneSignal sandbox project — 4 smoke scenarios). Stop at AWAITING_APPROVAL."
     },
     "pending_approvals": [
+      {
+        "id": "f-006a-onesignal-identity-lifecycle",
+        "kind": "slice",
+        "status": "",
+        "branch": "",
+        "wipCommit": "",
+        "lastLanded": "",
+        "workflowIds": "",
+        "blocking": "",
+        "built": "",
+        "notDone": "",
+        "ownerDecision": "",
+        "artifact": "",
+        "decisionNeeded": "",
+        "scopeType": ""
+      },
       {
         "id": "f-006a-onesignal-identity-lifecycle",
         "kind": "slice",
