@@ -20,9 +20,89 @@
 
 ## Currently awaiting approval
 
-### Slice: `cron-framework-binding-expire-sweep` (F-003 — scope LOCKED 2026-05-16) — SCOPE_LOCKED, code slice next
+### Slice: `handoff-package-composer` (F-004 — scope approval) — AWAITING_SCOPE_APPROVAL 2026-05-16
 
-**Status note (2026-05-16):** Owner approved Approach A (polling sweep, every 5 minutes, idempotent via audit-existence check, one tx per row) AND explicitly rejected Approach B (one-time scheduled trigger per binding) after a head-to-head comparison on cost / complexity / failure recovery / edit-cancel handling / Railway-stack fit. Permanent record in `handoff/feature-queue/scopes/F-003.md` §3. All 7 picks locked there. Owner verbatim: "Stay with A. Add this comparison into the tracker/scope artifact so we have a permanent record of why we rejected the more complex per-binding trigger design." Code slice may begin; stops at `AWAITING_APPROVAL`.
+**Problem in simple English:** when HR creates a binding, the incoming supervisor walks in cold. They need site rules, recent complaints, active worker list, open decisions, calendar entries. The `handoffPackage` JSON column on `SiteSupervisorBinding` exists (nullable) but no code populates it.
+
+**Simplest business solution:** auto-compose the JSON at every binding-create / reassign moment, inside the same tx that creates the binding row. Downstream surfaces (digest, HR portal handoff card, notification payload) read from the column directly — compose-once-at-write-time, not rebuilt by each consumer.
+
+**Code (only after scope-artifact approval):** NEW `apps/backend/src/lib/handoff-package-composer.ts` exporting `composeHandoffPackage(tx, args)` — tx-callable shape matching `recordBindingCreated` per rule 26. Wires into binding-create flow + `reassignPermanentBinding`. NEW `HandoffPackagePayloadSchema` in `@axhy/shared-schema`. No schema migration. No HTTP route.
+
+**Why this code is necessary:** without the composer, the column is a permanently-empty promise. Every downstream feature that needs handoff context would have to compose it themselves at read time — slower, harder to keep consistent, would force the composer's logic to be rebuilt in every consumer. Compose-once-at-write is the right shape per Closure spec Decision 8 + §3.7.
+
+**Why scope first:** F-004 is medium-major (new helper + Zod payload schema + wiring into two existing binding paths + new tests). Per `feedback_plan_mode_for_medium_major_changes.md` discipline lock, scope artifact + owner approval before code. The scope artifact must also include the rule-26 "existing-pattern survey" answering the 4 mandatory questions (similar code, real runtime pattern, can-extend-not-replace, why-change-if-changing).
+
+**Open picks (recommended defaults in brackets; see active-slice.md for full discussion):**
+
+1. JSON payload schema — locked via Zod `HandoffPackagePayloadSchema` [yes]
+2. Single composer with arg variants vs three composers [single composer]
+3. Recent-complaints window [90 days per Decision 8]
+4. Open-decisions filter — site-scoped vs worker-scoped [site-scoped — incoming supervisor needs site context]
+5. Calendar window [+7 days from binding `effectiveFrom`]
+6. Failure handling — atomic compose-and-write [atomic; partial state is worse than no binding]
+7. Test coverage [acting / permanent / reassign × full / empty / cross-tenant]
+
+**Decision needed:** `SCOPE: GO with default picks` (I draft `handoff/feature-queue/scopes/F-004.md` with rule-26 survey + the 7 picks + open-questions, then start code on `feat/f-004-handoff-package-composer`) / `SCOPE: change picks` / `HOLD` / `MERGE FIRST` (merge F-003 to main first before any F-004 scope work).
+
+---
+
+### (F-003 round-2 entry preserved for audit, superseded by F-004 awaiting-approval above)
+
+#### F-003 — round-2 fixes complete — was AWAITING_APPROVAL 2026-05-16 (now APPROVED — see "Recently approved" below)
+
+**Status note (2026-05-16 round 2):** Friend's round-1 review at HEAD `433985d` raised two findings (P1 + P2). Both fixed in this round, plus rule 26 locked as upstream prevention. Friend's round-2 verbatim approval at HEAD `c4c335b`: "The round-2 review cleanup is real · The stale doc lines I flagged are now fixed, and I do not see a new blocker · Decision: APPROVED."
+
+**Round-1 P1 — multi-replica dedup overclaim — FIXED.** Friend's verbatim: "two replicas can still emit duplicate BINDING_ENDED_AUTO rows for the same binding ... AuditEvent has no uniqueness constraint on (companyId, kind, targetId) at schema.prisma." Round-2 fix `cd490d7`: new migration `20260519_f003_binding_ended_auto_dedup_index` adds a partial unique index on `AuditEvent (companyId, kind, targetId) WHERE kind='BINDING_ENDED_AUTO' AND targetId IS NOT NULL`. `emitAuditForOneBinding` catches Prisma P2002 (unique-violation) and treats it as `{emitted: false}` (race-loser no-op). The app-side `findFirst` cheap-skip is kept as an optimisation but is no longer the correctness mechanism.
+
+**Round-1 P2 — test overclaims — FIXED via real tests + docs downgrade.** Friend's verbatim: "the locked scope says the new test should prove 'a single bad row doesn't roll back the others' ... but actual test 8 only pre-seeds an existing audit row and proves skip-vs-process in a single runner. It does not inject a row failure, and it does not run two concurrent sweepers." Round-2 fix `cd490d7` adds 3 new tests: (9) Promise.all concurrent emit on the same binding asserts exactly 1 audit row exists; (10) direct `auditEvent.create` of a duplicate row throws P2002 — proves the index is real and active at runtime, not just claimed in migration content; (11) other audit kinds with same targetId both succeed — proves the partial-index predicate is narrow. Docs claims downgraded to match what tests actually prove vs. what's reviewable via code structure.
+
+**Rule 26 locked (`3e2f6bf`).** Owner's directive after this round: "Inspect existing repo patterns BEFORE designing." Both P1 (assumed-wrong scheduler pattern; actual is dispatcher-tick piggyback) and the original P1 oversight (assumed app-level idempotency was enough; actual industry-standard is partial unique index + ON CONFLICT) trace to designing from theoretical assumptions instead of from the codebase. Rule 26 mandates a 4-question "existing-pattern survey" in every future scope artifact.
+
+**F-003 commits (oldest → newest):** `39b47b8` (scope LOCKED + A-vs-B record) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code) · `737c066` (round-1 code) · `433985d` (round-1 tracker → AWAITING_APPROVAL) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1 fix).
+
+**Verification:** REAL_DB on fresh local Postgres 16 (with the new migration applied). **18/18 test files green · 95/95 cases pass** in one sweep (84 prior baseline + 11 F-003 cases: 8 original + 3 new dedup).
+
+**Decision needed:** `APPROVED` / `CHANGES_REQUESTED` (round 3) / `HOLD`. If APPROVED → ready to merge `feat/f-003-cron-framework` to main.
+
+---
+
+### (round-1 entry preserved for audit, superseded by round-2 above)
+
+#### F-003 — round-1 code (superseded) — was AWAITING_APPROVAL 2026-05-16
+
+**Problem in simple English:** when an acting supervisor's `effectiveUntil` passes, responsibility flips back to the underlying binding automatically (already correct via `getEffectiveBinding`'s read-time predicate). But there was no scheduled trigger emitting a `BINDING_ENDED_AUTO` audit row, which downstream slices (digest, notifications, audit-trail reports) eventually need.
+
+**Simplest business solution:** piggyback on the existing outbox dispatcher tick (same pattern as `maybeResetAiSpend`). In-memory marker gates real work to every 5 minutes. For each expired binding without a `BINDING_ENDED_AUTO` audit, emit one. Per-row tx. No row mutation. No new HTTP route. No new schema column.
+
+**Code fix (one commit, `737c066`):**
+
+- NEW `apps/backend/src/jobs/binding-expire-sweep.ts` — `maybeRunBindingExpireSweep` with first-boot path + 5-min cadence gate + per-row tx + audit-existence idempotency + defense-in-depth re-check inside each tx.
+- WIRED `apps/backend/src/dispatcher/index.ts:tick` — one new call next to `maybeResetAiSpend`, same `.catch()` wrapper.
+- NEW `packages/shared-schema/src/zod/audit-payloads.ts` — `BindingEndedAutoPayloadSchema` + type.
+- WIRED `apps/backend/src/lib/site-supervisor-binding.ts` — `recordBindingEndedAuto` typed helper.
+- NEW `apps/backend/test/binding-expire-sweep.test.ts` — 8 real-DB integration cases.
+
+**Why this code is necessary:** without the audit emit, future consumers (notification dispatcher F-007, "while you were out" digest, audit-trail reports) have no signal that a binding expired. The audit is the durable event that downstream features consume. The sweep deliberately does NOT mutate the binding row (would break historical point-in-time queries via `getEffectiveBinding`) and deliberately does NOT decide who is the current supervisor (that's already time-based via read-time predicate).
+
+**What is NOT in this slice:**
+
+- No other sweep jobs (decision-expire, flagged-visit-auto-escalate, hr-queue-age-escalation, hr-availability-sweep) — separate later slices on the same framework.
+- No "while you were out" digest — separate downstream-consumer slice.
+- No notification dispatcher — separate F-007 slice.
+- No row mutation, no `endedAt` write on auto-expired bindings.
+- No HR API changes, no S-001 guard changes.
+
+**Verification:** REAL_DB on fresh local Postgres 16 (with the round-2 migration applied). **18/18 test files green · 95/95 cases pass** in one sweep (84 prior baseline + 11 F-003 cases: 8 original + 3 round-2 dedup). Reproduction snippet in `active-slice.md`.
+
+**F-003 commits:** `39b47b8` (scope LOCKED + A-vs-B record on prior branch) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback) · `737c066` (code slice).
+
+**Decision needed:** `APPROVED` / `CHANGES_REQUESTED` / `HOLD`. If APPROVED → ready to merge `feat/f-003-cron-framework` to main.
+
+---
+
+### Spec-lock checkpoint preserved (kept for cross-slice audit, superseded by AWAITING_APPROVAL above)
+
+**Status note (2026-05-16):** Owner approved Approach A (polling sweep, every 5 minutes, one tx per row) AND explicitly rejected Approach B (one-time scheduled trigger per binding) after a head-to-head comparison on cost / complexity / failure recovery / edit-cancel handling / Railway-stack fit. Permanent record in `handoff/feature-queue/scopes/F-003.md` §3. The original round-1 pick 7 (idempotency via app-side audit-existence check, no schema change) was correctly flagged by friend as race-prone for concurrent dispatcher replicas; round-2 fix `cd490d7` replaced it with a DB-enforced partial unique index — see the "F-003 round-2 fixes complete" entry above for details. Owner verbatim at scope lock: "Stay with A. Add this comparison into the tracker/scope artifact so we have a permanent record of why we rejected the more complex per-binding trigger design."
 
 **Status note (2026-05-16 evening):** owner directed a re-scope after friend caught 2 contradictions in the prior draft (transaction shape inconsistent, cadence inconsistent with closure spec §10). Owner's directive: cron is NOT the source of truth for supervisor switching — that's already time-based via `getEffectiveBinding`'s read-time predicate. Cron is for post-expiry side effects only (audit emit, later digest, later notifications). This matches Oracle / Workday / SAP effective-dating patterns: source-of-truth is date-based; scheduled jobs handle side effects.
 
@@ -36,7 +116,7 @@
 
 **7 picks for owner + friend** (see `active-slice.md` for full trade-off; CLOSED items already determined by spec / friend's fix; recommended defaults in brackets):
 
-1. **Scheduler shape** [OS-cron + HTTP endpoint, matches existing `reset-ai-spend`]
+1. **Scheduler shape** [**CORRECTED 2026-05-16 pre-code:** piggyback on the existing outbox dispatcher tick — add `maybeRunBindingExpireSweep` next to `maybeResetAiSpend` in `dispatcher/index.ts:180`, gated by an in-memory 5-min marker. Original wording said "OS-cron + HTTP"; pre-code read of the repo revealed the actual existing pattern is dispatcher-tick piggyback. Direction unchanged.]
 2. **Run cadence** — **CLOSED: every 5 minutes** per closure spec §10 line 560 (the prior "every minute" recommendation was a spec contradiction and is withdrawn)
 3. **S-001 interaction** [sweep is exempt — responsibility switch already happened at read-time when `effectiveUntil` passed; sweep emits side-effect audit only]
 4. **Failure handling and transaction shape** — **one tx per row** (per-row side effects are independent; whole-sweep tx would amplify a single failure into total rollback). Same picks 4 + Code section — no more contradiction.
@@ -391,6 +471,26 @@ _None._
 ---
 
 ## Recently approved (last 5)
+
+### Slice: `cron-framework-binding-expire-sweep` (F-003 — round-2 fixes) — APPROVED 2026-05-16
+
+- **Status:** `APPROVED` (ready to merge to main next; will graduate to DONE on merge).
+- **Branch:** `feat/f-003-cron-framework`.
+- **Last landed commit at approval:** `c4c335b` — `docs(handoff): F-003 round-2 review cleanup — 3 stale doc lines fixed (no code change)`.
+- **F-003 commit chain (oldest → newest):** `39b47b8` (scope LOCKED + A-vs-B record) · `a29f9f6` (merge of F-001 + F-002 + S-001 + scope to main) · `74c1e9d` (pick 1 corrected pre-code — dispatcher-tick piggyback) · `737c066` (round-1 code) · `433985d` (round-1 tracker propagation) · `3e2f6bf` (rule 26 locked) · `cd490d7` (round-2 P1 fix: partial unique index + P2002 catch + 3 new tests) · `802d28f` (round-2 P2 docs downgrade) · `c4c335b` (round-2 review cleanup — 3 stale doc lines fixed).
+- **Approval received:** Friend's file-grounded verification at HEAD `c4c335b`. Verbatim: "The round-2 review cleanup is real · The stale doc lines I flagged are now fixed, and I do not see a new blocker · the partial unique index + P2002 handling is a real correctness improvement, and the control surface now matches it · Decision: APPROVED."
+- **Friend's verification limitation noted (not gating):** local Rollup/Vitest startup issue still applies in friend's shell; approval is file-grounded, not fresh-test-grounded.
+- **Friend's directive on approval:** mark F-003 APPROVED in canonical files · regenerate outputs · merge `feat/f-003-cron-framework` to main · surface the next slice in simple-English-first format.
+- **Delivered shape:**
+  - NEW `apps/backend/src/jobs/binding-expire-sweep.ts` — `maybeRunBindingExpireSweep` with first-boot path + 5-min cadence gate + per-row tx + dispatcher-tick piggyback wiring.
+  - NEW migration `20260519_f003_binding_ended_auto_dedup_index` — partial unique index on `AuditEvent (companyId, kind, targetId) WHERE kind='BINDING_ENDED_AUTO' AND targetId IS NOT NULL`. DB-enforced dedup makes duplicate audits impossible by construction; app-side `findFirst` kept as cheap-skip optimisation only.
+  - NEW `BindingEndedAutoPayloadSchema` in shared-schema + `recordBindingEndedAuto` typed helper.
+  - WIRED `dispatcher/index.ts:tick` next to `maybeResetAiSpend`.
+  - NEW `binding-expire-sweep.test.ts` — 11 real-DB integration cases (8 original + 3 round-2 dedup: concurrent emit · direct DB unique-violation · partial-index narrowness).
+  - **Rule 26 locked** across 4 places — inspect existing repo patterns BEFORE designing. Upstream prevention for the class of error friend caught in round-1.
+- **Verification at approval:** REAL_DB on fresh local Postgres 16. **18/18 test files green · 95/95 cases pass** in one sweep (84 prior baseline + 11 F-003 cases).
+- **Deferred (not in this slice):** other sweep jobs (decision-expire, flagged-visit-auto-escalate, hr-queue-age-escalation, hr-availability-sweep); "while you were out" digest generator; notification dispatcher F-007; multi-replica advisory lock (DB index made it unnecessary).
+- **Next:** F-004 (HandoffPackage composer) surfaced as new active slice in `PLANNED — AWAITING_SCOPE_APPROVAL`.
 
 ### Slice: `same-day-supervisor-freeze` (S-001 — code slice) — APPROVED 2026-05-16
 
