@@ -56,6 +56,7 @@ import {
 
 import { recordAuditEvent } from './audit-event.js';
 import { recordHandoffPackageGenerated } from './site-supervisor-binding.js';
+import { enqueueOutbox } from './outbox.js';
 
 /**
  * Writer input — binding row context + the composed payload + the binding
@@ -314,8 +315,13 @@ export async function writeHandoffPackage(
     }
   }
 
-  // Always emit 1× HANDOFF_PACKAGE_GENERATED audit.
-  await recordHandoffPackageGenerated(tx, {
+  // Always emit 1× HANDOFF_PACKAGE_GENERATED audit + 1× notification.supervisor_change
+  // outbox row. Per F-007 v11 panel-test Maya invariant: this writer call already
+  // runs inside the caller's atomic binding-write tx (via reassignPermanentBinding),
+  // so the binding write + audit emit + outbox enqueue all commit together or
+  // none commit. If any one fails, the entire tx rolls back and no notification
+  // rows are ever written downstream.
+  const { id: sourceAuditId } = await recordHandoffPackageGenerated(tx, {
     companyId: input.companyId,
     actorId: input.actorId,
     payload: {
@@ -328,6 +334,22 @@ export async function writeHandoffPackage(
       packageSizeBytes: input.payload.packageSizeBytes,
       livingDocCopyApplied,
       livingDocRulesCopied,
+    },
+  });
+
+  // F-007 outbox emit. eventKind derives from binding kind:
+  //   PERMANENT → 'permanent_rebind' (this is reassignPermanentBinding).
+  //   ACTING    → 'acting_start' (acting cover creation; future binding-create
+  //               route may also emit HANDOFF_PACKAGE_GENERATED on first-ever
+  //               binding, in which case eventKind is still 'acting_start' or
+  //               'permanent_rebind' per the binding kind).
+  await enqueueOutbox(tx, {
+    companyId: input.companyId,
+    topic: 'notification.supervisor_change',
+    payload: {
+      sourceAuditId,
+      bindingId: input.bindingId,
+      eventKind: input.kind === 'PERMANENT' ? 'permanent_rebind' : 'acting_start',
     },
   });
 }

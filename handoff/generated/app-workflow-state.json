@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T13:15:16.780Z",
-    "generated_against_head": "b19e03c26f148b64afc41b7e65d3cac103912705",
-    "generated_against_branch": "main",
+    "last_updated_at": "2026-05-16T17:26:27.811Z",
+    "generated_against_head": "4c5d9d938b0ece595400a3f6538eec7499d33290",
+    "generated_against_branch": "feat/f-007-notification-dispatcher",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "f5e00bda6db9e6ede4d57adb1f9c4e38a8a13ecc",
+    "last_canonical_commit_at_gen": "4c5d9d938b0ece595400a3f6538eec7499d33290",
     "staleness_warning": null,
-    "active_slice": "n/a — between slices, awaiting owner pick · BETWEEN_SLICES — AWAITING_OWNER_PICK 2026-05-16. F-004 DONE; merged to main at b19e03c (pushed to origin). Friend's final approval at HEAD ef0aadd 2026-05-16: \"APPROVED. F-004 is approved for merge.\"",
+    "active_slice": "notification-dispatcher (F-007 round 2 v11 — Notification persistence + audience resolution for supervisor_change) · AWAITING_APPROVAL (round 2 v11 — code phase, round-2 fix-up) 2026-05-16. Real-DB sweep green: **20/20 files · 123/123 cases pass** on fresh local Postgres 16 (109 prior baseline + 14 new F-007 cases). Friend's round-1 code review at HEAD 4c5d9d9 surfaced 2 findings (P1 worker-audience point-in-time filter missing; P2 acting_end branch untested); both fixed in this commit. Awaits friend's re-review.",
     "generated_from": [
       "handoff/execution-state/*.md",
       "handoff/workflow-maps/*.md",
@@ -1183,17 +1183,14 @@
   "data_model_has_er": true,
   "control_loop": {
     "active_slice": {
-      "Slice name": "`n/a` — between slices, awaiting owner pick",
-      "Status": "`BETWEEN_SLICES — AWAITING_OWNER_PICK` 2026-05-16. F-004 DONE; merged to main at `b19e03c` (pushed to origin). Friend's final approval at HEAD `ef0aadd` 2026-05-16: \"APPROVED. F-004 is approved for merge.\"",
-      "Branch": "`main` (clean, up-to-date with `origin/main`)",
-      "Last landed commit": "`b19e03c` — `Merge F-004 — HandoffPackage composer + writer + reassignPermanentBinding wiring (round 2 APPROVED)` on main",
-      "Dependencies cleared": "F-001 + F-002 + S-001 + F-003 + F-004 — all DONE on main. Spec §3.7 amended for `schemaVersion`. F-009 + F-010 unblocked. F-007 unblocked (its main upstream was F-004's audit emit, now live).",
-      "Tests status": "19 test files / 109 cases on main; baseline for any next slice",
-      "Verification gate": "n/a until a slice is picked"
+      "Slice name": "`notification-dispatcher` (F-007 round 2 v11 — Notification persistence + audience resolution for `supervisor_change`)",
+      "Status": "`AWAITING_APPROVAL (round 2 v11 — code phase, round-2 fix-up)` 2026-05-16. Real-DB sweep green: **20/20 files · 123/123 cases pass** on fresh local Postgres 16 (109 prior baseline + 14 new F-007 cases). Friend's round-1 code review at HEAD `4c5d9d9` surfaced 2 findings (P1 worker-audience point-in-time filter missing; P2 acting_end branch untested); both fixed in this commit. Awaits friend's re-review.",
+      "Branch": "`feat/f-007-notification-dispatcher` — forked from main `04c5e59` 2026-05-16. v11 scope + tracker propagation landed at `e6e605c`; no code yet (awaits owner + friend round-2 v11 SCOPE: APPROVED on the committed propagation before code begins).",
+      "Last landed commit": "`e6e605c` — `docs(handoff): F-007 round 2 v11 — Notification persistence + audience resolution (OneSignal direction; immutable rows; collapsed eligibility rule)`"
     },
     "pending_approvals": [
       {
-        "id": "handoff-package-composer",
+        "id": "notification-dispatcher",
         "kind": "slice",
         "status": "",
         "branch": "",
@@ -1277,25 +1274,25 @@
       },
       {
         "id": "F-006",
-        "title": "Worker mobile app scaffold",
-        "why": "All 18 Suresh workflows are NOT_STARTED because `apps/worker-mobile/` doesn't exist. The structurally-invisible-worker problem from audit Round 2.",
-        "depends_on": "F-001, F-003 (notification dispatcher).",
-        "personas": "Suresh (primary).",
-        "workflows": "A1, A3, A4 (worker side), C11 (subject), E21 (initiator).",
-        "entities": "new `apps/worker-mobile/` Expo app, auth + home + attendance screens, push setup.",
+        "title": "Worker + supervisor mobile in-app notification panel",
+        "why": "All 18 Suresh workflows are NOT_STARTED because `apps/worker-mobile/` doesn't exist. The structurally-invisible-worker problem from audit Round 2. F-006 also owns the supervisor burst-grouping presentation (UI aggregation by `(outgoingSupervisorId, incomingSupervisorId, eventKind)` within a short time window) — F-007 deliberately writes immutable per-event rows; F-006 groups them at read time.",
+        "depends_on": "F-001, F-007 (immutable Notification rows). F-011 (OneSignal push delivery) is independent — F-006 panel works from DB regardless of push transport state.",
+        "personas": "Suresh (primary), Ravi/Anjali/Lakshmi (supervisor panel including burst grouping for multi-site rebinds).",
+        "workflows": "A1, A3, A4 (worker side), C11 (subject), E21 (initiator), F26/F27 (supervisor banner grouping).",
+        "entities": "new `apps/worker-mobile/` Expo app, auth + home + attendance + notification-panel screens, in-app banner rendering, unread/read state from `Notification.deliveredAt IS NOT NULL AND ackedAt IS NULL`, supervisor burst-grouping UI aggregating per-site rows into \"you're covering Ravi at 8 sites — tap to expand.\"",
         "verification": "Playwright + `REAL_DB`.",
         "status": "QUEUED"
       },
       {
         "id": "F-007",
-        "title": "Notification dispatcher",
-        "why": "Closure Decision 4 + 10 + AI budget alerts (G29). Every notification + digest + alert sits in Outbox today; no channel adapter wired.",
-        "depends_on": "Backend stability (no specific dep from this list).",
-        "personas": "all four (anyone receiving notifications).",
-        "workflows": "F26 (W-1/W-2/W-3/W-7), F27 (W-3), E21 leave-status, E24 termination, G29 budget alert, owner monthly digest.",
-        "entities": "`apps/backend/src/dispatcher/handlers/*` (push, sms, whatsapp_out, email adapters), MSG91 webhook wiring.",
-        "verification": "`REAL_DB` + manual delivery confirmation on dev numbers.",
-        "status": "QUEUED"
+        "title": "Notification dispatcher (round 2 v11 — supervisor_change persistence + audience resolution)",
+        "why": "Closure Decision 4 (mandatory worker-side supervisor-change notification) + audit Suresh W-1/W-2/W-7 (largest open product gap from the year-long simulation). F-004's `HANDOFF_PACKAGE_GENERATED` + F-003's `BINDING_ENDED_AUTO` audits emit but no notification rows reach the affected workers or involved supervisors. F-007 is the canonical persistence layer beneath Decision 4 delivery; F-011 + F-006 + F-012 close the rest.",
+        "depends_on": "F-003 + F-004 (both DONE on main). Notification table + Zod schemas already shipped (`schema.prisma:931`, `zod/notification.ts`).",
+        "personas": "Suresh (worker — primary, finally gets a row when his supervisor changes); Ravi/Anjali/Lakshmi (outgoing + incoming supervisors get rows).",
+        "workflows": "F26 (acting cover; covers W-1/W-2/W-7), F27 (permanent rebind; covers W-3 transitively).",
+        "entities": "NEW `apps/backend/src/lib/notification-composer.ts` (read-only audience resolver). NEW `apps/backend/src/dispatcher/handlers/notifications.ts` (~15-line INSERT-or-skip handler). EDIT `dispatcher/handlers/registry.ts` (register topic `notification.supervisor_change`). EDIT `handoff-package-writer.ts` + `binding-expire-sweep.ts` (one-line `enqueueOutbox` + return-value tweaks). **NO** typed audit-payload schema, **NO** `recordWorkerSupervisorChangeNotified` helper — both moved to F-011 (audit fires at delivery time, not at persistence). NEW migration: ONE partial unique index on `Notification (companyId, kind, channel, COALESCE(audienceUserId::text, ''), COALESCE(audienceWorkerId::text, ''), payload->>'sourceAuditId', payload->>'siteId') WHERE kind='supervisor_change'` for idempotent replay. **Plus DB CHECK constraint** `(audienceUserId IS NULL) <> (audienceWorkerId IS NULL)` if not already present on Notification table (v11 panel-test Vikram — P1 invariant enforced, not described).",
+        "verification": "`REAL_DB` — ~120 cases total (109 baseline + ~11 new F-007 cases including immutable-row semantics + idempotent replay worker+supervisor + Telugu/Hindi + apostrophe rendering + cross-tenant + edge cases).",
+        "status": "SCOPE_DRAFT_PENDING_REVIEW"
       },
       {
         "id": "F-008",
@@ -1328,6 +1325,28 @@
         "workflows": "F27 (permanent reassign primarily); F26 acting cover may also benefit, but cover is temporary so the client-context value is lower.",
         "entities": "",
         "verification": "`REAL_DB` — clientPreferences-copy correctness across acting / permanent paths + cross-tenant isolation + schemaVersion bump correctness.",
+        "status": "QUEUED"
+      },
+      {
+        "id": "F-011",
+        "title": "OneSignal mobile SDK + identity linking + push delivery adapter",
+        "why": "Decision 4 (mandatory worker supervisor-change notification) requires real push delivery. F-007 ships the persistence rows; F-011 turns them into actual push notifications via OneSignal. Replaces an earlier \"FCM/Expo + push-token on Device\" plan dropped at v8 in favor of the managed-provider approach.",
+        "depends_on": "F-007 (Notification rows exist) + F-006 (worker mobile app exists to install the SDK in). OneSignal account setup is a prerequisite operational task.",
+        "personas": "Suresh (worker — receives actual push), Ravi/Anjali/Lakshmi (supervisors — receive actual push).",
+        "workflows": "F26 + F27 push delivery; F-006 in-app banner remains independent (F-006 reads DB regardless of push state).",
+        "entities": "- **Mobile SDK install** in `apps/worker-mobile/` + `apps/supervisor-mobile/` (or wherever F-006 lands).\n  - **Identity lifecycle:** call `OneSignal.login(external_id = User.id)` on every identified app open / login. On app logout: `OneSignal.logout()` to detach the current device. On User soft-delete-and-re-create (rare): `OneSignal.logout()` on old session + re-link on next login under the new `external_id`.\n  - **Backend delivery adapter** consuming F-007's `channel='push'` rows where `deliveredAt IS NULL AND failedAt IS NULL`. Dispatches via OneSignal REST API targeting by `external_id`.\n  - **Pre-dispatch eligibility re-check (v11 — material correctness rule):** for each push row, the adapter re-fetches the target User (reference the existing schema soft-delete signal — likely `User.deletedAt`; verify against `packages/shared-schema/prisma/schema.prisma` at implementation time):\n    - User not found → stamp `failedAt + failureReason='recipient_removed'` (terminal — no retry).\n    - User soft-deleted/inactive → stamp `failedAt + failureReason='recipient_inactive'` (terminal — no retry).\n    - User active + OneSignal active subscription count = 0 → stamp `failedAt + failureReason='no_active_subscription'` (terminal — covers logout, uninstall, never-opened-app, all-tokens-expired).\n    - User active + ≥1 subscription → dispatch.\n  - **On successful delivery:** stamp `Notification.deliveredAt = now()` + emit `WORKER_SUPERVISOR_CHANGE_NOTIFIED` AuditEvent + optionally record `providerMessageId` on the row for observability.\n  - **Failure policy — typed `failureReason` enum (v11 — 6 round-1 values, all actively emitted):** terminal-no-retry (3): `'no_active_subscription'` / `'recipient_inactive'` / `'recipient_removed'`. Transient-bounded-backoff-retry (3): `'rate_limited'` / `'provider_error'` / `'network_error'`. The enum is extensible — new values are added later only when F-011 (or a future provider) actually emits them from a real signal. Do NOT pre-register ghost values.",
+        "verification": "`REAL_DB` + OneSignal sandbox project + Playwright on mobile builds.",
+        "status": "QUEUED"
+      },
+      {
+        "id": "F-012",
+        "title": "SMS + WhatsApp adapter (paid channels)",
+        "why": "Decision 4 channel chain (closure §5 line 78): push → SMS → WhatsApp-out → email. Also closes the persistent push-gap for workers with no User account (v11 panel-test Suresh Pillai). SMS/WhatsApp are PAID — owner go required before this slice opens.",
+        "depends_on": "F-007 (rows exist) + F-011 (push transport for primary channel exists) + owner approval on paid-channel spend.",
+        "personas": "Suresh-without-User-account (primary — finally has a delivery path), all workers as push-fallback.",
+        "workflows": "F26 + F27 channel-fallback chain.",
+        "entities": "SMS provider integration (TBD: Twilio / Gupshup / etc.); WhatsApp Business API integration (TBD); F-007 channel-set extension to include `'sms'` + `'whatsapp_out'` rows when paid channels are live; channel-fallback retry chain logic (push fails → SMS → WhatsApp → email).",
+        "verification": "`REAL_DB` + provider sandbox.",
         "status": "QUEUED"
       }
     ],
