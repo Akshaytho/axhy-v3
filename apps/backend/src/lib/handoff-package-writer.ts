@@ -6,31 +6,43 @@
  *   - Always: emit exactly one `HANDOFF_PACKAGE_GENERATED` audit event for
  *     this binding (typed payload via `recordHandoffPackageGenerated`).
  *
- *   - Permanent rebind with outgoing supervisor (mechanism Z, pick 8):
+ *   - Permanent rebind WITH an outgoing supervisor (mechanism Z, pick 8):
  *       - Copy outgoing's site-scoped L3 siteRules into incoming's
  *         `LivingDoc.siteRules` (preserving `scope.siteId`,
  *         `source.pattern = "handover_from_<outgoingId>"`).
- *       - Emit N× `LIVING_DOC_RULE_ADDED` audits (one per copied rule).
- *       - **Owner Q2 = (b) locked 2026-05-16:** NO `freeNotes` summary
- *         entry on any path. Chronology is preserved by `generatedAt` +
- *         `outgoingSupervisorId` on the package itself.
+ *       - Append ONE handover-summary entry to incoming's `LivingDoc.freeNotes`
+ *         per closure spec §3.7 "Surfaced to": "Permanent rebind: prepended to
+ *         incoming supervisor's LivingDoc as a 'handover from [outgoing] on
+ *         [date]' entry." Source.pattern = "handover_summary_<outgoingId>".
+ *         Idempotent ID via deriveSummaryEntryId(bindingId) so replay is no-op.
+ *       - Emit N× `LIVING_DOC_RULE_ADDED` audits — N = number of copied
+ *         siteRules + 1 (the summary entry).
  *
  *   - Acting cover:
  *       - NO LivingDoc writes (cover is temporary; merging muddles the
- *         acting cover's personal context).
+ *         acting cover's personal context). 1× HANDOFF_PACKAGE_GENERATED only.
  *
  *   - First-ever permanent binding (outgoingSupervisorId is null):
- *       - NO LivingDoc writes (no outgoing rules to copy; Q2 = (b)
- *         drops the summary entry).
+ *       - **Owner Q2 = (b) locked 2026-05-16:** NO LivingDoc writes at all
+ *         (no outgoing rules to copy; no "handover from [outgoing]" because
+ *         there is no outgoing — Q2=(b) explicitly drops the summary entry
+ *         for the no-outgoing case). 1× HANDOFF_PACKAGE_GENERATED only.
  *
- * Idempotency (Open Q4): copied rule IDs are deterministic via uuid-v5
- * from `(bindingId, originalRuleId)` so a replay of `reassignPermanentBinding`
- * produces the same rule IDs and the existence check in the upsert path
- * skips duplicates.
+ * Friend's F-004 round-2 review (2026-05-16) caught that round-1 dropped the
+ * summary entry on ALL permanent-rebind paths, not just first-ever. Q2=(b)
+ * only governs the no-outgoing case. With an outgoing supervisor, the closure
+ * spec §3.7 "Surfaced to" language explicitly requires the summary entry.
+ *
+ * Idempotency (Open Q4): copied rule IDs (siteRule copies) are deterministic
+ * via deriveCopiedRuleId(bindingId, originalRuleId); the summary entry ID is
+ * deterministic via deriveSummaryEntryId(bindingId). Replay of
+ * `reassignPermanentBinding` produces the same IDs and the existing-ids guard
+ * makes the write a no-op.
  *
  * @derives(ADR-0003)
  * @derives(workflow-design-closure §3.7 + §9)
  * @derives(F-004 scope round-4 v4)
+ * @derives(F-004 round-2 review 2026-05-16 — restore summary entry)
  */
 
 import { randomUUID } from 'node:crypto';
@@ -78,9 +90,26 @@ export type WriteHandoffPackageInput = {
  * If a future slice introduces `uuid` v5 properly, swap this for it.
  */
 function deriveCopiedRuleId(bindingId: string, originalRuleId: string): string {
+  return uuidV5FromBytes(`${bindingId}:${originalRuleId}`);
+}
+
+/**
+ * Deterministic UUID for the freeNotes summary entry on permanent rebind.
+ * Keyed off the binding id alone (one summary per binding-create event).
+ *
+ * Why a separate function: the summary entry isn't a copy of any outgoing
+ * rule — it's a synthesised entry. We use a different sentinel suffix so
+ * the summary id can never collide with a copied-rule id derived from the
+ * same binding id.
+ */
+function deriveSummaryEntryId(bindingId: string): string {
+  return uuidV5FromBytes(`${bindingId}:summary`);
+}
+
+function uuidV5FromBytes(seed: string): string {
   const { createHash } = require('node:crypto') as typeof import('node:crypto');
-  const hex = createHash('sha256').update(`${bindingId}:${originalRuleId}`).digest('hex');
-  // Take first 16 bytes (32 hex chars); apply v5 bits.
+  const hex = createHash('sha256').update(seed).digest('hex');
+  // Take first 16 bytes (32 hex chars); apply RFC-4122 v5 bits.
   const bytes = Buffer.from(hex.slice(0, 32), 'hex');
   // version = 5: high nibble of byte 6
   bytes[6] = (bytes[6]! & 0x0f) | 0x50;
@@ -105,94 +134,173 @@ export async function writeHandoffPackage(
   let livingDocRulesCopied = 0;
   let livingDocCopyApplied = false;
 
-  // Mechanism Z permanent path: only when kind=PERMANENT AND outgoing exists.
-  // Q2 = (b) ensures no freeNotes summary entry is written; only siteRule
-  // copies. On first-ever permanent binding (outgoingSupervisorId === null),
-  // skip entirely.
+  // Mechanism Z permanent path WITH outgoing supervisor:
+  //   - copy outgoing's site-scoped L3 siteRules into incoming's LivingDoc
+  //   - append ONE handover-summary entry to incoming's LivingDoc.freeNotes
+  //     per closure spec §3.7 "Surfaced to"
+  //   - emit N× LIVING_DOC_RULE_ADDED audits (N = copied siteRules + 1 summary)
+  //
+  // First-ever permanent binding (outgoingSupervisorId === null) — Q2 = (b):
+  //   - zero LivingDoc writes (no rules to copy AND no outgoing to name in
+  //     a summary entry)
+  //
+  // Acting cover: zero LivingDoc writes either way (cover is temporary).
   if (input.kind === 'PERMANENT' && input.outgoingSupervisorId !== null) {
-    const siteScopedOutgoingRules = await readOutgoingSiteScopedRules(
-      tx,
-      input.companyId,
-      input.outgoingSupervisorId,
-      input.siteId,
-    );
+    const [siteScopedOutgoingRules, outgoingUser, site] = await Promise.all([
+      readOutgoingSiteScopedRules(tx, input.companyId, input.outgoingSupervisorId, input.siteId),
+      tx.user.findUnique({
+        where: { id: input.outgoingSupervisorId },
+        select: { name: true },
+      }),
+      tx.site.findUnique({
+        where: { id: input.siteId },
+        select: { name: true },
+      }),
+    ]);
 
-    if (siteScopedOutgoingRules.length > 0) {
-      const incomingDoc = await tx.livingDoc.upsert({
-        where: {
-          companyId_supervisorId: {
-            companyId: input.companyId,
-            supervisorId: input.incomingSupervisorId,
-          },
-        },
-        create: {
+    const incomingDoc = await tx.livingDoc.upsert({
+      where: {
+        companyId_supervisorId: {
           companyId: input.companyId,
           supervisorId: input.incomingSupervisorId,
         },
-        update: {},
+      },
+      create: {
+        companyId: input.companyId,
+        supervisorId: input.incomingSupervisorId,
+      },
+      update: {},
+    });
+
+    const existingSiteRules = Array.isArray(incomingDoc.siteRules)
+      ? (incomingDoc.siteRules as unknown as Array<Record<string, unknown>>)
+      : [];
+    const existingSiteRuleIds = new Set<string>(
+      existingSiteRules
+        .map((r) => (typeof r === 'object' && r !== null ? (r.id as unknown) : null))
+        .filter((id): id is string => typeof id === 'string'),
+    );
+
+    const newRules: LivingDocRule[] = [];
+    const sourcePattern = `handover_from_${input.outgoingSupervisorId}`;
+    const summarySourcePattern = `handover_summary_${input.outgoingSupervisorId}`;
+    const generatedAt = input.payload.generatedAt;
+
+    for (const outRule of siteScopedOutgoingRules) {
+      const copiedId = deriveCopiedRuleId(input.bindingId, outRule.id);
+      if (existingSiteRuleIds.has(copiedId)) continue; // idempotent replay no-op
+      const copy: LivingDocRule = {
+        id: copiedId,
+        ruleText: outRule.ruleText,
+        description: outRule.description,
+        visibility: outRule.visibility,
+        scope: { siteId: input.siteId },
+        createdAt: generatedAt,
+        createdBy: 'supervisor', // Open Q1 default; provenance in source.pattern
+        state: 'ACTIVE',
+        source: { pattern: sourcePattern },
+      };
+      newRules.push(copy);
+    }
+
+    if (newRules.length > 0) {
+      const column = LIVING_DOC_SECTION_TO_COLUMN['site_rules'];
+      const updated = await tx.livingDoc.update({
+        where: { id: incomingDoc.id },
+        data: {
+          [column]: [...existingSiteRules, ...newRules] as Prisma.InputJsonValue,
+          version: { increment: 1 },
+        },
+        select: { version: true },
       });
 
-      const existing = Array.isArray(incomingDoc.siteRules)
-        ? (incomingDoc.siteRules as unknown as Array<Record<string, unknown>>)
-        : [];
-      const existingIds = new Set<string>(
-        existing
-          .map((r) => (typeof r === 'object' && r !== null ? (r.id as unknown) : null))
-          .filter((id): id is string => typeof id === 'string'),
-      );
-
-      const newRules: LivingDocRule[] = [];
-      const sourcePattern = `handover_from_${input.outgoingSupervisorId}`;
-      const generatedAt = input.payload.generatedAt;
-
-      for (const outRule of siteScopedOutgoingRules) {
-        const copiedId = deriveCopiedRuleId(input.bindingId, outRule.id);
-        if (existingIds.has(copiedId)) continue; // idempotent replay no-op
-        const copy: LivingDocRule = {
-          id: copiedId,
-          ruleText: outRule.ruleText,
-          description: outRule.description,
-          visibility: outRule.visibility,
-          scope: { siteId: input.siteId },
-          createdAt: generatedAt,
-          createdBy: 'supervisor', // Open Q1 default; provenance in source.pattern
-          state: 'ACTIVE',
-          source: { pattern: sourcePattern },
-        };
-        newRules.push(copy);
-      }
-
-      if (newRules.length > 0) {
-        const column = LIVING_DOC_SECTION_TO_COLUMN['site_rules'];
-        const updated = await tx.livingDoc.update({
-          where: { id: incomingDoc.id },
-          data: {
-            [column]: [...existing, ...newRules] as Prisma.InputJsonValue,
-            version: { increment: 1 },
+      for (const r of newRules) {
+        await recordAuditEvent(tx, {
+          companyId: input.companyId,
+          kind: 'LIVING_DOC_RULE_ADDED',
+          actorId: input.actorId,
+          targetId: r.id,
+          payload: {
+            section: 'site_rules',
+            visibility: r.visibility,
+            ruleText: r.ruleText,
+            version: updated.version,
+            bindingId: input.bindingId,
+            sourcePattern,
           },
-          select: { version: true },
         });
-
-        for (const r of newRules) {
-          await recordAuditEvent(tx, {
-            companyId: input.companyId,
-            kind: 'LIVING_DOC_RULE_ADDED',
-            actorId: input.actorId,
-            targetId: r.id,
-            payload: {
-              section: 'site_rules',
-              visibility: r.visibility,
-              ruleText: r.ruleText,
-              version: updated.version,
-              bindingId: input.bindingId,
-              sourcePattern,
-            },
-          });
-        }
-
-        livingDocRulesCopied = newRules.length;
-        livingDocCopyApplied = true;
       }
+      livingDocRulesCopied = newRules.length;
+      livingDocCopyApplied = true;
+    }
+
+    // Always-on summary entry for permanent rebind WITH outgoing supervisor
+    // (per closure spec §3.7 "Surfaced to" + F-004 scope pick 8 +
+    // F-004 round-2 review 2026-05-16 fix to round-1's over-application of
+    // Q2=(b)). Idempotent ID derived from bindingId; replay is no-op via
+    // existing-ids guard.
+    //
+    // Refetch the doc here because the `incomingDoc` reference from the
+    // upsert above is stale after the siteRules update (Prisma's upsert
+    // with `update: {}` returns the pre-modification snapshot — the row
+    // we just updated above is in fresh state only via re-read). This
+    // matters for the idempotency check: replay must see the previously
+    // written summary entry in `freeNotes`.
+    const refreshed = await tx.livingDoc.findUniqueOrThrow({
+      where: { id: incomingDoc.id },
+      select: { freeNotes: true },
+    });
+    const existingFreeNotes = Array.isArray(refreshed.freeNotes)
+      ? (refreshed.freeNotes as unknown as Array<Record<string, unknown>>)
+      : [];
+    const existingFreeNotesIds = new Set<string>(
+      existingFreeNotes
+        .map((r) => (typeof r === 'object' && r !== null ? (r.id as unknown) : null))
+        .filter((id): id is string => typeof id === 'string'),
+    );
+    const summaryId = deriveSummaryEntryId(input.bindingId);
+    if (!existingFreeNotesIds.has(summaryId)) {
+      const outgoingName = outgoingUser?.name ?? 'previous supervisor';
+      const siteName = site?.name ?? 'this site';
+      const dateStr = generatedAt.slice(0, 10); // "YYYY-MM-DD"
+      const summary: LivingDocRule = {
+        id: summaryId,
+        ruleText: `Handover from ${outgoingName} on ${dateStr} for ${siteName}`,
+        description: `Permanent rebind: portfolio handoff from ${outgoingName} (${input.outgoingSupervisorId}) on ${dateStr} for site ${siteName} (${input.siteId}). See binding.handoffPackage and the copied site rules for context.`,
+        visibility: 'SUPERVISOR_OWN',
+        scope: { siteId: input.siteId },
+        createdAt: generatedAt,
+        createdBy: 'supervisor',
+        state: 'ACTIVE',
+        source: { pattern: summarySourcePattern },
+      };
+
+      const freeNotesColumn = LIVING_DOC_SECTION_TO_COLUMN['free_notes'];
+      const updated = await tx.livingDoc.update({
+        where: { id: incomingDoc.id },
+        data: {
+          [freeNotesColumn]: [...existingFreeNotes, summary] as Prisma.InputJsonValue,
+          version: { increment: 1 },
+        },
+        select: { version: true },
+      });
+
+      await recordAuditEvent(tx, {
+        companyId: input.companyId,
+        kind: 'LIVING_DOC_RULE_ADDED',
+        actorId: input.actorId,
+        targetId: summary.id,
+        payload: {
+          section: 'free_notes',
+          visibility: summary.visibility,
+          ruleText: summary.ruleText,
+          version: updated.version,
+          bindingId: input.bindingId,
+          sourcePattern: summarySourcePattern,
+        },
+      });
+      livingDocRulesCopied += 1;
+      livingDocCopyApplied = true;
     }
   }
 

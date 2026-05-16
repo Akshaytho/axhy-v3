@@ -29,6 +29,7 @@ import type { Prisma } from '@prisma/client';
 import {
   HANDOFF_PACKAGE_SCHEMA_VERSION,
   HandoffPackagePayloadSchema,
+  routingModeFor,
   type ComplaintSummary,
   type DecisionRef,
   type FlagSummary,
@@ -37,6 +38,8 @@ import {
   type ShiftRef,
   type WorkerSummary,
 } from '@axhy/shared-schema';
+
+import { deriveWorkerPrimarySiteId } from './effective-responsibility.js';
 
 /**
  * Default Policy-configurable byte limit per closure spec §3.7 Invariants
@@ -313,22 +316,32 @@ async function readOpenItems(
     to: Date;
   },
 ): Promise<OpenItem[]> {
-  // Decisions: PROPOSED only (appliedAt IS NULL AND dismissedAt IS NULL).
-  // Open to all in the company on this site's scope; bound by the window
-  // via createdAt being the proposedAt proxy.
+  // Decisions: PROPOSED only (appliedAt IS NULL AND dismissedAt IS NULL),
+  // SITE-SCOPED to args.siteId (F-004 round-2 review 2026-05-16 — friend
+  // caught that v1 leaked the outgoing supervisor's PROPOSED decisions for
+  // OTHER sites into this site's handoff package).
   //
-  // First-ever binding (outgoingSupervisorId === null): we still query
-  // decisions whose targetId matches a worker on this site or whose payload
-  // has the site, but for simplicity at v1 we restrict to decisions
-  // explicitly proposedBy the outgoing supervisor. With no outgoing, the
-  // result is empty here. The 14-day forward window applies to proposedAt
-  // — decisions proposed in the past 14 days that are still PROPOSED.
-  // (We use createdAt >= from - 14d so a decision proposed today still
-  // shows up as relevant context.)
+  // Site-scoping uses the same routing pattern as routes/decisions.ts (lines
+  // 14, 227): routingModeFor(kind) tells us how to derive the decision's
+  // site. We start from "all PROPOSED decisions proposed by outgoing
+  // supervisor in the lookback window" and then keep only those routed to
+  // args.siteId, by routing mode:
+  //   - worker-targeted → deriveWorkerPrimarySiteId(targetId, at) === siteId
+  //   - site-targeted   → targetId === siteId
+  //   - origin-only     → drop (origin-only decisions don't have a site;
+  //                       they belong to the originator, not to any site
+  //                       handoff)
+  //
+  // First-ever binding (outgoingSupervisorId === null): no decisions ever
+  // route to a handoff package for this case.
+  //
+  // The 14-day forward window applies to proposedAt — decisions proposed in
+  // the past 14 days that are still PROPOSED. (createdAt >= from - 14d so
+  // a decision proposed today still shows up as relevant context.)
   const lookbackStart = new Date(
     args.from.getTime() - OPEN_ITEMS_HORIZON_DAYS * 24 * 60 * 60 * 1000,
   );
-  const decisionRows = args.outgoingSupervisorId
+  const rawDecisionRows = args.outgoingSupervisorId
     ? await tx.supervisorDecision.findMany({
         where: {
           companyId: args.companyId,
@@ -348,6 +361,35 @@ async function readOpenItems(
         orderBy: { createdAt: 'desc' },
       })
     : [];
+
+  // Site-scope filter applied in memory. Volume is bounded by
+  // (single supervisor × ~28-day window × still-PROPOSED), which is small
+  // even at peak portfolio churn. Worker-targeted rows trigger
+  // deriveWorkerPrimarySiteId queries — one extra query per worker-targeted
+  // row. Acceptable for handoff composition at scale.
+  const decisionRows: typeof rawDecisionRows = [];
+  for (const d of rawDecisionRows) {
+    const mode = routingModeFor(d.kind);
+    if (mode === 'origin-only') {
+      // origin-only decisions aren't tied to a site; do not include.
+      continue;
+    }
+    if (mode === 'site-targeted') {
+      if (d.targetId === args.siteId) decisionRows.push(d);
+      continue;
+    }
+    // worker-targeted (or unknown mode that resolved through the registry):
+    if (mode === 'worker-targeted' && d.targetId) {
+      const derivedSite = await deriveWorkerPrimarySiteId(tx, {
+        companyId: args.companyId,
+        workerId: d.targetId,
+        at: args.from,
+      });
+      if (derivedSite === args.siteId) decisionRows.push(d);
+      continue;
+    }
+    // Unknown / no targetId on a routable kind: skip (can't prove site-match).
+  }
 
   // CalendarEntry filter (STRICT, pick 6): include only entries where
   //   entry.companyId === companyId
@@ -433,26 +475,27 @@ function withMeasuredSize(p: HandoffPackagePayload): HandoffPackagePayload {
 }
 
 /**
- * Spec §3.7 Invariants line 322 truncation algorithm: "drop oldest
- * complaints first, then activeWorkers field detail."
+ * Spec §3.7 Invariants line 322/323 truncation algorithm: "drop oldest
+ * complaints first, then activeWorkers field detail." The cap is a HARD
+ * invariant per spec wording ("package size capped"); the truncation order
+ * is spec-locked for the first two phases, then we keep degrading until
+ * we fit OR throw {@link HandoffPackageOversizedError} so the caller's tx
+ * rolls back rather than persisting an oversized package.
  *
  *   Phase 1: drop oldest complaints one at a time, re-measuring after each.
- *            Recent-complaints rows are ordered desc by createdAt, so the
- *            "oldest" is the LAST element. Pop until we fit OR
- *            recentComplaints is empty.
- *   Phase 2: drop activeWorkers field detail (recentFlags + recentDecisions)
- *            ON ALL WORKERS (not entire workers — Aanya's panel note: workers
- *            list itself is the most operationally-useful field; only the
- *            detail arrays are eligible). Re-measure.
+ *   Phase 2: strip activeWorkers field detail (recentFlags + recentDecisions).
+ *   Phase 3 (round-2 review extension): keep degrading by dropping entire
+ *           activeWorkers → openItems → siteRules.
+ *   Phase 4 (defence-in-depth): throw if even a metadata-only payload exceeds
+ *           the cap (only possible with a misconfigured tiny cap).
  *
- * If after both phases the payload still exceeds the cap, return as-is with
- * the measured oversized count — the caller can warn / alert. We don't
- * truncate the binding-create on size alone; soft-fail is preferred over
- * dropping the snapshot entirely.
+ * @derives(workflow-design-closure §3.7 Invariants line 322/323)
+ * @derives(F-004 round-2 review 2026-05-16 — hard-cap enforcement)
  */
 function truncateToFitCap(p: HandoffPackagePayload, byteCap: number): HandoffPackagePayload {
-  // Phase 1: drop oldest complaints.
   let working: HandoffPackagePayload = { ...p, recentComplaints: [...p.recentComplaints] };
+
+  // Phase 1: drop oldest complaints.
   while (working.recentComplaints.length > 0) {
     working.recentComplaints.pop(); // last is oldest (desc-sorted)
     working = withMeasuredSize(working);
@@ -469,5 +512,43 @@ function truncateToFitCap(p: HandoffPackagePayload, byteCap: number): HandoffPac
     })),
   };
   working = withMeasuredSize(working);
-  return working;
+  if (working.packageSizeBytes <= byteCap) return working;
+
+  // Phase 3a: drop entire activeWorkers.
+  working = { ...working, activeWorkers: [] };
+  working = withMeasuredSize(working);
+  if (working.packageSizeBytes <= byteCap) return working;
+
+  // Phase 3b: drop openItems.
+  working = { ...working, openItems: [] };
+  working = withMeasuredSize(working);
+  if (working.packageSizeBytes <= byteCap) return working;
+
+  // Phase 3c: drop siteRules.
+  working = { ...working, siteRules: [] };
+  working = withMeasuredSize(working);
+  if (working.packageSizeBytes <= byteCap) return working;
+
+  // Phase 4: nothing left to drop. Throw so the caller's tx rolls back
+  // rather than persisting an oversized package.
+  throw new HandoffPackageOversizedError(working.packageSizeBytes, byteCap);
+}
+
+/**
+ * Thrown by the composer when even a metadata-only HandoffPackage exceeds
+ * the byte cap. In practice this should never fire — the metadata-only
+ * payload is ~200 bytes and the spec default cap is 100KB. Exists so the
+ * cap is a hard invariant per spec §3.7 line 323.
+ *
+ * @derives(workflow-design-closure §3.7 line 323)
+ * @derives(F-004 round-2 review 2026-05-16 — hard-cap enforcement)
+ */
+export class HandoffPackageOversizedError extends Error {
+  constructor(
+    public readonly measuredBytes: number,
+    public readonly byteCap: number,
+  ) {
+    super(`HandoffPackage exceeds cap after full truncation: ${measuredBytes} > ${byteCap} bytes`);
+    this.name = 'HandoffPackageOversizedError';
+  }
 }
