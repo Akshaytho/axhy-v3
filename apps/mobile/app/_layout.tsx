@@ -10,12 +10,17 @@
  * / on-screen Android nav bars would render incorrectly across phone
  * form factors.
  *
- * F-006a: also fires `initializeOneSignal()` once on mount — the
- * `app.config.ts` plugin wires native build capabilities, but the JS SDK
- * requires an explicit `OneSignal.initialize(appId)` before any
- * `login` / `logout` / `Notifications.requestPermission` call has any
- * effect. The call is idempotent + no-ops cleanly on web / no App ID
- * (auth flow still succeeds; push lifecycle just no-ops with a warning).
+ * F-006a: also fires `initializeOneSignal()` once on mount as a WARM-UP.
+ * The load-bearing init-before-use guarantee lives inside `_resolveOneSignal()`
+ * in `lib/identity-lifecycle.ts` — every lifecycle path (`onIdentifiedLogin`
+ * / `onAppLogout` / `onColdStartReady` / the prompt's default
+ * `requestPermission`) awaits init before its first SDK call. The warm-up
+ * here pre-pays the cost so the first lifecycle call doesn't pay the SDK-init
+ * latency. React useEffect mount order is child-before-parent, so child
+ * routes' effects could otherwise hit the lifecycle chokepoint before this
+ * parent useEffect fires — that's exactly why the guarantee lives inside
+ * the chokepoint, not here. `initializeOneSignal()` is idempotent, so the
+ * double-call (warm-up + chokepoint) is safe.
  *
  * @derives(ADR-0007)
  * @derives(ADR-0021)

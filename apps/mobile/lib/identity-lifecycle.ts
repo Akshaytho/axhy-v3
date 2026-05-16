@@ -118,16 +118,23 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutValue: T): Promi
  * initialized with the App ID — `app.config.ts` only wires the native
  * build plugin, not the runtime JS surface.
  *
- * Must be called once per cold-start, BEFORE any identified-login or
- * permission-prompt call. Root layout (`apps/mobile/app/_layout.tsx`)
- * fires it on mount.
+ * **Friend's CODE-phase round-2 P1 (2026-05-17 01:51):** the load-bearing
+ * init-before-use guarantee lives inside `_resolveOneSignal()`, not the
+ * root layout's `useEffect`. React mounts child effects before parent
+ * effects, so an authed cold-start in `app/index.tsx` could otherwise call
+ * `OneSignal.login` before `_layout.tsx` had a chance to init. The
+ * chokepoint pattern (`_resolveOneSignal()` awaits init first) makes the
+ * ordering guarantee independent of React effect ordering. The root layout
+ * still fires `initializeOneSignal()` on mount as a warm-up so the first
+ * real lifecycle call doesn't pay the init latency.
  *
  * No-ops cleanly when `shouldCallOneSignal()` is false (web / no App ID).
  * Idempotent across repeated calls via a module-level latch — accidental
- * second invocations from React StrictMode / fast refresh / re-mount are
- * safe.
+ * second invocations from React StrictMode / fast refresh / re-mount / the
+ * warm-up + chokepoint combo are safe.
  *
- * @derives(F-006a CODE-phase friend P1 fix 2026-05-17)
+ * @derives(F-006a CODE-phase friend P1 round-1 fix 2026-05-17 01:25)
+ * @derives(F-006a CODE-phase friend P1 round-2 fix 2026-05-17 01:51)
  */
 let oneSignalInitialized = false;
 
@@ -169,6 +176,17 @@ export function _resetOneSignalInitializedForTests(): void {
  * web (where the native SDK throws at import time). Tests mock this via
  * vi.mock('react-native-onesignal').
  *
+ * **Init guarantee (friend's CODE-phase round-2 P1 fix 2026-05-17 01:51):**
+ * awaits `initializeOneSignal()` BEFORE returning a usable handle. The root
+ * layout's `useEffect` is only a warm-up — React's mount order means child
+ * effects (`app/index.tsx`) can fire before parent effects (`_layout.tsx`),
+ * so the authed cold-start path could otherwise hit `OneSignal.login` before
+ * init. By making init part of this chokepoint, every lifecycle path
+ * (`onIdentifiedLogin` / `onAppLogout` / `onColdStartReady` / the prompt's
+ * default `requestPermission`) is guaranteed init-before-call regardless of
+ * useEffect ordering. Init is idempotent via the module-level latch in
+ * `initializeOneSignal()`, so the warm-up + chokepoint can both fire safely.
+ *
  * @internal — exported for tests only.
  */
 export async function _resolveOneSignal(): Promise<{
@@ -176,6 +194,9 @@ export async function _resolveOneSignal(): Promise<{
   logout: () => Promise<void>;
 } | null> {
   if (!shouldCallOneSignal()) return null;
+  // Init-before-use boundary: every lifecycle path lands here before its
+  // first SDK call. Idempotent, so the root-layout warm-up is harmless.
+  await initializeOneSignal();
   try {
     const mod = (await import('react-native-onesignal')) as unknown as {
       OneSignal?: {

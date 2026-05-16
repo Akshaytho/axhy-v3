@@ -284,3 +284,49 @@ describe('identity-lifecycle — initializeOneSignal (friend P1 fix)', () => {
     warnSpy.mockRestore();
   });
 });
+
+describe('identity-lifecycle — init-before-use ordering (friend P1 round-2)', () => {
+  // Case 14: cold-start race — onColdStartReady() must trigger init
+  // BEFORE OneSignal.login(), regardless of whether _layout.tsx's useEffect
+  // has fired yet. (React's child useEffects run before parent useEffects on
+  // mount, so app/index.tsx → onColdStartReady can race ahead of _layout.tsx's
+  // warm-up call.) The fix is to make init part of the lifecycle boundary
+  // itself (_resolveOneSignal awaits init).
+  it('onColdStartReady triggers OneSignal.initialize before OneSignal.login even when warm-up has not fired', async () => {
+    // No initializeOneSignal() call before this — simulates the race.
+    const callOrder: string[] = [];
+    oneSignalInitialize.mockImplementation((_id: string) => {
+      callOrder.push('OneSignal.initialize');
+    });
+    oneSignalLogin.mockImplementation(async (_id: string) => {
+      callOrder.push('OneSignal.login');
+    });
+
+    await onColdStartReady({
+      accessToken: 'header.payload.sig',
+      refreshToken: 'refresh',
+      activeRole: 'SUPERVISOR',
+    });
+
+    expect(callOrder).toEqual(['OneSignal.initialize', 'OneSignal.login']);
+    expect(oneSignalInitialize).toHaveBeenCalledWith('test-app-id');
+  });
+
+  // Case 15: identified-login defense in depth — onIdentifiedLogin must also
+  // init before login, even though OTP-verify usually happens long after the
+  // warm-up. Belt-and-braces because the chokepoint guarantee should hold
+  // independently of mount-order assumptions.
+  it('onIdentifiedLogin triggers OneSignal.initialize before OneSignal.login even when warm-up has not fired', async () => {
+    const callOrder: string[] = [];
+    oneSignalInitialize.mockImplementation((_id: string) => {
+      callOrder.push('OneSignal.initialize');
+    });
+    oneSignalLogin.mockImplementation(async (_id: string) => {
+      callOrder.push('OneSignal.login');
+    });
+
+    await onIdentifiedLogin(makeAuthResult([{ role: 'SUPERVISOR' }]));
+
+    expect(callOrder).toEqual(['OneSignal.initialize', 'OneSignal.login']);
+  });
+});
