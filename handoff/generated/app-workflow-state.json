@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T07:39:37.907Z",
-    "generated_against_head": "bea3a3879654bb53036bbf970aab4936e353f64b",
+    "last_updated_at": "2026-05-16T07:47:32.088Z",
+    "generated_against_head": "edf6172204ba9aaf3e7f8eeac55e75dd7d309371",
     "generated_against_branch": "main",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "bea3a3879654bb53036bbf970aab4936e353f64b",
+    "last_canonical_commit_at_gen": "edf6172204ba9aaf3e7f8eeac55e75dd7d309371",
     "staleness_warning": null,
     "active_slice": "handoff-package-composer (F-004) · PLANNED — AWAITING_SCOPE_APPROVAL (rule-26 \"existing-pattern survey\" required in scope artifact at handoff/feature-queue/scopes/F-004.md before code begins)",
     "generated_from": [
@@ -1185,8 +1185,8 @@
     "active_slice": {
       "Slice name": "`handoff-package-composer` (F-004)",
       "Status": "`PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 \"existing-pattern survey\" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins)",
-      "Branch": "Forks from `main` at `2bc815b` — next branch is `feat/f-004-handoff-package-composer` (created once scope is APPROVED)",
-      "Last landed commit": "`2bc815b` — `Merge feat/f-003-cron-framework — F-003 cron framework + binding-expire-sweep` (F-003 now DONE on main)",
+      "Branch": "Forks from current `main` HEAD `edf6172` — next branch is `feat/f-004-handoff-package-composer` (created once scope is APPROVED)",
+      "Last landed commit": "`edf6172` — `docs(handoff): drop one more stale pre-merge line from active-slice \"What this slice does NOT do\"` (post-merge tracker cleanup on top of F-003 merge `2bc815b`)",
       "Dependencies": "F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.",
       "Tests status": "n/a — code not started; scope phase",
       "Verification gate": "will be `REAL_DB` once code lands"

@@ -16,15 +16,15 @@
 
 ## Current
 
-| Field                  | Value                                                                                                                                                            |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Slice name**         | `handoff-package-composer` (F-004)                                                                                                                               |
-| **Status**             | `PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 "existing-pattern survey" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins) |
-| **Branch**             | Forks from `main` at `2bc815b` — next branch is `feat/f-004-handoff-package-composer` (created once scope is APPROVED)                                           |
-| **Last landed commit** | `2bc815b` — `Merge feat/f-003-cron-framework — F-003 cron framework + binding-expire-sweep` (F-003 now DONE on main)                                             |
-| **Dependencies**       | F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.                                    |
-| **Tests status**       | n/a — code not started; scope phase                                                                                                                              |
-| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                |
+| Field                  | Value                                                                                                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Slice name**         | `handoff-package-composer` (F-004)                                                                                                                                           |
+| **Status**             | `PLANNED — AWAITING_SCOPE_APPROVAL` (rule-26 "existing-pattern survey" required in scope artifact at `handoff/feature-queue/scopes/F-004.md` before code begins)             |
+| **Branch**             | Forks from current `main` HEAD `edf6172` — next branch is `feat/f-004-handoff-package-composer` (created once scope is APPROVED)                                             |
+| **Last landed commit** | `edf6172` — `docs(handoff): drop one more stale pre-merge line from active-slice "What this slice does NOT do"` (post-merge tracker cleanup on top of F-003 merge `2bc815b`) |
+| **Dependencies**       | F-001 + F-002 + S-001 + F-003 — all DONE on main (F-001/F-002/S-001 merged at `a29f9f6`; F-003 merged at `2bc815b`). All met.                                                |
+| **Tests status**       | n/a — code not started; scope phase                                                                                                                                          |
+| **Verification gate**  | will be `REAL_DB` once code lands                                                                                                                                            |
 
 ## What the F-004 scope artifact needs to lock (rule-26 "existing-pattern survey" + open picks)
 
