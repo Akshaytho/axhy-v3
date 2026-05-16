@@ -29,6 +29,8 @@ import pino from 'pino';
 import {
   maybeRunBindingExpireSweep,
   _resetSweepMarkerForTesting,
+  _emitAuditForOneBindingForTesting,
+  type ExpiredBindingCandidate,
 } from '../src/jobs/binding-expire-sweep.js';
 import { getEffectiveBinding } from '../src/lib/effective-responsibility.js';
 import { withTenantContext } from '../src/middleware/tenant-context.js';
@@ -440,5 +442,148 @@ describe('F-003 binding-expire-sweep — real-DB integration', () => {
       where: { companyId, kind: 'BINDING_ENDED_AUTO', targetId: expired2.id },
     });
     expect(audits2).toHaveLength(1);
+  });
+
+  it('9. concurrent emit on the same binding produces exactly one audit row (DB-enforced dedup)', async () => {
+    // Round-2 fix verification (P1 from friend's F-003 round-1 review).
+    // The partial unique index `AuditEvent_binding_ended_auto_dedup` on
+    // (companyId, kind, targetId) WHERE kind='BINDING_ENDED_AUTO' AND
+    // targetId IS NOT NULL is the load-bearing dedup mechanism. The
+    // app-side findFirst cheap-skip is an optimisation, not the proof.
+    //
+    // This test exercises the DB-enforced guarantee: two concurrent
+    // attempts to emit the audit for the same binding. Exactly one
+    // succeeds; the other catches P2002 and returns `{emitted: false}`.
+    // Final audit-row count for the binding = 1.
+    const site = await prisma.site.create({ data: { companyId, name: TEST_PREFIX + 'Site-9' } });
+    const binding = await seedBinding({
+      siteId: site.id,
+      userId: userA,
+      effectiveFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      effectiveUntil: new Date(Date.now() - 60_000),
+    });
+
+    const candidate: ExpiredBindingCandidate = {
+      id: binding.id,
+      companyId,
+      siteId: site.id,
+      userId: userA,
+      actingForUserId: null,
+      effectiveFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      effectiveUntil: new Date(Date.now() - 60_000),
+    };
+
+    // Fire two concurrent emits. Both call .$transaction independently;
+    // they hit DB via the Prisma connection pool — truly concurrent on
+    // separate connections.
+    const [r1, r2] = await Promise.all([
+      _emitAuditForOneBindingForTesting(prisma, candidate),
+      _emitAuditForOneBindingForTesting(prisma, candidate),
+    ]);
+
+    // Exactly one of the two reports `emitted: true`; the other reports
+    // `emitted: false` (caught the cheap-skip OR caught P2002).
+    const emittedCount = [r1, r2].filter((r) => r.emitted).length;
+    const skippedCount = [r1, r2].filter((r) => !r.emitted).length;
+    expect(emittedCount + skippedCount).toBe(2);
+    // Tolerate either outcome (both cheap-skip or one-emit-one-race-catch);
+    // the LOAD-BEARING assertion is the row count below.
+    expect(emittedCount).toBeLessThanOrEqual(1);
+
+    // Exactly one audit row exists for this binding.
+    const audits = await prisma.auditEvent.findMany({
+      where: { companyId, kind: 'BINDING_ENDED_AUTO', targetId: binding.id },
+    });
+    expect(audits).toHaveLength(1);
+  });
+
+  it('10. DB-level unique index actively rejects a second direct insert (proves index is real, not just the app-side check)', async () => {
+    // Round-2 fix verification — direct DB-level test that the partial
+    // unique index `AuditEvent_binding_ended_auto_dedup` is real and
+    // enforced. Without this test, "DB-enforced dedup" is a claim
+    // about migration content rather than runtime behavior.
+    const site = await prisma.site.create({ data: { companyId, name: TEST_PREFIX + 'Site-10' } });
+    const binding = await seedBinding({
+      siteId: site.id,
+      userId: userA,
+      effectiveFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      effectiveUntil: new Date(Date.now() - 60_000),
+    });
+
+    // First insert succeeds.
+    await prisma.auditEvent.create({
+      data: {
+        id: randomUUID(),
+        companyId,
+        kind: 'BINDING_ENDED_AUTO',
+        actorId: '00000000-0000-0000-0000-000000000000',
+        targetId: binding.id,
+        payload: { bindingId: binding.id, attempt: 1 } as Record<string, unknown>,
+      },
+    });
+
+    // Second direct insert with the same (companyId, kind, targetId) must
+    // throw a unique-violation. This bypasses the sweep code entirely; if
+    // it doesn't throw, the index isn't there or its predicate is wrong.
+    await expect(
+      prisma.auditEvent.create({
+        data: {
+          id: randomUUID(),
+          companyId,
+          kind: 'BINDING_ENDED_AUTO',
+          actorId: '00000000-0000-0000-0000-000000000000',
+          targetId: binding.id,
+          payload: { bindingId: binding.id, attempt: 2 } as Record<string, unknown>,
+        },
+      }),
+    ).rejects.toThrow(/AuditEvent_binding_ended_auto_dedup|Unique constraint|P2002/);
+
+    // Exactly one row remains.
+    const audits = await prisma.auditEvent.findMany({
+      where: { companyId, kind: 'BINDING_ENDED_AUTO', targetId: binding.id },
+    });
+    expect(audits).toHaveLength(1);
+  });
+
+  it('11. partial unique index does NOT constrain other audit kinds (narrowness check)', async () => {
+    // The partial-index predicate is `WHERE kind='BINDING_ENDED_AUTO'
+    // AND targetId IS NOT NULL`. This test verifies the predicate is
+    // narrow: other audit kinds can still have multiple rows on the
+    // same targetId without hitting the unique constraint.
+    const site = await prisma.site.create({ data: { companyId, name: TEST_PREFIX + 'Site-11' } });
+    const binding = await seedBinding({
+      siteId: site.id,
+      userId: userA,
+      effectiveFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      effectiveUntil: new Date(Date.now() - 60_000),
+    });
+
+    // Two BINDING_CREATED rows with the same targetId — must both succeed
+    // (these are unrelated to the BINDING_ENDED_AUTO partial index).
+    await prisma.auditEvent.create({
+      data: {
+        id: randomUUID(),
+        companyId,
+        kind: 'BINDING_CREATED',
+        actorId: hrUserId,
+        targetId: binding.id,
+        payload: { bindingId: binding.id, n: 1 } as Record<string, unknown>,
+      },
+    });
+    await prisma.auditEvent.create({
+      data: {
+        id: randomUUID(),
+        companyId,
+        kind: 'BINDING_CREATED',
+        actorId: hrUserId,
+        targetId: binding.id,
+        payload: { bindingId: binding.id, n: 2 } as Record<string, unknown>,
+      },
+    });
+
+    const audits = await prisma.auditEvent.findMany({
+      where: { companyId, kind: 'BINDING_CREATED', targetId: binding.id },
+    });
+    expect(audits).toHaveLength(2);
   });
 });
