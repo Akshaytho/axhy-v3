@@ -99,30 +99,38 @@ export async function maybeRunBindingExpireSweep(
   client: PrismaClient,
   log: FastifyBaseLogger,
   now: Date = new Date(),
-): Promise<{ ran: boolean; auditsEmitted: number; failed: number }> {
+): Promise<{ ran: boolean; auditsEmitted: number; skippedDuplicate: number; failed: number }> {
   // First boot — record "now" as already-swept so a process restart mid-
   // interval doesn't trigger a sweep on the very first tick. Mirrors
   // maybeResetAiSpend's first-boot behavior.
   if (lastSweepInstant === null) {
     lastSweepInstant = now;
-    return { ran: false, auditsEmitted: 0, failed: 0 };
+    return { ran: false, auditsEmitted: 0, skippedDuplicate: 0, failed: 0 };
   }
 
   // Cadence gate — only fire every SWEEP_INTERVAL_MS even though the
   // dispatcher tick polls every ~2s.
   if (now.getTime() - lastSweepInstant.getTime() < SWEEP_INTERVAL_MS) {
-    return { ran: false, auditsEmitted: 0, failed: 0 };
+    return { ran: false, auditsEmitted: 0, skippedDuplicate: 0, failed: 0 };
   }
 
   // Run the sweep.
   let auditsEmitted = 0;
+  let skippedDuplicate = 0;
   let failed = 0;
   try {
     const candidates = await findBindingsNeedingAuditEmit(client, now);
     for (const candidate of candidates) {
       try {
-        await emitAuditForOneBinding(client, candidate);
-        auditsEmitted++;
+        const { emitted } = await emitAuditForOneBinding(client, candidate);
+        if (emitted) {
+          auditsEmitted++;
+        } else {
+          // Either the cheap-skip findFirst caught a pre-existing audit
+          // OR the partial unique index caught a multi-replica race and
+          // we swallowed the P2002. Either way, the binding IS audited.
+          skippedDuplicate++;
+        }
       } catch (err) {
         failed++;
         log.error(
@@ -134,26 +142,27 @@ export async function maybeRunBindingExpireSweep(
           'binding-expire-sweep row failed — will retry next sweep',
         );
         // Per-row failure does not block the rest of the batch (pick 4).
-        // The audit-existence predicate (pick 7) ensures the next sweep
-        // picks this row up again automatically.
+        // The audit-existence predicate + DB unique index (pick 7) ensure
+        // the next sweep picks this row up again automatically.
       }
     }
     // Advance the marker only after the batch completes (pass or partial).
     // Same-tick re-entry by another call is blocked by the marker; per-row
     // re-attempts happen on the NEXT 5-min tick.
     lastSweepInstant = now;
-    if (auditsEmitted > 0 || failed > 0) {
+    if (auditsEmitted > 0 || skippedDuplicate > 0 || failed > 0) {
       log.info(
         {
           event: 'binding_expire_sweep.complete',
           auditsEmitted,
+          skippedDuplicate,
           failed,
           sweptAt: now.toISOString(),
         },
         'binding-expire-sweep batch complete',
       );
     }
-    return { ran: true, auditsEmitted, failed };
+    return { ran: true, auditsEmitted, skippedDuplicate, failed };
   } catch (err) {
     // Batch-level failure (e.g. the find query crashed before any per-row
     // work). Do NOT advance the marker — next tick will retry the whole
@@ -162,57 +171,104 @@ export async function maybeRunBindingExpireSweep(
       { event: 'binding_expire_sweep.batch_failed', err: (err as Error).message },
       'binding-expire-sweep batch failed — will retry next sweep',
     );
-    return { ran: false, auditsEmitted: 0, failed: 0 };
+    return { ran: false, auditsEmitted: 0, skippedDuplicate: 0, failed: 0 };
   }
 }
 
 /**
- * Per-binding work — emit `BINDING_ENDED_AUTO` for one binding in one
- * short transaction. Re-checks the audit-existence predicate inside the
- * tx as defense-in-depth against the multi-replica race (two replicas
- * both see the row as needing audit emit; the first wins, the second's
- * write violates uniqueness OR is blocked by the predicate).
+ * Per-binding work — emit `BINDING_ENDED_AUTO` for one binding.
+ *
+ * Dedup is DB-enforced (round-2 fix per friend's F-003 round-1 P1):
+ * migration `20260519_f003_binding_ended_auto_dedup_index` adds a
+ * partial unique index on `(companyId, kind, targetId) WHERE
+ * kind='BINDING_ENDED_AUTO' AND targetId IS NOT NULL`. Two concurrent
+ * dispatcher replicas hitting the same binding both attempt insert;
+ * exactly one wins; the loser sees a P2002 unique-violation, which
+ * this function catches and treats as "another replica already did it"
+ * (no-op, counted as a success-equivalent for the caller's batch
+ * accounting).
+ *
+ * The findFirst cheap-skip BEFORE the insert is kept as an
+ * optimisation: in the common single-replica case (and the common
+ * second-tick rerun), it avoids throwing and rolling back a tx for
+ * what's already known to be a no-op. It is NOT a correctness
+ * mechanism — the partial unique index is.
  *
  * Internal helper — not exported.
  *
+ * @derives(F-003 scope artifact §4 pick 7, revised 2026-05-16 round-2)
  * @derives(master-plan §G) — HR control plane / responsibility model
  */
+export async function _emitAuditForOneBindingForTesting(
+  client: PrismaClient,
+  binding: ExpiredBindingCandidate,
+): Promise<{ emitted: boolean }> {
+  return emitAuditForOneBinding(client, binding);
+}
+
 async function emitAuditForOneBinding(
   client: PrismaClient,
   binding: ExpiredBindingCandidate,
-): Promise<void> {
-  await client.$transaction(async (tx) => {
-    // Defense-in-depth: re-check inside the tx that no other replica
-    // beat us to it. The outer query already filters with NOT EXISTS,
-    // but a second-tick race is possible.
-    const alreadyEmitted = await tx.auditEvent.findFirst({
-      where: {
+): Promise<{ emitted: boolean }> {
+  try {
+    return await client.$transaction(async (tx) => {
+      // Cheap-skip: avoid throwing a P2002 in the common case where the
+      // audit already exists. This is an optimisation, not the
+      // correctness guarantee — the partial unique index is.
+      const alreadyEmitted = await tx.auditEvent.findFirst({
+        where: {
+          companyId: binding.companyId,
+          kind: 'BINDING_ENDED_AUTO',
+          targetId: binding.id,
+        },
+        select: { id: true },
+      });
+      if (alreadyEmitted) {
+        return { emitted: false };
+      }
+      await recordBindingEndedAuto(tx, {
         companyId: binding.companyId,
-        kind: 'BINDING_ENDED_AUTO',
-        targetId: binding.id,
-      },
-      select: { id: true },
+        actorId: SYSTEM_ACTOR_ID,
+        payload: {
+          bindingId: binding.id,
+          siteId: binding.siteId,
+          userId: binding.userId,
+          actingForUserId: binding.actingForUserId,
+          effectiveFrom: binding.effectiveFrom.toISOString(),
+          effectiveUntil: binding.effectiveUntil!.toISOString(),
+          sweptAt: new Date().toISOString(),
+        },
+      });
+      return { emitted: true };
     });
-    if (alreadyEmitted) {
-      return;
+  } catch (err) {
+    // P2002 = Prisma unique-constraint violation. Under the partial
+    // unique index, that means another replica beat us to the insert.
+    // Treat as a successful no-op race outcome — the binding IS
+    // audited, just not by us.
+    if (isPrismaUniqueViolation(err)) {
+      return { emitted: false };
     }
-    await recordBindingEndedAuto(tx, {
-      companyId: binding.companyId,
-      actorId: SYSTEM_ACTOR_ID,
-      payload: {
-        bindingId: binding.id,
-        siteId: binding.siteId,
-        userId: binding.userId,
-        actingForUserId: binding.actingForUserId,
-        effectiveFrom: binding.effectiveFrom.toISOString(),
-        effectiveUntil: binding.effectiveUntil!.toISOString(),
-        sweptAt: new Date().toISOString(),
-      },
-    });
-  });
+    throw err;
+  }
 }
 
-type ExpiredBindingCandidate = {
+/**
+ * Narrow Prisma error-type discriminator. We don't import
+ * `Prisma.PrismaClientKnownRequestError` here to avoid a heavy
+ * type-import dependency cycle in the jobs module; structural check
+ * is enough.
+ */
+function isPrismaUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
+}
+
+export type ExpiredBindingCandidate = {
   id: string;
   companyId: string;
   siteId: string;
