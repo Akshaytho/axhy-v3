@@ -137,6 +137,40 @@ export const BindingEndedManualPayloadSchema = z.object({
 export type BindingEndedManualPayload = z.infer<typeof BindingEndedManualPayloadSchema>;
 
 /**
+ * Payload for BINDING_ENDED_AUTO: emitted by the `binding-expire-sweep`
+ * cron when a binding's `effectiveUntil` has passed and the row has not
+ * yet been audit-emitted. SIDE EFFECT ONLY — responsibility switching
+ * already happened at read-time via getEffectiveBinding's predicate
+ * (`effectiveUntil > at`). The sweep does NOT mutate the binding row;
+ * `endedAt` stays NULL so historical point-in-time queries continue to
+ * return this binding as effective at instants `at < effectiveUntil`.
+ *
+ * `sweptAt` is when the sweep observed the expiry. `effectiveUntil` is
+ * the binding's planned end (the moment responsibility actually switched
+ * by read-time logic). These two instants differ by up to one sweep
+ * interval (5 minutes per closure spec §10 line 560).
+ *
+ * @derives(ADR-0003)
+ * @derives(workflow-design-closure §9 + §10 2026-05-16 update)
+ * @derives(F-003 scope artifact 2026-05-16)
+ */
+export const BindingEndedAutoPayloadSchema = z.object({
+  bindingId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  userId: z.string().uuid(),
+  actingForUserId: z.string().uuid().nullable(),
+  effectiveFrom: z.string().datetime(),
+  effectiveUntil: z.string().datetime(),
+  sweptAt: z.string().datetime(),
+});
+
+/**
+ * Inferred BindingEndedAutoPayload type.
+ * @derives(ADR-0003)
+ */
+export type BindingEndedAutoPayload = z.infer<typeof BindingEndedAutoPayloadSchema>;
+
+/**
  * Payload for BINDING_ENDED_SUPERSEDED_BY_PERMANENT: emitted on the OLD
  * permanent binding row when a new permanent binding for the same site
  * replaces it (e.g., HR reassigns the portfolio). Carries the new binding's
