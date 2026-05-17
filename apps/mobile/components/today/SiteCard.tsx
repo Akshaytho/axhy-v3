@@ -16,6 +16,7 @@
 
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 import type { TodaySiteT, TodayWorkerT } from '@axhy/shared-schema';
 
@@ -87,7 +88,9 @@ export function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
             {!open ? <Text style={s.hint}>TAP TO VIEW WORKERS →</Text> : null}
           </View>
         </View>
-        <Text style={[s.chevron, open ? s.chevronOpen : null]}>›</Text>
+        <View style={[s.chevron, open ? s.chevronOpen : null]}>
+          <Feather name="chevron-right" size={20} color={tokens.color.ink.tertiary} />
+        </View>
       </Pressable>
 
       {open ? (
