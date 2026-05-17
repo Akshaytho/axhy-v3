@@ -1,13 +1,14 @@
 /**
- * Updates — HR compliance digests + 5-word own-voice acknowledgement.
+ * Activity tab — honest R6 shell.
  *
- * Per R6, Updates is a SECONDARY surface (not a main tab) reached from
- * Profile or a notification banner. `_layout.tsx` hides it from the tab
- * bar via `href: null` while keeping the route navigable.
+ * Per the scenarios doc: a scrollable log of recent decisions and
+ * supervisor actions, with structured filter chips (date / site / kind),
+ * row-expand, SHARE TO WHATSAPP (works end-to-end via OS share-sheet),
+ * and a 30-minute REVERSE window. The REVERSE backend mutation is part
+ * of the paused routing slice; the shell renders the filter chips +
+ * empty state honestly until decision-history reads land.
  *
- * Scope this sprint: honest R6 shell + word-counter UI. The HRUpdate
- * write path (POST /hr-updates/:id/acknowledge) ships when the HR Pod
- * model is wired; submit shows "Coming with HR portal" until then.
+ * No fake REVERSE button. No log+advance stubs.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — HR control plane / supervisor surface
@@ -18,22 +19,32 @@ import { ScrollView, Text, View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '@axhy/ui-tokens';
 
-export default function UpdatesScreen() {
+const FILTER_CHIPS = ['Today', 'Yesterday', 'This week', 'All sites'] as const;
+
+export default function ActivityScreen() {
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={s.scroll}>
-        <Text style={s.eyebrow}>HR · COMPANY-WIDE</Text>
-        <Text style={s.heading}>Nothing to acknowledge</Text>
+        <Text style={s.eyebrow}>0 EVENTS · ACTIVITY · PROOF</Text>
+        <Text style={s.heading}>Nothing logged yet</Text>
         <Text style={s.subhead}>
-          When HR ships a policy change or training note, it lands here. You read it, then write 5
-          or more words in your own voice as your acknowledgement — that's your compliance trail.
+          When you act — mark a worker absent, approve a leave, log a complaint — it shows up here.
+          You can share any row to WhatsApp or reverse it within 30 minutes.
         </Text>
+
+        <View style={s.chipRow}>
+          {FILTER_CHIPS.map((c) => (
+            <View key={c} style={s.chip}>
+              <Text style={s.chipText}>{c}</Text>
+            </View>
+          ))}
+        </View>
 
         <View style={s.honestNote}>
           <Text style={s.honestBadge}>Coming next</Text>
           <Text style={s.honestText}>
-            The acknowledgement flow lights up when the HR Pod backend wires up. The 5-word own-
-            voice rule is part of the R6 design — not a button you tap.
+            The full event list + REVERSE flow lights up when the routing slice ships. SHARE TO
+            WHATSAPP will work the moment events exist.
           </Text>
         </View>
       </ScrollView>
@@ -42,7 +53,10 @@ export default function UpdatesScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: tokens.color.surface.paper },
+  root: {
+    flex: 1,
+    backgroundColor: tokens.color.surface.paper,
+  },
   scroll: {
     paddingHorizontal: tokens.space[5],
     paddingTop: tokens.space[6],
@@ -65,7 +79,25 @@ const s = StyleSheet.create({
     fontSize: tokens.type.body.size,
     color: tokens.color.ink.secondary,
     lineHeight: tokens.type.body.size * tokens.type.body.lineHeight,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: tokens.space[2],
+    marginTop: tokens.space[5],
     marginBottom: tokens.space[6],
+  },
+  chip: {
+    paddingHorizontal: tokens.space[3],
+    paddingVertical: tokens.space[2],
+    backgroundColor: tokens.color.surface.paper3,
+    borderRadius: tokens.radius.r1,
+  },
+  chipText: {
+    fontSize: tokens.type.caption.size,
+    fontWeight: String(tokens.weight.bold) as '700',
+    color: tokens.color.ink.secondary,
+    letterSpacing: 0.8,
   },
   honestNote: {
     backgroundColor: tokens.color.surface.card,
