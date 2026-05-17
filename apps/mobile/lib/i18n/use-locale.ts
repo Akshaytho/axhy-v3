@@ -61,7 +61,7 @@ function notifyListeners(): void {
 
 // ─── Cross-tab sync (web only) ────────────────────────────────────────────────
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   window.addEventListener('storage', (e) => {
     if (e.key === LOCALE_STORAGE_KEY) {
       const next = e.newValue;

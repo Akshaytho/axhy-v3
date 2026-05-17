@@ -21,5 +21,6 @@ export function useSummaryQuery() {
   return useQuery<SummaryResponseT>({
     queryKey: SUMMARY_QUERY_KEY,
     queryFn: () => apiFetch<SummaryResponseT>('/supervisor/summary'),
+    staleTime: 60_000,
   });
 }

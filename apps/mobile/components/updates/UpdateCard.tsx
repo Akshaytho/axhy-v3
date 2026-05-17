@@ -18,7 +18,7 @@
  * @derives(supervisor-mobile-r6-design 2026-05-12)
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { View, Text, Pressable, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 import type { HRUpdateRowT } from '@axhy/shared-schema';
@@ -72,12 +72,14 @@ export type UpdateCardProps = {
 
 /**
  * HR update card — renders the unacknowledged and acknowledged states.
+ * Wrapped in React.memo so the feed doesn't re-render every card when only
+ * one card's acking state or draft text changes.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — HR control plane / supervisor surface
  * @derives(supervisor-mobile-r6-design 2026-05-12)
  */
-export function UpdateCard({
+export const UpdateCard = memo(function UpdateCard({
   row,
   expanded,
   onToggle,
@@ -177,7 +179,7 @@ export function UpdateCard({
       )}
     </View>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Styles

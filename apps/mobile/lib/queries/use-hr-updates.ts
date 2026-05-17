@@ -28,6 +28,7 @@ export function useHRUpdatesQuery() {
   return useQuery<HRUpdatesResponseT>({
     queryKey: HR_UPDATES_QUERY_KEY,
     queryFn: () => apiFetch<HRUpdatesResponseT>('/supervisor/updates'),
+    staleTime: 60_000,
   });
 }
 

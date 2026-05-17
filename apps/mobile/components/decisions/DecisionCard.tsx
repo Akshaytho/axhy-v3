@@ -14,7 +14,7 @@
  * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { View, Text, Pressable, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 import type { DecisionRowT } from '@axhy/shared-schema';
@@ -61,8 +61,14 @@ type DecisionCardProps = {
   isDismissing?: boolean;
 };
 
-/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export function DecisionCard({
+/**
+ * Pending decision card for the Decisions workspace.
+ * Wrapped in React.memo so the section list doesn't re-render every card
+ * when only one card's dismiss-in-progress state changes.
+ *
+ * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
+ */
+export const DecisionCard = memo(function DecisionCard({
   row,
   faded = false,
   onDismiss,
@@ -155,7 +161,7 @@ export function DecisionCard({
       </View>
     </View>
   );
-}
+});
 
 const s = StyleSheet.create({
   card: {

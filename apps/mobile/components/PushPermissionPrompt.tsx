@@ -92,7 +92,9 @@ export function buildPromptOutcomeRunner(args: {
         });
       await request();
     } catch (err) {
-      console.warn('[PushPermissionPrompt] requestPermission threw — navigating anyway', err);
+      if (__DEV__) {
+        console.warn('[PushPermissionPrompt] requestPermission threw — navigating anyway', err);
+      }
     } finally {
       fireOnce();
     }
