@@ -263,6 +263,9 @@ importers:
       i18next:
         specifier: ^23.16.0
         version: 23.16.8
+      jwt-decode:
+        specifier: ^4.0.0
+        version: 4.0.0
       react:
         specifier: 19.1.0
         version: 19.1.0
@@ -278,6 +281,9 @@ importers:
       react-native-gesture-handler:
         specifier: ~2.28.0
         version: 2.28.0(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0))(react@19.1.0)
+      react-native-onesignal:
+        specifier: ^5.2.0
+        version: 5.4.5(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0))
       react-native-reanimated:
         specifier: ~4.1.1
         version: 4.1.7(react-native-worklets@0.8.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0))(react@19.1.0)
@@ -300,6 +306,9 @@ importers:
       '@types/react':
         specifier: ~18.3.0
         version: 18.3.28
+      onesignal-expo-plugin:
+        specifier: ^2.0.0
+        version: 2.5.0(@expo/config-plugins@54.0.4)(react-native-onesignal@5.4.5(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0)))(typescript@5.9.3)
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -5098,6 +5107,10 @@ packages:
   jsonfile@4.0.0:
     resolution: {integrity: sha512-m6F1R3z8jjlf2imQHS2Qez5sjKWQzbuuhuJ/FKYFRZvPE3PuHcSMVZzfsLhGVOkfd20obL5SWEBew5ShlquNxg==}
 
+  jwt-decode@4.0.0:
+    resolution: {integrity: sha512-+KJGIyHgkGuIq3IEBNftfhW/LfWhXUIY6OmyVWjliu5KH1y0fw7VQ8YndE2O4qZdMSd9SqbnC8GOcZEy0Om7sA==}
+    engines: {node: '>=18'}
+
   kapsule@1.16.3:
     resolution: {integrity: sha512-4+5mNNf4vZDSwPhKprKwz3330iisPrb08JyMgbsdFrimBCKNHecua/WBwvVg3n7vwx0C1ARjfhwIpbrbd9n5wg==}
     engines: {node: '>=12'}
@@ -5779,6 +5792,12 @@ packages:
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
 
+  onesignal-expo-plugin@2.5.0:
+    resolution: {integrity: sha512-CYPbj4j/xW6GjX6KFkyTJ0cXn0EKekKBe0Wwtv0+Y0NW7vu1vfqClmPNRTNgSevbg6MgAdrgsBfvtzrK4BsCeg==}
+    peerDependencies:
+      '@expo/config-plugins': '>=7.0.0'
+      react-native-onesignal: '>=5.0.0'
+
   onetime@2.0.1:
     resolution: {integrity: sha512-oyyPpiMaKARvvcgip+JV+7zci5L8D1W9RZIz2l1o08AM3pfspitVWnPt3mzHcBPp12oYMTy0pqrFs/C+m3EwsQ==}
     engines: {node: '>=4'}
@@ -6218,6 +6237,11 @@ packages:
     peerDependencies:
       react: '*'
       react-native: '*'
+
+  react-native-onesignal@5.4.5:
+    resolution: {integrity: sha512-2D3t7h7LG04Bj6T0QCsmfxXTREHrTqHgl56YJ65ag49h/PfhWt+yG2BPJpRO+itZ+iDo/al9fRWTMB2ocCY7UQ==}
+    peerDependencies:
+      react-native: '>=0.79.0'
 
   react-native-reanimated@4.1.7:
     resolution: {integrity: sha512-Q4H6xA3Tn7QL0/E/KjI86I1KK4tcf+ErRE04LH34Etka2oVQhW6oXQ+Q8ZcDCVxiWp5vgbBH6XcH8BOo4w/Rhg==}
@@ -12829,6 +12853,8 @@ snapshots:
     optionalDependencies:
       graceful-fs: 4.2.11
 
+  jwt-decode@4.0.0: {}
+
   kapsule@1.16.3:
     dependencies:
       lodash-es: 4.18.1
@@ -13806,6 +13832,15 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
+  onesignal-expo-plugin@2.5.0(@expo/config-plugins@54.0.4)(react-native-onesignal@5.4.5(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0)))(typescript@5.9.3):
+    dependencies:
+      '@expo/config-plugins': 54.0.4
+      '@expo/image-utils': 0.8.14(typescript@5.9.3)
+      react-native-onesignal: 5.4.5(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0))
+    transitivePeerDependencies:
+      - supports-color
+      - typescript
+
   onetime@2.0.1:
     dependencies:
       mimic-fn: 1.2.0
@@ -14255,6 +14290,11 @@ snapshots:
   react-native-is-edge-to-edge@1.3.1(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0))(react@19.1.0):
     dependencies:
       react: 19.1.0
+      react-native: 0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0)
+
+  react-native-onesignal@5.4.5(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0)):
+    dependencies:
+      invariant: 2.2.4
       react-native: 0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0)
 
   react-native-reanimated@4.1.7(react-native-worklets@0.8.3(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@18.3.28)(react@19.1.0))(react@19.1.0):

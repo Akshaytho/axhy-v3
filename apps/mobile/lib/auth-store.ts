@@ -8,7 +8,17 @@
  * fall back to localStorage. This only affects web builds — iOS/Android
  * always use the native secure enclave path.
  *
+ * **F-006a discipline lock:** `setTokens` / `clearTokens` are narrow
+ * storage primitives. Do NOT call them directly from identified-login or
+ * logout flows — go through `identity-lifecycle.ts` instead
+ * (`onIdentifiedLogin` / `onAppLogout` / `onColdStartReady`). That module
+ * owns the ONE explicit identity contract (JWT-scoped role check +
+ * conditional `OneSignal.login`/`logout` + logout-before-clearTokens
+ * ordering). Direct use here bypasses the OneSignal lifecycle and risks
+ * phantom-subscription leak on User A → User B device handoff.
+ *
  * @derives(ADR-0007)
+ * @derives(F-006a scope round-2 v6 Pick 2)
  */
 
 import * as SecureStore from 'expo-secure-store';

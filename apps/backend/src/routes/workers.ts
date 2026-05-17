@@ -74,6 +74,28 @@ export async function registerWorkerRoutes(app: FastifyInstance): Promise<void> 
           return;
         }
 
+        if (out.kind === 'NOT_SUPERVISOR') {
+          // Q2=B (panel-2026-05-17): cross-supervisor-within-same-tenant.
+          // Log the caller + effective winner for operator forensics; the
+          // external surface stays opaque so callers can't distinguish
+          // "wrong supervisor" from "unassigned worker" / "no binding."
+          // A dedicated audit kind (WORKER_MARK_ABSENT_REJECTED) is parked
+          // for a follow-up ADR — req.log.warn is the contract for now.
+          req.log.warn(
+            {
+              workerId,
+              callerUserId: auth.userId,
+              effectiveUserId: out.effectiveUserId,
+            },
+            'mark-absent rejected — caller not the responsible supervisor',
+          );
+          reply.code(403).send({
+            error: 'NOT_SUPERVISOR',
+            message: 'You are not the responsible supervisor for this worker today.',
+          });
+          return;
+        }
+
         const result: MarkAbsentOutput = {
           ok: true,
           attendanceId: out.attendance.id,

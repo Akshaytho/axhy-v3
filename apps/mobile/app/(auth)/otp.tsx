@@ -1,6 +1,14 @@
 /**
  * OTP verification screen — second step of sign-in flow.
+ *
+ * F-006a: identified login now flows through `onIdentifiedLogin(authResult)`
+ * from `identity-lifecycle.ts` (ONE explicit identity contract). On success,
+ * the PushPermissionPrompt modal renders, and `router.replace(...)` fires
+ * EXACTLY ONCE across all 5 prompt branches (Pick 5 v2 contract).
+ *
  * @derives(ADR-0007)
+ * @derives(F-006a scope round-2 v6 Pick 2)
+ * @derives(F-006a scope round-2 v6 Pick 5)
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -20,7 +28,11 @@ import { tokens } from '@axhy/ui-tokens';
 import type { VerifyOTPOutput, RequestOTPOutput } from '@axhy/shared-schema';
 
 import { apiFetch, ApiError } from '../../lib/api';
-import { setTokens } from '../../lib/auth-store';
+import {
+  onIdentifiedLogin,
+  NonSupervisorRoleNotSupportedError,
+} from '../../lib/identity-lifecycle';
+import PushPermissionPrompt from '../../components/PushPermissionPrompt';
 
 const RESEND_SECONDS = 60;
 
@@ -31,6 +43,7 @@ export default function OtpScreen() {
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(RESEND_SECONDS);
   const [resending, setResending] = useState(false);
+  const [identifiedLoginComplete, setIdentifiedLoginComplete] = useState(false);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -48,15 +61,13 @@ export default function OtpScreen() {
         body: { phone, code },
         auth: false,
       });
-      const firstMembership = result.memberships[0];
-      await setTokens({
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        activeRole: firstMembership?.role ?? 'SUPERVISOR',
-      });
-      router.replace('/(supervisor)/profile');
+      await onIdentifiedLogin(result);
+      // Hand off to PushPermissionPrompt — it owns the exactly-once nav contract.
+      setIdentifiedLoginComplete(true);
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 400 || err.status === 401)) {
+      if (err instanceof NonSupervisorRoleNotSupportedError) {
+        setError(err.message);
+      } else if (err instanceof ApiError && (err.status === 400 || err.status === 401)) {
         setError('Wrong code. Check the SMS and try again.');
       } else {
         setError('Verification failed. Check your connection and try again.');
@@ -65,6 +76,10 @@ export default function OtpScreen() {
       setLoading(false);
     }
   }, [code, phone]);
+
+  const handlePromptComplete = useCallback(() => {
+    router.replace('/(supervisor)/profile');
+  }, []);
 
   async function handleResend() {
     if (countdown > 0 || resending) return;
@@ -149,6 +164,8 @@ export default function OtpScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {identifiedLoginComplete && <PushPermissionPrompt onComplete={handlePromptComplete} />}
     </SafeAreaView>
   );
 }

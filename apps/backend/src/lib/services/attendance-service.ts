@@ -15,6 +15,7 @@
 
 import type { Attendance, Prisma } from '@prisma/client';
 
+import { assertCallerSupervisesWorker } from '../authorization/supervises-worker.js';
 import { recordAuditEvent } from '../audit-event.js';
 import { enqueueOutbox } from '../outbox.js';
 
@@ -44,10 +45,11 @@ export type MarkAbsentServiceAuth = {
   userId: string;
 };
 
-/** @derives(F-002.b) */
+/** @derives(F-002.b) @derives(panel-2026-05-17) — Q2=B mark-absent hardening */
 export type MarkAbsentServiceResult =
   | { kind: 'OK'; attendance: Attendance }
-  | { kind: 'WORKER_NOT_FOUND' };
+  | { kind: 'WORKER_NOT_FOUND' }
+  | { kind: 'NOT_SUPERVISOR'; effectiveUserId: string | null };
 
 /** @derives(F-002.b) — pure computation, moved alongside service body */
 export function computeDailyDeductPaise(baseSalaryPaise: number, status: AttendanceStatus): number {
@@ -77,6 +79,22 @@ export async function markAbsentService(
     where: { id: input.workerId, companyId: auth.companyId },
   });
   if (!worker) return { kind: 'WORKER_NOT_FOUND' };
+
+  // Q2=B (panel-2026-05-17): cross-tenant is already rejected above as
+  // WORKER_NOT_FOUND; this check rejects cross-supervisor-within-same-tenant.
+  // Lives in the service (not the route) so chat-routed callers — and any
+  // future worker-targeted DWI writer — inherit the same guarantee.
+  const authzCheck = await assertCallerSupervisesWorker(tx, {
+    companyId: auth.companyId,
+    callerUserId: auth.userId,
+    workerId: input.workerId,
+  });
+  if (authzCheck.kind === 'FORBIDDEN') {
+    return { kind: 'NOT_SUPERVISOR', effectiveUserId: authzCheck.effectiveUserId };
+  }
+  if (authzCheck.kind === 'NO_PRIMARY_SITE' || authzCheck.kind === 'NO_EFFECTIVE_BINDING') {
+    return { kind: 'NOT_SUPERVISOR', effectiveUserId: null };
+  }
 
   const payDeductPaise = computeDailyDeductPaise(worker.baseSalaryPaise, input.status);
 
