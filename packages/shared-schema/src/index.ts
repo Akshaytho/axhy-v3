@@ -44,3 +44,7 @@ export * from './zod/summary.js';
 // HR Updates tab — policy changes + typed-words ack
 // @derives(ADR-0003) @derives(master-plan §G) — HR control plane / supervisor surface
 export * from './zod/hr-updates.js';
+// Wave 3 — Complaint threading + chat intent classifier
+// @derives(supervisor-drawer-and-decisions-redesign.md §C)
+// @derives(panel-2026-05-18) — Wave 3 backend
+export * from './zod/complaint.js';

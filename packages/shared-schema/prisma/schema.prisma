@@ -71,6 +71,11 @@ model Company {
   digests                Digest[]
   // P1.5 SiteSupervisorBinding (2026-05-15)
   siteSupervisorBindings SiteSupervisorBinding[]
+  // F28 ReplacementInvite (2026-05-18 — Wave 1 backend; ships with model
+  // definition in the parallel Wave 1 subagent commit).
+  replacementInvites     ReplacementInvite[]
+  // Wave 3 complaint threading (2026-05-18)
+  complaintMessages      ComplaintMessage[]
 
   @@schema("axhy")
 }
@@ -100,6 +105,9 @@ model User {
   // P1.5 SiteSupervisorBinding back-relations (2026-05-15)
   supervisorBindings SiteSupervisorBinding[] @relation("BindingSupervisor")
   actingForBindings  SiteSupervisorBinding[] @relation("BindingActingFor")
+  // F28 ReplacementInvite back-relations (2026-05-18 — Wave 1 backend)
+  sentReplacementInvites     ReplacementInvite[] @relation("ReplacementInviteFromSupervisor")
+  receivedReplacementInvites ReplacementInvite[] @relation("ReplacementInviteToWorker")
 
   @@index([companyId])
   @@schema("axhy")
@@ -157,6 +165,8 @@ model Site {
   assignments Assignment[]
   // P1.5 SiteSupervisorBinding (2026-05-15)
   bindings    SiteSupervisorBinding[]
+  // F28 ReplacementInvite (2026-05-18 — Wave 1 backend)
+  replacementInvites ReplacementInvite[]
 
   @@index([companyId])
   @@index([companyId, state])
@@ -239,6 +249,8 @@ model Visit {
   worker  Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
   site    Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
   photos  VisitPhoto[]
+  // F28 ReplacementInvite (2026-05-18 — Wave 1 backend; visit may be the cover target)
+  replacementInvites ReplacementInvite[]
 
   @@index([companyId, scheduledFor])
   @@index([companyId, state])
@@ -596,29 +608,147 @@ model Attendance {
 /// @derives(data-flow §5 — log site complaint NOTE tier)
 /// @derives(panel-2026-05-08) — Phase B.2 domain table
 model Complaint {
-  id           String    @id @default(uuid()) @db.Uuid
-  companyId    String    @db.Uuid
-  siteId       String    @db.Uuid
+  id                    String    @id @default(uuid()) @db.Uuid
+  companyId             String    @db.Uuid
+  siteId                String    @db.Uuid
   /// User.id of the supervisor who logged the complaint (composite-keyed
   /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
-  supervisorId String    @db.Uuid
-  /// short complaint text — supervisor's words via voice or button flow
-  text         String
+  supervisorId          String    @db.Uuid
+  /// User.id of the supervisor who created the complaint via chat or the
+  /// site complaint button. Equals supervisorId for now; kept as a distinct
+  /// FK so chat-driven complaints attribute correctly under acting-supervisor
+  /// windows where supervisorId is the bound supervisor but createdByUserId
+  /// is the acting supervisor. Wave 3 chat intent classifier sets this from
+  /// req.auth.userId at the moment of creation.
+  createdByUserId       String    @db.Uuid
+  /// short complaint text — supervisor's words via voice or button flow.
+  /// Mirrored as the body of the initial ComplaintMessage row so the thread
+  /// view doesn't need a UNION with the parent row.
+  text                  String
   /// LOW | MEDIUM | HIGH (NOTE-tier severity)
-  severity     String    @default("LOW")
+  severity              String    @default("LOW")
+  /// Complaint kind enum — drives mobile filtering, HR triage queues, and
+  /// scenario reporting. One of: photo_mismatch | missed_area | attitude |
+  /// theft_accusation | hygiene | noise | damage | gate_pass | other.
+  /// Defaults to 'other' for back-compat with pre-Wave-3 rows; DB-level
+  /// CHECK constraint enforces the enum (see migration 009).
+  /// @derives(supervisor-30day-scenarios.md scenarios #26–38)
+  kind                  String    @default("other")
+  /// Complaint lifecycle state — OPEN | IN_HR | RESOLVED | DISMISSED.
+  /// Replaces the pre-Wave-3 `resolvedAt IS NULL` proxy for "is it open?".
+  /// `resolvedAt` is kept as the timestamp; `state` is the discrete machine.
+  /// DB-level CHECK enforces the enum (see migration 009).
+  state                 String    @default("OPEN")
+  /// Count of HR-authored ComplaintMessage rows the supervisor has not yet
+  /// marked read. Atomically incremented inside the same tx that creates
+  /// the ComplaintMessage; decremented inside the read-receipt tx.
+  /// Used by the drawer Complaints badge — counter on parent beats COUNT(*)
+  /// (Zendesk pattern, per supervisor-drawer-and-decisions-redesign.md §D).
+  unreadHrRepliesCount  Int       @default(0)
+  /// Last reply timestamp (any author) — drives "Recent" sort + the
+  /// drawer sub-line "HR replied 2h ago". Nullable until the first reply
+  /// after the initial supervisor message.
+  lastReplyAt           DateTime?
   /// nullable until the complaint is dismissed / resolved by HR/owner
-  resolvedAt   DateTime?
+  resolvedAt            DateTime?
   /// UUID of resolver (HR / owner / supervisor)
-  resolvedBy   String?   @db.Uuid
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  resolvedBy            String?   @db.Uuid
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  company  Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site     Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  messages ComplaintMessage[]
 
   @@index([companyId])
   @@index([companyId, siteId])
   @@index([companyId, resolvedAt])
+  // HR-side queries: "all open complaints across this tenant, newest first".
+  @@index([companyId, state, createdAt])
+  // Supervisor inbox: "complaints this supervisor logged, by state, newest first".
+  @@index([companyId, createdByUserId, state, createdAt])
+  @@schema("axhy")
+}
+
+/// Threaded reply on a Complaint. Created in three flows:
+///   1. Wave-3 chat: `propose_log_complaint` creates the Complaint row PLUS
+///      an initial ComplaintMessage row authored by the supervisor (so the
+///      thread is non-empty from t=0; no UNION required to render).
+///   2. Supervisor reply via `POST /complaints/:id/messages` from the
+///      complaint thread chat surface.
+///   3. HR reply via the same `POST /complaints/:id/messages` endpoint
+///      (gated to HR-role JWT once HR portal lands; out of scope this wave).
+///
+/// Per-actor unread tracking lives in two places:
+///   * `Complaint.unreadHrRepliesCount` — fast badge count for supervisor.
+///   * `ComplaintMessageRead` — per-(message, actor) read receipts so we
+///     can show a per-message "seen" indicator in v3.1 mobile and so
+///     idempotent read-receipts work when the same actor marks the same
+///     message read from two devices simultaneously (race test).
+///
+/// @derives(supervisor-drawer-and-decisions-redesign.md §C — Chat-to-Complaint)
+/// @derives(panel-2026-05-18) — Wave 3 backend
+model ComplaintMessage {
+  id           String   @id @default(uuid()) @db.Uuid
+  complaintId  String   @db.Uuid
+  /// Tenant denormalized for cross-tenant isolation in RLS + indexed reads.
+  /// Always equals Complaint.companyId (enforced by application code +
+  /// FK joins under withTenantContext).
+  companyId    String   @db.Uuid
+  /// User.id of the author. NOT Membership.id; SUPERVISOR or HR or ADMIN.
+  authorUserId String   @db.Uuid
+  /// SUPERVISOR | HR | ADMIN. Persisted on the row (rather than derived
+  /// from Membership at read time) so historical role-at-time-of-write
+  /// is preserved if the user's role changes later. DB-level CHECK
+  /// enforces the enum (see migration 009).
+  authorRole   String
+  /// Message body text. Voice transcripts arrive here too (mobile
+  /// transcribes first, then POSTs the text).
+  body         String
+  /// JSON array of attachments — `[{ type:'image', url, width, height }]`.
+  /// Photos uploaded via the existing S3 signed-URL pipeline (mobile is
+  /// responsible for the upload; backend stores the resulting URL). The
+  /// Photo CDN slice is out of scope this wave; signed-URL fetch on read
+  /// is the interim. Null when there are no attachments.
+  attachments  Json?
+  createdAt    DateTime @default(now())
+
+  company   Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  complaint Complaint              @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  reads     ComplaintMessageRead[]
+
+  // Thread render: load all messages for a complaint, oldest-first.
+  @@index([complaintId, createdAt])
+  // Tenant-scoped scans (e.g. HR portal "all new replies last 24h").
+  @@index([companyId, createdAt])
+  @@schema("axhy")
+}
+
+/// Per-(message, actor) read receipt. Composite primary key makes the
+/// mark-read operation idempotent: two devices marking the same message
+/// read simultaneously both succeed (one inserts, the other hits the PK
+/// conflict and is silently treated as a no-op by an `upsert` or
+/// `ON CONFLICT DO NOTHING` insert). Race-test mandated by Wave 3 brief.
+///
+/// `actorRole` is denormalized so HR-side badge math can filter
+/// `actorRole='SUPERVISOR'` (i.e. "did the supervisor read it?") without
+/// a join to Membership.
+///
+/// @derives(panel-2026-05-18) — Wave 3 backend race-test mitigation
+model ComplaintMessageRead {
+  messageId   String   @db.Uuid
+  actorUserId String   @db.Uuid
+  /// SUPERVISOR | HR | ADMIN at the time of read.
+  actorRole   String
+  /// Tenant denormalized so the (companyId, messageId) join under
+  /// withTenantContext stays fast.
+  companyId   String   @db.Uuid
+  readAt      DateTime @default(now())
+
+  message ComplaintMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, actorUserId])
+  @@index([companyId, actorUserId])
   @@schema("axhy")
 }
 
@@ -1060,3 +1190,37 @@ model SiteSupervisorBinding {
   @@index([userId])
   @@schema("axhy")
 }
+
+/// STUB — Wave 1 backend (parallel subagent) will replace this with the
+/// full model definition per docs/research/replacement-invite-feature-spec.md.
+/// Stub exists so prisma generate succeeds during the parallel build phase.
+/// This stub MUST NOT be referenced by any application code; it is a schema
+/// placeholder only. The Wave 1 subagent's commit overwrites it.
+model ReplacementInvite {
+  id                 String   @id @default(uuid()) @db.Uuid
+  companyId          String   @db.Uuid
+  fromSupervisorId   String   @db.Uuid
+  toWorkerId         String   @db.Uuid
+  visitId            String?  @db.Uuid
+  siteId             String   @db.Uuid
+  scheduledStart     DateTime
+  status             String   @default("PENDING")
+  sentAt             DateTime @default(now())
+  expiresAt          DateTime
+  respondedAt        DateTime?
+  respondReason      String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  company        Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromSupervisor User    @relation("ReplacementInviteFromSupervisor", fields: [fromSupervisorId], references: [id], onDelete: Cascade)
+  toWorker       User    @relation("ReplacementInviteToWorker", fields: [toWorkerId], references: [id], onDelete: Cascade)
+  site           Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  visit          Visit?  @relation(fields: [visitId], references: [id], onDelete: SetNull)
+
+  @@index([status, expiresAt])
+  @@index([companyId, fromSupervisorId])
+  @@index([companyId, toWorkerId, status])
+  @@schema("axhy")
+}
+

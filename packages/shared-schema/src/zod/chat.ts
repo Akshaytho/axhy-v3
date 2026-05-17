@@ -4,12 +4,33 @@
 
 import { z } from 'zod';
 
+/**
+ * Attachment shape accepted on chat messages. Photos arrive as S3 signed-URL
+ * references; mobile is responsible for the upload before invoking
+ * `POST /chat/messages`. Wave-3 additive field — pre-Wave-3 clients omit
+ * `attachments` and the route treats it as the empty array.
+ *
+ * @derives(supervisor-drawer-and-decisions-redesign.md §C — chat photo attach)
+ */
+export const ChatMessageAttachmentInput = z.object({
+  type: z.literal('image'),
+  url: z.string().url(),
+});
+export type ChatMessageAttachmentInputT = z.infer<typeof ChatMessageAttachmentInput>;
+
 export const CreateChatMessageInput = z
   .object({
     /** Supervisor's transcript or typed text */
     text: z.string().min(1).max(2000),
     /** STT confidence if voice; null for typed */
     voiceConfidence: z.enum(['HIGH', 'MEDIUM', 'LOW']).optional(),
+    /**
+     * Optional photo attachments (Wave 3). Each entry must be a previously
+     * uploaded S3 URL. Max 4 per message; the AI tool-loop reads them as
+     * context when classifying intent (e.g. photo of a missed lobby tips
+     * the classifier toward `log_complaint` with kind=missed_area).
+     */
+    attachments: z.array(ChatMessageAttachmentInput).max(4).optional(),
   })
   .strict();
 export type CreateChatMessageInputT = z.infer<typeof CreateChatMessageInput>;
