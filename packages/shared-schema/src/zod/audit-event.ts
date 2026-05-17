@@ -35,6 +35,8 @@ export const AuditEventKindSchema = z.enum([
   'SITE_COMPLAINT_LOGGED',
   // ── Swap ────────────────────────────────────────────────────────────
   'SWAP_REQUEST_SENT',
+  'SWAP_REQUEST_ACCEPTED',
+  'SWAP_REQUEST_REJECTED',
   'SWAP_REVERSED',
   // ── Assignment / calendar ──────────────────────────────────────────
   'ASSIGNMENT_CREATED',

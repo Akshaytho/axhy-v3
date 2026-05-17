@@ -20,12 +20,19 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { CreateSwapRequestInput } from '@axhy/shared-schema';
+import {
+  CreateSwapRequestInput,
+  SwapDecisionInput,
+  type SwapDecisionOutputT,
+} from '@axhy/shared-schema';
 import type { CreateSwapRequestOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { createSwapRequestService } from '../lib/services/swap-request-service.js';
+import { recordAuditEvent } from '../lib/audit-event.js';
+import { enqueueOutbox } from '../lib/outbox.js';
+import { getSitesSupervisedByUser } from '../lib/effective-responsibility.js';
 
 /**
  * Register swap-request supervisor routes.
@@ -101,4 +108,167 @@ export async function registerSwapRequestRoutes(app: FastifyInstance): Promise<v
       reply.code(500).send({ error: 'INTERNAL', message: 'Could not create swap request' });
     }
   });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // POST /swap-requests/:id/decide  (Wave 2 — Decisions queue accept/reject)
+  //
+  // A SwapRequest in SENT state is awaiting the receiving supervisor's
+  // decision. The receiving supervisor is the one whose portfolio currently
+  // contains the swap's `siteId`. The body distinguishes:
+  //
+  //   - decision='approve'        — Accept; transitions to ACCEPTED.
+  //   - decision='reject'         — Reject; transitions to DECLINED. Reason
+  //                                  is required (Zod refine).
+  //   - decision='approve_anyway' — Skill-mismatch override; transitions to
+  //                                  ACCEPTED. Requires `overrideToken === 'OVERRIDE'`
+  //                                  (Zod refine). Reserved for the
+  //                                  TwoButtonWithWarning card variant.
+  //
+  // Cross-tenant: the WHERE on `companyId` ensures Tenant A's supervisor
+  // cannot decide on Tenant B's swap (404). Within-tenant cross-supervisor
+  // isolation: site must be in the caller's portfolio (403).
+  //
+  // @derives(Wave 2 plan §3E — actions[] must point to a real route)
+  // @derives(drawer-redesign §B.4 — SWAP_REQUEST_PENDING card variants)
+  // ───────────────────────────────────────────────────────────────────────
+  app.post<{ Params: { id: string } }>(
+    '/swap-requests/:id/decide',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+        return;
+      }
+
+      const { id } = req.params;
+      if (!id) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: 'Missing :id route param' });
+        return;
+      }
+
+      const parsed = SwapDecisionInput.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+        return;
+      }
+
+      try {
+        const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
+          const swap = await tx.swapRequest.findFirst({
+            where: { id, companyId: auth.companyId },
+            include: {
+              fromWorker: { select: { id: true, name: true, phone: true } },
+              toWorker: { select: { id: true, name: true, phone: true } },
+              site: { select: { id: true, name: true } },
+            },
+          });
+          if (!swap) return { kind: 'NOT_FOUND' as const };
+          if (swap.state !== 'SENT') {
+            return { kind: 'ALREADY_DECIDED' as const, state: swap.state };
+          }
+
+          // Authorisation: caller must be the supervisor currently bound to
+          // the swap's site (or the original initiator).
+          const portfolio = await getSitesSupervisedByUser(tx, {
+            companyId: auth.companyId,
+            userId: auth.userId,
+          });
+          const portfolioSiteIds = new Set(portfolio.map((p) => p.siteId));
+          const isInitiator = swap.supervisorId === auth.userId;
+          const isResponsibleSupervisor = portfolioSiteIds.has(swap.siteId);
+          if (!isInitiator && !isResponsibleSupervisor) {
+            return { kind: 'NOT_RESPONSIBLE' as const };
+          }
+
+          const decidedAt = new Date();
+          const isApprove =
+            parsed.data.decision === 'approve' || parsed.data.decision === 'approve_anyway';
+          const newState: 'ACCEPTED' | 'DECLINED' = isApprove ? 'ACCEPTED' : 'DECLINED';
+
+          const updated = await tx.swapRequest.update({
+            where: { id: swap.id },
+            data: {
+              state: newState,
+              decidedAt,
+            },
+          });
+
+          await recordAuditEvent(tx, {
+            companyId: auth.companyId,
+            kind: isApprove ? 'SWAP_REQUEST_ACCEPTED' : 'SWAP_REQUEST_REJECTED',
+            actorId: auth.userId,
+            targetId: swap.id,
+            payload: {
+              decision: parsed.data.decision,
+              reason: parsed.data.reason ?? null,
+              overrideUsed: parsed.data.decision === 'approve_anyway',
+              fromWorkerId: swap.fromWorkerId,
+              fromWorkerName: swap.fromWorker.name,
+              toWorkerId: swap.toWorkerId,
+              toWorkerName: swap.toWorker.name,
+              siteId: swap.siteId,
+              siteName: swap.site.name,
+              effectiveAt: swap.effectiveAt.toISOString(),
+            },
+          });
+
+          await enqueueOutbox(tx, {
+            companyId: auth.companyId,
+            topic: isApprove ? 'swap.accepted' : 'swap.rejected',
+            payload: {
+              swapRequestId: swap.id,
+              fromWorker: {
+                workerId: swap.fromWorkerId,
+                phone: swap.fromWorker.phone,
+                name: swap.fromWorker.name,
+              },
+              toWorker: {
+                workerId: swap.toWorkerId,
+                phone: swap.toWorker.phone,
+                name: swap.toWorker.name,
+              },
+              site: { id: swap.siteId, name: swap.site.name },
+              decidedBy: auth.userId,
+              reason: parsed.data.reason ?? null,
+            },
+          });
+
+          return { kind: 'OK' as const, swap: updated, newState };
+        });
+
+        if (result.kind === 'NOT_FOUND') {
+          reply.code(404).send({ error: 'SWAP_NOT_FOUND' });
+          return;
+        }
+        if (result.kind === 'ALREADY_DECIDED') {
+          reply.code(409).send({
+            error: 'ALREADY_DECIDED',
+            message: `Swap request is already ${result.state}; cannot decide again`,
+            state: result.state,
+          });
+          return;
+        }
+        if (result.kind === 'NOT_RESPONSIBLE') {
+          reply.code(403).send({
+            error: 'NOT_RESPONSIBLE',
+            message: 'Caller is not the responsible supervisor for this swap',
+          });
+          return;
+        }
+
+        const body: SwapDecisionOutputT = {
+          ok: true,
+          swapRequestId: result.swap.id,
+          state: result.newState,
+          decidedBy: auth.userId,
+          decidedAt: result.swap.decidedAt!.toISOString(),
+        };
+        reply.send(body);
+      } catch (err) {
+        req.log.error({ err }, 'decide-swap-request failed');
+        reply.code(500).send({ error: 'INTERNAL', message: 'Could not decide swap request' });
+      }
+    },
+  );
 }

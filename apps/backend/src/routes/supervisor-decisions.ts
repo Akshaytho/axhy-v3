@@ -27,7 +27,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { DismissDecisionInput } from '@axhy/shared-schema';
+import { DismissDecisionInput, DecisionsQueryInput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
@@ -51,16 +51,38 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
       return;
     }
 
+    // Parse pagination query params. Wave 2: limit 50, cursor-by-(priority,
+    // proposedAt, id) — see decisions-service.ts.
+    const parsedQuery = DecisionsQueryInput.safeParse(req.query ?? {});
+    if (!parsedQuery.success) {
+      reply.code(400).send({ error: 'BAD_INPUT', message: parsedQuery.error.message });
+      return;
+    }
+
+    const startedAt = Date.now();
     try {
       const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
         buildDecisionsForSupervisor(tx, {
           companyId: auth.companyId,
           userId: auth.userId,
+          cursor: parsedQuery.data.cursor,
+          limit: parsedQuery.data.limit,
         }),
+      );
+      req.log.info(
+        {
+          companyId: auth.companyId,
+          userId: auth.userId,
+          rows: out.rows.length,
+          totalAcrossPages: out.pageInfo.totalAcrossPages,
+          hasMore: out.pageInfo.hasMore,
+          ms: Date.now() - startedAt,
+        },
+        'GET /supervisor/decisions ok',
       );
       reply.code(200).send(out);
     } catch (err) {
-      req.log.error({ err }, 'GET /supervisor/decisions failed');
+      req.log.error({ err, ms: Date.now() - startedAt }, 'GET /supervisor/decisions failed');
       reply.code(500).send({ error: 'INTERNAL', message: 'Could not build decisions queue' });
     }
   });
