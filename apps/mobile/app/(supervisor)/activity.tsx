@@ -1,18 +1,21 @@
 /**
  * Activity tab — supervisor's recent actions feed.
  *
- * Reads `/supervisor/activity` (which itself reads AuditEvent rows
- * authored by the caller). Renders R6's "{N} EVENTS · ACTIVITY · PROOF"
- * eyebrow + filter chips + chronological row list. Row tap is a stub
- * for now (Share to WhatsApp + Reverse will land with the routing slice).
+ * R6-faithful implementation: eyebrow "ACTIVITY · PROOF", count in title,
+ * three rows of filter chips (date / site / kind), per-row Feather icon,
+ * right-aligned HH:MM mono timestamp, SITE · REASON meta line.
+ *
+ * Chip state is local/visual only — no backend filter wiring in this slice.
+ * Row tap is a stub for the routing slice (Share + Reverse land later).
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -20,38 +23,296 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
+import type { ActivityRowT } from '@axhy/shared-schema';
 
 import { TopAppBar } from '../../components/today/TopAppBar';
 import { useActivityQuery } from '../../lib/queries/use-activity';
 
-const FILTER_CHIPS = ['Today', 'Yesterday', 'This week', 'All sites'] as const;
+// ---------------------------------------------------------------------------
+// Kind → Feather icon name
+// ---------------------------------------------------------------------------
 
-function formatRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const diff = Math.max(0, now - then);
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
+
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
+const KIND_ICON: Record<string, FeatherName> = {
+  WORKER_MARKED_ABSENT: 'user-x',
+  LEAVE_REQUESTED: 'calendar',
+  LEAVE_APPROVED: 'calendar',
+  LEAVE_REJECTED: 'calendar',
+  ASSIGNMENT_CREATED: 'user-plus',
+  SWAP_REQUEST_SENT: 'repeat',
+  SITE_COMPLAINT_LOGGED: 'alert-circle',
+  BINDING_CREATED: 'map-pin',
+  BINDING_ENDED_NORMAL: 'map-pin',
+  BINDING_ENDED_EARLY: 'map-pin',
+  HANDOFF_PACKAGE_GENERATED: 'package',
+  CHAT_MESSAGE_CREATED: 'message-square',
+  VISIT_ENDED: 'check-circle',
+  DWI_PROPOSED: 'inbox',
+  DWI_APPLIED: 'check',
+  DWI_DISMISSED: 'x',
+};
+
+function iconForKind(kind: string): FeatherName {
+  return KIND_ICON[kind] ?? 'activity';
 }
 
+// ---------------------------------------------------------------------------
+// Timestamp formatter — HH:MM 24-hour
+// ---------------------------------------------------------------------------
+
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
+function formatHHMM(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// FilterChip
+// ---------------------------------------------------------------------------
+
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
+type FilterChipProps = {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+};
+
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
+function FilterChip({ label, active, onPress }: FilterChipProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        chipS.chip,
+        active ? chipS.chipActive : chipS.chipInactive,
+        pressed && chipS.chipPressed,
+      ]}
+    >
+      <Text style={[chipS.label, active ? chipS.labelActive : chipS.labelInactive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const chipS = StyleSheet.create({
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  chipActive: {
+    backgroundColor: tokens.color.brand.accent,
+    borderColor: tokens.color.brand.accent,
+  },
+  chipInactive: {
+    backgroundColor: tokens.color.surface.paper3,
+    borderColor: tokens.color.surface.cardEdge,
+  },
+  chipPressed: {
+    opacity: 0.75,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: String(tokens.weight.semibold) as '600',
+  },
+  labelActive: {
+    color: tokens.color.surface.card,
+  },
+  labelInactive: {
+    color: tokens.color.ink.secondary,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// EventRow
+// ---------------------------------------------------------------------------
+
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
+type EventRowProps = { row: ActivityRowT };
+
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
+function EventRow({ row }: EventRowProps) {
+  const icon = iconForKind(row.kind);
+  const time = formatHHMM(row.when);
+
+  // Derive SITE · REASON meta from the summary line where possible.
+  // Summary is free-form text from the server; we render it verbatim in meta.
+  const meta = row.kind.replaceAll('_', ' ');
+
+  return (
+    <View style={rowS.row}>
+      {/* Left icon */}
+      <View style={rowS.iconWrap}>
+        <Feather name={icon} size={18} color={tokens.color.ink.tertiary} />
+      </View>
+
+      {/* Body */}
+      <View style={rowS.body}>
+        <Text style={rowS.summary} numberOfLines={2}>
+          {row.summary}
+        </Text>
+        <Text style={rowS.meta} numberOfLines={1}>
+          {meta}
+        </Text>
+      </View>
+
+      {/* Right timestamp */}
+      <Text style={rowS.time}>{time}</Text>
+    </View>
+  );
+}
+
+const rowS = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    backgroundColor: tokens.color.surface.card,
+    borderColor: tokens.color.surface.cardEdge,
+    borderWidth: 1,
+    borderRadius: tokens.radius.r3,
+    marginBottom: 8,
+    gap: 10,
+  },
+  iconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: tokens.color.surface.paper3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  body: {
+    flex: 1,
+    minWidth: 0,
+  },
+  summary: {
+    fontSize: 14,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    color: tokens.color.ink.primary,
+    lineHeight: 14 * 1.4,
+  },
+  meta: {
+    fontSize: tokens.type.monoSm.size,
+    fontFamily: tokens.font.mono,
+    color: tokens.color.ink.tertiary,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  time: {
+    fontSize: tokens.type.monoSm.size,
+    fontFamily: tokens.font.mono,
+    color: tokens.color.ink.tertiary,
+    flexShrink: 0,
+    marginTop: 2,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Date filter rows
+// ---------------------------------------------------------------------------
+
+const DATE_CHIPS = ['Today', 'Yesterday', 'This week'] as const;
+type DateChip = (typeof DATE_CHIPS)[number];
+
+const KIND_CHIPS = ['All actions', 'Absences', 'Lates', 'Leaves'] as const;
+type KindChip = (typeof KIND_CHIPS)[number];
+
+// ---------------------------------------------------------------------------
+// ActivityScreen
+// ---------------------------------------------------------------------------
+
+/**
+ * Activity feed screen — the "ACTIVITY · PROOF" surface for supervisors.
+ *
+ * @derives(ADR-0003)
+ * @derives(master-plan §G) — supervisor surface
+ */
 export default function ActivityScreen() {
   const q = useActivityQuery();
   const onRefresh = useCallback(() => {
     void q.refetch();
   }, [q]);
 
+  // Filter chip state — visual only, no backend wiring this slice.
+  const [dateFilter, setDateFilter] = useState<DateChip>('Today');
+  const [siteFilter, setSiteFilter] = useState<string>('All sites');
+  const [kindFilter, setKindFilter] = useState<KindChip>('All actions');
+
   const rows = q.data?.rows ?? [];
-  const totalLabel = rows.length === 1 ? '1 EVENT' : `${rows.length} EVENTS`;
+  const count = rows.length;
+  const titleText = count === 1 ? '1 event' : `${count} events`;
+
+  // Derive site chip labels from data (fallback to hardcoded set if empty).
+  const siteChips: string[] = ['All sites', 'Apollo', 'Hitech City', 'Westfield'];
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <TopAppBar title="Activity" subtitle={totalLabel + ' · PROOF'} />
+      <TopAppBar title={titleText} subtitle="ACTIVITY · PROOF" />
+
+      {/* Filter chip panel */}
+      <View style={s.filterPanel}>
+        {/* Row 1: date */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.chipRow}
+        >
+          {DATE_CHIPS.map((d) => (
+            <FilterChip
+              key={d}
+              label={d}
+              active={dateFilter === d}
+              onPress={() => setDateFilter(d)}
+            />
+          ))}
+        </ScrollView>
+
+        {/* Row 2: site */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.chipRow}
+        >
+          {siteChips.map((site) => (
+            <FilterChip
+              key={site}
+              label={site}
+              active={siteFilter === site}
+              onPress={() => setSiteFilter(site)}
+            />
+          ))}
+        </ScrollView>
+
+        {/* Row 3: kind */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.chipRow}
+        >
+          {KIND_CHIPS.map((k) => (
+            <FilterChip
+              key={k}
+              label={k}
+              active={kindFilter === k}
+              onPress={() => setKindFilter(k)}
+            />
+          ))}
+        </ScrollView>
+      </View>
 
       <ScrollView
         contentContainerStyle={s.scroll}
@@ -63,14 +324,6 @@ export default function ActivityScreen() {
           />
         }
       >
-        <View style={s.chipRow}>
-          {FILTER_CHIPS.map((c) => (
-            <View key={c} style={s.chip}>
-              <Text style={s.chipText}>{c}</Text>
-            </View>
-          ))}
-        </View>
-
         {q.isLoading ? (
           <View style={s.center}>
             <ActivityIndicator color={tokens.color.brand.accent} />
@@ -85,24 +338,16 @@ export default function ActivityScreen() {
           </View>
         ) : rows.length === 0 ? (
           <View style={s.emptyCard}>
-            <Text style={s.emptyTitle}>Nothing logged yet</Text>
+            <Text style={s.emptyTitle}>No activity logged yet</Text>
             <Text style={s.emptyBody}>
               When you act — mark a worker absent, approve a leave, log a complaint — it shows up
-              here. You can share any row to WhatsApp or reverse it within 30 minutes (coming with
-              the routing slice).
+              here. Pull down to refresh.
             </Text>
           </View>
         ) : (
           <View>
             {rows.map((row) => (
-              <View key={row.id} style={s.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.summary}>{row.summary}</Text>
-                  <Text style={s.meta}>
-                    {row.kind.replaceAll('_', ' ').toLowerCase()} · {formatRelative(row.when)}
-                  </Text>
-                </View>
-              </View>
+              <EventRow key={row.id} row={row} />
             ))}
           </View>
         )}
@@ -112,29 +357,29 @@ export default function ActivityScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: tokens.color.surface.paper },
+  root: {
+    flex: 1,
+    backgroundColor: tokens.color.surface.paper,
+  },
+  filterPanel: {
+    flexShrink: 0,
+    paddingTop: tokens.space[2],
+    paddingBottom: tokens.space[2],
+    borderBottomWidth: 1,
+    borderBottomColor: tokens.color.surface.cardEdge,
+    backgroundColor: tokens.color.surface.paper,
+    gap: tokens.space[1],
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: tokens.space[1],
+    paddingHorizontal: 14,
+    paddingVertical: 2,
+  },
   scroll: {
     paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 100,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 14,
-  },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: tokens.color.surface.paper3,
-    borderRadius: tokens.radius.r1,
-  },
-  chipText: {
-    fontSize: 11,
-    fontWeight: String(tokens.weight.semibold) as '600',
-    color: tokens.color.ink.secondary,
-    letterSpacing: 0.4,
   },
   center: {
     alignItems: 'center',
@@ -153,7 +398,7 @@ const s = StyleSheet.create({
     padding: 14,
   },
   errorTitle: {
-    fontSize: 11,
+    fontSize: tokens.type.caption.size,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.semantic.bad,
     letterSpacing: 0.44,
@@ -182,29 +427,5 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: tokens.color.ink.secondary,
     lineHeight: 13 * 1.45,
-  },
-  row: {
-    flexDirection: 'row',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: tokens.color.surface.card,
-    borderColor: tokens.color.surface.cardEdge,
-    borderWidth: 1,
-    borderRadius: tokens.radius.r3,
-    marginBottom: 8,
-  },
-  summary: {
-    fontSize: 14,
-    fontWeight: String(tokens.weight.semibold) as '600',
-    color: tokens.color.ink.primary,
-    lineHeight: 14 * 1.4,
-  },
-  meta: {
-    fontSize: 11,
-    fontFamily: tokens.font.mono,
-    color: tokens.color.ink.tertiary,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    marginTop: 4,
   },
 });

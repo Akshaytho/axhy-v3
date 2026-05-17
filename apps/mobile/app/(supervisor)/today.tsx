@@ -250,7 +250,6 @@ const s = StyleSheet.create({
     fontFamily: tokens.font.mono,
     color: tokens.color.ink.placeholder,
     letterSpacing: 0.4,
-    textTransform: 'uppercase',
     marginTop: 12,
   },
 });

@@ -7,14 +7,29 @@
  *
  * Active tab: label in --accent + filled-style icon. Inactive: --ink-3.
  *
+ * Overlays rendered at this level (above Tabs, below OS chrome):
+ *   - MicFAB: shown on all tabs except Profile; taps navigate to Chat.
+ *   - Drawer: left slide-in panel; opened via DrawerContext consumed by
+ *     every tab's TopAppBar without prop-drilling.
+ *
+ * DrawerContext approach: this layout wraps children in
+ * `<DrawerContext.Provider value={{ openDrawer }}>`. TopAppBar defaults
+ * `onMenu` to `useDrawer().openDrawer` so every tab gets the behaviour
+ * without any per-tab wiring.
+ *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
  */
 
-import { Tabs } from 'expo-router';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { Tabs, router, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { Text, StyleSheet } from 'react-native';
+import { Text } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
+
+import { MicFAB } from '../../components/MicFAB';
+import { Drawer, DrawerContext } from '../../components/Drawer';
 
 type TabIcon = React.ComponentProps<typeof Feather>['name'];
 
@@ -51,64 +66,102 @@ const labelS = StyleSheet.create({
   },
 });
 
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export default function SupervisorLayout() {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const pathname = usePathname();
+
+  // MicFAB hides on Profile (R6: `showMic = tab !== 'profile'`) AND on Chat (the
+  // current Wave 4a chat has its own Send button at bottom-right which the FAB
+  // would overlap; once Chat is rebuilt to R6's centered voice-waveform shape,
+  // re-enable the FAB on Chat).
+  const showMic = !pathname.endsWith('profile') && !pathname.endsWith('chat');
+
+  function openDrawer() {
+    setDrawerOpen(true);
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+  }
+
+  function handleMicPress() {
+    router.push('/(supervisor)/chat');
+  }
+
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: tokens.color.surface.paper,
-          borderTopColor: tokens.color.surface.cardEdge,
-          borderTopWidth: 1,
-          height: 72,
-          paddingTop: 8,
-          paddingBottom: 12,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="today"
-        options={{
-          title: 'Today',
-          tabBarIcon: tabIcon('calendar'),
-          tabBarLabel: tabLabel('Today'),
-        }}
-      />
-      <Tabs.Screen
-        name="decisions"
-        options={{
-          title: 'Decisions',
-          tabBarIcon: tabIcon('bell'),
-          tabBarLabel: tabLabel('Decisions'),
-        }}
-      />
-      <Tabs.Screen
-        name="activity"
-        options={{
-          title: 'Activity',
-          tabBarIcon: tabIcon('bar-chart-2'),
-          tabBarLabel: tabLabel('Activity'),
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarIcon: tabIcon('message-square'),
-          tabBarLabel: tabLabel('Chat'),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: tabIcon('user'),
-          tabBarLabel: tabLabel('Profile'),
-        }}
-      />
-      {/* Secondary surfaces — reachable, not tab-bar items. */}
-      <Tabs.Screen name="summary" options={{ href: null }} />
-      <Tabs.Screen name="updates" options={{ href: null }} />
-    </Tabs>
+    <DrawerContext.Provider value={{ openDrawer }}>
+      <View style={s.root}>
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarStyle: {
+              backgroundColor: tokens.color.surface.paper,
+              borderTopColor: tokens.color.surface.cardEdge,
+              borderTopWidth: 1,
+              height: 72,
+              paddingTop: 8,
+              paddingBottom: 12,
+            },
+          }}
+        >
+          <Tabs.Screen
+            name="today"
+            options={{
+              title: 'Today',
+              tabBarIcon: tabIcon('calendar'),
+              tabBarLabel: tabLabel('Today'),
+            }}
+          />
+          <Tabs.Screen
+            name="decisions"
+            options={{
+              title: 'Decisions',
+              tabBarIcon: tabIcon('bell'),
+              tabBarLabel: tabLabel('Decisions'),
+            }}
+          />
+          <Tabs.Screen
+            name="activity"
+            options={{
+              title: 'Activity',
+              tabBarIcon: tabIcon('bar-chart-2'),
+              tabBarLabel: tabLabel('Activity'),
+            }}
+          />
+          <Tabs.Screen
+            name="chat"
+            options={{
+              title: 'Chat',
+              tabBarIcon: tabIcon('message-square'),
+              tabBarLabel: tabLabel('Chat'),
+            }}
+          />
+          <Tabs.Screen
+            name="profile"
+            options={{
+              title: 'Profile',
+              tabBarIcon: tabIcon('user'),
+              tabBarLabel: tabLabel('Profile'),
+            }}
+          />
+          {/* Secondary surfaces — reachable, not tab-bar items. */}
+          <Tabs.Screen name="summary" options={{ href: null }} />
+          <Tabs.Screen name="updates" options={{ href: null }} />
+        </Tabs>
+
+        {/* MicFAB — overlays tab content; hidden on Profile. */}
+        {showMic && <MicFAB onPress={handleMicPress} />}
+
+        {/* Drawer — layout-level so it covers the full screen including tab bar. */}
+        <Drawer open={drawerOpen} onClose={closeDrawer} />
+      </View>
+    </DrawerContext.Provider>
   );
 }
+
+const s = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});
