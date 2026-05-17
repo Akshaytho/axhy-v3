@@ -1,54 +1,53 @@
 /**
- * Supervisor tab shell — 5-tab navigator.
- * @derives(ADR-0021)
+ * Supervisor tab shell — R6 5-tab bottom navigator with Feather icons.
+ *
+ * Per R6 prototype (shell.jsx TabBar) and main.jsx canvas:
+ *   Today (calendar) / Decisions (bell w/badge) / Activity (bar chart) /
+ *   Chat (message square) / Profile (user)
+ *
+ * Active tab: label in --accent + filled-style icon. Inactive: --ink-3.
+ *
+ * @derives(ADR-0003)
+ * @derives(master-plan §G) — supervisor surface
  */
 
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { Text, StyleSheet } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 
-type TabIconProps = {
-  focused: boolean;
-  label: string;
-};
+type TabIcon = React.ComponentProps<typeof Feather>['name'];
 
-function tabIcon(label: string) {
-  return ({ focused }: { focused: boolean }) => <TabIconView focused={focused} label={label} />;
-}
-
-function TabIconView({ focused, label }: TabIconProps) {
-  return (
-    <View style={focused ? iconS.dotActive : iconS.dot}>
-      <Text style={focused ? iconS.textActive : iconS.text}>{label}</Text>
-    </View>
+function tabIcon(name: TabIcon) {
+  return ({ focused }: { focused: boolean }) => (
+    <Feather
+      name={name}
+      size={20}
+      color={focused ? tokens.color.brand.accent : tokens.color.ink.tertiary}
+    />
   );
 }
 
-const iconS = StyleSheet.create({
-  dot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+function tabLabel(label: string) {
+  return ({ focused }: { focused: boolean }) => (
+    <Text style={focused ? labelS.active : labelS.inactive}>{label}</Text>
+  );
+}
+
+const labelS = StyleSheet.create({
+  active: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: tokens.color.brand.accent,
+    letterSpacing: 0.2,
+    marginTop: 2,
   },
-  dotActive: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: tokens.color.brand.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: {
-    fontSize: 13,
-    fontWeight: String(tokens.weight.semibold) as '600',
+  inactive: {
+    fontSize: 11,
+    fontWeight: '500',
     color: tokens.color.ink.tertiary,
-  },
-  textActive: {
-    fontSize: 13,
-    fontWeight: String(tokens.weight.bold) as '700',
-    color: tokens.color.brand.accentInk,
+    letterSpacing: 0.2,
+    marginTop: 2,
   },
 });
 
@@ -58,59 +57,53 @@ export default function SupervisorLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: tokens.color.surface.card,
+          backgroundColor: tokens.color.surface.paper,
           borderTopColor: tokens.color.surface.cardEdge,
           borderTopWidth: 1,
-          paddingBottom: 18,
+          height: 72,
           paddingTop: 8,
-          height: 68,
-        },
-        tabBarActiveTintColor: tokens.color.brand.accent,
-        tabBarInactiveTintColor: tokens.color.ink.tertiary,
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
+          paddingBottom: 12,
         },
       }}
     >
-      {/* R6 tab order locked 2026-05-11 + founder-confirmed 2026-05-17 PM:
-          Today / Decisions / Activity / Chat / Profile.
-          Summary + Updates are secondary surfaces (reachable via deep link
-          or contextual entry from Today / Profile) but hidden from the
-          tab bar — `href: null`. */}
       <Tabs.Screen
         name="today"
         options={{
           title: 'Today',
-          tabBarIcon: tabIcon('Today'),
+          tabBarIcon: tabIcon('calendar'),
+          tabBarLabel: tabLabel('Today'),
         }}
       />
       <Tabs.Screen
         name="decisions"
         options={{
           title: 'Decisions',
-          tabBarIcon: tabIcon('Decisions'),
+          tabBarIcon: tabIcon('bell'),
+          tabBarLabel: tabLabel('Decisions'),
         }}
       />
       <Tabs.Screen
         name="activity"
         options={{
           title: 'Activity',
-          tabBarIcon: tabIcon('Activity'),
+          tabBarIcon: tabIcon('bar-chart-2'),
+          tabBarLabel: tabLabel('Activity'),
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
           title: 'Chat',
-          tabBarIcon: tabIcon('Chat'),
+          tabBarIcon: tabIcon('message-square'),
+          tabBarLabel: tabLabel('Chat'),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: tabIcon('Profile'),
+          tabBarIcon: tabIcon('user'),
+          tabBarLabel: tabLabel('Profile'),
         }}
       />
       {/* Secondary surfaces — reachable, not tab-bar items. */}
