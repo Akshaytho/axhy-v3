@@ -1,13 +1,13 @@
 /**
- * UrgencyBanner — top "NEEDS YOU NOW" banner.
+ * UrgencyBanner — top "NEEDS YOU NOW" attention bar.
  *
- * Per R6 prototype. Renders only when (a) any worker is no_show / late, or
- * (b) any visit is flagged. Otherwise null — Today should feel calm when
- * nothing needs the supervisor.
+ * Per R6 prototype `today.jsx:589-624`:
+ *   - 12/14 padding, r-2 (10px) radius, bad-soft background, 4px left border in --bad
+ *   - eyebrow: ⚠ NEEDS YOU NOW in --bad t-caption
+ *   - body: fontSize 14, fontWeight 600, ink primary
+ *   - lines joined with " · "
  *
- * Tapping the banner is a future affordance (jump to flagged review or
- * to the affected site card). For sprint scope, the banner is read-only
- * informational; no log+advance stub.
+ * Renders null when nothing needs attention so Today feels calm.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
@@ -15,47 +15,56 @@
 
 import { View, Text, StyleSheet } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
-import type { TodayPulseT } from '@axhy/shared-schema';
+import type { TodayPulseT, TodaySiteT } from '@axhy/shared-schema';
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export type UrgencyBannerProps = { pulse: TodayPulseT };
+export type UrgencyBannerProps = {
+  pulse: TodayPulseT;
+  sites: ReadonlyArray<TodaySiteT>;
+};
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export function UrgencyBanner({ pulse }: UrgencyBannerProps) {
-  const parts: string[] = [];
-  if (pulse.noShow > 0) parts.push(`${pulse.noShow} no-show${pulse.noShow > 1 ? 's' : ''}`);
-  if (pulse.late > 0) parts.push(`${pulse.late} late`);
-  if (pulse.flagged > 0)
-    parts.push(`${pulse.flagged} flagged visit${pulse.flagged > 1 ? 's' : ''}`);
-  if (parts.length === 0) return null;
+export function UrgencyBanner({ pulse, sites }: UrgencyBannerProps) {
+  const totalShort = pulse.late + pulse.noShow;
+  const sitesShort = sites.filter((s) => s.workersDue - s.workersOn > 0).length;
+  if (totalShort === 0 && pulse.flagged === 0) return null;
+
+  const lines: string[] = [];
+  if (totalShort > 0) {
+    lines.push(`${totalShort} short across ${sitesShort} ${sitesShort === 1 ? 'site' : 'sites'}`);
+  }
+  if (pulse.flagged > 0) {
+    lines.push(`${pulse.flagged} flagged ${pulse.flagged === 1 ? 'visit' : 'visits'}`);
+  }
 
   return (
     <View style={s.banner}>
-      <Text style={s.eyebrow}>NEEDS YOU NOW</Text>
-      <Text style={s.body}>{parts.join(' · ')}</Text>
+      <Text style={s.eyebrow}>⚠ NEEDS YOU NOW</Text>
+      <Text style={s.body}>{lines.join(' · ')}</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
   banner: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
     backgroundColor: tokens.color.semantic.badSoft,
-    borderColor: tokens.color.semantic.bad,
-    borderWidth: 1,
-    borderRadius: tokens.radius.r3,
-    paddingHorizontal: tokens.space[4],
-    paddingVertical: tokens.space[3],
-    marginBottom: tokens.space[4],
+    borderRadius: tokens.radius.r2,
+    borderLeftWidth: 4,
+    borderLeftColor: tokens.color.semantic.bad,
   },
   eyebrow: {
     fontSize: tokens.type.caption.size,
-    fontWeight: String(tokens.weight.bold) as '700',
+    fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.semantic.bad,
-    letterSpacing: 1.2,
-    marginBottom: tokens.space[1],
+    letterSpacing: tokens.type.caption.size * tokens.type.caption.tracking,
+    textTransform: 'uppercase',
+    marginBottom: 2,
   },
   body: {
-    fontSize: tokens.type.subhead.size,
+    fontSize: 14,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.primary,
   },

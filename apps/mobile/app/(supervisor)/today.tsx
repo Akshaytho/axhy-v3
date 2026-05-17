@@ -1,27 +1,21 @@
 /**
- * Today tab — R6-faithful port (2026-05-17 sprint).
+ * Today tab — R6-faithful port.
  *
- * Composition:
- *   TopAppBar (greeting + portfolio summary)
- *   UrgencyBanner (only renders when stuff needs attention)
- *   FloorPulse (3 big-number metrics: ON SITE / SHORT / PENDING)
- *   SiteCard[] (collapsed-by-default; expand to see workers)
- *     WorkerRow (tap → MarkAbsentSheet)
- *   Flagged-visit list (tap → FlaggedReviewSheet, disabled controls)
+ * Layout per R6 (`docs/prototypes/supervisor-mobile-r6/project/src/today.jsx`):
+ *   TopAppBar (chrome: subtitle "WEEKDAY · HH:MM" + title "Today's plan")
+ *   ScrollView padded 14/14 with pb-100 for tab-bar clearance
+ *     UrgencyBanner (only if late+no_show > 0 OR flagged > 0)
+ *     FloorPulse (ON SITE / SHORT / PENDING) — single card with 3 columns
+ *     SiteCard[]  (collapsed by default; tap → worker rows)
+ *     "Pull to refresh · Updates live" footer hint
  *
- * Data path: useTodayQuery → GET /supervisor/today (server-side
- * portfolio + state derivation; client never re-aggregates).
- * Pull-to-refresh wired via RN RefreshControl.
- *
- * Per founder lock (feedback_supervisor_no_visit_mark_button), the only
- * supervisor write affordance on this screen is MarkAbsentSheet which
- * writes Attendance, not Visit. Visit lifecycle is worker-driven.
+ * Data path: useTodayQuery → GET /supervisor/today.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -32,11 +26,9 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
 import { tokens } from '@axhy/ui-tokens';
-import type { MeOutput, TodayFlaggedVisitT, TodayWorkerT } from '@axhy/shared-schema';
+import type { TodayFlaggedVisitT, TodayWorkerT } from '@axhy/shared-schema';
 
-import { apiFetch } from '../../lib/api';
 import { useTodayQuery } from '../../lib/queries/use-today';
 import { TopAppBar } from '../../components/today/TopAppBar';
 import { UrgencyBanner } from '../../components/today/UrgencyBanner';
@@ -45,9 +37,14 @@ import { SiteCard } from '../../components/today/SiteCard';
 import { MarkAbsentSheet } from '../../components/today/MarkAbsentSheet';
 import { FlaggedReviewSheet } from '../../components/today/FlaggedReviewSheet';
 
+function formatWeekdayTime(d: Date): string {
+  const weekday = d.toLocaleDateString([], { weekday: 'long' }).toUpperCase();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${weekday} · ${time}`;
+}
+
 export default function TodayScreen() {
   const today = useTodayQuery();
-  const me = useQuery<MeOutput>({ queryKey: ['me'], queryFn: () => apiFetch<MeOutput>('/me') });
   const [markAbsentTarget, setMarkAbsentTarget] = useState<TodayWorkerT | null>(null);
   const [flaggedTarget, setFlaggedTarget] = useState<TodayFlaggedVisitT | null>(null);
 
@@ -55,12 +52,12 @@ export default function TodayScreen() {
     void today.refetch();
   }, [today]);
 
-  const firstName = me.data?.user.name?.split(/\s+/)[0] ?? null;
+  const subtitle = useMemo(() => formatWeekdayTime(new Date()), [today.dataUpdatedAt]);
   const data = today.data;
-  const totalDue = data?.sites.reduce((sum, site) => sum + site.workersDue, 0) ?? 0;
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
+      <TopAppBar title="Today's plan" subtitle={subtitle} />
       <ScrollView
         contentContainerStyle={s.scroll}
         refreshControl={
@@ -71,12 +68,6 @@ export default function TodayScreen() {
           />
         }
       >
-        <TopAppBar
-          firstName={firstName}
-          siteCount={data?.sites.length ?? null}
-          workerCount={data?.workers.length ?? null}
-        />
-
         {today.isLoading ? (
           <View style={s.center}>
             <ActivityIndicator color={tokens.color.brand.accent} />
@@ -93,8 +84,8 @@ export default function TodayScreen() {
           </View>
         ) : data ? (
           <>
-            <UrgencyBanner pulse={data.pulse} />
-            <FloorPulse pulse={data.pulse} totalDue={totalDue} />
+            <UrgencyBanner pulse={data.pulse} sites={data.sites} />
+            <FloorPulse pulse={data.pulse} />
 
             {data.sites.length === 0 ? (
               <View style={s.emptyCard}>
@@ -134,13 +125,13 @@ export default function TodayScreen() {
                         {v.reason ?? 'AI flagged this visit for review.'}
                       </Text>
                     </View>
-                    <View style={s.flaggedMeta}>
-                      <Text style={s.flaggedPhotos}>{v.photoCount} photos</Text>
-                    </View>
+                    <Text style={s.flaggedPhotos}>{v.photoCount} photos</Text>
                   </Pressable>
                 ))}
               </View>
             ) : null}
+
+            <Text style={s.footerHint}>Pull to refresh · Updates live</Text>
           </>
         ) : null}
       </ScrollView>
@@ -154,9 +145,9 @@ export default function TodayScreen() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.color.surface.paper },
   scroll: {
-    paddingHorizontal: tokens.space[5],
-    paddingTop: tokens.space[5],
-    paddingBottom: tokens.space[9],
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 100,
   },
   center: {
     alignItems: 'center',
@@ -169,19 +160,22 @@ const s = StyleSheet.create({
   },
   errorCard: {
     backgroundColor: tokens.color.semantic.badSoft,
-    borderColor: tokens.color.semantic.bad,
-    borderWidth: 1,
-    borderRadius: tokens.radius.r3,
-    padding: tokens.space[4],
+    borderLeftColor: tokens.color.semantic.bad,
+    borderLeftWidth: 4,
+    borderRadius: tokens.radius.r2,
+    padding: 14,
   },
   errorTitle: {
-    fontSize: tokens.type.subhead.size,
-    fontWeight: String(tokens.weight.bold) as '700',
+    fontSize: tokens.type.caption.size,
+    fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.semantic.bad,
-    marginBottom: tokens.space[2],
+    letterSpacing: 0.44,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
   errorBody: {
-    fontSize: tokens.type.body.size,
+    fontSize: 14,
+    fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.primary,
   },
   emptyCard: {
@@ -189,64 +183,74 @@ const s = StyleSheet.create({
     borderColor: tokens.color.surface.cardEdge,
     borderWidth: 1,
     borderRadius: tokens.radius.r3,
-    padding: tokens.space[5],
-    marginBottom: tokens.space[5],
+    padding: 20,
+    marginBottom: 14,
   },
   emptyTitle: {
-    fontSize: tokens.type.subhead.size,
+    fontSize: 16,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.primary,
-    marginBottom: tokens.space[2],
+    marginBottom: 6,
   },
   emptyBody: {
-    fontSize: tokens.type.body.size,
+    fontSize: 13,
     color: tokens.color.ink.secondary,
-    lineHeight: tokens.type.body.size * tokens.type.body.lineHeight,
+    lineHeight: 13 * 1.45,
   },
   flaggedSection: {
-    marginTop: tokens.space[4],
+    marginTop: 4,
   },
   sectionHeading: {
     fontSize: tokens.type.caption.size,
-    fontWeight: String(tokens.weight.bold) as '700',
+    fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.tertiary,
-    letterSpacing: 1.2,
-    marginBottom: tokens.space[2],
+    letterSpacing: 0.44,
+    textTransform: 'uppercase',
+    marginBottom: 6,
   },
   flaggedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.space[3],
-    paddingHorizontal: tokens.space[4],
-    paddingVertical: tokens.space[3],
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: tokens.color.surface.card,
-    borderColor: tokens.color.semantic.bad,
     borderLeftWidth: 3,
+    borderLeftColor: tokens.color.semantic.bad,
     borderTopWidth: 1,
     borderRightWidth: 1,
     borderBottomWidth: 1,
     borderTopColor: tokens.color.surface.cardEdge,
     borderRightColor: tokens.color.surface.cardEdge,
     borderBottomColor: tokens.color.surface.cardEdge,
-    borderRadius: tokens.radius.r3,
-    marginBottom: tokens.space[2],
+    borderRadius: tokens.radius.r2,
+    marginBottom: 8,
   },
   flaggedRowPressed: { backgroundColor: tokens.color.surface.paper2 },
   flaggedName: {
-    fontSize: tokens.type.body.size,
+    fontSize: 14,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.primary,
   },
   flaggedReason: {
-    fontSize: tokens.type.bodySm.size,
+    fontSize: 12,
     color: tokens.color.ink.tertiary,
     marginTop: 2,
   },
-  flaggedMeta: { alignItems: 'flex-end' },
   flaggedPhotos: {
-    fontSize: tokens.type.caption.size,
-    fontWeight: String(tokens.weight.bold) as '700',
+    fontSize: 11,
+    fontFamily: tokens.font.mono,
     color: tokens.color.ink.tertiary,
-    letterSpacing: 1.0,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  footerHint: {
+    textAlign: 'center',
+    fontSize: 11,
+    fontFamily: tokens.font.mono,
+    color: tokens.color.ink.placeholder,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginTop: 12,
   },
 });
