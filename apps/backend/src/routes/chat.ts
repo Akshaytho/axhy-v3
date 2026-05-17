@@ -32,7 +32,10 @@ import {
   proposeLivingDocUpdateTool,
   proposeSwapTool,
   proposeTerminationTool,
+  proposeLogComplaintTool,
+  proposeClarifyTool,
 } from '@axhy/ai-tools';
+import { ProposeLogComplaintInput, ProposeClarifyInput } from '@axhy/shared-schema';
 import { detectConflicts } from '@axhy/state-machines';
 import { CreateAssignmentInput as CreateAssignmentInputSchema } from '@axhy/shared-schema';
 
@@ -59,6 +62,7 @@ import {
 import { createLeaveRequestService } from '../lib/services/leave-request-service.js';
 import { markAbsentService } from '../lib/services/attendance-service.js';
 import { createSwapRequestService } from '../lib/services/swap-request-service.js';
+import { createComplaintWithInitialMessage } from '../lib/services/complaint-service.js';
 
 /**
  * Map a LifecycleError code to its HTTP status.
@@ -110,7 +114,78 @@ function httpStatusForServiceDomainCode(code: string): number {
  */
 const SYSTEM_PROMPT = `You help cleaning-company supervisors in India run their day. Use the tools to resolve names and propose actions; the supervisor confirms.
 If a required field is missing, ask the supervisor for ONLY that one missing piece — never demand multiple fields at once.
-Match the language the supervisor used (English, Hindi, Telugu, or mixed). Keep replies short.`;
+Match the language the supervisor used (English, Hindi, Telugu, or mixed). Keep replies short.
+
+INTENT CLASSIFIER (Wave 3 — Hyderabad supervisor phrasings)
+
+Classify each supervisor message into ONE of these intents and act accordingly:
+
+  mark_absent           Worker did not show up to work today.
+                        Examples: "Mukesh absent today" · "Mukesh nahi aaya" ·
+                          "Anjali ne phone kiya, kahi nahi aayi today" ·
+                          "Pradeep ko bukhar hai, off today"
+                        → call propose_mark_absent
+
+  request_leave_decision Worker wants leave for a date range (existing tool).
+                        Examples: "Suresh leave Monday to Wednesday" ·
+                          "Lakshmi 3 din chuti chahiye"
+                        → call propose_leave
+
+  log_complaint         Work-quality issue, client complaint, damage, theft
+                        accusation, missed area, attitude / rudeness, hygiene,
+                        noise, photo mismatch, gate-pass issue AT A SPECIFIC
+                        SITE.
+                        Examples:
+                          "lobby missed at Aparna A-block 11 AM today" → missed_area
+                          "Anjali rude to resident's child Bhooja Mar 13" → attitude
+                          "phenyl smell complaint from KIMS infection control" → hygiene
+                          "client says her gold chain is missing from her flat at My Home Avatar" → theft_accusation
+                          "broken tile, worker dropped bucket at Prestige Falcon City" → damage
+                          "client called — terrace not done yesterday at Aparna Sarovar" → missed_area
+                          "vacuum running 6 AM, residents complained at Lansum" → noise
+                          "gate pass expired, Ramesh turned back at My Home Bhooja" → gate_pass
+                          "photo of mopped floor doesn't match what the client saw at Aparna Cyber Life" → photo_mismatch
+                        → call propose_log_complaint
+
+  general               Greetings, status questions, anything else.
+                        → no tool call; respond conversationally.
+
+DISAMBIGUATION RULES (CRITICAL)
+
+  * Worker absence vs site complaint:
+      "<Worker> did not come today"           → mark_absent (about the worker)
+      "lobby was not cleaned today at <Site>" → log_complaint (about the work)
+      "<Worker> did not clean <Area> at <Site>" → log_complaint (missed_area)
+        — log the complaint; do NOT also mark the worker absent unless
+          supervisor explicitly says they did not come.
+
+  * General venting:
+      "everything is bad today" / "kuch bhi theek nahi hai" → general
+        — DO NOT call propose_log_complaint without a CONCRETE site AND
+          a CONCRETE event.
+
+  * Ambiguous site name:
+      Supervisor says "Aparna" but find_sites returns multiple matches
+      (Aparna A-block, Aparna B-block, Aparna Sarovar, …)
+        → call propose_clarify with options including each candidate site.
+
+  * Ambiguous intent (≤0.7 confidence):
+      "Mukesh issue at Aparna" — could be mark_absent OR log_complaint
+        → call propose_clarify with options ["Mark absent", "Log complaint",
+          "Something else"].
+        — DO NOT guess when intent is genuinely unclear.
+
+  * High-stakes complaint vs general:
+      "client threatening to cancel because of cleanliness at <Site>"
+        → log_complaint with severity=HIGH.
+      "client cancelled <Site>"
+        → general (this is news, not a complaint to log).
+
+LANGUAGE NOTE
+
+  Hinglish / Telugu-English / pure Hindi all common. Preserve the
+  supervisor's wording in the complaint description field. Do NOT
+  translate; HR portal users may need the original phrasing to follow up.`;
 
 /** Static help response — returned without any AI call when supervisor types help/menu. */
 const HELP_TEXT = `I can help with:
@@ -197,6 +272,16 @@ async function persistChatTurn(input: {
    * @derives(spec-2 §8.3)
    */
   cacheTokens: number | null;
+  /**
+   * Wave 3 — optional photo attachments uploaded by mobile via the existing
+   * S3 signed-URL pipeline. Persisted on the USER ChatMessage row's
+   * `toolCalls` JSON under the key `attachments` (the field is unused on
+   * user-rows today; piggy-backing avoids an additive schema migration this
+   * wave). Mobile reads it back via `loadPriorMessages` callers in v3.1.
+   *
+   * Each entry is { type:'image', url }.
+   */
+  userAttachments: ReadonlyArray<{ type: 'image'; url: string }>;
 }): Promise<{
   chatMessageId: string;
   assistantText: string;
@@ -231,6 +316,13 @@ async function persistChatTurn(input: {
         transcript: input.userText,
         voiceConfidence: input.voiceConfidence,
         idempotencyKey: input.idempotencyKey,
+        // Wave 3 — photo attachments persisted on the user-row's
+        // `toolCalls` JSON under `attachments`. See `userAttachments`
+        // docstring above for rationale.
+        toolCalls:
+          input.userAttachments.length > 0
+            ? ({ attachments: input.userAttachments } as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
       },
     });
 
@@ -365,6 +457,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // Help short-circuit makes no AI call — zero cost, no cache tokens.
         costInr: 0,
         cacheTokens: null,
+        userAttachments: parsed.data.attachments ?? [],
       });
       await recordIdempotency(
         prisma,
@@ -401,6 +494,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         proposeLivingDocUpdateTool,
         proposeSwapTool,
         proposeTerminationTool,
+        proposeLogComplaintTool,
+        proposeClarifyTool,
       ];
 
       // Load last N turns from this supervisor's chat thread so the model
@@ -416,10 +511,21 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       const livingDocBlock = formatLivingDocPrompt(livingDoc);
       const calendarBlock = await loadCalendarTier3(prisma, auth.companyId, auth.userId);
 
+      // Wave 3 — if the supervisor attached photos, append a brief note to
+      // the user message so the AI knows they exist. The Whisper / gpt-5.4-nano
+      // surface is text-only; we do not stream image bytes (Vision pipeline
+      // is out of scope). The note is enough to bias the intent classifier
+      // toward `log_complaint` when a photo is attached.
+      const attachmentCount = parsed.data.attachments?.length ?? 0;
+      const userMessageWithAttachmentHint =
+        attachmentCount > 0
+          ? `${parsed.data.text}\n\n[Supervisor attached ${attachmentCount} photo${attachmentCount === 1 ? '' : 's'}. Treat as evidence supporting a possible complaint.]`
+          : parsed.data.text;
+
       const loopResult = await openaiToolLoop({
         apiKey,
         systemPrompt: SYSTEM_PROMPT,
-        userMessage: parsed.data.text,
+        userMessage: userMessageWithAttachmentHint,
         priorMessages,
         tools,
         maxIterations: 6,
@@ -692,6 +798,99 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
               },
             };
           }
+          if (name === 'propose_log_complaint') {
+            // Wave 3 — chat-driven complaint flow. Validate via the shared
+            // Zod schema (same one used by the future mobile complaint form
+            // when it ships) so the tool path and the future direct-form
+            // path cannot drift. Creates the Complaint + initial
+            // ComplaintMessage + audit + outbox in ONE tx via the service.
+            // Unlike `propose_create_assignment` (which proposes, supervisor
+            // applies via /chat/apply), complaints are fire-and-display per
+            // the design (`supervisor-drawer-and-decisions-redesign.md` §D);
+            // the confirmation bubble IS the confirmation.
+            const parsedTool = ProposeLogComplaintInput.safeParse(input);
+            if (!parsedTool.success) {
+              return { output: { error: 'BAD_TOOL_INPUT', message: parsedTool.error.message } };
+            }
+            const p = parsedTool.data;
+            const observedAt = p.observedAt ? new Date(p.observedAt) : null;
+            const result = await withTenantContext(prisma, auth.companyId, async (tx) =>
+              createComplaintWithInitialMessage(tx, {
+                companyId: auth.companyId,
+                siteId: p.siteId,
+                supervisorUserId: auth.userId,
+                createdByUserId: auth.userId,
+                text: p.description,
+                severity: p.severity,
+                kind: p.kind,
+                observedAt,
+                origin: 'CHAT',
+              }),
+            );
+            if (result.kind === 'SITE_NOT_FOUND') {
+              return { output: { error: 'SITE_NOT_FOUND' } };
+            }
+            const kindLabel = p.kind.replace(/_/g, ' ');
+            const confirmationText = `Logged complaint at ${result.siteName} · ${p.severity} · ${kindLabel} · sent to HR for review.`;
+            return {
+              output: {
+                proposed: false,
+                applied: true,
+                complaintId: result.complaintId,
+                initialMessageId: result.initialMessageId,
+                siteName: result.siteName,
+                confirmationText,
+                fields: {
+                  siteId: p.siteId,
+                  severity: p.severity,
+                  kind: p.kind,
+                  description: p.description,
+                },
+              },
+              decisionCardData: {
+                decisionId: randomUUID(),
+                toolName: name,
+                title: 'Complaint logged',
+                description: confirmationText,
+                fields: {
+                  complaintId: result.complaintId,
+                  siteId: p.siteId,
+                  severity: p.severity,
+                  kind: p.kind,
+                },
+                severity: 'CONFIRM',
+                origin: 'CHAT',
+              },
+            };
+          }
+          if (name === 'propose_clarify') {
+            // Wave 3 — confidence-gated fallback. No domain write; just
+            // surfaces the question + chips back to mobile. Mobile renders
+            // the options as tappable chips; selecting a chip enqueues a
+            // follow-up user message back through this same loop.
+            const parsedTool = ProposeClarifyInput.safeParse(input);
+            if (!parsedTool.success) {
+              return { output: { error: 'BAD_TOOL_INPUT', message: parsedTool.error.message } };
+            }
+            const p = parsedTool.data;
+            return {
+              output: {
+                proposed: false,
+                clarify: true,
+                question: p.question,
+                options: p.options,
+              },
+              decisionCardData: {
+                decisionId: randomUUID(),
+                toolName: name,
+                title: p.question,
+                description: 'Tap an option to continue.',
+                fields: { question: p.question, options: p.options },
+                severity: 'CONFIRM',
+                clarify: true,
+              },
+            };
+          }
           if (name === 'propose_living_doc_update') {
             // Spec 2 §6.2 — supervisor codifies a rule. AI emits this as
             // part of the main turn; we just validate + surface as a
@@ -736,6 +935,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // Spec 2 §8.3 — cached_tokens captured by openai-tool-loop from
         // response.usage.prompt_tokens_details (null when SDK omits).
         cacheTokens: loopResult.cacheTokens,
+        userAttachments: parsed.data.attachments ?? [],
       });
 
       await recordIdempotency(

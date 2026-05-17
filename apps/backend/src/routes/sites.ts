@@ -68,8 +68,18 @@ export async function registerSitesRoutes(app: FastifyInstance): Promise<void> {
               companyId: auth.companyId,
               siteId,
               supervisorId: auth.userId,
+              // Wave 3 (2026-05-18) — `createdByUserId` is the audit
+              // attribution for who actually invoked the action; under
+              // acting-supervisor windows it may diverge from supervisorId.
+              // For the direct button route the caller IS the actor.
+              createdByUserId: auth.userId,
               text,
               severity,
+              // Default kind for the direct-button route is `other` until
+              // the supervisor UI exposes a kind picker. Chat tool-loop
+              // sets kind explicitly via `propose_log_complaint`.
+              kind: 'other',
+              state: 'OPEN',
             },
           });
 

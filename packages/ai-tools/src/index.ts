@@ -31,5 +31,6 @@ export * from './tools/mark-absent.js';
 export * from './tools/read.js';
 export * from './tools/swap.js';
 export * from './tools/termination.js';
+export * from './tools/complaint.js';
 export * from './sonnet-tool-loop.js';
 export * from './openai-tool-loop.js';
