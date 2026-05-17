@@ -17,6 +17,9 @@
  * `onMenu` to `useDrawer().openDrawer` so every tab gets the behaviour
  * without any per-tab wiring.
  *
+ * Locale: tab labels are derived from `useLocaleStrings()` so they
+ * re-render whenever the Profile language picker calls `setLocale()`.
+ *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
  */
@@ -31,6 +34,7 @@ import { tokens } from '@axhy/ui-tokens';
 import { MicFAB } from '../../components/MicFAB';
 import { Drawer, DrawerContext } from '../../components/Drawer';
 import { DecisionsBadgeIcon } from '../../components/DecisionsBadgeIcon';
+import { useLocaleStrings } from '../../lib/i18n/use-locale';
 
 type TabIcon = React.ComponentProps<typeof Feather>['name'];
 
@@ -71,6 +75,7 @@ const labelS = StyleSheet.create({
 export default function SupervisorLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
+  const strings = useLocaleStrings();
 
   // MicFAB hides on Profile (R6: `showMic = tab !== 'profile'`) AND on Chat (the
   // current Wave 4a chat has its own Send button at bottom-right which the FAB
@@ -109,43 +114,43 @@ export default function SupervisorLayout() {
           <Tabs.Screen
             name="today"
             options={{
-              title: 'Today',
+              title: strings.tabs.today,
               tabBarIcon: tabIcon('calendar'),
-              tabBarLabel: tabLabel('Today'),
+              tabBarLabel: tabLabel(strings.tabs.today),
             }}
           />
           <Tabs.Screen
             name="decisions"
             options={{
-              title: 'Decisions',
+              title: strings.tabs.decisions,
               tabBarIcon: ({ focused }: { focused: boolean }) => (
                 <DecisionsBadgeIcon focused={focused} />
               ),
-              tabBarLabel: tabLabel('Decisions'),
+              tabBarLabel: tabLabel(strings.tabs.decisions),
             }}
           />
           <Tabs.Screen
             name="activity"
             options={{
-              title: 'Activity',
+              title: strings.tabs.activity,
               tabBarIcon: tabIcon('bar-chart-2'),
-              tabBarLabel: tabLabel('Activity'),
+              tabBarLabel: tabLabel(strings.tabs.activity),
             }}
           />
           <Tabs.Screen
             name="chat"
             options={{
-              title: 'Chat',
+              title: strings.tabs.chat,
               tabBarIcon: tabIcon('message-square'),
-              tabBarLabel: tabLabel('Chat'),
+              tabBarLabel: tabLabel(strings.tabs.chat),
             }}
           />
           <Tabs.Screen
             name="profile"
             options={{
-              title: 'Profile',
+              title: strings.tabs.profile,
               tabBarIcon: tabIcon('user'),
-              tabBarLabel: tabLabel('Profile'),
+              tabBarLabel: tabLabel(strings.tabs.profile),
             }}
           />
           {/* Secondary surfaces — reachable, not tab-bar items. */}

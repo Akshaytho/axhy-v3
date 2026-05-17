@@ -49,6 +49,7 @@ import type { MeOutput } from '@axhy/shared-schema';
 
 import { TopAppBar } from '../../components/today/TopAppBar';
 import { SkeletonBubble } from '../../components/SkeletonBubble';
+import { useLocaleStrings } from '../../lib/i18n/use-locale';
 import { GreetingCard } from '../../components/chat/GreetingCard';
 import { ContextSeparator } from '../../components/chat/ContextSeparator';
 import { ChatBubble } from '../../components/chat/ChatBubble';
@@ -90,6 +91,7 @@ function decisionCount(msg: LocalMessage): number {
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export default function ChatScreen() {
+  const strings = useLocaleStrings();
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -248,7 +250,7 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       {/* TopAppBar */}
-      <TopAppBar title="Chat" subtitle="VOICE · MESSY INPUT" />
+      <TopAppBar title={strings.chat.title} subtitle="VOICE · MESSY INPUT" />
 
       {/* GreetingCard — always shown, even in empty state */}
       <GreetingCard
