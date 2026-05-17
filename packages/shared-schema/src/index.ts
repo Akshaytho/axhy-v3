@@ -30,3 +30,5 @@ export * from './zod/supervisor-decision-kinds.js';
 export * from './zod/handoff-package.js';
 // Supervisor Today tab (panel-2026-05-17)
 export * from './zod/today.js';
+// Supervisor Activity feed (panel-2026-05-17 PM)
+export * from './zod/activity.js';
