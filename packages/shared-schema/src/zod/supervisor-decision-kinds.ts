@@ -128,6 +128,60 @@ export const DECISION_KIND_REGISTRY: readonly DecisionKindSpec[] = [
     toolName: 'propose_living_doc_update',
     ackRequired: false,
   },
+  // ── Wave 2 (2026-05-18) — UNION-ALL virtual decision sources ────────────
+  //
+  // The four kinds below are NOT stored as SupervisorDecision rows. They are
+  // projected by `buildDecisionsForSupervisor` from their canonical domain
+  // tables (LeaveRequest, SwapRequest, ReplacementInvite, ComplaintMessage)
+  // into the same DecisionRow shape via the plug-in `DecisionSource` pattern.
+  //
+  // They appear in the registry so:
+  //   - tier mapping is in ONE place (no parallel switch in the builder)
+  //   - the Decisions queue UI can dispatch to the right card variant by kind
+  //   - new sources added later (replacement-invite, complaint) inherit the
+  //     same registry-driven tier mapping with zero builder churn.
+  //
+  // routingMode for virtual rows is informational only — the source's own
+  // SQL `WHERE` clause is the binding-routing predicate. We mark them
+  // 'site-targeted' or 'worker-targeted' to mirror the domain.
+  //
+  // ackRequired = false for all four; EMPLOYMENT typed-phrase confirm is
+  // reserved for TERMINATE_WORKER-class actions only per master-plan §G
+  // (no_self_service_resign_or_terminate lock).
+  //
+  // @derives(Wave 2 plan §3 + drawer-redesign §B.2)
+  {
+    kind: 'LEAVE_APPROVAL_PENDING',
+    tier: 'PERSONNEL',
+    routingMode: 'worker-targeted',
+    // No toolName: created by LeaveRequest POST (worker app or admin), not chat.
+    ackRequired: false,
+  },
+  {
+    kind: 'SWAP_REQUEST_PENDING',
+    tier: 'OPERATIONAL',
+    routingMode: 'site-targeted',
+    // No toolName: created when worker submits a swap via worker app.
+    ackRequired: false,
+  },
+  {
+    kind: 'REPLACEMENT_INVITE_OUTCOME',
+    tier: 'OPERATIONAL',
+    routingMode: 'site-targeted',
+    // No toolName: created by dispatcher when broadcast resolves
+    // (ACCEPTED-this-turn / EXPIRED-no-accept). Source plug-in lands in
+    // Sprint 2 when Wave 1's ReplacementInvite model is integrated.
+    ackRequired: false,
+  },
+  {
+    kind: 'COMPLAINT_HR_REPLY',
+    tier: 'NOTE',
+    routingMode: 'site-targeted',
+    // No toolName: created when HR posts a reply on a Complaint thread.
+    // Source plug-in lands in Sprint 2 when Wave 3's Complaint/ComplaintMessage
+    // schema is integrated.
+    ackRequired: false,
+  },
 ] as const;
 
 // ===========================================================================
