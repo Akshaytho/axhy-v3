@@ -35,14 +35,20 @@ const TEST_PREFIX = `mark-absent-${Date.now()}-`;
 const SUP_PHONE = `+9199${String(Date.now() + 1).slice(-8)}`;
 const WORKER_PHONE_A = `+9199${String(Date.now() + 2).slice(-8)}`;
 const WORKER_PHONE_OTHER_TENANT = `+9199${String(Date.now() + 3).slice(-8)}`;
+const SUP_B_PHONE = `+9199${String(Date.now() + 4).slice(-8)}`;
+const WORKER_PHONE_UNASSIGNED = `+9199${String(Date.now() + 5).slice(-8)}`;
 
 let app: FastifyInstance;
 let companyAId: string;
 let companyBId: string;
 let supervisorId: string;
+let supervisorBId: string;
 let workerAId: string;
 let workerBId: string;
+let workerUnassignedId: string;
+let siteAId: string;
 let accessToken: string;
+let accessTokenB: string;
 
 beforeAll(async () => {
   const { buildServer } = await import('../src/server.js');
@@ -103,8 +109,76 @@ beforeAll(async () => {
   });
   workerBId = wB.id;
 
+  // Site in CoA — workerA is assigned here; supervisorId is the PERMANENT binding.
+  // Q2=B hardening: without this seed, the new supervises-worker check would
+  // reject the existing happy path (no effective binding → NO_PRIMARY_SITE).
+  const site = await prismaRaw.site.create({
+    data: {
+      companyId: companyAId,
+      name: TEST_PREFIX + 'Site',
+      state: 'ACTIVE',
+    },
+  });
+  siteAId = site.id;
+
+  // Assignment placing workerA at siteA, ACTIVE, open-ended validity.
+  await prismaRaw.assignment.create({
+    data: {
+      companyId: companyAId,
+      workerId: workerAId,
+      siteId: siteAId,
+      shiftStart: '09:00',
+      shiftEnd: '18:00',
+      dayMask: 'MTWTFS_',
+      validFrom: new Date('2026-01-01'),
+      state: 'ACTIVE',
+    },
+  });
+
+  // PERMANENT binding: supervisorId owns siteA from 2026-01-01.
+  await prismaRaw.siteSupervisorBinding.create({
+    data: {
+      companyId: companyAId,
+      siteId: siteAId,
+      userId: supervisorId,
+      effectiveFrom: new Date('2026-01-01'),
+      reason: 'test seed — PERMANENT binding for mark-absent happy path',
+      createdBy: supervisorId,
+    },
+  });
+
+  // SupervisorB in CoA — same tenant as workerA, but NOT bound to siteA.
+  // Used for Q2=B cross-supervisor-within-same-tenant rejection.
+  const supB = await prismaRaw.user.create({
+    data: { phone: SUP_B_PHONE, name: 'Test Supervisor B', locale: 'en' },
+  });
+  supervisorBId = supB.id;
+  await prismaRaw.membership.create({
+    data: { companyId: companyAId, userId: supB.id, role: 'SUPERVISOR' },
+  });
+
+  // Worker in CoA with NO Assignment — used for "no derivable primary site" rejection.
+  const wUnassigned = await prismaRaw.worker.create({
+    data: {
+      companyId: companyAId,
+      name: 'Unassigned Worker',
+      phone: WORKER_PHONE_UNASSIGNED,
+      state: 'ACTIVE',
+      baseSalaryPaise: 1300000,
+    },
+  });
+  workerUnassignedId = wUnassigned.id;
+
   accessToken = await issueAccessToken({
     userId: supervisorId,
+    companyId: companyAId,
+    role: 'SUPERVISOR',
+    availableRoles: ['SUPERVISOR'],
+    locale: 'en',
+  });
+
+  accessTokenB = await issueAccessToken({
+    userId: supervisorBId,
     companyId: companyAId,
     role: 'SUPERVISOR',
     availableRoles: ['SUPERVISOR'],
@@ -114,7 +188,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
-  // Cascade delete: Company → Attendance / AuditEvent / Outbox / Worker
+  // Cascade delete: Company → Attendance / AuditEvent / Outbox / Worker / Assignment / Binding / Site
   await prismaRaw.attendance.deleteMany({
     where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
   });
@@ -124,13 +198,22 @@ afterAll(async () => {
   await prismaRaw.outbox.deleteMany({
     where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
   });
+  await prismaRaw.siteSupervisorBinding.deleteMany({
+    where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
+  });
+  await prismaRaw.assignment.deleteMany({
+    where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
+  });
+  await prismaRaw.site.deleteMany({
+    where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
+  });
   await prismaRaw.membership.deleteMany({
     where: { company: { slug: { startsWith: TEST_PREFIX } } },
   });
   await prismaRaw.worker.deleteMany({
     where: { company: { slug: { startsWith: TEST_PREFIX } } },
   });
-  await prismaRaw.user.deleteMany({ where: { phone: SUP_PHONE } });
+  await prismaRaw.user.deleteMany({ where: { phone: { in: [SUP_PHONE, SUP_B_PHONE] } } });
   await prismaRaw.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
   await prismaRaw.$disconnect();
 });
@@ -145,6 +228,7 @@ async function inject(
 }
 
 const authHeader = () => ({ authorization: `Bearer ${accessToken}` });
+const authHeaderB = () => ({ authorization: `Bearer ${accessTokenB}` });
 
 describe('POST /workers/:id/mark-absent', () => {
   it('rejects unauthenticated requests with 401', async () => {
@@ -223,6 +307,49 @@ describe('POST /workers/:id/mark-absent', () => {
     const topics = outboxRows.map((r) => r.topic);
     expect(topics).toContain('hr.worker_absent');
     expect(topics).toContain('payroll.recompute');
+  });
+
+  it('Q2=B: rejects with 403 when caller is in same tenant but not the responsible supervisor for the worker', async () => {
+    // SupB is a SUPERVISOR in CoA but has no binding to workerA's site.
+    // workerA's site is bound to SupA (the existing happy-path supervisor).
+    // Expect: 403 NOT_SUPERVISOR + NO Attendance row written.
+    const date = '2026-05-10';
+    const res = await inject(
+      'POST',
+      `/workers/${workerAId}/mark-absent`,
+      { date, status: 'ABSENT_NO_CALL', reason: 'not your worker' },
+      authHeaderB(),
+    );
+    expect(res.statusCode).toBe(403);
+    const body = res.json() as { error: string };
+    expect(body.error).toBe('NOT_SUPERVISOR');
+
+    // No Attendance row written despite the call.
+    const att = await prismaRaw.attendance.findUnique({
+      where: { workerId_date: { workerId: workerAId, date: new Date(date) } },
+    });
+    expect(att).toBeNull();
+  });
+
+  it('Q2=B: rejects with 403 when worker has no derivable primary site (no Assignment)', async () => {
+    // workerUnassigned has no Assignment row → deriveWorkerPrimarySiteId returns null.
+    // Even SupA (a real supervisor in the tenant) cannot mark them absent —
+    // there is no site, therefore no binding, therefore no responsible supervisor.
+    const date = '2026-05-11';
+    const res = await inject(
+      'POST',
+      `/workers/${workerUnassignedId}/mark-absent`,
+      { date, status: 'ABSENT_NO_CALL' },
+      authHeader(),
+    );
+    expect(res.statusCode).toBe(403);
+    const body = res.json() as { error: string };
+    expect(body.error).toBe('NOT_SUPERVISOR');
+
+    const att = await prismaRaw.attendance.findUnique({
+      where: { workerId_date: { workerId: workerUnassignedId, date: new Date(date) } },
+    });
+    expect(att).toBeNull();
   });
 
   it('idempotent: re-marking same (worker, date) updates the row, no dup', async () => {
