@@ -29,6 +29,7 @@ import pino from 'pino';
 import { prisma } from '../lib/prisma.js';
 import { maybeResetAiSpend } from '../jobs/reset-ai-spend.js';
 import { maybeRunBindingExpireSweep } from '../jobs/binding-expire-sweep.js';
+import { maybeRunReplacementInviteExpirySweep } from '../jobs/replacement-invite-expiry-sweep.js';
 
 import { HANDLERS, REGISTERED_TOPICS } from './handlers/registry.js';
 
@@ -188,6 +189,14 @@ export function startDispatcher(opts?: {
     // never breaks the outbox-poll loop.
     await maybeRunBindingExpireSweep(client, log).catch((err: unknown) => {
       log.error({ err }, 'binding-expire-sweep dispatch wrapper crashed');
+    });
+    // F28 — replacement-invite-expiry-sweep, piggybacked on the same
+    // dispatcher tick. Same pattern as binding-expire-sweep: in-memory
+    // cadence marker gates the actual sweep work to every 30s. Failure-
+    // tolerant inside maybeRunReplacementInviteExpirySweep so a sweep
+    // failure never breaks the outbox-poll loop.
+    await maybeRunReplacementInviteExpirySweep(client, log).catch((err: unknown) => {
+      log.error({ err }, 'replacement-invite-expiry-sweep dispatch wrapper crashed');
     });
     inFlight = processOnce(client, log).catch((err: unknown) => {
       log.error({ err }, 'dispatcher batch crashed');

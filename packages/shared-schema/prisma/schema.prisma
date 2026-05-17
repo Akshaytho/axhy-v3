@@ -1191,26 +1191,58 @@ model SiteSupervisorBinding {
   @@schema("axhy")
 }
 
-/// STUB — Wave 1 backend (parallel subagent) will replace this with the
-/// full model definition per docs/research/replacement-invite-feature-spec.md.
-/// Stub exists so prisma generate succeeds during the parallel build phase.
-/// This stub MUST NOT be referenced by any application code; it is a schema
-/// placeholder only. The Wave 1 subagent's commit overwrites it.
+/// F28 — ReplacementInvite (Wave 1 backend, 2026-05-18).
+///
+/// Supervisor broadcasts an invite to N candidate workers; first to accept
+/// gets the shift, siblings auto-EXPIRE in the same transaction. PUBG-squad
+/// pattern locked in master plan §G:976 + §P.4.
+///
+/// Lifecycle (status transitions enforced by service-layer conditional
+/// UPDATEs + DB CHECK constraint):
+///   PENDING -> ACCEPTED   (winner of the group; only one allowed per groupId)
+///   PENDING -> DECLINED   (worker explicitly declines)
+///   PENDING -> EXPIRED    (sibling won, cron sweep past expiresAt, or
+///                          server-side auto-expire on first accept)
+///   PENDING -> CANCELLED  (supervisor recalls the group)
+/// All other transitions rejected at the service layer.
+///
+/// `groupId` ties one broadcast together (multiple invite rows share it).
+/// A `groupId` uniquely identifies a single "send-replacement event"; the
+/// supervisor sends invites to N workers, all rows share groupId, and the
+/// group resolves atomically when the first accept lands.
+///
+/// `expiresAt` is set by the service (default sentAt + 120s, configurable).
+/// The cron sweep flips PENDING -> EXPIRED past expiresAt + emits a
+/// SupervisorDecision row for the supervisor so the outcome is surfaced.
+///
+/// @derives(master-plan §P.4 — ReplacementInvite)
+/// @derives(master-plan §G — supervisor surface)
+/// @derives(replacement-invite-feature-spec.md, 2026-05-18)
+/// @derives(supervisor-30day-scenarios.md scenarios #39–46 — swaps + emergency cover)
 model ReplacementInvite {
-  id                 String   @id @default(uuid()) @db.Uuid
-  companyId          String   @db.Uuid
-  fromSupervisorId   String   @db.Uuid
-  toWorkerId         String   @db.Uuid
-  visitId            String?  @db.Uuid
-  siteId             String   @db.Uuid
-  scheduledStart     DateTime
-  status             String   @default("PENDING")
-  sentAt             DateTime @default(now())
-  expiresAt          DateTime
-  respondedAt        DateTime?
-  respondReason      String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String    @id @default(uuid()) @db.Uuid
+  companyId         String    @db.Uuid
+  /// Shared across all rows in one broadcast — atomic group operations
+  /// pivot on this column. UUID-v4 generated server-side.
+  groupId           String    @db.Uuid
+  fromSupervisorId  String    @db.Uuid
+  toWorkerId        String    @db.Uuid
+  /// Visit this invite covers, when the supervisor is replacing for a
+  /// specific visit. Nullable to support pre-shift open-slot invites.
+  visitId           String?   @db.Uuid
+  siteId            String    @db.Uuid
+  scheduledStart    DateTime
+  /// PENDING | ACCEPTED | DECLINED | EXPIRED | CANCELLED — DB CHECK enforced.
+  status            String    @default("PENDING")
+  sentAt            DateTime  @default(now())
+  /// Default 120s after sentAt; supervisor may pass expiresInSec on create.
+  expiresAt         DateTime
+  respondedAt       DateTime?
+  /// 'accept' | 'decline' | 'sibling_accepted' | 'cron_expired' |
+  /// 'supervisor_cancelled' | free-text reason on decline.
+  respondReason     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   company        Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   fromSupervisor User    @relation("ReplacementInviteFromSupervisor", fields: [fromSupervisorId], references: [id], onDelete: Cascade)
@@ -1218,9 +1250,21 @@ model ReplacementInvite {
   site           Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
   visit          Visit?  @relation(fields: [visitId], references: [id], onDelete: SetNull)
 
+  /// Cron sweep predicate — PENDING rows past expiresAt; very hot in steady state.
   @@index([status, expiresAt])
-  @@index([companyId, fromSupervisorId])
+  /// Supervisor inbox lookup — "show me my open broadcasts".
+  @@index([companyId, fromSupervisorId, status])
+  /// Worker inbox lookup — "show me my pending invites".
   @@index([companyId, toWorkerId, status])
+  /// Atomic group operations — sibling expire on first-accept, group cancel.
+  @@index([groupId])
+  /// General list query — supervisor activity feed.
+  @@index([companyId, sentAt])
+  // Race-safety: at-most-one-ACCEPTED per group is enforced by a partial
+  // unique index created in migration 20260522_010_replacement_invite (see
+  // `ReplacementInvite_one_accepted_per_group_uniq`). Prisma cannot model
+  // partial unique indexes natively; the migration owns the DDL. Service
+  // layer catches P2002 and surfaces as 409 ALREADY_DECIDED.
   @@schema("axhy")
 }
 
