@@ -32,3 +32,6 @@ export * from './zod/handoff-package.js';
 export * from './zod/today.js';
 // Supervisor Activity feed (panel-2026-05-17 PM)
 export * from './zod/activity.js';
+// Supervisor Decisions tab — pending queue + dismiss write (panel-2026-05-17)
+// @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
+export * from './zod/decisions.js';
