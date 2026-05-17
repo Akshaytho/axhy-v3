@@ -73,13 +73,11 @@ export default function SupervisorLayout() {
         },
       }}
     >
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarIcon: tabIcon('Chat'),
-        }}
-      />
+      {/* R6 tab order locked 2026-05-11 + founder-confirmed 2026-05-17 PM:
+          Today / Decisions / Activity / Chat / Profile.
+          Summary + Updates are secondary surfaces (reachable via deep link
+          or contextual entry from Today / Profile) but hidden from the
+          tab bar — `href: null`. */}
       <Tabs.Screen
         name="today"
         options={{
@@ -88,17 +86,24 @@ export default function SupervisorLayout() {
         }}
       />
       <Tabs.Screen
-        name="summary"
+        name="decisions"
         options={{
-          title: 'Summary',
-          tabBarIcon: tabIcon('Summary'),
+          title: 'Decisions',
+          tabBarIcon: tabIcon('Decisions'),
         }}
       />
       <Tabs.Screen
-        name="updates"
+        name="activity"
         options={{
-          title: 'Updates',
-          tabBarIcon: tabIcon('Updates'),
+          title: 'Activity',
+          tabBarIcon: tabIcon('Activity'),
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarIcon: tabIcon('Chat'),
         }}
       />
       <Tabs.Screen
@@ -108,6 +113,9 @@ export default function SupervisorLayout() {
           tabBarIcon: tabIcon('Profile'),
         }}
       />
+      {/* Secondary surfaces — reachable, not tab-bar items. */}
+      <Tabs.Screen name="summary" options={{ href: null }} />
+      <Tabs.Screen name="updates" options={{ href: null }} />
     </Tabs>
   );
 }
