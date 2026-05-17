@@ -2,10 +2,16 @@
  * GET /supervisor/activity — read-only feed of the caller's audit events.
  *
  * JWT-implicit via `requireAuth`; never accepts `companyId` from the
- * client. Wrapped in `withTenantContext` for RLS. Accepts an optional
- * `?limit=` query (1..200, default 50). Authorization is implicit: the
- * service reads AuditEvent rows where actorId = caller, so a supervisor
- * never sees someone else's activity.
+ * client. Wrapped in `withTenantContext` for RLS.
+ *
+ * Accepted query params:
+ *   `?limit=`    — page size (1..200, default 50)
+ *   `?date=`     — `today` | `yesterday` | `this-week` | `all` (default `today`)
+ *   `?siteId=`   — UUID | `all` (default `all`)
+ *   `?kind=`     — `all` | `absences` | `lates` | `leaves` (default `all`)
+ *
+ * Authorization is implicit: the service reads AuditEvent rows where
+ * actorId = caller, so a supervisor never sees someone else's activity.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — HR control plane / supervisor surface
@@ -16,10 +22,34 @@ import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
-import { buildActivityForSupervisor } from '../lib/services/activity-service.js';
+import {
+  buildActivityForSupervisor,
+  type DateFilter,
+  type KindFilter,
+} from '../lib/services/activity-service.js';
 
+/** Valid values for the `?date=` query param. */
+const DATE_FILTER_VALUES: ReadonlySet<string> = new Set(['today', 'yesterday', 'this-week', 'all']);
+
+/** Valid values for the `?kind=` query param. */
+const KIND_FILTER_VALUES: ReadonlySet<string> = new Set(['all', 'absences', 'lates', 'leaves']);
+
+/** @derives(ADR-0003) — query string shape for `GET /supervisor/activity`. */
+type ActivityQuerystring = {
+  limit?: string;
+  date?: string;
+  siteId?: string;
+  kind?: string;
+};
+
+/**
+ * Register `GET /supervisor/activity` with filter query params.
+ *
+ * @derives(ADR-0003)
+ * @derives(master-plan §G) — supervisor surface
+ */
 export async function registerSupervisorActivityRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: { limit?: string } }>(
+  app.get<{ Querystring: ActivityQuerystring }>(
     '/supervisor/activity',
     { preHandler: requireAuth },
     async (req, reply) => {
@@ -29,9 +59,26 @@ export async function registerSupervisorActivityRoutes(app: FastifyInstance): Pr
         return;
       }
 
+      // --- limit ---
       const parsedLimit = req.query.limit ? Number.parseInt(req.query.limit, 10) : undefined;
       const limit =
         parsedLimit !== undefined && Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+
+      // --- date filter ---
+      const rawDate = req.query.date ?? 'today';
+      const dateFilter: DateFilter = DATE_FILTER_VALUES.has(rawDate)
+        ? (rawDate as DateFilter)
+        : 'today';
+
+      // --- siteId filter ---
+      // Accept any non-empty string; 'all' means no filter.
+      const siteIdFilter = req.query.siteId?.trim() || 'all';
+
+      // --- kind filter ---
+      const rawKind = req.query.kind ?? 'all';
+      const kindFilter: KindFilter = KIND_FILTER_VALUES.has(rawKind)
+        ? (rawKind as KindFilter)
+        : 'all';
 
       try {
         const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
@@ -39,6 +86,9 @@ export async function registerSupervisorActivityRoutes(app: FastifyInstance): Pr
             companyId: auth.companyId,
             userId: auth.userId,
             limit,
+            dateFilter,
+            siteIdFilter,
+            kindFilter,
           }),
         );
         reply.code(200).send(out);

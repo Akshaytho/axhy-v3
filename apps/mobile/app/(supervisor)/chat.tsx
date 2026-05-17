@@ -40,6 +40,7 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
@@ -60,6 +61,9 @@ import { sendChatMessage, type DecisionCardData } from '../../lib/chat-api';
 import { generateIdempotencyKey } from '../../lib/idempotency-key';
 import { apiFetch, isAIBudgetExceededError } from '../../lib/api';
 import { useSupervisorContextQuery } from '../../lib/queries/use-supervisor-context';
+import { useVoiceRecorder } from '../../lib/audio/use-voice-recorder';
+import { transcribeAudio } from '../../lib/audio/transcribe';
+import { useLocaleCode } from '../../lib/i18n/use-locale';
 
 /** Example phrases shown in the empty state. */
 const EXAMPLE_PHRASES = [
@@ -89,9 +93,18 @@ function decisionCount(msg: LocalMessage): number {
   return 0;
 }
 
+/** Format milliseconds as "M:SS" for the waveform pill duration display. */
+function formatDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export default function ChatScreen() {
   const strings = useLocaleStrings();
+  const localeCode = useLocaleCode();
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -103,7 +116,17 @@ export default function ChatScreen() {
    */
   const [budgetCapped, setBudgetCapped] = useState(false);
 
+  /** True while audio is being transcribed (between stop() and text arriving). */
+  const [transcribing, setTranscribing] = useState(false);
+
   const textInputRef = useRef<TextInput>(null);
+
+  const {
+    isRecording,
+    durationMs,
+    start: startRecording,
+    stop: stopRecording,
+  } = useVoiceRecorder();
 
   // Pull supervisor data from /me — cached by react-query, same as Profile tab.
   const { data: me } = useQuery<MeOutput>({
@@ -178,10 +201,48 @@ export default function ChatScreen() {
     void onSend(trimmed);
   }, [draft, thinking, budgetCapped, onSend]);
 
-  const handleMicPress = useCallback(() => {
-    // Native voice capture is a follow-up slice; for now focus the text input.
-    textInputRef.current?.focus();
-  }, []);
+  const handleMicPressIn = useCallback(
+    (_e: GestureResponderEvent) => {
+      if (thinking || budgetCapped) return;
+      setError(null);
+      void startRecording();
+    },
+    [thinking, budgetCapped, startRecording],
+  );
+
+  const handleMicPressOut = useCallback(
+    async (_e: GestureResponderEvent) => {
+      if (!isRecording) return;
+      const result = await stopRecording();
+
+      if (!result) {
+        // Permission denied or no recording started.
+        setError('Microphone permission denied. Please enable it in Settings.');
+        return;
+      }
+
+      setTranscribing(true);
+      setError(null);
+      try {
+        const hint = (localeCode === 'hi' || localeCode === 'te' ? localeCode : 'en') as
+          | 'en'
+          | 'hi'
+          | 'te';
+        const { text } = await transcribeAudio(result.uri, hint);
+        if (text.trim()) {
+          setDraft(text.trim());
+          textInputRef.current?.focus();
+        } else {
+          setError('No speech detected. Please try again.');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Transcription failed');
+      } finally {
+        setTranscribing(false);
+      }
+    },
+    [isRecording, stopRecording, localeCode],
+  );
 
   const handleDecisionPillPress = useCallback(() => {
     router.push('/(supervisor)/decisions');
@@ -286,6 +347,20 @@ export default function ChatScreen() {
         />
       )}
 
+      {/* Transcribing indicator */}
+      {transcribing && (
+        <View style={s.transcribingBanner}>
+          <Text style={s.transcribingText}>transcribing…</Text>
+        </View>
+      )}
+
+      {/* Recording indicator — waveform pill shown above footer while mic is held */}
+      {isRecording && (
+        <View style={s.recordingBanner}>
+          <VoiceWaveformPill duration={formatDuration(durationMs)} listening={true} />
+        </View>
+      )}
+
       {/* Error / budget banner */}
       {error && (
         <View style={budgetCapped ? s.budgetBanner : s.errorBanner}>
@@ -316,11 +391,19 @@ export default function ChatScreen() {
           />
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Voice capture"
-            onPress={handleMicPress}
-            style={({ pressed }) => [s.micBtn, pressed && s.micBtnPressed]}
+            accessibilityLabel={
+              isRecording ? 'Recording — release to transcribe' : 'Hold to record voice'
+            }
+            onPressIn={handleMicPressIn}
+            onPressOut={handleMicPressOut}
+            disabled={thinking || budgetCapped || transcribing}
+            style={({ pressed }) => [s.micBtn, (pressed || isRecording) && s.micBtnActive]}
           >
-            <Feather name="mic" size={22} color={tokens.color.surface.card} />
+            <Feather
+              name="mic"
+              size={22}
+              color={isRecording ? tokens.color.brand.accent : tokens.color.surface.card}
+            />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -432,7 +515,28 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
-  micBtnPressed: {
+  micBtnActive: {
     opacity: 0.85,
+    backgroundColor: tokens.color.surface.card,
+  },
+  // Recording waveform shown above the footer while mic is held.
+  recordingBanner: {
+    backgroundColor: tokens.color.ink.primary,
+    paddingHorizontal: tokens.space[3],
+    paddingVertical: tokens.space[1],
+    alignItems: 'flex-end',
+  },
+  // Transcribing indicator shown between stop and text-fill.
+  transcribingBanner: {
+    paddingHorizontal: tokens.space[3] + 4,
+    paddingVertical: tokens.space[1],
+    backgroundColor: tokens.color.surface.paper2,
+    borderTopWidth: 1,
+    borderColor: tokens.color.surface.cardEdge,
+  },
+  transcribingText: {
+    fontSize: 12,
+    color: tokens.color.ink.secondary,
+    fontStyle: 'italic',
   },
 });

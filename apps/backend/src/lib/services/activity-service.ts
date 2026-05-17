@@ -7,6 +7,10 @@
  * the kind taxonomy + payload — so the client doesn't have to know the
  * payload shape.
  *
+ * Accepts optional `dateFilter`, `siteIdFilter`, and `kindFilter` args to
+ * narrow the result set — these map directly to the query params accepted
+ * by `GET /supervisor/activity`.
+ *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — HR control plane / supervisor surface
  * @derives(panel-2026-05-17) — Activity slice
@@ -20,16 +24,152 @@ import { summarizeAuditKind } from './audit-summary.js';
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-/** @derives(ADR-0003) @derives(master-plan §G) — Activity slice */
+// ---------------------------------------------------------------------------
+// Filter type literals
+// ---------------------------------------------------------------------------
+
+/** Accepted values for the `?date=` query param. */
+export type DateFilter = 'today' | 'yesterday' | 'this-week' | 'all';
+
+/** Accepted values for the `?kind=` query param. */
+export type KindFilter = 'all' | 'absences' | 'lates' | 'leaves';
+
+// ---------------------------------------------------------------------------
+// Args
+// ---------------------------------------------------------------------------
+
+/**
+ * Arguments for `buildActivityForSupervisor`.
+ *
+ * @derives(ADR-0003)
+ * @derives(master-plan §G) — Activity slice
+ */
 export type BuildActivityArgs = {
   companyId: string;
   userId: string;
   /** Page size, capped at MAX_LIMIT. */
   limit?: number;
+  /**
+   * Date window filter. Defaults to `'today'` when omitted.
+   * - `today`      → createdAt within [start-of-today-UTC, end-of-today-UTC]
+   * - `yesterday`  → createdAt within yesterday's UTC bounds
+   * - `this-week`  → createdAt within Monday–Sunday of the current ISO week
+   * - `all`        → no createdAt constraint
+   */
+  dateFilter?: DateFilter;
+  /**
+   * Narrows to rows where `AuditEvent.targetId` equals the given site UUID.
+   * Best-effort: for site-bound events the targetId IS the siteId. Pass
+   * `'all'` (or omit) to skip this filter.
+   */
+  siteIdFilter?: string | 'all';
+  /**
+   * Narrows to the audit-event kinds that belong to the requested category.
+   * - `absences` → `WORKER_MARKED_ABSENT`
+   * - `lates`    → `WORKER_MARKED_LATE` (filter returns nothing if kind absent from DB)
+   * - `leaves`   → `LEAVE_REQUESTED | LEAVE_APPROVED | LEAVE_REJECTED`
+   * - `all`      → no kind constraint
+   */
+  kindFilter?: KindFilter;
+};
+
+// ---------------------------------------------------------------------------
+// Date-range helpers (UTC)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns [startInclusive, endExclusive) UTC bounds for today.
+ *
+ * @derives(ADR-0003)
+ */
+function todayUTCBounds(): { gte: Date; lt: Date } {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const end = new Date(start.getTime() + 86_400_000);
+  return { gte: start, lt: end };
+}
+
+/**
+ * Returns [startInclusive, endExclusive) UTC bounds for yesterday.
+ *
+ * @derives(ADR-0003)
+ */
+function yesterdayUTCBounds(): { gte: Date; lt: Date } {
+  const today = todayUTCBounds();
+  return { gte: new Date(today.gte.getTime() - 86_400_000), lt: today.gte };
+}
+
+/**
+ * Returns [startInclusive, endExclusive) UTC bounds for the current ISO week
+ * (Monday 00:00 UTC → following Monday 00:00 UTC).
+ *
+ * @derives(ADR-0003)
+ */
+function thisWeekUTCBounds(): { gte: Date; lt: Date } {
+  const now = new Date();
+  const day = now.getUTCDay(); // 0 = Sun, 1 = Mon, …, 6 = Sat
+  // ISO week starts on Monday; distance from Monday = (day + 6) % 7
+  const daysFromMonday = (day + 6) % 7;
+  const monday = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysFromMonday),
+  );
+  const nextMonday = new Date(monday.getTime() + 7 * 86_400_000);
+  return { gte: monday, lt: nextMonday };
+}
+
+/**
+ * Convert a `DateFilter` value to a Prisma `createdAt` where-clause fragment.
+ * Returns `undefined` for `'all'` so the caller can spread it without adding
+ * an unnecessary filter.
+ *
+ * @derives(ADR-0003)
+ */
+function dateFilterToWhere(filter: DateFilter): { gte: Date; lt: Date } | undefined {
+  switch (filter) {
+    case 'today':
+      return todayUTCBounds();
+    case 'yesterday':
+      return yesterdayUTCBounds();
+    case 'this-week':
+      return thisWeekUTCBounds();
+    case 'all':
+      return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Kind-filter helpers
+// ---------------------------------------------------------------------------
+
+const KIND_FILTER_MAP: Record<KindFilter, string[] | undefined> = {
+  all: undefined,
+  absences: ['WORKER_MARKED_ABSENT'],
+  lates: ['WORKER_MARKED_LATE'],
+  leaves: ['LEAVE_REQUESTED', 'LEAVE_APPROVED', 'LEAVE_REJECTED'],
 };
 
 /**
+ * Convert a `KindFilter` value to a Prisma `kind` where-clause fragment.
+ * Returns `undefined` for `'all'` so the caller can spread it without adding
+ * an unnecessary filter.
+ *
+ * @derives(ADR-0003)
+ */
+function kindFilterToWhere(filter: KindFilter): { in: string[] } | undefined {
+  const kinds = KIND_FILTER_MAP[filter];
+  return kinds ? { in: kinds } : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Main service function
+// ---------------------------------------------------------------------------
+
+/**
  * Build the `GET /supervisor/activity` response for the caller.
+ *
+ * Composes a Prisma `where` clause from the optional date / site / kind
+ * filters before querying. The base constraint (companyId + actorId) is
+ * always applied so a supervisor can never see another user's events.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
@@ -40,8 +180,22 @@ export async function buildActivityForSupervisor(
 ): Promise<ActivityResponseT> {
   const limit = Math.min(Math.max(args.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
 
+  const dateFilter = args.dateFilter ?? 'today';
+  const siteIdFilter = args.siteIdFilter ?? 'all';
+  const kindFilter = args.kindFilter ?? 'all';
+
+  const createdAtWhere = dateFilterToWhere(dateFilter);
+  const kindWhere = kindFilterToWhere(kindFilter);
+  const siteWhere = siteIdFilter !== 'all' ? { targetId: siteIdFilter } : undefined;
+
   const rows = await tx.auditEvent.findMany({
-    where: { companyId: args.companyId, actorId: args.userId },
+    where: {
+      companyId: args.companyId,
+      actorId: args.userId,
+      ...(createdAtWhere ? { createdAt: createdAtWhere } : {}),
+      ...(kindWhere ? { kind: kindWhere } : {}),
+      ...(siteWhere ?? {}),
+    },
     orderBy: { createdAt: 'desc' },
     take: limit,
     select: {
