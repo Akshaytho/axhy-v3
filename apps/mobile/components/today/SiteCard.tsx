@@ -74,7 +74,8 @@ export function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
             </Text>
             {site.flagged ? (
               <View style={s.flagPill}>
-                <Text style={s.flagPillText}>⚠ FLAG</Text>
+                <Feather name="alert-triangle" size={10} color={tokens.color.semantic.warn} />
+                <Text style={s.flagPillText}>FLAG</Text>
               </View>
             ) : null}
           </View>
@@ -88,8 +89,20 @@ export function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
             {!open ? <Text style={s.hint}>TAP TO VIEW WORKERS →</Text> : null}
           </View>
         </View>
-        <View style={[s.chevron, open ? s.chevronOpen : null]}>
-          <Feather name="chevron-right" size={20} color={tokens.color.ink.tertiary} />
+        <View style={s.rightControls}>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+            }}
+            style={s.menuButton}
+            accessibilityRole="button"
+            accessibilityLabel="Site options"
+          >
+            <Feather name="more-vertical" size={18} color={tokens.color.ink.tertiary} />
+          </Pressable>
+          <View style={[s.chevron, open ? s.chevronOpen : null]}>
+            <Feather name="chevron-right" size={20} color={tokens.color.ink.tertiary} />
+          </View>
         </View>
       </Pressable>
 
@@ -134,6 +147,9 @@ const s = StyleSheet.create({
     color: tokens.color.ink.primary,
   },
   flagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingVertical: 2,
     paddingHorizontal: 8,
     borderRadius: 999,
@@ -177,10 +193,17 @@ const s = StyleSheet.create({
     textTransform: 'uppercase',
     marginLeft: 'auto',
   },
+  rightControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+  },
+  menuButton: {
+    padding: 8,
+  },
   chevron: {
-    // `›` is right-pointing at 0deg. Collapsed = right (invite expand).
+    // Right-pointing at 0deg. Collapsed = right (invite expand).
     // Open = rotate 90deg so it points down (revealing content).
-    fontSize: 24,
     color: tokens.color.ink.tertiary,
     marginLeft: 4,
     transform: [{ rotate: '0deg' }],

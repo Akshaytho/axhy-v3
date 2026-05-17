@@ -18,6 +18,8 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
+import { useDrawer } from '../Drawer';
+
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export type TopAppBarProps = {
   title: string;
@@ -29,12 +31,14 @@ export type TopAppBarProps = {
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export function TopAppBar({ title, subtitle, onMenu, onSearch, onBell }: TopAppBarProps) {
+  const { openDrawer } = useDrawer();
+  const handleMenu = onMenu ?? openDrawer;
   return (
     <View style={s.bar}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Menu"
-        onPress={onMenu}
+        onPress={handleMenu}
         style={({ pressed }) => [s.iconBtn, pressed && s.iconBtnPressed]}
       >
         <Feather name="menu" size={20} color={tokens.color.ink.primary} />
