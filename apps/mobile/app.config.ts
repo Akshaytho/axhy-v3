@@ -40,6 +40,15 @@ const config = {
     'expo-localization',
     'expo-router',
     'expo-secure-store',
+    // expo-audio plugin — registers microphone permission strings + native
+    // audio session config. Required for the voice-capture mic in Chat.
+    [
+      'expo-audio',
+      {
+        microphonePermission:
+          'Axhy uses the microphone to capture supervisor voice notes for chat.',
+      },
+    ] as [string, { microphonePermission: string }],
     // OneSignal plugin — present only when an App ID is configured. Without
     // an App ID, omit the plugin entry entirely so EAS Build doesn't try
     // to wire native push capabilities against an empty string.
