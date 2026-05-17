@@ -106,6 +106,12 @@ export const BindingCreatedPayloadSchema = z.object({
   effectiveUntil: z.string().datetime().nullable(),
   reason: z.string().min(1).max(1000),
   createdBy: z.string().uuid(),
+  // P1.5b 2026-05-17: enumerated bypass reason recorded permanently on the
+  // audit row when the writer skipped the same-day freeze. Null when the
+  // freeze was enforced (HR portal first-bind path); set only on bootstrap-
+  // seed + future data-migration paths per Q3=C amendment in the
+  // supervisor-responsibility-model spec.
+  bypassFreezeReason: z.enum(['BOOTSTRAP_SEED', 'DATA_MIGRATION']).nullable().optional(),
 });
 
 /**

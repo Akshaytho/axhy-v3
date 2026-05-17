@@ -1,7 +1,13 @@
 /**
  * Supervisor profile screen — shows user identity, company, role, sign-out.
+ *
+ * F-006a: sign-out routes through `onAppLogout()` (ONE explicit identity
+ * contract) which awaits `OneSignal.logout()` BEFORE `clearTokens()` to
+ * prevent phantom-subscription leak on User A → User B switch.
+ *
  * @derives(ADR-0007)
  * @derives(ADR-0021)
+ * @derives(F-006a scope round-2 v6 Pick 4)
  */
 
 import {
@@ -19,7 +25,7 @@ import { tokens } from '@axhy/ui-tokens';
 import type { MeOutput } from '@axhy/shared-schema';
 
 import { apiFetch } from '../../lib/api';
-import { clearTokens } from '../../lib/auth-store';
+import { onAppLogout } from '../../lib/identity-lifecycle';
 
 function fetchMe(): Promise<MeOutput> {
   return apiFetch<MeOutput>('/me');
@@ -111,7 +117,7 @@ export default function ProfileScreen() {
   });
 
   async function handleSignOut() {
-    await clearTokens();
+    await onAppLogout();
     router.replace('/(auth)/phone');
   }
 

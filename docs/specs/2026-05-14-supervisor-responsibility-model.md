@@ -274,19 +274,24 @@ Listed for traceability. **Not updated by this doc** — each spec gets its own 
 
 All 9 founder picks below are **locked**. They drive P1.5 schema design and downstream feature behavior.
 
-| #   | Question                                                    | **Locked pick**                                                                        | One-line rationale                                                                                                                                   |
-| --- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Schema option (A / B / C)?                                  | **A — single binding table with `actingForUserId` discriminator**                      | Simplest single-table model; both features share one query; smallest migration footprint.                                                            |
-| 2   | `actingForUserId` placement (i.a / i.b)?                    | **i.a — binding-only**                                                                 | Single source of truth for "original vs acting"; keeps DWI / Visit / etc. tables clean.                                                              |
-| 3   | Routing computation (ii.a / ii.b)?                          | **ii.a — read-time computation**                                                       | Zero sweep complexity, race-condition-free, naturally preserves origin in `DWI.supervisorId`.                                                        |
-| 4   | HR control plane surface?                                   | **admin-web only at launch**                                                           | Matches the HR-portal-future surface in HR Updates spec §2.1; covers the urgent sick-supervisor case.                                                |
-| 5   | Acting-supervisor window start/end notifications?           | **yes — push on both start and end**                                                   | Operational awareness — acting supervisor must know "you're on point" and "you're off."                                                              |
-| 6   | Default `effectiveUntil` for "supervisor sick today" cases? | **no default — HR specifies per-row**                                                  | Sickness duration varies wildly; encoding a default becomes wrong policy.                                                                            |
-| 7   | Per-supervisor portfolio cap?                               | **visibility-only at launch**                                                          | Hard caps encode brittle policy; HR judgment with capacity context (current site count + recent decision volume) is more flexible.                   |
-| 8   | Migration backfill?                                         | **bootstrap seed from current active `Assignment` rows, then HR reviews and corrects** | Launch-day empty Today / Decisions is too risky and looks broken; HR reviews and adjusts the inferred seed rather than treating it as perfect truth. |
-| 9   | Explicit `Worker.primarySiteId` field?                      | **no — implicit derivation at launch**                                                 | Avoids redundant denormalization until query-cost evidence demands it; single-site workers are the common case.                                      |
+| #   | Question                                                    | **Locked pick**                                                                                                        | One-line rationale                                                                                                                                                                                                                                                                                                                                       |
+| --- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Schema option (A / B / C)?                                  | **A — single binding table with `actingForUserId` discriminator**                                                      | Simplest single-table model; both features share one query; smallest migration footprint.                                                                                                                                                                                                                                                                |
+| 2   | `actingForUserId` placement (i.a / i.b)?                    | **i.a — binding-only**                                                                                                 | Single source of truth for "original vs acting"; keeps DWI / Visit / etc. tables clean.                                                                                                                                                                                                                                                                  |
+| 3   | Routing computation (ii.a / ii.b)?                          | **ii.a — read-time computation**                                                                                       | Zero sweep complexity, race-condition-free, naturally preserves origin in `DWI.supervisorId`.                                                                                                                                                                                                                                                            |
+| 4   | HR control plane surface?                                   | **admin-web only at launch**                                                                                           | Matches the HR-portal-future surface in HR Updates spec §2.1; covers the urgent sick-supervisor case.                                                                                                                                                                                                                                                    |
+| 5   | Acting-supervisor window start/end notifications?           | **yes — push on both start and end**                                                                                   | Operational awareness — acting supervisor must know "you're on point" and "you're off."                                                                                                                                                                                                                                                                  |
+| 6   | Default `effectiveUntil` for "supervisor sick today" cases? | **no default — HR specifies per-row**                                                                                  | Sickness duration varies wildly; encoding a default becomes wrong policy.                                                                                                                                                                                                                                                                                |
+| 7   | Per-supervisor portfolio cap?                               | **visibility-only at launch**                                                                                          | Hard caps encode brittle policy; HR judgment with capacity context (current site count + recent decision volume) is more flexible.                                                                                                                                                                                                                       |
+| 8   | Migration backfill?                                         | **bootstrap seed from factual supervisor-activity evidence, then HR reviews and corrects** — see Amendments 2026-05-17 | Launch-day empty Today / Decisions is too risky and looks broken; HR reviews and adjusts the inferred seed rather than treating it as perfect truth. Original lock named "current active `Assignment` rows" as the source; corrected to `Complaint` + `SwapRequest` because `Assignment` has no `supervisorId` field (verified `schema.prisma:282-310`). |
+| 9   | Explicit `Worker.primarySiteId` field?                      | **no — implicit derivation at launch**                                                                                 | Avoids redundant denormalization until query-cost evidence demands it; single-site workers are the common case.                                                                                                                                                                                                                                          |
 
 ### Operational note for pick 8 — bootstrap seed mechanism
+
+> **Superseded by Amendments 2026-05-17** (see bottom of doc). The original wording below names `Assignment` as the derivation source — that field does not exist on `Assignment` in the actual schema. The corrected three-tier derivation lives in the Amendments section.
+
+<details>
+<summary>Original 2026-05-14 wording (kept for audit; do not implement)</summary>
 
 The P1.5 migration that creates `SiteSupervisorBinding` ships with a one-time seed step:
 
@@ -296,6 +301,8 @@ The P1.5 migration that creates `SiteSupervisorBinding` ships with a one-time se
 - Admin-web HR portfolio view surfaces the bootstrapped rows with a "review and confirm" affordance; HR clicks through each to confirm or reassign.
 
 Detailed migration script + admin-web seed-review UX land with P1.5 implementation.
+
+</details>
 
 ## §10 What this doc does NOT do
 
@@ -369,3 +376,56 @@ Locked 2026-05-16. Triggered after F-002 (chat-writes-proposed-decisions) round 
 **F-002 protections remain in place as defense-in-depth.** Round-2 atomic tx (preCheck + service + commitApply inside one Prisma transaction) and round-3 auth re-check inside `commitApply` are not removed. They cost nothing now and remain correct if the policy is ever loosened.
 
 **Implementation locus:** S-001 code slice on branch `feat/layer-1-core-primitives`, surfaced 2026-05-16. See `handoff/owner-input/active-slice.md` for the slice body. Spec lock approved by friend at HEAD `9e137e4` on 2026-05-16 ("v2 wording is good · spec lock approved").
+
+---
+
+## Amendments — 2026-05-17
+
+### A-1. Pick 8 derivation source — corrected
+
+**Why:** The original pick 8 (locked 2026-05-14) named "currently-active `Assignment` rows" as the bootstrap-seed derivation source. `Assignment` has no `supervisorId` field at all — verified by reading the actual schema model (`packages/shared-schema/prisma/schema.prisma:282-310`; its fields are `companyId`, `workerId`, `siteId`, `shiftStart`, `shiftEnd`, `dayMask`, `validFrom`, `validUntil`, `state`, `terminatedReason`, `terminatedBy`). The derivation as worded was structurally impossible.
+
+Verified during P1.5b plan rev-2 (2026-05-17). `Visit` also has no `supervisorId` (`schema.prisma:206-248`). `CalendarEntry.supervisorId` exists but `CalendarEntry` has no `siteId`, so it does not link a site to a supervisor either. The two factual fields in the actual schema that pair `siteId` with `supervisorId` are:
+
+- `Complaint.{siteId, supervisorId, createdAt}` — `schema.prisma:601, 604, 613` (supervisor logged a complaint about a specific site)
+- `SwapRequest.{siteId, supervisorId, createdAt}` — `schema.prisma:642, 639, 652` (supervisor initiated a swap involving a specific site)
+
+For `SwapRequest`, `createdAt` is the locked timestamp — not `effectiveAt` (line 646), because `effectiveAt` is when the swap takes effect (can be future-dated) and does not measure operational presence.
+
+### A-2. New derivation (replaces the strikethrough above)
+
+**Three-tier waterfall per (company, site)**, applied only to sites with no currently-effective `PERMANENT` binding (idempotency anchored to the requested binding window, matching the shipped EXCLUDE constraint at `packages/shared-schema/prisma/migrations/20260516_p1_5_site_supervisor_binding/migration.sql:131-138`):
+
+- **Tier 1 (factual evidence):** count `Complaint` + `SwapRequest` events per `(siteId, supervisorId)` over the last 30 days (timestamp = `createdAt` for both). Candidate must have `Membership.role='SUPERVISOR' AND status='ACTIVE'` in the same company. Winner = highest total event count, **iff** the total is ≥ `--tier1-min-events` (default 3) AND share ≥ `--tier1-threshold` (default 0.60). Exact tie → skip to Tier 2/3; no arbitrary tie-break.
+- **Tier 2 (sole-supervisor fallback):** if the company has exactly one `Membership` with `role='SUPERVISOR' AND status='ACTIVE'`, that supervisor wins for every Tier-1 fall-through site.
+- **Tier 3 (unbound):** site stays without a binding; HR reviews via the portal slice (deferred).
+- **Per-site additional skip:** if any `PERMANENT` binding for the site has `endedAt >= now − 7 days`, skip with `tier='skipped-recent-hr-action'`. Prevents bootstrap from undoing a recent HR decision.
+
+Seeded rows: `effectiveFrom = <script-start>`, `effectiveUntil = NULL`, `reason = 'BOOTSTRAP_SEED — pending HR review'`, `createdBy = '00000000-0000-0000-0000-000000000000'` (system actor; plain UUID per `schema.prisma:1042` no-FK convention), `actingForUserId = NULL`.
+
+### A-3. Same-day freeze + first-bind (Q3 = C)
+
+**Why:** During P1.5b planning, friend asked whether first-bind on a never-bound site should be allowed same-day. The shipped freeze helper (`apps/backend/src/lib/same-day-freeze.ts:73-90`) treats any `effectiveFrom < next tenant-local midnight` as a violation; it does not inspect prior binding state. Three options were considered; friend locked Q3 = C (2026-05-17):
+
+> First-bind same-day is also frozen for non-bypass callers. The freeze helper is unchanged. Bootstrap-seed and any future explicit data-migration script use an explicit `tenantTimeZone: null` + `bypassFreezeReason: 'BOOTSTRAP_SEED' | 'DATA_MIGRATION'` bypass that is recorded in the `BINDING_CREATED` audit payload. HR portal first-bind UI is subject to the same freeze and must collect a future-dated `effectiveFrom` (next tenant-local midnight or later). There is no UI escape hatch for same-day first-bind.
+
+This is consistent with the 2026-05-16 freeze policy lock above and avoids inventing "first-bind is special" logic inside a shared policy helper.
+
+### A-4. New write helper `createPermanentBinding`
+
+`apps/backend/src/lib/site-supervisor-binding.ts` previously only exported `reassignPermanentBinding` (line 210), which requires a prior PERMANENT binding to supersede. The file's own comment at lines 285-291 anticipated a first-ever-create path. P1.5b adds `createPermanentBinding(tx, input, opts)` with:
+
+- **Idempotency**: `$queryRaw` window-overlap check mirroring the EXCLUDE constraint (`COALESCE(effectiveUntil, 'infinity'::timestamptz)` on both sides). Returns `WINDOW_OVERLAP` instead of throwing on collision.
+- **Freeze**: when `opts.tenantTimeZone !== null`, calls `assertNotChangingTodaysResponsibility` unconditionally. When null, requires enum-restricted `opts.bypassFreezeReason`; otherwise throws.
+- **Audit**: one `BINDING_CREATED` emit on CREATED; payload includes the `bypassFreezeReason` (null when freeze was enforced). `BindingCreatedPayloadSchema` extended in the same slice.
+- **Concurrency**: catches Postgres `exclusion_violation` (SQLSTATE `23P01`), re-reads, returns `WINDOW_OVERLAP`.
+- **Logging**: helper does NOT call any logger; the audit row + typed return carry telemetry. Caller logs after inspecting the result.
+- **Callers allowed**: bootstrap-seed script + future HR portal first-bind route. Same helper, different opts.
+
+### A-5. Reverse-query helper `getSitesSupervisedByUser`
+
+Added to `apps/backend/src/lib/effective-responsibility.ts` (the anti-drift single-source-of-truth file). Returns every site where `userId` is the effective responsible supervisor at `at`, applying §5.8 acting-over-permanent precedence. Today / Decisions / payroll surfaces all route through this helper.
+
+### Implementation locus
+
+P1.5b code slice. Plan at `/Users/thotaakshay/.claude/plans/tranquil-crunching-plum.md` (rev 4 approved 2026-05-17). Done memo at `axhy-v3/handoff/done-memo-p1-5b-bootstrap-seed.md`.

@@ -1,106 +1,158 @@
-# Next Session — Quick Resume
+# Next Session — Supervisor App Sprint (2026-05-17 PM lock)
 
-> **Target read time: 2 minutes.** This file is the fastest way to resume work without losing context. Read this first, then `STATUS.md`, then dive into the specific files this points you to.
+> **Read time: 3 minutes. This is the highest-priority file for the next session.**
 >
-> **Resume command:** "Open `/Users/thotaakshay/eclean_workspace/axhy-v3/handoff/README.md` and follow the handoff files before doing anything else."
+> **Resume command:** "Read `axhy-v3/handoff/NEXT_SESSION.md` and `MEMORY_V3.md` first, then proceed."
 
-## Current state
+## Mode shift (locked 2026-05-17 PM)
 
-- **Active phase:** **handoff control-loop slice — built on top of the 3-layer tracker.** Adds layer 4: `handoff/owner-input/` (notes, approvals, active-slice, decisions log, change history) + `handoff/feature-queue/INDEX.md` + generator extension that renders all of it in the dashboard. Pre-commit auto-regen wired. Routing slice (foundation read APIs) remains paused at WIP `84ae39c` — resumes after this control-loop slice is APPROVED. **Affected workflow rows:** none directly — control surface around all 29 workflows.
-- **Current branch:** `feat/layer-1-core-primitives`
-- **Last updated:** 2026-05-15 evening (control-loop slice landing)
-- **Current slice + status:** see [`handoff/owner-input/active-slice.md`](./owner-input/active-slice.md) — single source of truth.
+Founder decided: drop the rev-by-rev plan/friend-review cycle for the supervisor app sprint. Reason: friend explicitly said current cadence is ~100x slower than needed. Target: **complete supervisor app in 3 days.**
 
-## Approved vs Draft
+**What stays:**
 
-**Approved + Active (binding today):**
+- Real-DB integration tests (sandbox), not mocks.
+- Typecheck before declaring anything done.
+- Panel review for UI per `feedback_no_ui_code_without_panel_approval.md` (BUT runs once at end of sprint, not per slice).
+- Production-grade rules (`feedback_production_grade_workflow_rules.md`): invariants enforced, no check-then-act races, no final state before domain effect.
+- Friend's planning discipline (`feedback_planning_decision_rules.md`) AT THE CODE LEVEL — every claim points to a real file:line; no fabricated fields/helpers; bootstrap vs reusable distinction.
 
-- 7 active workflow specs at `docs/specs/2026-05-1{2,3,4,5}-*.md` — includes the workflow design closure spec (promoted 2026-05-15). See `docs/index/canonical-truth.md` for the binding list.
+**What stops:**
 
-**Draft (treat as authoritative for its scope only):**
+- Surfacing every plan rev to friend before execution.
+- Asking the user every defensible choice. Make the reasonable call; surface only true blockers.
+- Multi-turn AskUserQuestion loops between exploration and code.
+- Per-slice panel review. Batch UI panel review at end of Day 3.
+- Per-feature feature-queue updates. Update the queue once at end of sprint.
 
-- `docs/plans/2026-05-15-implementation-kickoff-layer-1.md` — Draft kickoff memo. Now authoritative for Layer 1 sequencing because the closure spec is Active.
+**What I will still surface immediately:**
 
-**Reviewable artifacts (not governing):**
+- A schema decision that would block future work.
+- A discovered destructive action (DB drops, prod data risk).
+- A real ambiguity in user intent (not engineering choice).
 
-- 5 audit drafts at `docs/audits/2026-05-1{4,5}-1yr-sim-*.md` — Round 1–5 locked complete; reviewable, not governing.
+## Current state at session boundary (2026-05-17 PM)
 
-## Read these files now (in this order — mandatory)
+### Done
 
-1. `axhy-v3/handoff/README.md` — handoff rules + anti-drift rules.
-2. `axhy-v3/handoff/STATUS.md` — phase-level state.
-3. `axhy-v3/handoff/execution-state/INDEX.md` — workflow-truth legend + 22 rules.
-4. `axhy-v3/handoff/workflow-maps/INDEX.md` — diagram conventions.
-5. **`axhy-v3/handoff/owner-input/INDEX.md`** — control loop rules.
-6. **`axhy-v3/handoff/owner-input/pending-notes.md`** — scan for NEW notes; if any, acknowledge before any code.
-7. **`axhy-v3/handoff/owner-input/pending-approvals.md`** — confirm no AWAITING_APPROVAL slice blocks the intended next slice.
-8. **`axhy-v3/handoff/owner-input/active-slice.md`** — what is in flight.
-9. **`axhy-v3/handoff/feature-queue/INDEX.md`** — what's queued next.
-10. The persona file(s) in `execution-state/` and `workflow-maps/` for the active workflows.
-11. `combined.md` + `combined-system.md` if cross-persona.
-12. `ROADMAP.md` — phase forward-look.
-13. (Optional) Open `handoff/generated/app-workflow-dashboard.html` for the single-page view. If JSON disagrees with markdown, markdown wins → regenerate.
+- **P1.5b** — SiteSupervisorBinding bootstrap-seed core + reusable first-bind helper + reverse query. `axhy-sandbox` has 5 PERMANENT bindings to its sole supervisor `fca29a46-667d-4880-ad35-c67aa4316793`. 23-case test suite green on Railway. Done memo: `handoff/done-memo-p1-5b-bootstrap-seed.md`.
+- **F-013** — sandbox fixture cleanup utility. 71 fixture tenants deleted; sandbox down to 2 ACTIVE companies. Done memo: `handoff/done-memo-f013-sandbox-cleanup.md`.
 
-**Reconciliation rules:**
+### Approved + ready to execute (NO code yet)
 
-- `execution-state/` ⟷ `STATUS.md` / `NEXT_SESSION.md` disagree → STOP, reconcile (rule 5).
-- `generated/` ⟷ canonical markdown disagree → STOP, regenerate (rule 12).
-- NEW owner note affecting intended slice → STOP, acknowledge (rule 16).
-- AWAITING_APPROVAL slice exists → STOP, no new slice starts until approved (rule 17).
+- **Today slice plan** at `/Users/thotaakshay/.claude/plans/tranquil-crunching-plum.md`. Three sub-slices in dependency order. User approved 2026-05-17 PM. Friend did NOT review this plan (sprint-mode shift came after approval). Plan is the source of truth — execute it.
 
-## Do NOT do these things
+## 3-day sprint scope
 
-- **Do not** start from older Active specs alone for cross-cutting questions — the closure spec is now Active and supersedes deferred items in the 6 prior specs (each spec carries a 2026-05-15 cross-ref section).
-- **Do not** reopen the 5 finished audit rounds unless STATUS says a contradiction was found.
-- **Do not** create a new long planning packet when a kickoff memo already exists for the current layer.
-- **Do not** rely on memory alone — verify against the files listed in STATUS.
-- **Do not** make further design promotions without running `PROMOTION_CHECKLIST.md` end-to-end.
+### Day 1 — Today end-to-end (from approved plan)
 
-## Next concrete action
+1. **Sub-slice 1 — Q2=B mark-absent hardening** (TDD-first per plan)
+2. **Sub-slice 2 — `GET /supervisor/today` aggregator** + 5 real-DB tests
+3. **Sub-slice 3 — Today mobile UI** — port R6 components to `apps/mobile/components/today/`, wire `useTodayQuery`, ship MarkAbsentSheet + disabled FlaggedReviewSheet
+4. Smoke: log in as Suresh on `axhy-sandbox`, see Today render, mark a worker absent, see 403 toast when cross-supervisor.
 
-**PR 1 + PR 2 are accepted and locally real-DB verified. Start the P1.5 SiteSupervisorBinding slice next, narrow scope.**
+### Day 2 — Other supervisor tabs (chat / decisions / updates / profile / summary)
 
-1. **Stay on `feat/layer-1-core-primitives`.** No new branch.
-2. **P1.5 scope (narrow — do not exceed):**
-   - SiteSupervisorBinding table + Prisma model + migration (single table for both ACTING and PERMANENT bindings per closure §4 / responsibility model).
-   - Matching Zod / type exports in `@axhy/shared-schema`.
-   - Only the `BINDING_*` audit-emit helpers actually needed by this slice (not the full §9 catalogue).
-   - Real-DB lifecycle tests: binding creation, no-overlap invariant per site, acting window basics, permanent reassignment basics.
-   - Verification status per slice: real-DB verified before claiming done.
-3. **Do NOT** start any Layer 2 surface work (no worker app, no admin-web shells, no termination flow).
-4. **Do NOT** apply the migration to Railway prod — same supervised-window gate as PR 1.
-5. **Do NOT** mix in cleanup of the cosmetic drift items (ChatMessage.costInr annotation + LivingDoc constraint rename) — still deferred.
-6. **Do NOT** reopen workflow design — closure spec is Active; the binding shape lives there + in the responsibility-model spec.
-7. **Do NOT** add helpers for §9 kinds outside the BINDING\_\* set this slice actually needs.
+1. **Chat tab** — audit current state (`apps/mobile/app/(supervisor)/chat.tsx` exists from prior waves). Fix anything broken. Wire to live backend.
+2. **Decisions tab** — DWI is P1 (schema not shipped). Two options:
+   - (a) Land P1 schema migration first (the paused plan in `tranquil-crunching-plum.md` below the separator), THEN build Decisions UI. Adds ~3-4h.
+   - (b) Surface existing `SupervisorDecision` placeholder rows read-only; "Coming with P1" empty state if no rows. **Recommend (b)** unless founder asks for full DWI on Day 2.
+3. **Updates tab** — HRUpdate is P1 too. Same choice. Recommend skeleton with "Coming with P1" copy + read existing Phase B.2 placeholder rows if any.
+4. **Profile tab** — `apps/mobile/app/(supervisor)/profile.tsx` exists. Audit + polish.
+5. **Summary tab** — derive from `/supervisor/today` + historical attendance counts (last 7 days). New aggregator route `GET /supervisor/summary` if needed.
 
----
+### Day 3 — End-to-end + panel + ship
 
-**UPDATE 2026-05-15 (post execution-state tracker build):** P1.5 is complete and accepted (commits `9c0b3d8`, `a8eed8b`, `fe0f6f4`, `44a453d`). The next slice — **routing slice / foundation read APIs** — was started, then paused mid-way at WIP commit `84ae39c` so the execution-state tracker (`handoff/execution-state/`) could be built first. On resume:
+1. Real-life simulation: full Suresh flow on sandbox across all 5 tabs.
+2. Bug bash: 500s, 401s, jank, missing empty states.
+3. Performance: profile `/supervisor/today` + `/supervisor/summary`; add covering indexes if any slow query found.
+4. **Adversarial panel review** (single batch) on full supervisor app via Playwright captures of all 5 tabs. Per `feedback_no_ui_code_without_panel_approval.md`. BLOCKING before founder sees rendered app.
+5. Apply panel-surfaced fixes (small batch only).
+6. Done memo `axhy-v3/handoff/done-memo-supervisor-sprint.md`.
 
-1. **Stay on `feat/layer-1-core-primitives`.** WIP commit `84ae39c` is the pause anchor.
-2. **Mandatory pre-resume reading:** `execution-state/INDEX.md` (legend + failure-mode rules) → `execution-state/supervisor-ravi.md` rows D17 / F26 / F27 → `execution-state/combined.md` D17 section.
-3. **Resume actions** (in order):
-   - Write 4th test file `apps/backend/test/effective-responsibility-point-in-time.test.ts` (3 cases — acting+permanent overlap timeline, sequential reassignments, acting-then-permanent-reassigned mid-acting).
-   - Run real-DB sweep against fresh local Postgres + all 10 migrations.
-   - Split WIP commit `84ae39c` into 3 clean commits (helpers / routes / tests).
-   - Update `execution-state/supervisor-ravi.md` D17/F26/F27 rows to reflect verification movement.
-4. **Update cadence rule (INDEX.md):** before first code edit, at pause/block, after verify+commit. Three updates per slice, no more, no less.
-5. **Reconciliation rule:** if STATUS/NEXT_SESSION and `execution-state/` disagree on any row, STOP and reconcile.
+## Decisions parked for first message of next session
 
-## Open founder picks (8)
+These are choices I'll make on best judgment unless founder redirects:
 
-F-P-1 pod-size · F-P-2 SLA durations · F-P-3 termination appeal window · F-P-4 reverse window · F-P-5 AI overage marketing · F-P-6 site-level HR Updates routing · F-P-7 worker preferred-language default · F-P-8 secondary owner emergency contact.
+1. **Decisions + Updates tabs path:** (b) read-only placeholders this sprint; DWI/HRUpdate P1 in a follow-up sprint.
+2. **`/supervisor/summary` route:** new aggregator route; same pattern as `/supervisor/today`.
+3. **Panel composition for Day 3:** Linear-style designer + Uber-dispatch ops designer + Rapido ops lead, per `feedback_design_quality_bar.md`.
+4. **Sandbox real-data load (for meaningful Tier 1 derivation tests):** defer beyond sprint. Sprint runs against current `axhy-sandbox` + `seed-sandbox.ts` outputs.
 
-Full options + tradeoffs in closure spec §12. **None block Layer 1.**
+If founder wants any of these flipped, they'll say so in the first message.
 
-## Branch to use
+## Read these in order (cold start)
 
-`feat/layer-1-core-primitives` — closure spec is Active; build is approved to start.
+1. **This file** (you're reading it).
+2. **`MEMORY_V3.md`** — index + planning-discipline pointers.
+3. **`/Users/thotaakshay/.claude/plans/tranquil-crunching-plum.md`** — the approved Today plan.
+4. **`handoff/done-memo-p1-5b-bootstrap-seed.md`** — what's already in place (auth primitives, axhy-sandbox bindings).
+5. **`handoff/done-memo-f013-sandbox-cleanup.md`** — sandbox state.
+6. **`docs/prototypes/supervisor-mobile-r6/project/src/today.jsx`** — design source of truth for Today UI port (710 LOC).
+7. **`apps/backend/src/lib/effective-responsibility.ts`** — the 4 routing primitives this sprint composes on.
 
-## Authority for current phase
+Skip the old multi-step handoff chain (`README.md` → `STATUS.md` → etc.) for the sprint. Those were for the careful-review pace. Resume them after sprint ends if needed.
 
-- **Cross-cutting design authority:** `docs/specs/2026-05-15-workflow-design-closure.md` (**Active but contract-incomplete** — promoted 2026-05-15; binding for the 10 picks + 6 primitives + 4 persona surfaces).
-- **Layer 1 sequencing authority:** `docs/plans/2026-05-15-implementation-kickoff-layer-1.md` (Draft kickoff memo; authoritative for Layer 1 sequencing).
-- **Canonical binding docs today:** see `docs/index/canonical-truth.md` (closure-spec row added 2026-05-15).
+## Sandbox connection
 
-When you've read this and STATUS, you have enough context to act.
+Railway project `axhy-v3` is linked. To run anything against the sandbox DB:
+
+```bash
+railway run --service Postgres -- bash -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" pnpm exec <command>'
+```
+
+For test runs:
+
+```bash
+cd apps/backend
+railway run --service Postgres -- pnpm exec vitest run --reporter=verbose test/<file>
+```
+
+JWT for `axhy-sandbox` supervisor `fca29a46-...` — issue via `apps/backend/src/lib/jwt.ts` `issueAccessToken` in test setup; for live web smoke, log in via the mobile app's OTP flow with the sandbox phone.
+
+## Files to expect at end of sprint (rough)
+
+**Add (~20 files):**
+
+- `apps/backend/src/lib/authorization/supervises-worker.ts`
+- `apps/backend/src/lib/services/today-service.ts`
+- `apps/backend/src/routes/supervisor-today.ts`
+- `apps/backend/src/routes/supervisor-summary.ts` (Day 2)
+- `apps/backend/test/supervisor-today.test.ts`
+- `apps/backend/test/supervisor-summary.test.ts`
+- `packages/shared-schema/src/zod/today.ts`
+- `packages/shared-schema/src/zod/summary.ts`
+- `apps/mobile/lib/queries/use-today.ts`
+- `apps/mobile/lib/queries/use-summary.ts`
+- `apps/mobile/components/today/*` (~10 component files)
+- `apps/mobile/scripts/screenshot-supervisor-sprint.mjs` (5 tabs)
+- `apps/mobile/screenshots-supervisor/README.md`
+- `axhy-v3/handoff/done-memo-supervisor-sprint.md`
+
+**Modify:**
+
+- `apps/backend/src/lib/services/attendance-service.ts`
+- `apps/backend/src/routes/workers.ts`
+- `apps/backend/test/mark-absent.test.ts`
+- `apps/backend/src/server.ts` (register 2 new routes)
+- `packages/shared-schema/src/index.ts` (re-exports)
+- `apps/mobile/app/(supervisor)/today.tsx`
+- `apps/mobile/app/(supervisor)/summary.tsx` (or new)
+- `apps/mobile/app/(supervisor)/decisions.tsx` (read-only placeholder)
+- `apps/mobile/app/(supervisor)/updates.tsx` (read-only placeholder)
+- `apps/mobile/app/(supervisor)/profile.tsx` (polish only)
+
+## Discipline that still applies — and why
+
+- **Every claim in code points to a real file:line** — friend caught fabricated `Visit.supervisorId`, `Assignment.supervisorId`, `createInitialPermanentBinding` earlier today. Don't repeat that.
+- **No stubs that pretend success** — buttons that don't write yet render disabled with "Coming with P1" copy, not log+advance.
+- **Real-DB tests against sandbox** — no mocks for service-layer tests. Use the established `calendar-find.test.ts` pattern.
+- **Server-derived state, never client-recomputed** — Today's worker state labels derived in `today-service.ts`, not in `WorkerRow.tsx`.
+
+## What to do FIRST in the new session
+
+1. Acknowledge mode shift (1 line).
+2. Read the files in the order above.
+3. Start Sub-slice 1 (Q2=B) immediately. No re-plan, no re-explore — Phase 1 + Phase 2 work is captured in the plan file already.
+4. Batch updates: one summary message at end of Day 1, Day 2, Day 3.
+
+Stop overhead. Ship.

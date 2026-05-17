@@ -1,0 +1,384 @@
+/**
+ * F-006a — identity-lifecycle unit suite (10 active cases; no legacy/replaced).
+ *
+ * Cases:
+ *  1. happy path — onIdentifiedLogin persists tokens + calls OneSignal.login(userId)
+ *  2. logout ordering — OneSignal.logout() BEFORE clearTokens()
+ *  3. cold-start re-link — onColdStartReady calls OneSignal.login(userId) exactly once
+ *  4. logout timeout — OneSignal.logout exceeds 3s, clearTokens still runs
+ *  5. JWT decode failure — corrupt JWT skips OneSignal.login; setTokens still ran
+ *  6. web no-op — Platform.OS === 'web' skips OneSignal entirely; auth succeeds
+ *  7. no App ID no-op — undefined env skips OneSignal entirely; auth succeeds
+ *  8. mismatched-order reject — memberships[0] WORKER (even with SUPERVISOR at idx 1) throws
+ *  9. no-SUPERVISOR reject — memberships=[WORKER] and memberships=[] both throw
+ * 10. defensive cold-start logout — tokens.activeRole !== 'SUPERVISOR' triggers onAppLogout
+ *
+ * @derives(F-006a scope round-2 v6 Pick 2)
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Platform } from 'react-native';
+import { jwtDecode } from 'jwt-decode';
+
+import { setTokens, clearTokens } from './auth-store';
+import {
+  onIdentifiedLogin,
+  onAppLogout,
+  onColdStartReady,
+  shouldCallOneSignal,
+  initializeOneSignal,
+  _resetOneSignalInitializedForTests,
+  NonSupervisorRoleNotSupportedError,
+} from './identity-lifecycle';
+
+// Mock react-native — node test env doesn't have the RN runtime.
+vi.mock('react-native', () => ({
+  Platform: { OS: 'ios' },
+}));
+
+// Mock auth-store — narrow primitives; identity-lifecycle wraps them.
+vi.mock('./auth-store', () => ({
+  setTokens: vi.fn(async () => {}),
+  clearTokens: vi.fn(async () => {}),
+}));
+
+// Mock jwt-decode — return a fixed payload by default.
+vi.mock('jwt-decode', () => ({
+  jwtDecode: vi.fn(() => ({ userId: 'user-uuid-123' })),
+}));
+
+// Mock react-native-onesignal — `_resolveOneSignal()` + `initializeOneSignal()`
+// dynamically import it.
+const oneSignalInitialize = vi.fn((_id: string) => {});
+const oneSignalLogin = vi.fn(async (_id: string) => {});
+const oneSignalLogout = vi.fn(async () => {});
+vi.mock('react-native-onesignal', () => ({
+  OneSignal: {
+    initialize: (id: string) => oneSignalInitialize(id),
+    login: (id: string) => oneSignalLogin(id),
+    logout: () => oneSignalLogout(),
+  },
+}));
+
+const mockedSetTokens = setTokens as unknown as ReturnType<typeof vi.fn>;
+const mockedClearTokens = clearTokens as unknown as ReturnType<typeof vi.fn>;
+const mockedJwtDecode = jwtDecode as unknown as ReturnType<typeof vi.fn>;
+
+function makeAuthResult(memberships: Array<{ role: string; companyId?: string }>) {
+  return {
+    accessToken: 'header.payload.sig',
+    refreshToken: 'refresh-token',
+    memberships: memberships.map((m, i) => ({
+      role: m.role,
+      companyId: m.companyId ?? `company-${i}`,
+    })),
+  } as unknown as Parameters<typeof onIdentifiedLogin>[0];
+}
+
+beforeEach(() => {
+  mockedSetTokens.mockClear();
+  mockedClearTokens.mockClear();
+  mockedJwtDecode.mockReset();
+  mockedJwtDecode.mockReturnValue({ userId: 'user-uuid-123' });
+  oneSignalInitialize.mockReset();
+  oneSignalLogin.mockReset();
+  oneSignalLogin.mockResolvedValue(undefined);
+  oneSignalLogout.mockReset();
+  oneSignalLogout.mockResolvedValue(undefined);
+  (Platform as { OS: string }).OS = 'ios';
+  process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID = 'test-app-id';
+  _resetOneSignalInitializedForTests();
+});
+
+afterEach(() => {
+  delete process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+});
+
+describe('identity-lifecycle — onIdentifiedLogin', () => {
+  // Case 1: happy path
+  it('persists tokens with activeRole=SUPERVISOR and calls OneSignal.login(userId)', async () => {
+    const result = makeAuthResult([
+      { role: 'SUPERVISOR', companyId: 'A' },
+      { role: 'WORKER', companyId: 'B' },
+    ]);
+
+    await onIdentifiedLogin(result);
+
+    expect(mockedSetTokens).toHaveBeenCalledTimes(1);
+    expect(mockedSetTokens).toHaveBeenCalledWith({
+      accessToken: 'header.payload.sig',
+      refreshToken: 'refresh-token',
+      activeRole: 'SUPERVISOR',
+    });
+    expect(oneSignalLogin).toHaveBeenCalledTimes(1);
+    expect(oneSignalLogin).toHaveBeenCalledWith('user-uuid-123');
+  });
+
+  // Case 5: JWT decode failure
+  it('logs warning + skips OneSignal.login when JWT decode fails; setTokens still ran', async () => {
+    mockedJwtDecode.mockImplementation(() => {
+      throw new Error('bad token');
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await onIdentifiedLogin(makeAuthResult([{ role: 'SUPERVISOR' }]));
+
+    expect(mockedSetTokens).toHaveBeenCalledTimes(1);
+    expect(oneSignalLogin).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  // Case 6: web no-op
+  it('on web platform: persists tokens + skips OneSignal entirely; auth succeeds', async () => {
+    (Platform as { OS: string }).OS = 'web';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await onIdentifiedLogin(makeAuthResult([{ role: 'SUPERVISOR' }]));
+
+    expect(mockedSetTokens).toHaveBeenCalledTimes(1);
+    expect(oneSignalLogin).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    expect(shouldCallOneSignal()).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  // Case 7: no App ID no-op
+  it('with no EXPO_PUBLIC_ONESIGNAL_APP_ID: persists tokens + skips OneSignal entirely', async () => {
+    delete process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await onIdentifiedLogin(makeAuthResult([{ role: 'SUPERVISOR' }]));
+
+    expect(mockedSetTokens).toHaveBeenCalledTimes(1);
+    expect(oneSignalLogin).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    expect(shouldCallOneSignal()).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  // Case 8: mismatched-order reject (JWT-scoped rule)
+  it('rejects when memberships[0] is WORKER even if SUPERVISOR exists at index 1', async () => {
+    const result = makeAuthResult([
+      { role: 'WORKER', companyId: 'A' },
+      { role: 'SUPERVISOR', companyId: 'B' },
+    ]);
+
+    await expect(onIdentifiedLogin(result)).rejects.toBeInstanceOf(
+      NonSupervisorRoleNotSupportedError,
+    );
+    expect(mockedSetTokens).not.toHaveBeenCalled();
+    expect(oneSignalLogin).not.toHaveBeenCalled();
+  });
+
+  // Case 9: no-SUPERVISOR reject (and empty memberships)
+  it('rejects WORKER-only memberships and empty memberships array', async () => {
+    await expect(onIdentifiedLogin(makeAuthResult([{ role: 'WORKER' }]))).rejects.toBeInstanceOf(
+      NonSupervisorRoleNotSupportedError,
+    );
+    await expect(onIdentifiedLogin(makeAuthResult([]))).rejects.toBeInstanceOf(
+      NonSupervisorRoleNotSupportedError,
+    );
+    expect(mockedSetTokens).not.toHaveBeenCalled();
+    expect(oneSignalLogin).not.toHaveBeenCalled();
+  });
+});
+
+describe('identity-lifecycle — onAppLogout', () => {
+  // Case 2: logout ordering
+  it('calls OneSignal.logout() BEFORE clearTokens()', async () => {
+    const callOrder: string[] = [];
+    oneSignalLogout.mockImplementation(async () => {
+      callOrder.push('OneSignal.logout');
+    });
+    mockedClearTokens.mockImplementation(async () => {
+      callOrder.push('clearTokens');
+    });
+
+    await onAppLogout();
+
+    expect(callOrder).toEqual(['OneSignal.logout', 'clearTokens']);
+  });
+
+  // Case 4: logout timeout falls open
+  it('falls through to clearTokens when OneSignal.logout exceeds 3s', async () => {
+    oneSignalLogout.mockImplementation(
+      () => new Promise(() => {}), // never resolves
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const start = Date.now();
+    await onAppLogout();
+    const elapsed = Date.now() - start;
+
+    expect(mockedClearTokens).toHaveBeenCalledTimes(1);
+    // Timeout is 3000ms but withTimeout falls open via resolve(timeoutValue);
+    // assert it didn't hang past timeout + a small margin.
+    expect(elapsed).toBeLessThan(4000);
+    expect(elapsed).toBeGreaterThanOrEqual(2900);
+    warnSpy.mockRestore();
+  }, 6000);
+});
+
+describe('identity-lifecycle — onColdStartReady', () => {
+  // Case 3: cold-start re-link
+  it('decodes JWT + calls OneSignal.login(userId) exactly once; routes to supervisor', async () => {
+    const result = await onColdStartReady({
+      accessToken: 'header.payload.sig',
+      refreshToken: 'refresh',
+      activeRole: 'SUPERVISOR',
+    });
+
+    expect(oneSignalLogin).toHaveBeenCalledTimes(1);
+    expect(oneSignalLogin).toHaveBeenCalledWith('user-uuid-123');
+    expect(result.route).toBe('/(supervisor)/profile');
+  });
+
+  // Case 10: defensive cold-start logout
+  it('on stale tokens.activeRole !== SUPERVISOR: calls onAppLogout + routes to /(auth)/phone', async () => {
+    const result = await onColdStartReady({
+      accessToken: 'header.payload.sig',
+      refreshToken: 'refresh',
+      activeRole: 'WORKER',
+    });
+
+    expect(mockedClearTokens).toHaveBeenCalledTimes(1);
+    expect(oneSignalLogin).not.toHaveBeenCalled();
+    expect(result.route).toBe('/(auth)/phone');
+  });
+});
+
+describe('identity-lifecycle — initializeOneSignal (friend P1 fix)', () => {
+  // Case 11: native + App ID present → SDK initialize called exactly once,
+  // even if initializeOneSignal() is invoked multiple times.
+  it('calls OneSignal.initialize(appId) exactly once; idempotent across repeated calls', async () => {
+    await initializeOneSignal();
+    await initializeOneSignal();
+    await initializeOneSignal();
+
+    expect(oneSignalInitialize).toHaveBeenCalledTimes(1);
+    expect(oneSignalInitialize).toHaveBeenCalledWith('test-app-id');
+  });
+
+  // Case 12: web platform → init skipped entirely, warning logged
+  it('on web platform: skips OneSignal.initialize; warning logged', async () => {
+    (Platform as { OS: string }).OS = 'web';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await initializeOneSignal();
+
+    expect(oneSignalInitialize).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  // Case 13: no App ID → init skipped, warning logged
+  it('with no EXPO_PUBLIC_ONESIGNAL_APP_ID: skips OneSignal.initialize; warning logged', async () => {
+    delete process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await initializeOneSignal();
+
+    expect(oneSignalInitialize).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe('identity-lifecycle — init-before-use ordering (friend P1 round-2)', () => {
+  // Case 14: cold-start race — onColdStartReady() must trigger init
+  // BEFORE OneSignal.login(), regardless of whether _layout.tsx's useEffect
+  // has fired yet. (React's child useEffects run before parent useEffects on
+  // mount, so app/index.tsx → onColdStartReady can race ahead of _layout.tsx's
+  // warm-up call.) The fix is to make init part of the lifecycle boundary
+  // itself (_resolveOneSignal awaits init).
+  it('onColdStartReady triggers OneSignal.initialize before OneSignal.login even when warm-up has not fired', async () => {
+    // No initializeOneSignal() call before this — simulates the race.
+    const callOrder: string[] = [];
+    oneSignalInitialize.mockImplementation((_id: string) => {
+      callOrder.push('OneSignal.initialize');
+    });
+    oneSignalLogin.mockImplementation(async (_id: string) => {
+      callOrder.push('OneSignal.login');
+    });
+
+    await onColdStartReady({
+      accessToken: 'header.payload.sig',
+      refreshToken: 'refresh',
+      activeRole: 'SUPERVISOR',
+    });
+
+    expect(callOrder).toEqual(['OneSignal.initialize', 'OneSignal.login']);
+    expect(oneSignalInitialize).toHaveBeenCalledWith('test-app-id');
+  });
+
+  // Case 15: identified-login defense in depth — onIdentifiedLogin must also
+  // init before login, even though OTP-verify usually happens long after the
+  // warm-up. Belt-and-braces because the chokepoint guarantee should hold
+  // independently of mount-order assumptions.
+  it('onIdentifiedLogin triggers OneSignal.initialize before OneSignal.login even when warm-up has not fired', async () => {
+    const callOrder: string[] = [];
+    oneSignalInitialize.mockImplementation((_id: string) => {
+      callOrder.push('OneSignal.initialize');
+    });
+    oneSignalLogin.mockImplementation(async (_id: string) => {
+      callOrder.push('OneSignal.login');
+    });
+
+    await onIdentifiedLogin(makeAuthResult([{ role: 'SUPERVISOR' }]));
+
+    expect(callOrder).toEqual(['OneSignal.initialize', 'OneSignal.login']);
+  });
+});
+
+describe('identity-lifecycle — init failure + concurrency (friend P1+P2 round-3)', () => {
+  // Case 16: friend's P1 round-3 — when OneSignal.initialize throws, the
+  // lifecycle paths MUST NOT proceed to call login/logout/requestPermission
+  // against an un-initialized SDK. _resolveOneSignal() returns null on
+  // init failure; onIdentifiedLogin sees null and skips OneSignal.login;
+  // setTokens still runs (auth never depends on push lifecycle).
+  it('init failure (initialize throws) → _resolveOneSignal returns null → onIdentifiedLogin skips OneSignal.login', async () => {
+    oneSignalInitialize.mockImplementation(() => {
+      throw new Error('native module failed to load');
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await onIdentifiedLogin(makeAuthResult([{ role: 'SUPERVISOR' }]));
+
+    // initialize was attempted exactly once + threw.
+    expect(oneSignalInitialize).toHaveBeenCalledTimes(1);
+    // BUT login was NEVER called against the un-initialized SDK.
+    expect(oneSignalLogin).not.toHaveBeenCalled();
+    // Auth flow still succeeded (setTokens ran).
+    expect(mockedSetTokens).toHaveBeenCalledTimes(1);
+    // Failure was logged.
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  // Case 17: friend's P2 round-3 — concurrent warm-up + first-chokepoint
+  // must call OneSignal.initialize exactly ONCE. The bare-boolean latch
+  // round-2 had a TOCTOU race: both callers observe `false`, both await
+  // the import, both call initialize. The promise-latch fix has the first
+  // caller cache the promise; subsequent callers await the SAME promise.
+  it('concurrent initializeOneSignal calls (warm-up + chokepoint race) result in exactly ONE OneSignal.initialize invocation', async () => {
+    // Slow the SDK import + initialize so concurrent callers actually overlap.
+    oneSignalInitialize.mockImplementation((_id: string) => {
+      // synchronous call inside the IIFE; the overlap window is the
+      // dynamic import + the await-resolution. With the promise latch,
+      // only the first caller schedules the work.
+    });
+
+    const results = await Promise.all([
+      initializeOneSignal(),
+      initializeOneSignal(),
+      initializeOneSignal(),
+      initializeOneSignal(),
+    ]);
+
+    expect(oneSignalInitialize).toHaveBeenCalledTimes(1);
+    expect(oneSignalInitialize).toHaveBeenCalledWith('test-app-id');
+    // All callers observe the same successful init result.
+    expect(results).toEqual([true, true, true, true]);
+  });
+});

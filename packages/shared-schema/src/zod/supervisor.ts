@@ -314,60 +314,35 @@ export type CreateSwapRequestOutput = z.infer<typeof CreateSwapRequestOutput>;
 // ─── POST /visits/:id/end ────────────────────────────────────────────────────
 
 /**
- * VisitState v1.1 (12-state machine).
- * Prior states valid for ending: STARTED, IN_PROGRESS.
- * Terminal-after-end states: ENDED, AI_VERIFIED, FLAGGED, COMPLETED.
+ * VisitState — canonical 12-state machine.
  *
- * @derives(data-flow §4 — VisitState v1.1 LOCKED)
- * @derives(ADR-0007)
+ * Single source of truth: `@axhy/state-machines/visit.ts` (VisitStateValue).
+ * This Zod enum mirrors that union for wire-shape validation. If the canonical
+ * machine changes, update both in lockstep.
+ *
+ * Flow (worker-driven; supervisor is read-only except for FLAGGED review):
+ *   SCHEDULED → NOTIFIED → EN_ROUTE → ON_SITE → IN_PROGRESS
+ *     → PHOTOS_PENDING → AWAITING_VERIFICATION
+ *     → VERIFIED   (AI clean)   → ARCHIVED
+ *     → FLAGGED    (AI concern) → supervisor Resolve→VERIFIED or Reject→CANCELLED
+ *   Escape branches: CANCELLED (any tap), NO_SHOW (worker never arrived).
+ *
+ * @derives(ADR-0003)
+ * @derives(master-plan §G) — HR control plane / supervisor surface
+ * @derives(@axhy/state-machines/visit.ts VisitStateValue)
+ * @derives(supervisor-mobile-r6-design 2026-05-12)
  */
 export const VisitStateSchema = z.enum([
-  'DRAFT',
   'SCHEDULED',
-  'DISPATCHED',
-  'ARRIVED',
-  'STARTED',
+  'NOTIFIED',
+  'EN_ROUTE',
+  'ON_SITE',
   'IN_PROGRESS',
-  'ENDED',
-  'AI_VERIFIED',
+  'PHOTOS_PENDING',
+  'AWAITING_VERIFICATION',
+  'VERIFIED',
   'FLAGGED',
-  'COMPLETED',
   'CANCELLED',
-  'BLOCKED',
+  'NO_SHOW',
+  'ARCHIVED',
 ]);
-
-/**
- * Input shape for POST /visits/:id/end.
- * @derives(data-flow §5 — supervisor "Mark visit done" action)
- * @derives(ADR-0007)
- */
-export const EndVisitInput = z.object({
-  /** Optional supervisor closing note. */
-  note: z.string().trim().max(500).optional(),
-});
-
-/**
- * Inferred input type for /visits/:id/end.
- * @derives(data-flow §5)
- * @derives(ADR-0007)
- */
-export type EndVisitInput = z.infer<typeof EndVisitInput>;
-
-/**
- * Output shape for POST /visits/:id/end.
- * @derives(data-flow §5)
- * @derives(ADR-0007)
- */
-export const EndVisitOutput = z.object({
-  ok: z.literal(true),
-  visitId: z.string().uuid(),
-  state: z.literal('ENDED'),
-  endedAt: z.string(), // ISO timestamp
-});
-
-/**
- * Inferred output type for /visits/:id/end.
- * @derives(data-flow §5)
- * @derives(ADR-0007)
- */
-export type EndVisitOutput = z.infer<typeof EndVisitOutput>;
