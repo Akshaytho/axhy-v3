@@ -32,6 +32,7 @@ import type { MeOutput } from '@axhy/shared-schema';
 
 import { apiFetch, ApiError } from '../../lib/api';
 import { onAppLogout } from '../../lib/identity-lifecycle';
+import { useLocaleStrings, setLocale } from '../../lib/i18n/use-locale';
 
 // ─── Storage helpers (web: localStorage; native: direct localStorage unavailable but
 //     non-sensitive prefs are fine in localStorage on web, and for native we mirror
@@ -191,8 +192,8 @@ const sec = StyleSheet.create({
 
 /**
  * Bottom-sheet modal for selecting app language.
- * Persists selection to localStorage (key: axhy_user_locale).
- * No real i18n switch this slice — UI + persistence only.
+ * Persists selection to localStorage (key: axhy_user_locale) via `setLocale`.
+ * Strings are locale-aware: the cancel label reflects the currently active locale.
  *
  * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
  */
@@ -207,6 +208,8 @@ function LanguagePickerSheet({
   onSelect: (code: LocaleCode) => void;
   onClose: () => void;
 }) {
+  const strings = useLocaleStrings();
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={modal.backdrop} onPress={onClose}>
@@ -237,7 +240,7 @@ function LanguagePickerSheet({
           })}
 
           <Pressable style={modal.cancelBtn} onPress={onClose}>
-            <Text style={modal.cancelText}>Cancel</Text>
+            <Text style={modal.cancelText}>{strings.common.cancel}</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -463,6 +466,8 @@ export default function ProfileScreen() {
     queryFn: fetchMe,
   });
 
+  const strings = useLocaleStrings();
+
   // ── Language state ──────────────────────────────────────────────────────────
   // Stored preference drives the row label; re-render is triggered by setting it.
   const [storedLocale, setStoredLocale] = useState<LocaleCode | ''>(() => {
@@ -481,7 +486,10 @@ export default function ProfileScreen() {
   })();
 
   const handleSelectLocale = useCallback((code: LocaleCode) => {
-    prefSet(LOCALE_KEY, code);
+    // `setLocale` writes to localStorage AND fires in-process subscribers so all
+    // components using `useLocaleStrings()` re-render synchronously — no extra
+    // `prefSet` call needed here.
+    setLocale(code);
     setStoredLocale(code);
   }, []);
 
@@ -561,7 +569,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Profile section */}
-        <Section title="PROFILE">
+        <Section title={strings.profile.title.toUpperCase()}>
           <StatRow label="Name" value={displayName} />
           <StatRow label="Company" value={data.activeCompany.name} />
           <StatRow label="Role" value={data.activeRole} />
@@ -648,7 +656,7 @@ export default function ProfileScreen() {
         )}
 
         <TouchableOpacity style={s.signOut} onPress={handleSignOut} activeOpacity={0.8}>
-          <Text style={s.signOutText}>Sign out</Text>
+          <Text style={s.signOutText}>{strings.common.signOut}</Text>
         </TouchableOpacity>
 
         <Text style={s.build}>AXHY · v3 · BUILD 2026.05.08</Text>

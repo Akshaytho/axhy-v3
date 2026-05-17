@@ -16,6 +16,9 @@
  *   - /swap-requests                       → @derives(data-flow §5)
  *   - /visits/:id/end                      → @derives(data-flow §5)
  *   - /calendar                            → @derives(master-plan §G)
+ *   - /supervisor/summary                  → @derives(master-plan §G)
+ *   - /supervisor/updates                  → @derives(master-plan §G)
+ *   - /supervisor/updates/:id/acknowledge  → @derives(master-plan §G)
  *
  * @derives(ADR-0004)
  */
@@ -40,6 +43,8 @@ import { registerSupervisorTodayRoutes } from './routes/supervisor-today.js';
 import { registerSupervisorActivityRoutes } from './routes/supervisor-activity.js';
 import { registerSupervisorDecisionsRoutes } from './routes/supervisor-decisions.js';
 import { registerSupervisorContextRoutes } from './routes/supervisor-context.js';
+import { registerSupervisorSummaryRoutes } from './routes/supervisor-summary.js';
+import { registerSupervisorUpdatesRoutes } from './routes/supervisor-updates.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -87,6 +92,8 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerSupervisorActivityRoutes(app);
   await registerSupervisorDecisionsRoutes(app);
   await registerSupervisorContextRoutes(app);
+  await registerSupervisorSummaryRoutes(app);
+  await registerSupervisorUpdatesRoutes(app);
 
   return app;
 }

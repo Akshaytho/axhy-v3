@@ -29,6 +29,7 @@ import type { ActivityRowT } from '@axhy/shared-schema';
 
 import { TopAppBar } from '../../components/today/TopAppBar';
 import { useActivityQuery } from '../../lib/queries/use-activity';
+import { useLocaleStrings } from '../../lib/i18n/use-locale';
 
 // ---------------------------------------------------------------------------
 // Kind → Feather icon name
@@ -243,6 +244,7 @@ type KindChip = (typeof KIND_CHIPS)[number];
  */
 export default function ActivityScreen() {
   const q = useActivityQuery();
+  const strings = useLocaleStrings();
   const onRefresh = useCallback(() => {
     void q.refetch();
   }, [q]);
@@ -261,7 +263,7 @@ export default function ActivityScreen() {
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <TopAppBar title={titleText} subtitle="ACTIVITY · PROOF" />
+      <TopAppBar title={titleText} subtitle={strings.activity.title.toUpperCase() + ' · PROOF'} />
 
       {/* Filter chip panel */}
       <View style={s.filterPanel}>

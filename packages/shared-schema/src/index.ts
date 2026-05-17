@@ -38,3 +38,9 @@ export * from './zod/decisions.js';
 // Supervisor Context (Chat tab GreetingCard counts)
 // @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
 export * from './zod/supervisor-context.js';
+// Supervisor Summary (end-of-day digest) — panel-2026-05-17
+// @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
+export * from './zod/summary.js';
+// HR Updates tab — policy changes + typed-words ack
+// @derives(ADR-0003) @derives(master-plan §G) — HR control plane / supervisor surface
+export * from './zod/hr-updates.js';

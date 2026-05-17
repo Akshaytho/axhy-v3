@@ -37,6 +37,7 @@ import { TopAppBar } from '../../components/today/TopAppBar';
 import { SectionHeader } from '../../components/decisions/SectionHeader';
 import { DecisionCard } from '../../components/decisions/DecisionCard';
 import { useDecisionsQuery, useDismissDecision } from '../../lib/queries/use-decisions';
+import { useLocaleStrings } from '../../lib/i18n/use-locale';
 
 // ---------------------------------------------------------------------------
 // Section ordering — rendered in this priority order
@@ -57,6 +58,7 @@ const SECTION_ORDER: DecisionSectionT[] = ['NEEDS_YOU_NOW', 'ROUTINE', 'FAILED_R
 export default function DecisionsScreen() {
   const q = useDecisionsQuery();
   const dismiss = useDismissDecision();
+  const strings = useLocaleStrings();
 
   const onRefresh = useCallback(() => {
     void q.refetch();
@@ -84,7 +86,7 @@ export default function DecisionsScreen() {
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <TopAppBar title={titleText} subtitle="DECISIONS WORKSPACE" />
+      <TopAppBar title={titleText} subtitle={strings.decisions.title.toUpperCase()} />
 
       <ScrollView
         contentContainerStyle={s.scroll}

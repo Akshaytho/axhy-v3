@@ -36,15 +36,11 @@ import { FloorPulse } from '../../components/today/FloorPulse';
 import { SiteCard } from '../../components/today/SiteCard';
 import { MarkAbsentSheet } from '../../components/today/MarkAbsentSheet';
 import { FlaggedReviewSheet } from '../../components/today/FlaggedReviewSheet';
-
-function formatWeekdayTime(d: Date): string {
-  const weekday = d.toLocaleDateString([], { weekday: 'long' }).toUpperCase();
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${weekday} · ${time}`;
-}
+import { useLocaleStrings } from '../../lib/i18n/use-locale';
 
 export default function TodayScreen() {
   const today = useTodayQuery();
+  const strings = useLocaleStrings();
   const [markAbsentTarget, setMarkAbsentTarget] = useState<TodayWorkerT | null>(null);
   const [flaggedTarget, setFlaggedTarget] = useState<TodayFlaggedVisitT | null>(null);
 
@@ -52,12 +48,20 @@ export default function TodayScreen() {
     void today.refetch();
   }, [today]);
 
-  const subtitle = useMemo(() => formatWeekdayTime(new Date()), [today.dataUpdatedAt]);
+  // Re-compute when data refreshes or when the locale changes (strings
+  // ref changes). The hooks-deps lint plugin isn't loaded in this repo's
+  // eslint config, so the disable-comment that the subagent left here
+  // tripped the no-unknown-rule check at pre-commit. Removed; the deps
+  // list below is the right shape on its own.
+  const subtitle = useMemo(
+    () => strings.today.subtitleWeekday(new Date()),
+    [today.dataUpdatedAt, strings],
+  );
   const data = today.data;
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <TopAppBar title="Today's plan" subtitle={subtitle} />
+      <TopAppBar title={strings.today.title} subtitle={subtitle} />
       <ScrollView
         contentContainerStyle={s.scroll}
         refreshControl={
