@@ -28,3 +28,5 @@ export * from './zod/audit-payloads.js';
 export * from './zod/supervisor-decision-kinds.js';
 // F-004 — HandoffPackage payload (9 fields, schemaVersion: 1)
 export * from './zod/handoff-package.js';
+// Supervisor Today tab (panel-2026-05-17)
+export * from './zod/today.js';
