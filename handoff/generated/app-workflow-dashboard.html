@@ -106,8 +106,8 @@
   <header>
     <h1>Axhy v3 — Handoff Architecture Dashboard</h1>
     <div class="meta">
-      <span>Generated <strong>2026-05-16T21:42:26.635Z</strong></span>
-      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>05477ae0</code></span>
+      <span>Generated <strong>2026-05-17T12:46:37.626Z</strong></span>
+      <span title="Under auto-regen pre-commit hook, this is the commit immediately PRECEDING the commit containing this HTML. Run 'git log -1' for the absolute newest.">Generated against HEAD <code>2c7661a6</code></span>
       <span>Branch <code>feat/f-006a-onesignal-identity-lifecycle</code></span>
       <span>Active slice: <strong>f-006a-onesignal-identity-lifecycle (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly) · CODE_APPROVED 2026-05-17 03:05. Friend's CODE: APPROVED verdict landed at HEAD 05477ae after 3 fix-up rounds (round-1 added initializeOneSignal() at root-layout useEffect; round-2 moved init-before-use into _resolveOneSignal() chokepoint; round-3 closed init-failure no-op contract + replaced bare-boolean latch with Promise&lt;boolean&gt; latch). 49/49 unit tests green. Friend's verbatim: &quot;CODE: APPROVED. No production-grade findings remain. The two blockers are now actually closed in code. ... Residual note: I could not rerun the Vitest suite locally because this machine's Rollup native optional dependency is broken, so this approval is based on direct code review rather than a fresh local green run.&quot; **Next:** owner runs manual smoke (handoff/owner-input/f-006a-manual-smoke.md — 5 scenarios on real device + OneSignal sandbox) → push branch → merge to main → F-006a → DONE → surface next slice (supervisor UI draft).</strong></span>
       
@@ -311,16 +311,16 @@
       <details class="feature">
         <summary>
           <code>F-008</code>
-          <span class="badge" style="background:#666;color:#fff;">QUEUED</span>
-          <strong>Bootstrap-seed migration + HR review UI</strong>
+          <span class="badge" style="background:#0b6624;color:#fff;">DONE</span>
+          <strong>Bootstrap-seed core (DONE as P1.5b 2026-05-17) + HR review UI (still queued)</strong>
         </summary>
         <div class="feature-body">
           <p><strong>Why:</strong> Closure Decision 6 + responsibility-model pick 8. Onboarding new tenants needs initial bindings; HR must verify them.</p>
-          <p><strong>Depends on:</strong> F-005 (HR portal must exist to show the review surface).</p>
+          
           <p><strong>Personas:</strong> Kavitha (review), Ravi (sees inferred portfolio at first login).</p>
           <p><strong>Workflows:</strong> H-6, F26/F27 (after seed correction).</p>
-          <p><strong>Entities / routes / tables:</strong> new migration script, admin-web/hr/seed-review page.</p>
-          <p><strong>Verification gate:</strong> <code>REAL_DB</code>.</p>
+          
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> ✅; <code>PROD_APPLIED</code> deferred until real customer tenant loaded.</p>
         </div>
       </details>
       <details class="feature">
@@ -375,6 +375,21 @@
   - <strong>On successful delivery:</strong> stamp <code>Notification.deliveredAt = now()</code> + emit <code>WORKER_SUPERVISOR_CHANGE_NOTIFIED</code> AuditEvent + optionally record <code>providerMessageId</code> on the row for observability.
   - <strong>Failure policy — typed <code>failureReason</code> enum (v11 — 6 round-1 values, all actively emitted):</strong> terminal-no-retry (3): <code>'no_active_subscription'</code> / <code>'recipient_inactive'</code> / <code>'recipient_removed'</code>. Transient-bounded-backoff-retry (3): <code>'rate_limited'</code> / <code>'provider_error'</code> / <code>'network_error'</code>. The enum is extensible — new values are added later only when F-011 (or a future provider) actually emits them from a real signal. Do NOT pre-register ghost values.</p>
           <p><strong>Verification gate:</strong> <code>REAL_DB</code> + OneSignal sandbox project + Playwright on mobile builds.</p>
+        </div>
+      </details>
+      <details class="feature">
+        <summary>
+          <code>F-013</code>
+          <span class="badge" style="background:#0b6624;color:#fff;">DONE</span>
+          <strong>Sandbox-only test-fixture cleanup utility (DONE 2026-05-17)</strong>
+        </summary>
+        <div class="feature-body">
+          <p><strong>Why:</strong> P1.5b sandbox run revealed 65 ACTIVE companies in the sandbox (~99% test fixtures from prefixes like <code>p15b-*</code>, <code>cal-find-*</code>). Default-run tests (Cases 19/20/21) pushed 130s–239s because every test iterates all of them.</p>
+          
+          
+          
+          
+          <p><strong>Verification gate:</strong> <code>REAL_DB</code> ✅</p>
         </div>
       </details>
       <details class="feature">

@@ -177,17 +177,27 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **expected verification gate:** `REAL_DB` + production observation period.
 - **status:** `QUEUED — AWAITING_F-006_FIELD_OBSERVATION`. Optional; only built if needed.
 
-### F-008 — Bootstrap-seed migration + HR review UI
+### F-008 — Bootstrap-seed core (DONE as P1.5b 2026-05-17) + HR review UI (still queued)
 
 - **id:** F-008
-- **title:** Migration-time seed of permanent bindings from existing Assignments + HR review affordance
+- **title:** Bootstrap-seed core SHIPPED in P1.5b; HR review UI affordance still queued.
 - **why:** Closure Decision 6 + responsibility-model pick 8. Onboarding new tenants needs initial bindings; HR must verify them.
-- **depends on:** F-005 (HR portal must exist to show the review surface).
+- **status:** `DONE (CORE) — HR_REVIEW_UI_STILL_QUEUED`. Multi-tenant non-dry-run pass deferred (panel-approved) until a real customer tenant is loaded into the sandbox.
+- **what shipped (P1.5b, 2026-05-17):**
+  - `runBootstrapSeed` library + thin CLI wrapper (`apps/backend/scripts/p1_5_bootstrap_seed_bindings.ts`)
+  - `createPermanentBinding` helper (`apps/backend/src/lib/site-supervisor-binding.ts`)
+  - `getSitesSupervisedByUser` one-shot reverse query (refactored from N+1 per panel-polish P2 #4)
+  - Spec amendment correcting pick 8 derivation source (Complaint + SwapRequest, NOT Assignment — `Assignment.supervisorId` does not exist)
+  - 23-case real-DB test suite (23/23 green on Railway sandbox)
+  - Dry-run report: 65 ACTIVE companies, tier1=24 / tier2=14 / tier3-unbound=4 / recent-HR-skip=1, 0 failures
+  - Panel review verdict: `DEFER_NON_DRY_RUN` with precondition met (scoped run)
+  - All 5 panel P2s applied as a polish batch
+  - Scoped non-dry-run on `axhy-sandbox`: 5/5 sites `skipped-window-overlap` (idempotent re-run on existing bindings); exit 0
+- **HR review UI (still queued):** depends on F-005 (HR portal). Renders `BOOTSTRAP_SEED — pending HR review` rows for review/correct flow.
 - **personas touched:** Kavitha (review), Ravi (sees inferred portfolio at first login).
 - **workflows touched:** H-6, F26/F27 (after seed correction).
-- **entities/routes/tables touched:** new migration script, admin-web/hr/seed-review page.
-- **expected verification gate:** `REAL_DB`.
-- **status:** `QUEUED`.
+- **expected verification gate:** `REAL_DB` ✅; `PROD_APPLIED` deferred until real customer tenant loaded.
+- **done memo:** `handoff/done-memo-p1-5b-bootstrap-seed.md`.
 
 ### F-009 — Project memory service (Postgres + pgvector retrieval layer for Claude workflow)
 
@@ -248,6 +258,31 @@ Every queued feature has the 9 fields from `INDEX.md` rule:
 - **Owner-digest segmentation requirement (panel-test Naina + Reddy):** the owner monthly digest MUST group failed rows by `failureReason` to distinguish "transport failed — actionable" from `'no_active_subscription'` which is an onboarding/adoption signal (workers haven't installed the app yet). Without segmentation, a fresh tenant's first month will look like a 70%+ failure rate. Documented as an explicit requirement for the owner-digest slice.
 - **expected verification gate:** `REAL_DB` + OneSignal sandbox project + Playwright on mobile builds.
 - **status:** `QUEUED — AWAITING_F-007_DONE_AND_F-006_DONE`.
+
+### F-013 — Sandbox-only test-fixture cleanup utility (DONE 2026-05-17)
+
+- **id:** F-013
+- **title:** Sandbox-only utility that deletes accumulated test-fixture Company rows by slug prefix; child rows cascade via existing Prisma `onDelete: Cascade` relations.
+- **why:** P1.5b sandbox run revealed 65 ACTIVE companies in the sandbox (~99% test fixtures from prefixes like `p15b-*`, `cal-find-*`). Default-run tests (Cases 19/20/21) pushed 130s–239s because every test iterates all of them.
+- **status:** `DONE`. Sandbox cleaned: 71 fixture tenants deleted; 2 non-fixture tenants preserved (including `axhy-sandbox` via denylist).
+- **what shipped:**
+  - `runFixtureCleanup` library + thin CLI wrapper (`apps/backend/scripts/cleanup_sandbox_fixtures.ts`)
+  - 6-case real-DB test suite (`apps/backend/test/cleanup_sandbox_fixtures.test.ts`) — 6/6 green
+  - `axhy-sandbox` denylist guard verified live (Case 4)
+  - Empty-prefix-list safety guard (Case 5)
+  - Cascade-delete verified end-to-end (Case 2)
+- **constraints (all met):**
+  - Dry-run by default; `--apply` required ✓
+  - Prefix-based selector (defaults `p15b-`, `cal-find-`; `--prefix <p>` repeatable) ✓
+  - Company-root delete + cascades ✓
+  - Hardcoded denylist refusing `axhy-sandbox` ✓
+  - Same JSON-line stdout + `process.exitCode` contract as bootstrap script ✓
+  - Real-DB tests ✓
+- **run record (2026-05-17 10:17 UTC):**
+  - Dry-run: 71 matched, 0 blocked-by-denylist, 71 would-delete
+  - Apply: 71 deleted, 0 failed
+  - Sandbox post-cleanup: 2 total / 2 active companies; 0 `p15b-*`; 0 `cal-find-*`; `axhy-sandbox` preserved
+- **expected verification gate:** `REAL_DB` ✅
 
 ### F-012 — SMS + WhatsApp adapter (paid channels)
 
