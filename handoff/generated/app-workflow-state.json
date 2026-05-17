@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-16T21:42:26.635Z",
-    "generated_against_head": "05477ae0c7f94c3b5bcb1329e380118cc31c4f2e",
+    "last_updated_at": "2026-05-17T12:46:37.626Z",
+    "generated_against_head": "2c7661a6a855e3220f16c5d50d3ec502b694e6a4",
     "generated_against_branch": "feat/f-006a-onesignal-identity-lifecycle",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "05477ae0c7f94c3b5bcb1329e380118cc31c4f2e",
+    "last_canonical_commit_at_gen": "2c7661a6a855e3220f16c5d50d3ec502b694e6a4",
     "staleness_warning": null,
     "active_slice": "f-006a-onesignal-identity-lifecycle (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly) · CODE_APPROVED 2026-05-17 03:05. Friend's CODE: APPROVED verdict landed at HEAD 05477ae after 3 fix-up rounds (round-1 added initializeOneSignal() at root-layout useEffect; round-2 moved init-before-use into _resolveOneSignal() chokepoint; round-3 closed init-failure no-op contract + replaced bare-boolean latch with Promise<boolean> latch). 49/49 unit tests green. Friend's verbatim: \"CODE: APPROVED. No production-grade findings remain. The two blockers are now actually closed in code. ... Residual note: I could not rerun the Vitest suite locally because this machine's Rollup native optional dependency is broken, so this approval is based on direct code review rather than a fresh local green run.\" **Next:** owner runs manual smoke (handoff/owner-input/f-006a-manual-smoke.md — 5 scenarios on real device + OneSignal sandbox) → push branch → merge to main → F-006a → DONE → surface next slice (supervisor UI draft).",
     "generated_from": [
@@ -1336,14 +1336,14 @@
       },
       {
         "id": "F-008",
-        "title": "Bootstrap-seed migration + HR review UI",
+        "title": "Bootstrap-seed core (DONE as P1.5b 2026-05-17) + HR review UI (still queued)",
         "why": "Closure Decision 6 + responsibility-model pick 8. Onboarding new tenants needs initial bindings; HR must verify them.",
-        "depends_on": "F-005 (HR portal must exist to show the review surface).",
+        "depends_on": "",
         "personas": "Kavitha (review), Ravi (sees inferred portfolio at first login).",
         "workflows": "H-6, F26/F27 (after seed correction).",
-        "entities": "new migration script, admin-web/hr/seed-review page.",
-        "verification": "`REAL_DB`.",
-        "status": "QUEUED"
+        "entities": "",
+        "verification": "`REAL_DB` ✅; `PROD_APPLIED` deferred until real customer tenant loaded.",
+        "status": "DONE"
       },
       {
         "id": "F-009",
@@ -1377,6 +1377,17 @@
         "entities": "- **Mobile SDK install** in `apps/worker-mobile/` + `apps/supervisor-mobile/` (or wherever F-006 lands).\n  - **Identity lifecycle:** call `OneSignal.login(external_id = User.id)` on every identified app open / login. On app logout: `OneSignal.logout()` to detach the current device. On User soft-delete-and-re-create (rare): `OneSignal.logout()` on old session + re-link on next login under the new `external_id`.\n  - **Backend delivery adapter** consuming F-007's `channel='push'` rows where `deliveredAt IS NULL AND failedAt IS NULL`. Dispatches via OneSignal REST API targeting by `external_id`.\n  - **Pre-dispatch eligibility re-check (v11 — material correctness rule):** for each push row, the adapter re-fetches the target User (reference the existing schema soft-delete signal — likely `User.deletedAt`; verify against `packages/shared-schema/prisma/schema.prisma` at implementation time):\n    - User not found → stamp `failedAt + failureReason='recipient_removed'` (terminal — no retry).\n    - User soft-deleted/inactive → stamp `failedAt + failureReason='recipient_inactive'` (terminal — no retry).\n    - User active + OneSignal active subscription count = 0 → stamp `failedAt + failureReason='no_active_subscription'` (terminal — covers logout, uninstall, never-opened-app, all-tokens-expired).\n    - User active + ≥1 subscription → dispatch.\n  - **On successful delivery:** stamp `Notification.deliveredAt = now()` + emit `WORKER_SUPERVISOR_CHANGE_NOTIFIED` AuditEvent + optionally record `providerMessageId` on the row for observability.\n  - **Failure policy — typed `failureReason` enum (v11 — 6 round-1 values, all actively emitted):** terminal-no-retry (3): `'no_active_subscription'` / `'recipient_inactive'` / `'recipient_removed'`. Transient-bounded-backoff-retry (3): `'rate_limited'` / `'provider_error'` / `'network_error'`. The enum is extensible — new values are added later only when F-011 (or a future provider) actually emits them from a real signal. Do NOT pre-register ghost values.",
         "verification": "`REAL_DB` + OneSignal sandbox project + Playwright on mobile builds.",
         "status": "QUEUED"
+      },
+      {
+        "id": "F-013",
+        "title": "Sandbox-only test-fixture cleanup utility (DONE 2026-05-17)",
+        "why": "P1.5b sandbox run revealed 65 ACTIVE companies in the sandbox (~99% test fixtures from prefixes like `p15b-*`, `cal-find-*`). Default-run tests (Cases 19/20/21) pushed 130s–239s because every test iterates all of them.",
+        "depends_on": "",
+        "personas": "",
+        "workflows": "",
+        "entities": "",
+        "verification": "`REAL_DB` ✅",
+        "status": "DONE"
       },
       {
         "id": "F-012",
