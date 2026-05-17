@@ -47,6 +47,7 @@ import { registerSupervisorSummaryRoutes } from './routes/supervisor-summary.js'
 import { registerSupervisorUpdatesRoutes } from './routes/supervisor-updates.js';
 import { registerChatTranscribeRoutes } from './routes/chat-transcribe.js';
 import { registerComplaintRoutes } from './routes/complaints.js';
+import { registerReplacementInviteRoutes } from './routes/replacement-invites.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -98,6 +99,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerSupervisorSummaryRoutes(app);
   await registerSupervisorUpdatesRoutes(app);
   await registerComplaintRoutes(app);
+  await registerReplacementInviteRoutes(app);
 
   return app;
 }

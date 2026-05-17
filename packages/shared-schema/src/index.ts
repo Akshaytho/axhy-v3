@@ -48,3 +48,7 @@ export * from './zod/hr-updates.js';
 // @derives(supervisor-drawer-and-decisions-redesign.md §C)
 // @derives(panel-2026-05-18) — Wave 3 backend
 export * from './zod/complaint.js';
+// Wave 1 — ReplacementInvite (F28) PUBG-squad replacement broadcast
+// @derives(master-plan §P.4 — ReplacementInvite)
+// @derives(replacement-invite-feature-spec.md, 2026-05-18)
+export * from './zod/replacement-invite.js';
