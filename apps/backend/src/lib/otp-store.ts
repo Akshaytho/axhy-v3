@@ -26,7 +26,15 @@ import crypto from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
 const OTP_TTL_SECONDS = 300; // 5 min validity
-const MAX_OTPS_PER_15MIN = 3; // master plan §G.1
+// Master plan §G.1 prescribes 3 OTPs per phone per 15 min for prod (prevents
+// SMS-billing abuse). In dev (AXHY_OTP_BYPASS=1) we lift the cap so phone
+// smoke-testing isn't gated by a 15-min wait when a screenshot loop or
+// reload chews through OTPs. Prod default unchanged.
+const PROD_MAX_OTPS_PER_15MIN = 3;
+const DEV_MAX_OTPS_PER_15MIN = 100;
+function maxOtpsPer15Min(): number {
+  return process.env.AXHY_OTP_BYPASS === '1' ? DEV_MAX_OTPS_PER_15MIN : PROD_MAX_OTPS_PER_15MIN;
+}
 
 function hashCode(phone: string, code: string): string {
   // Salted with phone so a leaked DB row can't be replayed across users
@@ -74,15 +82,16 @@ export async function issueOtp(
 }> {
   await ensureSchema(prisma);
 
-  // Rate-limit: 3 issues per 15 min per phone
+  // Rate-limit: prod 3 / 15 min per phone; dev 100 / 15 min (AXHY_OTP_BYPASS=1)
+  const cap = maxOtpsPer15Min();
   const count = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
     `SELECT COUNT(*)::bigint AS count
      FROM axhy.otp_attempts
      WHERE phone = $1 AND issued_at > now() - interval '15 minutes'`,
     phone,
   );
-  if (Number(count[0]?.count ?? 0) >= MAX_OTPS_PER_15MIN) {
-    throw new Error('OTP_RATE_LIMITED: 3 OTPs allowed per phone per 15 minutes');
+  if (Number(count[0]?.count ?? 0) >= cap) {
+    throw new Error(`OTP_RATE_LIMITED: ${cap} OTPs allowed per phone per 15 minutes`);
   }
 
   const code = generateCode();
