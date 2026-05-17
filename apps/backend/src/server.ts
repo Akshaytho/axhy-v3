@@ -39,6 +39,7 @@ import { registerDecisionsRoutes } from './routes/decisions.js';
 import { registerSupervisorTodayRoutes } from './routes/supervisor-today.js';
 import { registerSupervisorActivityRoutes } from './routes/supervisor-activity.js';
 import { registerSupervisorDecisionsRoutes } from './routes/supervisor-decisions.js';
+import { registerSupervisorContextRoutes } from './routes/supervisor-context.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -85,6 +86,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerSupervisorTodayRoutes(app);
   await registerSupervisorActivityRoutes(app);
   await registerSupervisorDecisionsRoutes(app);
+  await registerSupervisorContextRoutes(app);
 
   return app;
 }

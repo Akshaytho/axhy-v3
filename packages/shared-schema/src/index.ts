@@ -35,3 +35,6 @@ export * from './zod/activity.js';
 // Supervisor Decisions tab — pending queue + dismiss write (panel-2026-05-17)
 // @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
 export * from './zod/decisions.js';
+// Supervisor Context (Chat tab GreetingCard counts)
+// @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
+export * from './zod/supervisor-context.js';

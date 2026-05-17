@@ -58,6 +58,7 @@ import { DecisionLinkPill } from '../../components/chat/DecisionLinkPill';
 import { sendChatMessage, type DecisionCardData } from '../../lib/chat-api';
 import { generateIdempotencyKey } from '../../lib/idempotency-key';
 import { apiFetch, isAIBudgetExceededError } from '../../lib/api';
+import { useSupervisorContextQuery } from '../../lib/queries/use-supervisor-context';
 
 /** Example phrases shown in the empty state. */
 const EXAMPLE_PHRASES = [
@@ -110,10 +111,11 @@ export default function ChatScreen() {
   });
 
   const supervisorFirstName = me?.user.name?.trim().split(/\s+/)[0] ?? 'there';
-  // Site/worker counts not yet available from /me — use placeholders until
-  // the supervisor-context API slice ships. Honest zero rather than fake data.
-  const siteCount = 0;
-  const activeWorkerCount = 0;
+
+  // Supervisor portfolio counts — fetched from GET /supervisor/context.
+  // Falls back to { sitesActive: 0, workersActive: 0 } while loading or on error.
+  const { data: context } = useSupervisorContextQuery();
+  const { sitesActive, workersActive } = context ?? { sitesActive: 0, workersActive: 0 };
 
   const onSend = useCallback(
     async (text: string) => {
@@ -251,8 +253,8 @@ export default function ChatScreen() {
       {/* GreetingCard — always shown, even in empty state */}
       <GreetingCard
         firstName={supervisorFirstName}
-        siteCount={siteCount}
-        activeWorkerCount={activeWorkerCount}
+        siteCount={sitesActive}
+        activeWorkerCount={workersActive}
       />
 
       {/* Message list or empty state */}

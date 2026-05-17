@@ -21,6 +21,7 @@ import { tokens } from '@axhy/ui-tokens';
 import type { TodaySiteT, TodayWorkerT } from '@axhy/shared-schema';
 
 import { WorkerRow } from './WorkerRow';
+import { SiteActionSheet } from './SiteActionSheet';
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export type SiteCardProps = {
@@ -56,6 +57,7 @@ function coverageTone(site: TodaySiteT): { bg: string; fg: string; label: string
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
   const [open, setOpen] = useState(false);
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const tone = coverageTone(site);
   const siteWorkers = workers.filter((w) => w.siteId === site.id);
 
@@ -93,6 +95,7 @@ export function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
           <Pressable
             onPress={(e) => {
               e.stopPropagation();
+              setActionSheetOpen(true);
             }}
             style={s.menuButton}
             accessibilityRole="button"
@@ -119,6 +122,12 @@ export function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
           </View>
         )
       ) : null}
+
+      <SiteActionSheet
+        visible={actionSheetOpen}
+        site={site}
+        onClose={() => setActionSheetOpen(false)}
+      />
     </View>
   );
 }

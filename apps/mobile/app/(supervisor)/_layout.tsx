@@ -30,6 +30,7 @@ import { tokens } from '@axhy/ui-tokens';
 
 import { MicFAB } from '../../components/MicFAB';
 import { Drawer, DrawerContext } from '../../components/Drawer';
+import { DecisionsBadgeIcon } from '../../components/DecisionsBadgeIcon';
 
 type TabIcon = React.ComponentProps<typeof Feather>['name'];
 
@@ -117,7 +118,9 @@ export default function SupervisorLayout() {
             name="decisions"
             options={{
               title: 'Decisions',
-              tabBarIcon: tabIcon('bell'),
+              tabBarIcon: ({ focused }: { focused: boolean }) => (
+                <DecisionsBadgeIcon focused={focused} />
+              ),
               tabBarLabel: tabLabel('Decisions'),
             }}
           />
