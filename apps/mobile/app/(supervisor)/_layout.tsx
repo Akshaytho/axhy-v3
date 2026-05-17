@@ -156,6 +156,9 @@ export default function SupervisorLayout() {
           {/* Secondary surfaces — reachable, not tab-bar items. */}
           <Tabs.Screen name="summary" options={{ href: null }} />
           <Tabs.Screen name="updates" options={{ href: null }} />
+          {/* Drawer-only surfaces — not shown in the tab bar. */}
+          <Tabs.Screen name="memory" options={{ href: null }} />
+          <Tabs.Screen name="sites" options={{ href: null }} />
         </Tabs>
 
         {/* MicFAB — overlays tab content; hidden on Profile. */}

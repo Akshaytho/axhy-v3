@@ -45,6 +45,7 @@ import { registerSupervisorDecisionsRoutes } from './routes/supervisor-decisions
 import { registerSupervisorContextRoutes } from './routes/supervisor-context.js';
 import { registerSupervisorSummaryRoutes } from './routes/supervisor-summary.js';
 import { registerSupervisorUpdatesRoutes } from './routes/supervisor-updates.js';
+import { registerChatTranscribeRoutes } from './routes/chat-transcribe.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -87,6 +88,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerCalendarRoutes(app);
   await registerAssignmentRoutes(app);
   await registerChatRoutes(app);
+  await registerChatTranscribeRoutes(app);
   await registerDecisionsRoutes(app);
   await registerSupervisorTodayRoutes(app);
   await registerSupervisorActivityRoutes(app);
