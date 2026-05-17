@@ -1,10 +1,14 @@
 /**
- * FloorPulse — three big-number metrics across the supervisor's portfolio.
+ * FloorPulse — single card with 3-metric row.
  *
- * Per R6 prototype. Per the scenarios doc, the supervisor's first glance
- * after opening Today: ON SITE / SHORT / PENDING — three numbers that say
- * the situation right now. Flagged is shown in the urgency banner above,
- * not here, because it's actionable not informational.
+ * Per R6 prototype `today.jsx:632-673`:
+ *   - One `.card` container, padding 16, marginBottom 14
+ *   - "FLOOR PULSE" caption (t-caption, --ink-3 by default, tracked)
+ *   - 3 columns: ON SITE (--ok) / SHORT (--bad) / PENDING (--ink)
+ *   - Numbers: mono, fontSize 28, fontWeight 600, lineHeight 1
+ *   - Labels: t-mono-sm uppercase, --ink-3, marginTop 4
+ *   - SHORT = late + no_show (coverage gap)
+ *   - PENDING = pulse.pending (action queue)
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
@@ -15,66 +19,67 @@ import { tokens } from '@axhy/ui-tokens';
 import type { TodayPulseT } from '@axhy/shared-schema';
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export type FloorPulseProps = { pulse: TodayPulseT; totalDue: number };
+export type FloorPulseProps = { pulse: TodayPulseT };
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export function FloorPulse({ pulse, totalDue }: FloorPulseProps) {
-  const shortCount = Math.max(0, totalDue - pulse.onSite);
-  const tiles: { label: string; value: number; tone: 'ok' | 'warn' | 'info' }[] = [
-    { label: 'ON SITE', value: pulse.onSite, tone: 'ok' },
-    { label: 'SHORT', value: shortCount, tone: shortCount > 0 ? 'warn' : 'ok' },
-    { label: 'PENDING', value: pulse.pending, tone: 'info' },
+export function FloorPulse({ pulse }: FloorPulseProps) {
+  const cells: { value: number; label: string; color: string }[] = [
+    { value: pulse.onSite, label: 'ON SITE', color: tokens.color.semantic.ok },
+    { value: pulse.late + pulse.noShow, label: 'SHORT', color: tokens.color.semantic.bad },
+    { value: pulse.pending, label: 'PENDING', color: tokens.color.ink.primary },
   ];
   return (
-    <View style={s.row}>
-      {tiles.map((t) => (
-        <View key={t.label} style={s.tile}>
-          <Text style={[s.value, toneColor(t.tone)]}>{t.value}</Text>
-          <Text style={s.label}>{t.label}</Text>
-        </View>
-      ))}
+    <View style={s.card}>
+      <Text style={s.eyebrow}>FLOOR PULSE</Text>
+      <View style={s.row}>
+        {cells.map((c) => (
+          <View key={c.label} style={s.cell}>
+            <Text style={[s.value, { color: c.color }]}>{c.value}</Text>
+            <Text style={s.label}>{c.label}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
-function toneColor(tone: 'ok' | 'warn' | 'info') {
-  switch (tone) {
-    case 'ok':
-      return { color: tokens.color.semantic.ok };
-    case 'warn':
-      return { color: tokens.color.semantic.warn };
-    case 'info':
-    default:
-      return { color: tokens.color.semantic.infoInk };
-  }
-}
-
 const s = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: tokens.space[3],
-    marginBottom: tokens.space[5],
-  },
-  tile: {
-    flex: 1,
+  card: {
     backgroundColor: tokens.color.surface.card,
     borderColor: tokens.color.surface.cardEdge,
     borderWidth: 1,
     borderRadius: tokens.radius.r3,
-    paddingHorizontal: tokens.space[3],
-    paddingVertical: tokens.space[4],
-    alignItems: 'flex-start',
+    padding: 16,
+    marginBottom: 14,
   },
+  eyebrow: {
+    fontSize: tokens.type.caption.size,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    color: tokens.color.ink.tertiary,
+    letterSpacing: tokens.type.caption.size * tokens.type.caption.tracking,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  cell: { flex: 1 },
   value: {
-    fontSize: tokens.type.displayL.size,
-    fontWeight: String(tokens.weight.bold) as '700',
-    letterSpacing: -1,
+    fontSize: 28,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    lineHeight: 28,
+    fontFamily: tokens.font.mono,
   },
   label: {
-    fontSize: tokens.type.caption.size,
-    fontWeight: String(tokens.weight.bold) as '700',
+    fontSize: 11,
+    fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.tertiary,
-    letterSpacing: 1.0,
-    marginTop: tokens.space[1],
+    letterSpacing: 0.44,
+    textTransform: 'uppercase',
+    marginTop: 4,
+    fontFamily: tokens.font.mono,
   },
 });
