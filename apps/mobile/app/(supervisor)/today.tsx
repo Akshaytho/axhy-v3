@@ -48,6 +48,12 @@ export default function TodayScreen() {
     void today.refetch();
   }, [today]);
 
+  // Stable handler so memoized SiteCard → WorkerRow don't see a new function
+  // reference on every parent render.
+  const handleWorkerPress = useCallback((w: TodayWorkerT) => {
+    setMarkAbsentTarget(w);
+  }, []);
+
   // Re-compute when data refreshes or when the locale changes (strings
   // ref changes). The hooks-deps lint plugin isn't loaded in this repo's
   // eslint config, so the disable-comment that the subagent left here
@@ -106,7 +112,7 @@ export default function TodayScreen() {
                     key={site.id}
                     site={site}
                     workers={data.workers}
-                    onWorkerPress={(w) => setMarkAbsentTarget(w)}
+                    onWorkerPress={handleWorkerPress}
                   />
                 ))}
               </View>

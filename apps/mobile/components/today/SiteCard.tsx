@@ -14,7 +14,7 @@
  * @derives(master-plan §G) — supervisor surface
  */
 
-import { useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
@@ -54,83 +54,117 @@ function coverageTone(site: TodaySiteT): { bg: string; fg: string; label: string
   };
 }
 
-/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
-  const [open, setOpen] = useState(false);
-  const [actionSheetOpen, setActionSheetOpen] = useState(false);
-  const tone = coverageTone(site);
-  const siteWorkers = workers.filter((w) => w.siteId === site.id);
+/**
+ * Site card on the Today tab — shows coverage pill + worker list.
+ *
+ * Wrapped in React.memo with a custom comparator: the `workers` prop is the
+ * full list from useTodayQuery and is a new array reference every render, but
+ * only the subset matching `site.id` matters. The comparator re-renders only
+ * when `site` or `onWorkerPress` changes, or when the workers that belong to
+ * this site actually change (compared by id+state+note).
+ *
+ * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
+ */
+export const SiteCard = memo(
+  function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
+    const [open, setOpen] = useState(false);
+    const [actionSheetOpen, setActionSheetOpen] = useState(false);
+    const tone = coverageTone(site);
 
-  return (
-    <View style={s.card}>
-      <Pressable
-        onPress={() => setOpen((o) => !o)}
-        style={({ pressed }) => [s.header, pressed && s.headerPressed]}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-      >
-        <View style={s.left}>
-          <View style={s.nameRow}>
-            <Text style={s.name} numberOfLines={1}>
-              {site.name}
-            </Text>
-            {site.flagged ? (
-              <View style={s.flagPill}>
-                <Feather name="alert-triangle" size={10} color={tokens.color.semantic.warn} />
-                <Text style={s.flagPillText}>FLAG</Text>
-              </View>
-            ) : null}
-          </View>
-          <View style={s.metaRow}>
-            <View style={[s.coverPill, { backgroundColor: tone.bg }]}>
-              <Text style={[s.coverPillText, { color: tone.fg }]}>{tone.label}</Text>
+    // Memoize the filter so it doesn't re-run on every parent re-render.
+    const siteWorkers = useMemo(
+      () => workers.filter((w) => w.siteId === site.id),
+      // workers is a new array every render, but the filter is cheap and
+      // the result is stable across renders when the underlying data is the same.
+      [workers, site.id],
+    );
+
+    const handleOpenActionSheet = useCallback((e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      setActionSheetOpen(true);
+    }, []);
+
+    const handleCloseActionSheet = useCallback(() => setActionSheetOpen(false), []);
+
+    return (
+      <View style={s.card}>
+        <Pressable
+          onPress={() => setOpen((o) => !o)}
+          style={({ pressed }) => [s.header, pressed && s.headerPressed]}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+        >
+          <View style={s.left}>
+            <View style={s.nameRow}>
+              <Text style={s.name} numberOfLines={1}>
+                {site.name}
+              </Text>
+              {site.flagged ? (
+                <View style={s.flagPill}>
+                  <Feather name="alert-triangle" size={10} color={tokens.color.semantic.warn} />
+                  <Text style={s.flagPillText}>FLAG</Text>
+                </View>
+              ) : null}
             </View>
-            <Text style={s.ratio}>
-              {site.workersOn}/{site.workersDue}
-            </Text>
-            {!open ? <Text style={s.hint}>TAP TO VIEW WORKERS →</Text> : null}
+            <View style={s.metaRow}>
+              <View style={[s.coverPill, { backgroundColor: tone.bg }]}>
+                <Text style={[s.coverPillText, { color: tone.fg }]}>{tone.label}</Text>
+              </View>
+              <Text style={s.ratio}>
+                {site.workersOn}/{site.workersDue}
+              </Text>
+              {!open ? <Text style={s.hint}>TAP TO VIEW WORKERS →</Text> : null}
+            </View>
           </View>
-        </View>
-        <View style={s.rightControls}>
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation();
-              setActionSheetOpen(true);
-            }}
-            style={s.menuButton}
-            accessibilityRole="button"
-            accessibilityLabel="Site options"
-          >
-            <Feather name="more-vertical" size={18} color={tokens.color.ink.tertiary} />
-          </Pressable>
-          <View style={[s.chevron, open ? s.chevronOpen : null]}>
-            <Feather name="chevron-right" size={20} color={tokens.color.ink.tertiary} />
+          <View style={s.rightControls}>
+            <Pressable
+              onPress={handleOpenActionSheet}
+              style={s.menuButton}
+              accessibilityRole="button"
+              accessibilityLabel="Site options"
+            >
+              <Feather name="more-vertical" size={18} color={tokens.color.ink.tertiary} />
+            </Pressable>
+            <View style={[s.chevron, open ? s.chevronOpen : null]}>
+              <Feather name="chevron-right" size={20} color={tokens.color.ink.tertiary} />
+            </View>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
 
-      {open ? (
-        siteWorkers.length === 0 ? (
-          <View style={s.emptyWorkers}>
-            <Text style={s.emptyText}>No active workers on this site today.</Text>
-          </View>
-        ) : (
-          <View>
-            {siteWorkers.map((w) => (
-              <WorkerRow key={w.id} worker={w} onPress={onWorkerPress} />
-            ))}
-          </View>
-        )
-      ) : null}
+        {open ? (
+          siteWorkers.length === 0 ? (
+            <View style={s.emptyWorkers}>
+              <Text style={s.emptyText}>No active workers on this site today.</Text>
+            </View>
+          ) : (
+            <View>
+              {siteWorkers.map((w) => (
+                <WorkerRow key={w.id} worker={w} onPress={onWorkerPress} />
+              ))}
+            </View>
+          )
+        ) : null}
 
-      <SiteActionSheet
-        visible={actionSheetOpen}
-        site={site}
-        onClose={() => setActionSheetOpen(false)}
-      />
-    </View>
-  );
-}
+        <SiteActionSheet visible={actionSheetOpen} site={site} onClose={handleCloseActionSheet} />
+      </View>
+    );
+  },
+  // Custom memo comparator — avoids re-rendering this card when an unrelated
+  // worker on a different site changes (workers is a new array every parent
+  // render because useTodayQuery returns the full workers list).
+  (prev, next) => {
+    if (prev.site !== next.site) return false;
+    if (prev.onWorkerPress !== next.onWorkerPress) return false;
+    // Compare only the workers belonging to this site.
+    const prevOwn = prev.workers.filter((w) => w.siteId === prev.site.id);
+    const nextOwn = next.workers.filter((w) => w.siteId === next.site.id);
+    if (prevOwn.length !== nextOwn.length) return false;
+    return prevOwn.every((pw, i) => {
+      const nw = nextOwn[i];
+      return nw != null && pw.id === nw.id && pw.state === nw.state && pw.note === nw.note;
+    });
+  },
+);
 
 const s = StyleSheet.create({
   card: {

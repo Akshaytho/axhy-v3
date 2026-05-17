@@ -25,5 +25,6 @@ export function useSupervisorContextQuery() {
   return useQuery<SupervisorContextT>({
     queryKey: SUPERVISOR_CONTEXT_QUERY_KEY,
     queryFn: () => apiFetch<SupervisorContextT>('/supervisor/context'),
+    staleTime: 5 * 60_000,
   });
 }

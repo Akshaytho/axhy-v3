@@ -21,6 +21,7 @@ export function useDecisionsQuery() {
   return useQuery<DecisionsResponseT>({
     queryKey: DECISIONS_QUERY_KEY,
     queryFn: () => apiFetch<DecisionsResponseT>('/supervisor/decisions'),
+    staleTime: 30_000,
   });
 }
 

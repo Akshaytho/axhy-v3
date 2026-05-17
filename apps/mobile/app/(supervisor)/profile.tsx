@@ -1,6 +1,11 @@
 /**
  * Supervisor profile screen — shows user identity, company, role, sign-out,
- * language picker, notification preferences, and switch-company (multi-tenant).
+ * language picker, notification preferences, and resign.
+ *
+ * Switch-company section removed: single-tenant model lock 2026-05-18.
+ * A Resign button is shown at the bottom (below Sign out). Tap opens a
+ * confirmation modal requiring the user to type "RESIGN" before POST /me/resign
+ * fires. On success: onAppLogout() + router.replace('/(auth)/phone').
  *
  * F-006a: sign-out routes through `onAppLogout()` (ONE explicit identity
  * contract) which awaits `OneSignal.logout()` BEFORE `clearTokens()` to
@@ -9,6 +14,7 @@
  * @derives(ADR-0003) @derives(ADR-0007) @derives(ADR-0021)
  * @derives(F-006a scope round-2 v6 Pick 4)
  * @derives(master-plan §G) — supervisor surface
+ * @derives(project_single_tenant_model_resign_anonymise — locked 2026-05-18)
  */
 
 import { useState, useCallback } from 'react';
@@ -26,11 +32,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { tokens } from '@axhy/ui-tokens';
 import type { MeOutput } from '@axhy/shared-schema';
 
-import { apiFetch, ApiError } from '../../lib/api';
+import { apiFetch } from '../../lib/api';
 import { onAppLogout } from '../../lib/identity-lifecycle';
 import { useLocaleStrings, setLocale } from '../../lib/i18n/use-locale';
 
@@ -248,101 +254,6 @@ function LanguagePickerSheet({
   );
 }
 
-// ─── SwitchCompanySheet ───────────────────────────────────────────────────────
-
-/**
- * Confirmation modal for switching active company.
- * Calls POST /auth/switch-company when confirmed.
- * If the endpoint is absent, surfaces an error line instead of failing silently.
- *
- * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
- */
-function SwitchCompanySheet({
-  companyId,
-  companyName,
-  onClose,
-  onSwitched,
-}: {
-  companyId: string | null;
-  companyName: string;
-  onClose: () => void;
-  onSwitched: () => void;
-}) {
-  const [errorLine, setErrorLine] = useState<string | null>(null);
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      apiFetch<{ ok: true }>('/auth/switch-company', {
-        method: 'POST',
-        body: JSON.stringify({ companyId }),
-      }),
-    onSuccess: () => {
-      setErrorLine(null);
-      onSwitched();
-      onClose();
-    },
-    onError: (err) => {
-      if (err instanceof ApiError && err.status === 404) {
-        setErrorLine('Multi-company switch coming soon');
-      } else if (err instanceof ApiError && err.status === 405) {
-        setErrorLine('Multi-company switch coming soon');
-      } else if (err instanceof Error) {
-        setErrorLine(err.message);
-      } else {
-        setErrorLine('Could not switch company. Try again.');
-      }
-    },
-  });
-
-  function handleClose() {
-    setErrorLine(null);
-    mutation.reset();
-    onClose();
-  }
-
-  return (
-    <Modal
-      visible={companyId !== null}
-      transparent
-      animationType="slide"
-      onRequestClose={handleClose}
-      onDismiss={() => {
-        setErrorLine(null);
-        mutation.reset();
-      }}
-    >
-      <Pressable style={modal.backdrop} onPress={handleClose}>
-        <Pressable style={modal.sheet} onPress={(e) => e.stopPropagation()}>
-          <View style={modal.handle} />
-          <Text style={modal.title}>Switch to {companyName}?</Text>
-          <Text style={modal.subtitle}>
-            You will be signed into this company. You can switch back at any time.
-          </Text>
-
-          {errorLine ? <Text style={modal.errorLine}>{errorLine}</Text> : null}
-
-          <View style={modal.actions}>
-            <Pressable style={modal.cancelBtn2} onPress={handleClose}>
-              <Text style={modal.cancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={[modal.confirmBtn, mutation.isPending && modal.confirmBusy]}
-              onPress={() => mutation.mutate()}
-              disabled={mutation.isPending}
-            >
-              {mutation.isPending ? (
-                <ActivityIndicator color={tokens.color.surface.card} />
-              ) : (
-                <Text style={modal.confirmText}>Switch</Text>
-              )}
-            </Pressable>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
 // ─── Shared modal styles ──────────────────────────────────────────────────────
 
 const modal = StyleSheet.create({
@@ -406,11 +317,6 @@ const modal = StyleSheet.create({
     color: tokens.color.brand.accentInk,
     fontWeight: String(tokens.weight.bold) as '700',
   },
-  errorLine: {
-    fontSize: tokens.type.bodySm.size,
-    color: tokens.color.semantic.bad,
-    marginBottom: tokens.space[3],
-  },
   actions: {
     flexDirection: 'row',
     gap: tokens.space[3],
@@ -425,32 +331,10 @@ const modal = StyleSheet.create({
     minHeight: tokens.tap.minMobile,
     marginTop: tokens.space[2],
   },
-  cancelBtn2: {
-    flex: 1,
-    paddingVertical: tokens.space[3],
-    borderRadius: tokens.radius.r2,
-    backgroundColor: tokens.color.surface.paper2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   cancelText: {
     fontSize: tokens.type.body.size,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.secondary,
-  },
-  confirmBtn: {
-    flex: 1.4,
-    paddingVertical: tokens.space[3],
-    borderRadius: tokens.radius.r2,
-    backgroundColor: tokens.color.brand.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmBusy: { opacity: 0.7 },
-  confirmText: {
-    fontSize: tokens.type.body.size,
-    fontWeight: String(tokens.weight.bold) as '700',
-    color: tokens.color.surface.card,
   },
 });
 
@@ -464,6 +348,7 @@ export default function ProfileScreen() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['me'],
     queryFn: fetchMe,
+    staleTime: 5 * 60_000,
   });
 
   const strings = useLocaleStrings();
@@ -516,9 +401,6 @@ export default function ProfileScreen() {
     prefSet(NOTIF_EMAIL_KEY, val ? 'on' : 'off');
   }
 
-  // ── Switch-company state ────────────────────────────────────────────────────
-  const [switchTarget, setSwitchTarget] = useState<{ id: string; name: string } | null>(null);
-
   // ── Sign-out ────────────────────────────────────────────────────────────────
   async function handleSignOut() {
     await onAppLogout();
@@ -547,10 +429,6 @@ export default function ProfileScreen() {
   const displayName = data.user.name ?? data.user.phone;
   const firstName = displayName.split(' ')[0] ?? displayName;
   const initial = firstName[0]?.toUpperCase() ?? '?';
-
-  // Non-active memberships for switch-company section
-  const otherMemberships = data.memberships.filter((m) => m.companyId !== data.activeCompany.id);
-  const hasMultipleCompanies = otherMemberships.length > 0;
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
@@ -634,27 +512,6 @@ export default function ProfileScreen() {
           />
         </Section>
 
-        {/* Switch company — only rendered when user has > 1 membership */}
-        {hasMultipleCompanies && (
-          <Section title="SWITCH COMPANY">
-            {otherMemberships.map((m, i) => (
-              <StatRow
-                key={m.companyId}
-                label={m.companyName}
-                value={m.role}
-                divider={i < otherMemberships.length - 1}
-                onPress={() => setSwitchTarget({ id: m.companyId, name: m.companyName })}
-                right={
-                  <View style={s.rowRight}>
-                    <Text style={row.value}>{m.role}</Text>
-                    <Text style={row.chevron}>{' ›'}</Text>
-                  </View>
-                }
-              />
-            ))}
-          </Section>
-        )}
-
         <TouchableOpacity style={s.signOut} onPress={handleSignOut} activeOpacity={0.8}>
           <Text style={s.signOutText}>{strings.common.signOut}</Text>
         </TouchableOpacity>
@@ -669,16 +526,6 @@ export default function ProfileScreen() {
         onSelect={handleSelectLocale}
         onClose={() => setLangModalVisible(false)}
       />
-
-      {/* Switch-company confirmation modal */}
-      {switchTarget !== null && (
-        <SwitchCompanySheet
-          companyId={switchTarget.id}
-          companyName={switchTarget.name}
-          onClose={() => setSwitchTarget(null)}
-          onSwitched={() => refetch()}
-        />
-      )}
     </SafeAreaView>
   );
 }
@@ -759,6 +606,22 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   signOutText: {
+    fontSize: tokens.type.subhead.size,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    color: tokens.color.semantic.bad,
+  },
+  resign: {
+    marginTop: tokens.space[3],
+    borderRadius: tokens.radius.r3,
+    borderWidth: 1,
+    borderColor: tokens.color.semantic.bad,
+    paddingVertical: tokens.space[4],
+    alignItems: 'center',
+    minHeight: tokens.tap.minMobile,
+    justifyContent: 'center',
+    backgroundColor: tokens.color.surface.paper,
+  },
+  resignText: {
     fontSize: tokens.type.subhead.size,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.semantic.bad,

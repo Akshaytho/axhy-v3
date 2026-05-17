@@ -21,6 +21,7 @@ export function useTodayQuery() {
   return useQuery<TodayResponseT>({
     queryKey: TODAY_QUERY_KEY,
     queryFn: () => apiFetch<TodayResponseT>('/supervisor/today'),
+    staleTime: 30_000,
   });
 }
 

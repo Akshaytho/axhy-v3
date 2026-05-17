@@ -23,6 +23,7 @@
 import { useCallback } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -84,6 +85,10 @@ export default function DecisionsScreen() {
   const total = q.data?.counts.total ?? 0;
   const titleText = total === 0 ? 'All caught up' : `${total} pending`;
 
+  // dismissingId tracks the one row whose dismiss is in flight so DecisionCard
+  // can render its loading indicator without re-checking the whole mutation.
+  const dismissingId = dismiss.isPending ? (dismiss.variables as string | undefined) : undefined;
+
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       <TopAppBar title={titleText} subtitle={strings.decisions.title.toUpperCase()} />
@@ -123,25 +128,30 @@ export default function DecisionsScreen() {
             </Text>
           </View>
         ) : (
-          /* Section list */
+          /* Section list — each section's cards are in a FlatList so
+             React Native only renders visible cards on long queues. */
           <>
             {SECTION_ORDER.map((section) => {
               const rows = bySection[section];
               if (rows.length === 0) return null;
+              const isFaded = section === 'FAILED_REVIEW';
               return (
                 <View key={section} style={s.section}>
                   <SectionHeader section={section} count={rows.length} />
-                  {rows.map((row) => (
-                    <DecisionCard
-                      key={row.id}
-                      row={row}
-                      faded={section === 'FAILED_REVIEW'}
-                      onDismiss={handleDismiss}
-                      isDismissing={
-                        dismiss.isPending && (dismiss.variables as string | undefined) === row.id
-                      }
-                    />
-                  ))}
+                  <FlatList
+                    data={rows}
+                    keyExtractor={(row) => row.id}
+                    renderItem={({ item }) => (
+                      <DecisionCard
+                        row={item}
+                        faded={isFaded}
+                        onDismiss={handleDismiss}
+                        isDismissing={dismissingId === item.id}
+                      />
+                    )}
+                    scrollEnabled={false}
+                    initialNumToRender={rows.length}
+                  />
                 </View>
               );
             })}

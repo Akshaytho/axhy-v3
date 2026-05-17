@@ -162,9 +162,11 @@ export function initializeOneSignal(): Promise<boolean> {
   if (initPromise) return initPromise;
   initPromise = (async (): Promise<boolean> => {
     if (!shouldCallOneSignal()) {
-      console.warn(
-        '[identity-lifecycle] OneSignal initialize skipped (web or no app id); push lifecycle will no-op this session.',
-      );
+      if (__DEV__) {
+        console.warn(
+          '[identity-lifecycle] OneSignal initialize skipped (web or no app id); push lifecycle will no-op this session.',
+        );
+      }
       return false;
     }
     const appId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
@@ -175,15 +177,19 @@ export function initializeOneSignal(): Promise<boolean> {
       };
       const fn = mod.OneSignal?.initialize;
       if (typeof fn !== 'function') {
-        console.warn(
-          '[identity-lifecycle] OneSignal.initialize missing on SDK; lifecycle will no-op',
-        );
+        if (__DEV__) {
+          console.warn(
+            '[identity-lifecycle] OneSignal.initialize missing on SDK; lifecycle will no-op',
+          );
+        }
         return false;
       }
       fn(appId);
       return true;
     } catch (err) {
-      console.warn('[identity-lifecycle] OneSignal.initialize threw; lifecycle will no-op', err);
+      if (__DEV__) {
+        console.warn('[identity-lifecycle] OneSignal.initialize threw; lifecycle will no-op', err);
+      }
       return false;
     }
   })();
@@ -243,7 +249,9 @@ export async function _resolveOneSignal(): Promise<{
       },
     };
   } catch (err) {
-    console.warn('[identity-lifecycle] react-native-onesignal failed to load', err);
+    if (__DEV__) {
+      console.warn('[identity-lifecycle] react-native-onesignal failed to load', err);
+    }
     return null;
   }
 }
@@ -254,7 +262,9 @@ function decodeUserIdFromJwt(accessToken: string): string | null {
     const payload = jwtDecode<JwtPayload>(accessToken);
     return payload.userId ?? payload.sub ?? null;
   } catch (err) {
-    console.warn('[identity-lifecycle] JWT decode failed', err);
+    if (__DEV__) {
+      console.warn('[identity-lifecycle] JWT decode failed', err);
+    }
     return null;
   }
 }
@@ -296,19 +306,23 @@ export async function onIdentifiedLogin(authResult: VerifyOTPOutput): Promise<vo
 
   const sdk = await _resolveOneSignal();
   if (!sdk) {
-    console.warn(
-      '[identity-lifecycle] OneSignal disabled (web or no app id); auth proceeds without push identity link.',
-    );
+    if (__DEV__) {
+      console.warn(
+        '[identity-lifecycle] OneSignal disabled (web or no app id); auth proceeds without push identity link.',
+      );
+    }
     return;
   }
 
   try {
     await withTimeout(sdk.login(userId), ONE_SIGNAL_TIMEOUT_MS, undefined);
   } catch (err) {
-    console.warn(
-      '[identity-lifecycle] OneSignal.login failed; auth succeeds, identity-link skipped',
-      err,
-    );
+    if (__DEV__) {
+      console.warn(
+        '[identity-lifecycle] OneSignal.login failed; auth succeeds, identity-link skipped',
+        err,
+      );
+    }
   }
 }
 
@@ -333,10 +347,12 @@ export async function onAppLogout(): Promise<void> {
       try {
         await withTimeout(sdk.logout(), ONE_SIGNAL_TIMEOUT_MS, undefined);
       } catch (err) {
-        console.warn(
-          '[identity-lifecycle] OneSignal.logout timeout/error; proceeding to clearTokens',
-          err,
-        );
+        if (__DEV__) {
+          console.warn(
+            '[identity-lifecycle] OneSignal.logout timeout/error; proceeding to clearTokens',
+            err,
+          );
+        }
       }
     }
   }
@@ -379,10 +395,12 @@ export async function onColdStartReady(tokens: StoredTokens): Promise<{ route: C
     try {
       await withTimeout(sdk.login(userId), ONE_SIGNAL_TIMEOUT_MS, undefined);
     } catch (err) {
-      console.warn(
-        '[identity-lifecycle] OneSignal cold-start re-link failed; user session continues',
-        err,
-      );
+      if (__DEV__) {
+        console.warn(
+          '[identity-lifecycle] OneSignal cold-start re-link failed; user session continues',
+          err,
+        );
+      }
     }
   }
 

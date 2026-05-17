@@ -65,8 +65,16 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    // Find or create the user
-    let user = await prisma.user.findUnique({ where: { phone: parsed.data.phone } });
+    // Find or create the user.
+    // Explicitly exclude anonymised rows (phone starts with 'anon:') — their
+    // phone has been replaced by a one-way hash so they will never match an
+    // incoming E.164 number anyway, but the NOT LIKE filter makes the intent
+    // obvious in code. A re-registration on the same original phone number
+    // creates a brand-new User row (new id, fresh start — no carry-over).
+    // Single-tenant model lock 2026-05-18.
+    let user = await prisma.user.findFirst({
+      where: { phone: parsed.data.phone, NOT: { phone: { startsWith: 'anon:' } } },
+    });
     if (!user) {
       user = await prisma.user.create({
         data: { phone: parsed.data.phone, locale: 'en' },

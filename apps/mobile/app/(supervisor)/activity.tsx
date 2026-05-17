@@ -23,9 +23,10 @@
  * @derives(master-plan §G) — supervisor surface
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Linking,
   Modal,
   Pressable,
@@ -303,8 +304,19 @@ type EventRowProps = {
 /**
  * Single activity feed row. Tapping toggles the action drawer.
  * A chevron indicator rotates 90° when expanded.
+ *
+ * Wrapped in React.memo so FlatList cells don't re-render when a sibling
+ * row's expanded state changes.
+ *
+ * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
  */
-function EventRow({ row, expanded, onToggle, onShare, onReverse }: EventRowProps) {
+const EventRow = memo(function EventRow({
+  row,
+  expanded,
+  onToggle,
+  onShare,
+  onReverse,
+}: EventRowProps) {
   const icon = iconForKind(row.kind);
   const time = formatHHMM(row.when);
   const meta = row.kind.replaceAll('_', ' ');
@@ -347,7 +359,7 @@ function EventRow({ row, expanded, onToggle, onShare, onReverse }: EventRowProps
       {expanded && <ActionDrawer row={row} onSharePress={onShare} onReversePress={onReverse} />}
     </View>
   );
-}
+});
 
 const rowS = StyleSheet.create({
   card: {
@@ -650,62 +662,84 @@ export default function ActivityScreen() {
     setReverseModalRow(row);
   }, []);
 
-  return (
-    <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <TopAppBar title={titleText} subtitle={strings.activity.title.toUpperCase() + ' · PROOF'} />
+  /** Stable renderItem for FlatList — won't change identity between renders. */
+  const renderItem = useCallback(
+    ({ item }: { item: ActivityRowT }) => (
+      <EventRow
+        row={item}
+        expanded={expandedRowId === item.id}
+        onToggle={() => handleRowToggle(item.id)}
+        onShare={() => handleShare(item)}
+        onReverse={() => handleReverse(item)}
+      />
+    ),
+    [expandedRowId, handleRowToggle, handleShare, handleReverse],
+  );
 
-      {/* Filter chip panel */}
-      <View style={s.filterPanel}>
-        {/* Row 1: date */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.chipRow}
-        >
-          {DATE_CHIPS.map((d) => (
-            <FilterChip key={d} label={d} active={dateChip === d} onPress={() => setDateChip(d)} />
-          ))}
-        </ScrollView>
+  /** keyExtractor kept stable — row ids are UUIDs from backend. */
+  const keyExtractor = useCallback((item: ActivityRowT) => item.id, []);
 
-        {/* Row 2: site — populated from Today data; falls back to "All sites" only
-            while Today is still loading. Real siteId UUIDs are used as filter values. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.chipRow}
-        >
-          {siteChipOptions.map((opt) => (
-            <FilterChip
-              key={opt.id}
-              label={opt.name}
-              active={siteChipId === opt.id}
-              onPress={() => setSiteChipId(opt.id)}
-            />
-          ))}
-        </ScrollView>
+  /**
+   * ListHeaderComponent — filter chip panel + loading/error/empty states.
+   * Sits above the virtualized row list; chip state updates here only,
+   * not in every row.
+   */
+  const listHeader = useMemo(
+    () => (
+      <>
+        {/* Filter chip panel */}
+        <View style={s.filterPanel}>
+          {/* Row 1: date */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.chipRow}
+          >
+            {DATE_CHIPS.map((d) => (
+              <FilterChip
+                key={d}
+                label={d}
+                active={dateChip === d}
+                onPress={() => setDateChip(d)}
+              />
+            ))}
+          </ScrollView>
 
-        {/* Row 3: kind */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.chipRow}
-        >
-          {KIND_CHIPS.map((k) => (
-            <FilterChip key={k} label={k} active={kindChip === k} onPress={() => setKindChip(k)} />
-          ))}
-        </ScrollView>
-      </View>
+          {/* Row 2: site — populated from Today data; falls back to "All sites" only
+              while Today is still loading. Real siteId UUIDs are used as filter values. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.chipRow}
+          >
+            {siteChipOptions.map((opt) => (
+              <FilterChip
+                key={opt.id}
+                label={opt.name}
+                active={siteChipId === opt.id}
+                onPress={() => setSiteChipId(opt.id)}
+              />
+            ))}
+          </ScrollView>
 
-      <ScrollView
-        contentContainerStyle={s.scroll}
-        refreshControl={
-          <RefreshControl
-            refreshing={q.isFetching && !q.isLoading}
-            onRefresh={onRefresh}
-            tintColor={tokens.color.brand.accent}
-          />
-        }
-      >
+          {/* Row 3: kind */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.chipRow}
+          >
+            {KIND_CHIPS.map((k) => (
+              <FilterChip
+                key={k}
+                label={k}
+                active={kindChip === k}
+                onPress={() => setKindChip(k)}
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Loading / error / empty feedback — sits above row list */}
         {q.isLoading ? (
           <View style={s.center}>
             <ActivityIndicator color={tokens.color.brand.accent} />
@@ -726,23 +760,38 @@ export default function ActivityScreen() {
               here. Pull down to refresh.
             </Text>
           </View>
-        ) : (
-          <View>
-            {rows.map((row) => (
-              <EventRow
-                key={row.id}
-                row={row}
-                expanded={expandedRowId === row.id}
-                onToggle={() => handleRowToggle(row.id)}
-                onShare={() => handleShare(row)}
-                onReverse={() => handleReverse(row)}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+        ) : null}
+      </>
+    ),
+    // Re-run when chip state, loading state, or rows-empty state changes.
+    [dateChip, siteChipId, kindChip, siteChipOptions, q.isLoading, q.isError, q.error, rows.length],
+  );
 
-      <ReverseModal row={reverseModalRow} onClose={() => setReverseModalRow(null)} />
+  const closeReverseModal = useCallback(() => setReverseModalRow(null), []);
+
+  return (
+    <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
+      <TopAppBar title={titleText} subtitle={strings.activity.title.toUpperCase() + ' · PROOF'} />
+
+      <FlatList
+        data={rows}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        ListHeaderComponent={listHeader}
+        contentContainerStyle={s.scroll}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        refreshControl={
+          <RefreshControl
+            refreshing={q.isFetching && !q.isLoading}
+            onRefresh={onRefresh}
+            tintColor={tokens.color.brand.accent}
+          />
+        }
+      />
+
+      <ReverseModal row={reverseModalRow} onClose={closeReverseModal} />
     </SafeAreaView>
   );
 }
@@ -760,6 +809,11 @@ const s = StyleSheet.create({
     borderBottomColor: tokens.color.surface.cardEdge,
     backgroundColor: tokens.color.surface.paper,
     gap: tokens.space[1],
+    // Escape the FlatList contentContainerStyle's paddingHorizontal:14 so
+    // the chip rows still span full width (chips self-pad via s.chipRow).
+    marginHorizontal: -14,
+    marginTop: -14,
+    marginBottom: 14,
   },
   chipRow: {
     flexDirection: 'row',

@@ -10,6 +10,7 @@
  * @derives(master-plan §G) — supervisor surface
  */
 
+import { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 import type { TodayWorkerT } from '@axhy/shared-schema';
@@ -22,8 +23,14 @@ export type WorkerRowProps = {
   onPress?: (worker: TodayWorkerT) => void;
 };
 
-/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export function WorkerRow({ worker, onPress }: WorkerRowProps) {
+/**
+ * Single worker row inside a SiteCard worker list.
+ * Wrapped in React.memo so SiteCard re-renders don't re-render every row
+ * when unrelated parent state (e.g. actionSheetOpen) changes.
+ *
+ * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
+ */
+export const WorkerRow = memo(function WorkerRow({ worker, onPress }: WorkerRowProps) {
   const initials = worker.name
     .split(/\s+/)
     .map((p) => p[0]?.toUpperCase() ?? '')
@@ -58,7 +65,7 @@ export function WorkerRow({ worker, onPress }: WorkerRowProps) {
       </View>
     </Pressable>
   );
-}
+});
 
 function formatClockIn(iso: string): string {
   try {

@@ -71,5 +71,6 @@ export function useActivityQuery(filters: ActivityFilters = {}) {
       filters.kind ?? 'all',
     ],
     queryFn: () => apiFetch<ActivityResponseT>(buildActivityUrl(filters)),
+    staleTime: 30_000,
   });
 }
