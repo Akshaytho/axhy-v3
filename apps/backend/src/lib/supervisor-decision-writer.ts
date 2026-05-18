@@ -370,24 +370,24 @@ export type ApplyPreCheckResult = {
  * lifecycle guards + authorization. Throws LifecycleError on any failure;
  * returns the row's auditable fields on success.
  *
- * Used by `/chat/apply` inject-style branches for apply-after-domain:
- *   1. preCheckApply (tx 1)
- *   2. domain inject (no tx)
- *   3. commitApply (tx 2) only if domain returned 2xx
+ * Current usage (post-F-002.15): preCheckApply + service call + commitApply
+ * are all composed inside ONE withTenantContext(tx) callback in /chat/apply
+ * (see chat.ts:1067-1087). The atomic flow is:
  *
- * NOTE: there is a logical race window between preCheckApply (tx 1) and
- * commitApply (tx 2). A concurrent dismiss could transition the row to
- * DISMISSED in that window. commitApply's race-safe conditional UPDATE
- * detects that case (count=0) and refuses to set appliedAt — the lifecycle
- * audit will only have the winner's DWI_DISMISSED, not a stale DWI_APPLIED.
- * The domain effect from step 2 already happened though; that asymmetry is
- * intentional under apply-after-domain. The domain side has its own audit
- * trail (e.g., WORKER_MARKED_ABSENT) which records the domain effect
- * independently. Manual reconciliation surfaces if needed.
+ *   1. preCheckApply(tx, ...) — auth + observable guards (throws on fail)
+ *   2. <service>(tx, input, auth) — domain write (throws ServiceDomainError on fail)
+ *   3. commitApply(tx, ...) — race-safe conditional UPDATE + auth re-check
+ *
+ * If any of the three throws, the entire tx rolls back — neither lifecycle
+ * nor domain state lands. The earlier "lifecycle commits in tx 1, domain
+ * in tx 2" (F-002.4) trade-off is eliminated.
+ *
+ * commitApply still re-checks authorization (L2 defense-in-depth) because
+ * a long-running tx might see a binding change committed elsewhere.
  *
  * @derives(F-002 scope §3b)
- * @derives(F-002.4 — apply-after-domain split)
- * @derives(production-grade-rulebook P3)
+ * @derives(F-002.15 — atomic apply: preCheck + service + commit in one tx)
+ * @derives(production-grade-rulebook P3, L2)
  */
 export async function preCheckApply(
   tx: Prisma.TransactionClient,
@@ -424,11 +424,18 @@ export async function preCheckApply(
  * emit. Throws LifecycleError on race-lost (count === 0).
  *
  * Callers passing `preCheck` skip the read; they thread the auditable fields
- * captured at preCheckApply time. This is the path used by `/chat/apply`
- * after a successful domain inject.
+ * captured at preCheckApply time. Used inside the SAME tx as the preCheck +
+ * service call in /chat/apply (F-002.15 atomic flow — see preCheckApply
+ * docstring above).
  *
- * @derives(F-002.4 — apply-after-domain split)
- * @derives(production-grade-rulebook P2)
+ * The L2 re-check of `isCallerAuthorized` inside commitApply is deliberate
+ * defense in depth: even within one tx, a binding-change committed on a
+ * side-channel connection between preCheckApply and the conditional UPDATE
+ * can change the auth answer. The re-check + race-safe UPDATE together
+ * close that window.
+ *
+ * @derives(F-002.15 — atomic apply in one tx)
+ * @derives(production-grade-rulebook P2, L2)
  */
 export async function commitApply(
   tx: Prisma.TransactionClient,
