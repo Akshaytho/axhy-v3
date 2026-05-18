@@ -93,10 +93,23 @@ export function useVoiceRecorder(): VoiceRecorderHook {
   // Safety: stop the recorder if the component unmounts while recording.
   // useAudioRecorder handles the SharedObject release; we just need to
   // ensure we don't leave an active capture open.
+  //
+  // Guarded with try/catch because under fast-refresh / route-unmount the
+  // native shared object can be released BEFORE this cleanup runs, in
+  // which case `recorder.isRecording` throws
+  // `NativeSharedObjectNotFoundException` from ExpoModulesCore. That
+  // crash bubbles up as a perpetual-loading screen for the supervisor
+  // because the chat tab is part of the (supervisor) tabs layout — see
+  // `feedback_play_store_quality_no_lag_no_jank.md` for the no-crashes-
+  // on-cleanup rule.
   useEffect(() => {
     return () => {
-      if (recorder.isRecording) {
-        void recorder.stop();
+      try {
+        if (recorder.isRecording) {
+          void recorder.stop();
+        }
+      } catch {
+        // Native object already torn down — nothing to clean up.
       }
     };
   }, [recorder]);

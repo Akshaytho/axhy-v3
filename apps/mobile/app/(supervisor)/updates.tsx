@@ -124,11 +124,16 @@ export default function UpdatesScreen() {
     [ackMutation],
   );
 
-  const needsAckCount = q.data?.counts.needsAck ?? 0;
+  // Cluster 2 fix (QA-walkthrough 2026-05-18): distinguish "loading"
+  // (data === undefined) from "loaded and empty" so the header doesn't
+  // say "You're all caught up" while the body shows "Loading updates…".
+  const needsAckCount = q.data?.counts.needsAck;
   const titleText =
-    needsAckCount === 0
-      ? "You're all caught up"
-      : `${needsAckCount} update${needsAckCount === 1 ? '' : 's'}`;
+    needsAckCount === undefined
+      ? 'Updates'
+      : needsAckCount === 0
+        ? "You're all caught up"
+        : `${needsAckCount} update${needsAckCount === 1 ? '' : 's'}`;
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -137,7 +142,7 @@ export default function UpdatesScreen() {
       {/* ── TopAppBar with count badge ── */}
       <View style={s.appBar}>
         <TopAppBar title={titleText} subtitle="HR · COMPANY-WIDE" />
-        {needsAckCount > 0 && (
+        {needsAckCount !== undefined && needsAckCount > 0 && (
           <View style={s.newBadge}>
             <Text style={s.newBadgeText}>{needsAckCount} new</Text>
           </View>
@@ -208,7 +213,8 @@ export default function UpdatesScreen() {
             )}
 
             {/* ── Empty / all caught up ── */}
-            {needsAckCount === 0 && (q.data?.recentAcked.length ?? 0) === 0 && (
+            {/* Cluster 2 fix: only show empty state after data loaded. */}
+            {q.data !== undefined && needsAckCount === 0 && q.data.recentAcked.length === 0 && (
               <View style={s.emptyCard}>
                 <Text style={s.emptyCheck}>✓</Text>
                 <Text style={s.emptyTitle}>All caught up</Text>
@@ -220,7 +226,7 @@ export default function UpdatesScreen() {
             )}
 
             {/* All-acked (needsAck=0 but recentAcked present) hint */}
-            {needsAckCount === 0 && (q.data?.recentAcked.length ?? 0) > 0 && (
+            {q.data !== undefined && needsAckCount === 0 && q.data.recentAcked.length > 0 && (
               <View style={s.allCaughtUpHint}>
                 <Text style={s.allCaughtUpText}>No new updates to acknowledge.</Text>
               </View>

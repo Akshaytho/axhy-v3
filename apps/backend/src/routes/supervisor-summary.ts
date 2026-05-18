@@ -20,7 +20,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth } from '../middleware/tenant-context.js';
 import { buildSummaryForSupervisor } from '../lib/services/summary-service.js';
 
 export async function registerSupervisorSummaryRoutes(app: FastifyInstance): Promise<void> {
@@ -32,12 +32,12 @@ export async function registerSupervisorSummaryRoutes(app: FastifyInstance): Pro
     }
 
     try {
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-        buildSummaryForSupervisor(tx, {
-          companyId: auth.companyId,
-          userId: auth.userId,
-        }),
-      );
+      // Read-path latency fix (Cluster 1, QA-walkthrough 2026-05-18):
+      // bare prisma client → genuine query parallelism via connection pool.
+      const out = await buildSummaryForSupervisor(prisma, {
+        companyId: auth.companyId,
+        userId: auth.userId,
+      });
       reply.code(200).send(out);
     } catch (err) {
       req.log.error({ err }, 'GET /supervisor/summary failed');

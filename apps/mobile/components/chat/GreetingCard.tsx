@@ -14,8 +14,15 @@ import { tokens } from '@axhy/ui-tokens';
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export type GreetingCardProps = {
   firstName: string;
-  siteCount: number;
-  activeWorkerCount: number;
+  /**
+   * `null` while the supervisor-context query is still loading. The
+   * card renders a neutral subtitle ("Loading your day…") instead of
+   * the false "0 sites · 0 workers active" the pre-fix code showed.
+   * Cluster 2 fix, QA-walkthrough 2026-05-18.
+   */
+  siteCount: number | null;
+  /** Same null-while-loading semantic. */
+  activeWorkerCount: number | null;
   /** Day label, e.g. "TUESDAY". Defaults to today if omitted. */
   dayLabel?: string;
   /** Time label, e.g. "9:41 AM". Defaults to current time if omitted. */
@@ -54,7 +61,9 @@ export function GreetingCard({
         </Text>
         <Text style={s.greeting}>Namaste, {firstName}.</Text>
         <Text style={s.subtitle}>
-          {siteCount} {siteCount === 1 ? 'site' : 'sites'} · {activeWorkerCount} workers active
+          {siteCount === null || activeWorkerCount === null
+            ? 'Loading your day…'
+            : `${siteCount} ${siteCount === 1 ? 'site' : 'sites'} · ${activeWorkerCount} workers active`}
         </Text>
       </View>
       <View style={s.avatar}>

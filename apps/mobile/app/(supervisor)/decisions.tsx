@@ -153,8 +153,15 @@ export default function DecisionsScreen() {
     return;
   }, [focusId, q.data, bySection]);
 
-  const total = q.data?.counts.total ?? 0;
-  const titleText = total === 0 ? 'All caught up' : `${total} pending`;
+  // Cluster 2 fix (QA-walkthrough 2026-05-18): empty-state guard must
+  // distinguish "still loading" from "loaded and empty". The previous
+  // `?? 0` collapsed `undefined` → 0 → "All caught up" header even
+  // while the body said "Loading decisions…". Now: title says the
+  // generic name while data is undefined; only switches to "All caught
+  // up" / "N pending" once we KNOW the count.
+  const total = q.data?.counts.total;
+  const titleText =
+    total === undefined ? 'Decisions' : total === 0 ? 'All caught up' : `${total} pending`;
 
   // dismissingId tracks the one row whose dismiss is in flight so DecisionCard
   // can render its loading indicator without re-checking the whole mutation.

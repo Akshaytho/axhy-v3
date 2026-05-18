@@ -408,20 +408,48 @@ export default function ProfileScreen() {
   }
 
   // ── Loading / error gates ───────────────────────────────────────────────────
+  // Cluster 3 fix (QA-walkthrough 2026-05-18): render a SKELETON view
+  // with the screen title + avatar placeholder + a spinner in the
+  // body slot, instead of just a centered spinner. Pre-fix the user
+  // saw a literally blank screen for /me's latency window. Now the
+  // chrome is up immediately so the supervisor knows where they are.
   if (isLoading) {
     return (
-      <SafeAreaView style={s.center} edges={['top', 'left', 'right']}>
-        <ActivityIndicator size="large" color={tokens.color.brand.accent} />
+      <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
+        <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+          <View style={s.header}>
+            <View style={s.avatar}>
+              <Text style={s.avatarText}>·</Text>
+            </View>
+            <View style={s.headerText}>
+              <Text style={s.greeting}>Profile</Text>
+            </View>
+          </View>
+          <View style={s.skeletonCard}>
+            <ActivityIndicator color={tokens.color.brand.accent} />
+            <Text style={s.skeletonText}>Loading your profile…</Text>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   if (isError || !data) {
     return (
-      <SafeAreaView style={s.center} edges={['top', 'left', 'right']}>
-        <TouchableOpacity onPress={() => refetch()}>
-          <Text style={s.errorText}>Couldn't load profile. Tap to retry.</Text>
-        </TouchableOpacity>
+      <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
+        <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+          <View style={s.header}>
+            <View style={s.avatar}>
+              <Text style={s.avatarText}>·</Text>
+            </View>
+            <View style={s.headerText}>
+              <Text style={s.greeting}>Profile</Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => refetch()} style={s.errorCard}>
+            <Text style={s.errorText}>Couldn't load profile. Tap to retry.</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -548,6 +576,25 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: tokens.space[4],
+  },
+  skeletonCard: {
+    marginTop: tokens.space[6],
+    padding: tokens.space[6],
+    backgroundColor: tokens.color.surface.card,
+    borderRadius: tokens.radius.r2,
+    alignItems: 'center',
+    gap: tokens.space[3],
+  },
+  skeletonText: {
+    fontSize: tokens.type.bodySm.size,
+    color: tokens.color.ink.tertiary,
+  },
+  errorCard: {
+    marginTop: tokens.space[6],
+    padding: tokens.space[6],
+    backgroundColor: tokens.color.surface.card,
+    borderRadius: tokens.radius.r2,
+    alignItems: 'center',
   },
   errorText: {
     fontSize: tokens.type.body.size,

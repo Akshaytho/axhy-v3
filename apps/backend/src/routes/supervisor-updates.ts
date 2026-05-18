@@ -67,12 +67,11 @@ export async function registerSupervisorUpdatesRoutes(app: FastifyInstance): Pro
     }
 
     try {
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-        buildHRUpdatesForSupervisor(tx, {
-          companyId: auth.companyId,
-          userId: auth.userId,
-        }),
-      );
+      // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
+      const out = await buildHRUpdatesForSupervisor(prisma, {
+        companyId: auth.companyId,
+        userId: auth.userId,
+      });
       reply.code(200).send(out);
     } catch (err) {
       req.log.error({ err }, 'GET /supervisor/updates failed');

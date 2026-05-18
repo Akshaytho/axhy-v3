@@ -170,7 +170,7 @@ export type SitesSupervisedByUserResult = Array<{
  * @derives(supervisor-responsibility-model Amendments 2026-05-17 A-5)
  */
 export async function getSitesSupervisedByUser(
-  tx: Prisma.TransactionClient,
+  tx: Prisma.TransactionClient | import('@prisma/client').PrismaClient,
   args: SitesSupervisedByUserArgs,
 ): Promise<SitesSupervisedByUserResult> {
   const at = args.at ?? new Date();

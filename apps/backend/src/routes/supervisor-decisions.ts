@@ -61,14 +61,13 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
 
     const startedAt = Date.now();
     try {
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-        buildDecisionsForSupervisor(tx, {
-          companyId: auth.companyId,
-          userId: auth.userId,
-          cursor: parsedQuery.data.cursor,
-          limit: parsedQuery.data.limit,
-        }),
-      );
+      // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
+      const out = await buildDecisionsForSupervisor(prisma, {
+        companyId: auth.companyId,
+        userId: auth.userId,
+        cursor: parsedQuery.data.cursor,
+        limit: parsedQuery.data.limit,
+      });
       req.log.info(
         {
           companyId: auth.companyId,
