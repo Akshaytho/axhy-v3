@@ -133,8 +133,12 @@ export default function SitesScreen() {
       <TopAppBar subtitle="MY SITES" title={title} />
 
       {today.isLoading ? (
+        // Cluster 3 follow-up (QA-rewalk 2026-05-18): pair the spinner
+        // with a visible label so the supervisor knows the screen is
+        // loading vs broken. Same pattern as Profile.
         <View style={s.center}>
-          <ActivityIndicator size="large" color={tokens.color.brand.accent} />
+          <ActivityIndicator color={tokens.color.brand.accent} />
+          <Text style={s.loadingLabel}>Loading your sites…</Text>
         </View>
       ) : today.isError ? (
         <View style={s.center}>
@@ -197,5 +201,9 @@ const s = StyleSheet.create({
     color: tokens.color.ink.tertiary,
     textAlign: 'center',
     marginTop: tokens.space[2],
+  },
+  loadingLabel: {
+    fontSize: tokens.type.bodySm.size,
+    color: tokens.color.ink.tertiary,
   },
 });

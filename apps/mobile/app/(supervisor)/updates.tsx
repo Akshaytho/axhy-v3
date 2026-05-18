@@ -212,12 +212,13 @@ export default function UpdatesScreen() {
               </View>
             )}
 
-            {/* ── Empty / all caught up ── */}
-            {/* Cluster 2 fix: only show empty state after data loaded. */}
+            {/* ── Empty body — TopAppBar already says "You're all caught
+               up"; the body just explains what this tab is for. Pre-fix
+               the body redundantly repeated "All caught up", which read
+               as "two stacked empty-states" per QA-rewalk B2-13. */}
             {q.data !== undefined && needsAckCount === 0 && q.data.recentAcked.length === 0 && (
               <View style={s.emptyCard}>
                 <Text style={s.emptyCheck}>✓</Text>
-                <Text style={s.emptyTitle}>All caught up</Text>
                 <Text style={s.emptyBody}>
                   HR will push policy changes and training notices here. You read them, then write 5
                   or more words in your own voice as your compliance acknowledgement.

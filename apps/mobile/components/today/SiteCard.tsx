@@ -87,8 +87,9 @@ export const SiteCard = memo(
       [workers, site.id],
     );
 
-    const handleOpenActionSheet = useCallback((e: { stopPropagation: () => void }) => {
-      e.stopPropagation();
+    // Sibling Pressables (post-Cluster-F refactor) — no event bubbling
+    // between toggle and menu, so stopPropagation is no longer needed.
+    const handleOpenActionSheet = useCallback(() => {
       setActionSheetOpen(true);
     }, []);
 
@@ -96,48 +97,60 @@ export const SiteCard = memo(
 
     return (
       <View style={s.card}>
-        <Pressable
-          onPress={() => setOpen((o) => !o)}
-          style={({ pressed }) => [s.header, pressed && s.headerPressed]}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: open }}
-        >
-          <View style={s.left}>
-            <View style={s.nameRow}>
-              <Text style={s.name} numberOfLines={1}>
-                {site.name}
-              </Text>
-              {site.flagged ? (
-                <View style={s.flagPill}>
-                  <Feather name="alert-triangle" size={10} color={tokens.color.semantic.warn} />
-                  <Text style={s.flagPillText}>FLAG</Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={s.metaRow}>
-              <View style={[s.coverPill, { backgroundColor: tone.bg }]}>
-                <Text style={[s.coverPillText, { color: tone.fg }]}>{tone.label}</Text>
+        {/* Cluster F (QA-rewalk 2026-05-18) — un-nested Pressables. The
+         previous shape was an outer Pressable (toggle-on-press) wrapping
+         an inner Pressable (menu button). On React Native Web both
+         render as <button>; nested <button> is invalid HTML AND breaks
+         click delegation on the outer in Chromium — which is exactly
+         what the QA-rewalk's "Today SiteCard tap is no-op" finding
+         (Cluster B B2-04) likely was. One refactor closes both.
+         New shape: row container is a plain View; left half + chevron
+         become one Pressable (toggle); menu button is a sibling
+         Pressable, not a child. */}
+        <View style={s.header}>
+          <Pressable
+            onPress={() => setOpen((o) => !o)}
+            style={({ pressed }) => [s.headerToggle, pressed && s.headerPressed]}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
+            accessibilityLabel={`${site.name}, ${tone.label}, tap to ${open ? 'collapse' : 'view workers'}`}
+          >
+            <View style={s.left}>
+              <View style={s.nameRow}>
+                <Text style={s.name} numberOfLines={1}>
+                  {site.name}
+                </Text>
+                {site.flagged ? (
+                  <View style={s.flagPill}>
+                    <Feather name="alert-triangle" size={10} color={tokens.color.semantic.warn} />
+                    <Text style={s.flagPillText}>FLAG</Text>
+                  </View>
+                ) : null}
               </View>
-              <Text style={s.ratio}>
-                {site.workersOn}/{site.workersDue}
-              </Text>
-              {!open ? <Text style={s.hint}>TAP TO VIEW WORKERS →</Text> : null}
+              <View style={s.metaRow}>
+                <View style={[s.coverPill, { backgroundColor: tone.bg }]}>
+                  <Text style={[s.coverPillText, { color: tone.fg }]}>{tone.label}</Text>
+                </View>
+                <Text style={s.ratio}>
+                  {site.workersOn}/{site.workersDue}
+                </Text>
+                {!open ? <Text style={s.hint}>TAP TO VIEW WORKERS →</Text> : null}
+              </View>
             </View>
-          </View>
-          <View style={s.rightControls}>
-            <Pressable
-              onPress={handleOpenActionSheet}
-              style={s.menuButton}
-              accessibilityRole="button"
-              accessibilityLabel="Site options"
-            >
-              <Feather name="more-vertical" size={18} color={tokens.color.ink.tertiary} />
-            </Pressable>
             <View style={[s.chevron, open ? s.chevronOpen : null]}>
               <Feather name="chevron-right" size={20} color={tokens.color.ink.tertiary} />
             </View>
-          </View>
-        </Pressable>
+          </Pressable>
+          <Pressable
+            onPress={handleOpenActionSheet}
+            style={({ pressed }) => [s.menuButton, pressed && s.headerPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Site options"
+            hitSlop={8}
+          >
+            <Feather name="more-vertical" size={18} color={tokens.color.ink.tertiary} />
+          </Pressable>
+        </View>
 
         {open ? (
           siteWorkers.length === 0 ? (
@@ -192,8 +205,15 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  // Inner toggle area — left content + chevron, takes the row's spare width.
+  headerToggle: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
+    paddingRight: 8,
   },
   headerPressed: { backgroundColor: tokens.color.surface.paper2 },
   left: { flex: 1, minWidth: 0 },
@@ -256,7 +276,10 @@ const s = StyleSheet.create({
     gap: 0,
   },
   menuButton: {
-    padding: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chevron: {
     // Right-pointing at 0deg. Collapsed = right (invite expand).

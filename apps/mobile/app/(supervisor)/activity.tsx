@@ -925,9 +925,12 @@ export default function ActivityScreen() {
   const reverseMutation = useReverseActivity();
   const softFlagMutation = useSoftFlagActivity();
 
+  // Cluster 2 fix (QA-rewalk 2026-05-18): distinguish "loading"
+  // (q.data === undefined) from "loaded with 0 events" so the header
+  // doesn't lie with "0 events" before the query lands.
   const rows = q.data?.rows ?? [];
-  const count = rows.length;
-  const titleText = count === 1 ? '1 event' : `${count} events`;
+  const titleText =
+    q.data === undefined ? 'Activity' : rows.length === 1 ? '1 event' : `${rows.length} events`;
 
   /** Toggles the expanded state for a row. Tapping same row collapses it. */
   const handleRowToggle = useCallback((id: string) => {
