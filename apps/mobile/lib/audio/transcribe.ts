@@ -28,6 +28,35 @@ export type TranscribeResult = {
 };
 
 /**
+ * Per-word timestamp returned by Whisper's `verbose_json` shape with
+ * `timestamp_granularities=['word']`. The shimmer animation replays the
+ * transcript at the actual cadence the supervisor spoke.
+ */
+export type TranscribeWord = {
+  readonly word: string;
+  /** Seconds from the start of the recording. */
+  readonly start: number;
+  readonly end: number;
+};
+
+/**
+ * Streaming-shape transcription result. Includes word-level timestamps so
+ * the mobile shimmer overlay can reveal tokens one-by-one at the recorded
+ * cadence. When the backend deployment lacks word timestamps (older Whisper
+ * tier), `words` is `[]` and the caller falls back to a constant-rate
+ * shimmer over the final text.
+ *
+ * @derives(supervisor-drawer-and-decisions-redesign.md §C — live transcript shimmer)
+ */
+export type TranscribeStreamResult = {
+  readonly text: string;
+  readonly confidence: 'high' | 'medium' | 'low';
+  readonly languageDetected: string | null;
+  readonly words: ReadonlyArray<TranscribeWord>;
+  readonly durationSeconds: number | null;
+};
+
+/**
  * Upload an audio file to the backend transcription proxy and return the
  * transcript with a coarse confidence level.
  *
@@ -105,4 +134,96 @@ export async function transcribeAudio(
 
   const data = (await res.json()) as { text: string; confidence: 'high' | 'medium' | 'low' };
   return { text: data.text, confidence: data.confidence };
+}
+
+/**
+ * Build a multipart/form-data FormData for an audio upload. Extracted so
+ * `transcribeAudio` and `transcribeAudioStream` share the exact same
+ * filename / mimetype heuristics.
+ */
+async function buildAudioFormData(uri: string): Promise<FormData> {
+  const ext = uri.split('.').pop()?.toLowerCase() ?? 'm4a';
+  const filename = `recording.${ext}`;
+  const formData = new FormData();
+
+  if (Platform.OS !== 'web') {
+    (formData as FormData).append('audio', {
+      uri,
+      type: `audio/${ext}`,
+      name: filename,
+    } as unknown as Blob);
+  } else {
+    const fileRes = await fetch(uri);
+    const audioBlob = await fileRes.blob();
+    formData.append('audio', audioBlob, filename);
+  }
+  return formData;
+}
+
+/**
+ * Stream-shape transcription. Hits `POST /chat/transcribe-stream` (Wave 3
+ * backend) which returns the final transcript PLUS word-level timestamps.
+ * The mobile shimmer overlay uses `words[]` to reveal tokens at the actual
+ * cadence the supervisor spoke; this is faithful to reality, not a
+ * synthesised animation.
+ *
+ * Why this is a separate function (not a flag on `transcribeAudio`):
+ *   - Different response shape (`words[]`, `durationSeconds`).
+ *   - Different network cost — word-timestamp Whisper is marginally heavier;
+ *     the chat surface uses streaming only when the shimmer overlay is
+ *     mounted. Non-shimmer code paths (e.g. future bulk transcribe) keep
+ *     the lighter endpoint.
+ *
+ * Error handling: same envelope as `transcribeAudio` — throws `Error` with
+ * the backend-supplied `message` field on 4xx/5xx.
+ *
+ * @derives(supervisor-drawer-and-decisions-redesign.md §C — live transcript shimmer)
+ */
+export async function transcribeAudioStream(
+  uri: string,
+  language?: 'en' | 'hi' | 'te',
+): Promise<TranscribeStreamResult> {
+  const tokens = await getTokens();
+  if (!tokens) {
+    throw new Error('Not authenticated');
+  }
+
+  const formData = await buildAudioFormData(uri);
+  const url = `${API_BASE}/chat/transcribe-stream${language ? `?language=${language}` : ''}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${tokens.accessToken}`,
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let msg = `Transcription failed (HTTP ${res.status})`;
+    try {
+      const errBody = (await res.json()) as { error?: string; message?: string };
+      if (errBody.message) msg = errBody.message;
+      else if (errBody.error) msg = errBody.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(msg);
+  }
+
+  const data = (await res.json()) as {
+    text?: string;
+    confidence?: 'high' | 'medium' | 'low';
+    languageDetected?: string | null;
+    words?: Array<{ word: string; start: number; end: number }>;
+    durationSeconds?: number | null;
+  };
+
+  return {
+    text: data.text ?? '',
+    confidence: data.confidence ?? 'medium',
+    languageDetected: data.languageDetected ?? null,
+    words: Array.isArray(data.words) ? data.words : [],
+    durationSeconds: typeof data.durationSeconds === 'number' ? data.durationSeconds : null,
+  };
 }

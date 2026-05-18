@@ -18,6 +18,29 @@ export const ChatMessageAttachmentInput = z.object({
 });
 export type ChatMessageAttachmentInputT = z.infer<typeof ChatMessageAttachmentInput>;
 
+/**
+ * Amend metadata. When the supervisor opens the chat surface from the
+ * Decisions queue with intent to edit a prior decision, the client passes
+ * `?amendDecisionId=<id>` and every subsequent chat send includes this
+ * object. The chat tool-loop reads `targetDecisionId` so a future
+ * `propose_amend` tool can supersede the original row instead of creating
+ * a fresh PROPOSED row.
+ *
+ * Sprint 2 ships the wire-shape only — strict zod must accept the field so
+ * the mobile client can post it without a 400. The full backend amend
+ * tool-routing is in the Wave 4 propose_amend slice. Until then, the
+ * field is recorded on the chat-message audit (no behavioural change).
+ *
+ * @derives(supervisor-drawer-and-decisions-redesign.md §D.3 — amend pathway)
+ */
+export const ChatAmendInput = z
+  .object({
+    /** SupervisorDecision.id that the supervisor is editing. */
+    targetDecisionId: z.string().uuid(),
+  })
+  .strict();
+export type ChatAmendInputT = z.infer<typeof ChatAmendInput>;
+
 export const CreateChatMessageInput = z
   .object({
     /** Supervisor's transcript or typed text */
@@ -31,6 +54,12 @@ export const CreateChatMessageInput = z
      * the classifier toward `log_complaint` with kind=missed_area).
      */
     attachments: z.array(ChatMessageAttachmentInput).max(4).optional(),
+    /**
+     * Amend metadata. Present when the supervisor entered chat via the
+     * Decisions queue with intent to edit a prior decision. See
+     * `ChatAmendInput` for shape + lifecycle notes.
+     */
+    amend: ChatAmendInput.optional(),
   })
   .strict();
 export type CreateChatMessageInputT = z.infer<typeof CreateChatMessageInput>;
