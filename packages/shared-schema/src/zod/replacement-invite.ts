@@ -1,15 +1,12 @@
 /**
  * ReplacementInvite (F28) — Zod surface for Wave 1 backend.
  *
- * Locked 2026-05-18 under the v2 30-day supervisor simulation plan
- * (`docs/plans/2026-05-18-supervisor-30-day-real-life-simulation-v2.md` §3 Wave 1).
- *
- * One file for the full F28 surface — status enum, body shapes for each
- * route, response shapes, paginated list shape. Mirrors the Wave 3 complaint
- * surface in structure so contracts read consistently across Sprint 1.
+ * Single-recipient cover request. Supervisor sends ONE invite to ONE
+ * worker, 2-min TTL; on terminal state supervisor may re-send. NOT a
+ * multi-worker broadcast — see `feedback_replacement_invite_single_recipient.md`.
  *
  * @derives(master-plan §P.4 — ReplacementInvite)
- * @derives(replacement-invite-feature-spec.md, 2026-05-18)
+ * @derives(feedback_replacement_invite_single_recipient.md)
  * @derives(supervisor-30day-scenarios.md scenarios #39–46 — swaps + emergency cover)
  */
 
@@ -33,7 +30,6 @@ export type ReplacementInviteStatus = z.infer<typeof ReplacementInviteStatusSche
 /** @derives(master-plan §P.4) — ReplacementInvite respond reasons */
 export const ReplacementInviteSystemRespondReasonSchema = z.enum([
   'accept',
-  'sibling_accepted',
   'cron_expired',
   'supervisor_cancelled',
 ]);
@@ -47,7 +43,6 @@ export type ReplacementInviteSystemRespondReason = z.infer<
 /** @derives(master-plan §P.4) — ReplacementInvite row contract */
 export const ReplacementInviteRowSchema = z.object({
   id: z.string().uuid(),
-  groupId: z.string().uuid(),
   fromSupervisorId: z.string().uuid(),
   toWorkerId: z.string().uuid(),
   toWorkerName: z.string().nullable(),
@@ -64,45 +59,25 @@ export const ReplacementInviteRowSchema = z.object({
 /** @derives(master-plan §P.4) — ReplacementInvite row contract */
 export type ReplacementInviteRowT = z.infer<typeof ReplacementInviteRowSchema>;
 
-/** @derives(master-plan §P.4) — group summary shape for outcome card */
-export const ReplacementInviteGroupSummarySchema = z.object({
-  groupId: z.string().uuid(),
-  fromSupervisorId: z.string().uuid(),
-  siteId: z.string().uuid(),
-  siteName: z.string(),
-  scheduledStart: z.string(),
-  sentAt: z.string(),
-  expiresAt: z.string(),
-  pendingCount: z.number().int().min(0),
-  acceptedCount: z.number().int().min(0),
-  declinedCount: z.number().int().min(0),
-  expiredCount: z.number().int().min(0),
-  cancelledCount: z.number().int().min(0),
-  totalCount: z.number().int().min(1),
-  winnerWorkerId: z.string().uuid().nullable(),
-  winnerWorkerName: z.string().nullable(),
-});
-/** @derives(master-plan §P.4) — group outcome card data */
-export type ReplacementInviteGroupSummaryT = z.infer<typeof ReplacementInviteGroupSummarySchema>;
-
 // ── Route bodies ────────────────────────────────────────────────────────────
 
 const MIN_EXPIRES_IN_SEC = 30; // anything below this is a UX accident
 const MAX_EXPIRES_IN_SEC = 30 * 60; // 30 minutes; longer asks should use a different flow
 const DEFAULT_EXPIRES_IN_SEC = 120; // 2-minute countdown per master plan §G:976
-const MAX_CANDIDATES_PER_GROUP = 20;
 
 /**
  * Body for `POST /supervisor/replacement-invites`.
+ *
+ * Single-recipient: one supervisor, one worker, one cover slot. No
+ * broadcast / "candidates[]" array.
+ *
  * @derives(master-plan §P.4)
+ * @derives(feedback_replacement_invite_single_recipient.md)
  */
-export const CreateReplacementInviteGroupInput = z.object({
+export const CreateReplacementInviteInput = z.object({
   siteId: z.string().uuid(),
   scheduledStart: z.string().datetime(),
-  candidateUserIds: z
-    .array(z.string().uuid())
-    .min(1, 'At least one candidate required')
-    .max(MAX_CANDIDATES_PER_GROUP, `At most ${MAX_CANDIDATES_PER_GROUP} candidates per group`),
+  candidateUserId: z.string().uuid(),
   visitId: z.string().uuid().nullable().optional(),
   expiresInSec: z
     .number()
@@ -113,7 +88,7 @@ export const CreateReplacementInviteGroupInput = z.object({
     .default(DEFAULT_EXPIRES_IN_SEC),
 });
 /** @derives(master-plan §P.4) — `POST /supervisor/replacement-invites` body */
-export type CreateReplacementInviteGroupInputT = z.infer<typeof CreateReplacementInviteGroupInput>;
+export type CreateReplacementInviteInputT = z.infer<typeof CreateReplacementInviteInput>;
 
 /**
  * Body for `POST /worker/replacement-invites/:id/decline`.
@@ -126,12 +101,11 @@ export const DeclineReplacementInviteInput = z.object({
 export type DeclineReplacementInviteInputT = z.infer<typeof DeclineReplacementInviteInput>;
 
 /**
- * Query shape for `GET /supervisor/replacement-invites?status=&groupId=&limit=&cursor=`.
+ * Query shape for `GET /supervisor/replacement-invites?status=&limit=&cursor=`.
  * @derives(master-plan §P.4)
  */
 export const ListSupervisorReplacementInvitesQuery = z.object({
   status: ReplacementInviteStatusSchema.optional(),
-  groupId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   cursor: z.string().optional(),
 });
@@ -155,28 +129,24 @@ export type ListWorkerReplacementInvitesQueryT = z.infer<typeof ListWorkerReplac
 
 // ── Route responses ─────────────────────────────────────────────────────────
 
-/** @derives(master-plan §P.4) */
-export const CreateReplacementInviteGroupResponse = z.object({
+/** @derives(master-plan §P.4) — `POST /supervisor/replacement-invites` response */
+export const CreateReplacementInviteResponse = z.object({
   ok: z.literal(true),
-  groupId: z.string().uuid(),
-  invites: z.array(ReplacementInviteRowSchema),
+  invite: ReplacementInviteRowSchema,
 });
 /** @derives(master-plan §P.4) — `POST /supervisor/replacement-invites` response */
-export type CreateReplacementInviteGroupResponseT = z.infer<
-  typeof CreateReplacementInviteGroupResponse
->;
+export type CreateReplacementInviteResponseT = z.infer<typeof CreateReplacementInviteResponse>;
 
-/** @derives(master-plan §P.4) */
+/** @derives(master-plan §P.4) — `POST /worker/replacement-invites/:id/accept` response */
 export const AcceptReplacementInviteResponse = z.object({
   ok: z.literal(true),
   invite: ReplacementInviteRowSchema,
   assignmentId: z.string().uuid(),
-  expiredSiblingCount: z.number().int().min(0),
 });
 /** @derives(master-plan §P.4) — `POST /worker/replacement-invites/:id/accept` response */
 export type AcceptReplacementInviteResponseT = z.infer<typeof AcceptReplacementInviteResponse>;
 
-/** @derives(master-plan §P.4) */
+/** @derives(master-plan §P.4) — list response with pagination cursor */
 export const ListSupervisorReplacementInvitesResponse = z.object({
   invites: z.array(ReplacementInviteRowSchema),
   nextCursor: z.string().nullable(),
@@ -186,12 +156,11 @@ export type ListSupervisorReplacementInvitesResponseT = z.infer<
   typeof ListSupervisorReplacementInvitesResponse
 >;
 
-// ── Internal: cadence + sizing constants (re-exported for tests + cron) ─────
+// ── Internal: cadence constants (re-exported for tests + cron) ─────────────
 
 /** @derives(master-plan §P.4) */
 export const REPLACEMENT_INVITE_TIMING = Object.freeze({
   MIN_EXPIRES_IN_SEC,
   MAX_EXPIRES_IN_SEC,
   DEFAULT_EXPIRES_IN_SEC,
-  MAX_CANDIDATES_PER_GROUP,
 } as const);

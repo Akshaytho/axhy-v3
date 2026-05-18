@@ -1193,27 +1193,25 @@ model SiteSupervisorBinding {
 
 /// F28 — ReplacementInvite (Wave 1 backend, 2026-05-18).
 ///
-/// Supervisor broadcasts an invite to N candidate workers; first to accept
-/// gets the shift, siblings auto-EXPIRE in the same transaction. PUBG-squad
-/// pattern locked in master plan §G:976 + §P.4.
+/// Single-recipient cover request. Supervisor sends ONE invite to ONE
+/// worker; 2-minute TTL; on ACCEPTED / DECLINED / EXPIRED / CANCELLED the
+/// supervisor may send a fresh invite to the same worker or a different
+/// one. NOT a multi-worker broadcast — see
+/// `feedback_replacement_invite_single_recipient.md` for why.
 ///
-/// Lifecycle (status transitions enforced by service-layer conditional
-/// UPDATEs + DB CHECK constraint):
-///   PENDING -> ACCEPTED   (winner of the group; only one allowed per groupId)
-///   PENDING -> DECLINED   (worker explicitly declines)
-///   PENDING -> EXPIRED    (sibling won, cron sweep past expiresAt, or
-///                          server-side auto-expire on first accept)
-///   PENDING -> CANCELLED  (supervisor recalls the group)
+/// Lifecycle (enforced by service-layer conditional UPDATE +
+/// DB CHECK constraint):
+///   PENDING  -> ACCEPTED   (worker accepts within window)
+///   PENDING  -> DECLINED   (worker explicitly declines)
+///   PENDING  -> EXPIRED    (cron sweep, past expiresAt)
+///   PENDING  -> CANCELLED  (supervisor recalls this invite)
 /// All other transitions rejected at the service layer.
 ///
-/// `groupId` ties one broadcast together (multiple invite rows share it).
-/// A `groupId` uniquely identifies a single "send-replacement event"; the
-/// supervisor sends invites to N workers, all rows share groupId, and the
-/// group resolves atomically when the first accept lands.
-///
-/// `expiresAt` is set by the service (default sentAt + 120s, configurable).
+/// `expiresAt` defaults to sentAt + 120s; supervisor may pass
+/// `expiresInSec` on create (30s–30min range).
 /// The cron sweep flips PENDING -> EXPIRED past expiresAt + emits a
-/// SupervisorDecision row for the supervisor so the outcome is surfaced.
+/// SupervisorDecision row of kind `REPLACEMENT_INVITE_OUTCOME` so the
+/// outcome surfaces in the Decisions queue.
 ///
 /// @derives(master-plan §P.4 — ReplacementInvite)
 /// @derives(master-plan §G — supervisor surface)
@@ -1222,9 +1220,6 @@ model SiteSupervisorBinding {
 model ReplacementInvite {
   id                String    @id @default(uuid()) @db.Uuid
   companyId         String    @db.Uuid
-  /// Shared across all rows in one broadcast — atomic group operations
-  /// pivot on this column. UUID-v4 generated server-side.
-  groupId           String    @db.Uuid
   fromSupervisorId  String    @db.Uuid
   toWorkerId        String    @db.Uuid
   /// Visit this invite covers, when the supervisor is replacing for a
@@ -1238,8 +1233,8 @@ model ReplacementInvite {
   /// Default 120s after sentAt; supervisor may pass expiresInSec on create.
   expiresAt         DateTime
   respondedAt       DateTime?
-  /// 'accept' | 'decline' | 'sibling_accepted' | 'cron_expired' |
-  /// 'supervisor_cancelled' | free-text reason on decline.
+  /// 'accept' | 'decline' | 'cron_expired' | 'supervisor_cancelled' |
+  /// free-text reason on decline.
   respondReason     String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -1252,19 +1247,12 @@ model ReplacementInvite {
 
   /// Cron sweep predicate — PENDING rows past expiresAt; very hot in steady state.
   @@index([status, expiresAt])
-  /// Supervisor inbox lookup — "show me my open broadcasts".
+  /// Supervisor inbox lookup — "show me my open / recent invites".
   @@index([companyId, fromSupervisorId, status])
   /// Worker inbox lookup — "show me my pending invites".
   @@index([companyId, toWorkerId, status])
-  /// Atomic group operations — sibling expire on first-accept, group cancel.
-  @@index([groupId])
   /// General list query — supervisor activity feed.
   @@index([companyId, sentAt])
-  // Race-safety: at-most-one-ACCEPTED per group is enforced by a partial
-  // unique index created in migration 20260522_010_replacement_invite (see
-  // `ReplacementInvite_one_accepted_per_group_uniq`). Prisma cannot model
-  // partial unique indexes natively; the migration owns the DDL. Service
-  // layer catches P2002 and surfaces as 409 ALREADY_DECIDED.
   @@schema("axhy")
 }
 
