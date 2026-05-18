@@ -66,8 +66,14 @@ export type CreateChatMessageInputT = z.infer<typeof CreateChatMessageInput>;
 
 export const ApplyDecisionCardInput = z
   .object({
-    /** ChatMessage.id whose DecisionCard should be applied */
-    chatMessageId: z.string().uuid(),
+    /**
+     * ChatMessage.id whose DecisionCard should be applied.
+     * Optional — required only when apply originates from the chat surface.
+     * When apply comes from /supervisor/decisions (the actions[] contract,
+     * QA-water-flow Bug A 2026-05-18), there is no originating chat message
+     * in scope, so the field is allowed to be absent.
+     */
+    chatMessageId: z.string().uuid().optional(),
     /** Tool name from the proposed action (must match what AI emitted) */
     toolName: z.string(),
     /** Tool input args (must match what AI emitted, copied from DecisionCard) */
