@@ -6,8 +6,14 @@
  * (the row's only write affordance per the supervisor-has-no-visit-mark
  * lock 2026-05-17 PM).
  *
+ * Sprint 2 mobile (Wave 1 — ReplacementPicker): long-press opens an action
+ * menu with "Find replacement". The menu is rendered by the parent (Today)
+ * so the row keeps zero local UI state and remains React.memo-friendly. The
+ * row only emits the long-press callback with the worker payload.
+ *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
+ * @derives(master-plan §P.4 — ReplacementInvite)
  */
 
 import { memo } from 'react';
@@ -21,6 +27,15 @@ import { StateBadge } from './StateBadge';
 export type WorkerRowProps = {
   worker: TodayWorkerT;
   onPress?: (worker: TodayWorkerT) => void;
+  /**
+   * Optional long-press callback. When provided, the row gains an
+   * `onLongPress` affordance that the parent uses to open the
+   * worker-action menu (e.g. "Find replacement"). The row itself does NOT
+   * navigate — keeps the row stateless and memo-friendly.
+   *
+   * @derives(master-plan §P.4 — ReplacementInvite)
+   */
+  onLongPress?: (worker: TodayWorkerT) => void;
 };
 
 /**
@@ -30,7 +45,7 @@ export type WorkerRowProps = {
  *
  * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
  */
-export const WorkerRow = memo(function WorkerRow({ worker, onPress }: WorkerRowProps) {
+export const WorkerRow = memo(function WorkerRow({ worker, onPress, onLongPress }: WorkerRowProps) {
   const initials = worker.name
     .split(/\s+/)
     .map((p) => p[0]?.toUpperCase() ?? '')
@@ -42,8 +57,10 @@ export const WorkerRow = memo(function WorkerRow({ worker, onPress }: WorkerRowP
   return (
     <Pressable
       onPress={onPress ? () => onPress(worker) : undefined}
-      style={({ pressed }) => [s.row, pressed && onPress ? s.pressed : null]}
-      accessibilityRole={onPress ? 'button' : undefined}
+      onLongPress={onLongPress ? () => onLongPress(worker) : undefined}
+      delayLongPress={450}
+      style={({ pressed }) => [s.row, pressed && (onPress || onLongPress) ? s.pressed : null]}
+      accessibilityRole={onPress || onLongPress ? 'button' : undefined}
       accessibilityLabel={`${worker.name}, ${worker.state}`}
     >
       <View style={s.avatar}>

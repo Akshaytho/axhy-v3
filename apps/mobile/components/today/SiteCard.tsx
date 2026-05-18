@@ -28,6 +28,14 @@ export type SiteCardProps = {
   site: TodaySiteT;
   workers: TodayWorkerT[];
   onWorkerPress?: (worker: TodayWorkerT) => void;
+  /**
+   * Worker-row long-press handler — passed straight through to WorkerRow so
+   * the parent (Today) can open the worker action sheet without prop-drilling
+   * extra state into the site card.
+   *
+   * @derives(master-plan §P.4 — ReplacementInvite)
+   */
+  onWorkerLongPress?: (worker: TodayWorkerT) => void;
 };
 
 function coverageTone(site: TodaySiteT): { bg: string; fg: string; label: string } {
@@ -66,7 +74,7 @@ function coverageTone(site: TodaySiteT): { bg: string; fg: string; label: string
  * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
  */
 export const SiteCard = memo(
-  function SiteCard({ site, workers, onWorkerPress }: SiteCardProps) {
+  function SiteCard({ site, workers, onWorkerPress, onWorkerLongPress }: SiteCardProps) {
     const [open, setOpen] = useState(false);
     const [actionSheetOpen, setActionSheetOpen] = useState(false);
     const tone = coverageTone(site);
@@ -139,7 +147,12 @@ export const SiteCard = memo(
           ) : (
             <View>
               {siteWorkers.map((w) => (
-                <WorkerRow key={w.id} worker={w} onPress={onWorkerPress} />
+                <WorkerRow
+                  key={w.id}
+                  worker={w}
+                  onPress={onWorkerPress}
+                  onLongPress={onWorkerLongPress}
+                />
               ))}
             </View>
           )
@@ -155,6 +168,7 @@ export const SiteCard = memo(
   (prev, next) => {
     if (prev.site !== next.site) return false;
     if (prev.onWorkerPress !== next.onWorkerPress) return false;
+    if (prev.onWorkerLongPress !== next.onWorkerLongPress) return false;
     // Compare only the workers belonging to this site.
     const prevOwn = prev.workers.filter((w) => w.siteId === prev.site.id);
     const nextOwn = next.workers.filter((w) => w.siteId === next.site.id);

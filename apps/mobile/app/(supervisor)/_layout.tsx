@@ -159,6 +159,13 @@ export default function SupervisorLayout() {
           {/* Drawer-only surfaces — not shown in the tab bar. */}
           <Tabs.Screen name="memory" options={{ href: null }} />
           <Tabs.Screen name="sites" options={{ href: null }} />
+          {/*
+            ReplacementPicker (F28) — Wave 1 mobile surface. Reachable from
+            SiteActionSheet "Send replacement" + Today WorkerRow long-press
+            "Find replacement". Not a tab; pushed onto the stack with the
+            replaced worker + site context in the URL.
+          */}
+          <Tabs.Screen name="replacement-picker" options={{ href: null }} />
         </Tabs>
 
         {/* MicFAB — overlays tab content; hidden on Profile. */}

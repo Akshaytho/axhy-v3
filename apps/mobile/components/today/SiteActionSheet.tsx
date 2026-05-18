@@ -2,18 +2,29 @@
  * SiteActionSheet — bottom-sheet action menu for a site card's 3-dot button.
  *
  * Opens with 4 actions: Mark as priority, Add site rule, Send replacement,
- * Open in maps. None of these surfaces exist yet; each row simply closes the
- * sheet. No fake success toast — honesty over fake completion.
+ * Open in maps.
+ *
+ * As of Sprint 2 mobile (Wave 1 — ReplacementPicker), the "Send replacement"
+ * row navigates to the ReplacementPicker route (`/(supervisor)/replacement-picker`)
+ * with `siteId` + `siteName` + `scheduledStart` (today's date at 09:00 IST is
+ * used as a sane default when the picker is invoked from a site card with no
+ * specific Visit context; the picker overrides this when invoked from a
+ * worker row).
+ *
+ * The other three rows still have no destination — they close the sheet
+ * cleanly per the existing honesty-over-fake-completion stance.
  *
  * Uses plain RN `Modal` (same pattern as MarkAbsentSheet) — no additional
  * library deps, works on Expo Web out of the box.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
+ * @derives(master-plan §P.4 — ReplacementInvite)
  */
 
 import { Modal, Pressable, View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
@@ -23,20 +34,53 @@ export type SiteActionSheetProps = {
   onClose: () => void;
 };
 
+type ActionId = 'priority' | 'rule' | 'replacement' | 'maps';
+
 type ActionRow = {
+  id: ActionId;
   label: string;
   icon: React.ComponentProps<typeof Feather>['name'];
 };
 
 const ACTIONS: ActionRow[] = [
-  { label: 'Mark as priority', icon: 'star' },
-  { label: 'Add site rule', icon: 'plus-circle' },
-  { label: 'Send replacement', icon: 'user-plus' },
-  { label: 'Open in maps', icon: 'map-pin' },
+  { id: 'priority', label: 'Mark as priority', icon: 'star' },
+  { id: 'rule', label: 'Add site rule', icon: 'plus-circle' },
+  { id: 'replacement', label: 'Send replacement', icon: 'user-plus' },
+  { id: 'maps', label: 'Open in maps', icon: 'map-pin' },
 ];
+
+/**
+ * Returns an ISO datetime string for "today at 09:00 local". Used as a sane
+ * default `scheduledStart` when the picker is invoked from a site card with no
+ * specific Visit / Shift context. The picker's context strip surfaces this so
+ * the supervisor can confirm before sending.
+ */
+function defaultScheduledStartIso(): string {
+  const d = new Date();
+  d.setHours(9, 0, 0, 0);
+  return d.toISOString();
+}
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export function SiteActionSheet({ visible, site, onClose }: SiteActionSheetProps) {
+  function handleRowPress(id: ActionId) {
+    if (id === 'replacement' && site) {
+      // Close the sheet first so the modal doesn't stack on top of the picker.
+      onClose();
+      router.push({
+        pathname: '/(supervisor)/replacement-picker',
+        params: {
+          siteId: site.id,
+          siteName: site.name,
+          scheduledStart: defaultScheduledStartIso(),
+        },
+      });
+      return;
+    }
+    // Other rows still have no destination — close sheet without a fake toast.
+    onClose();
+  }
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
@@ -49,9 +93,9 @@ export function SiteActionSheet({ visible, site, onClose }: SiteActionSheetProps
           <View style={s.rows}>
             {ACTIONS.map((action) => (
               <Pressable
-                key={action.label}
+                key={action.id}
                 style={({ pressed }) => [s.row, pressed && s.rowPressed]}
-                onPress={onClose}
+                onPress={() => handleRowPress(action.id)}
                 accessibilityRole="button"
               >
                 <Feather
