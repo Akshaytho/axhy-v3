@@ -168,9 +168,13 @@ export const DECISION_KIND_REGISTRY: readonly DecisionKindSpec[] = [
     kind: 'REPLACEMENT_INVITE_OUTCOME',
     tier: 'OPERATIONAL',
     routingMode: 'site-targeted',
-    // No toolName: created by dispatcher when broadcast resolves
-    // (ACCEPTED-this-turn / EXPIRED-no-accept). Source plug-in lands in
-    // Sprint 2 when Wave 1's ReplacementInvite model is integrated.
+    // No toolName: created by the expiry cron when a single-recipient
+    // ReplacementInvite reaches a terminal state without a winner (cron
+    // EXPIRED past 2-min TTL, or all-declined). Source plug-in lands in
+    // Sprint 2 when ReplacementInvite is wired into the Decisions
+    // UNION-ALL via `additionalDecisionSources`. See
+    // `feedback_replacement_invite_single_recipient.md` for the
+    // single-recipient lock.
     ackRequired: false,
   },
   {

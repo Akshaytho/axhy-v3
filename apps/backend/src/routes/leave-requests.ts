@@ -31,6 +31,10 @@ import { requireAuth, withTenantContext } from '../middleware/tenant-context.js'
 import { recordAuditEvent } from '../lib/audit-event.js';
 import { enqueueOutbox } from '../lib/outbox.js';
 import { createLeaveRequestService } from '../lib/services/leave-request-service.js';
+import {
+  deriveWorkerPrimarySiteId,
+  getSitesSupervisedByUser,
+} from '../lib/effective-responsibility.js';
 
 type DecisionKind = 'approve' | 'reject';
 type DecisionRequest = FastifyRequest<{ Params: { id: string } }>;
@@ -113,6 +117,16 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
       return;
     }
 
+    // Cluster A fix (P0) — role gate. Without this, any authenticated user
+    // (worker, HR-portal user when it ships, owner) can decide leave on any
+    // worker in the tenant. Wave 2's Decisions queue routes the row to the
+    // responsible supervisor; the action endpoint must enforce the same
+    // identity gate the read-side does.
+    if (auth.role !== 'SUPERVISOR') {
+      reply.code(403).send({ error: 'SUPERVISOR_ROLE_REQUIRED' });
+      return;
+    }
+
     const parsed = LeaveDecisionInput.safeParse(req.body);
     if (!parsed.success) {
       reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
@@ -120,7 +134,20 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
     }
 
     const leaveRequestId = req.params.id;
-    const note = parsed.data.note ?? null;
+    // Prefer `reason` (Wave 2 reason-sheet); fall back to `note` for
+    // back-compat with older mobile builds. Either field, if present, is
+    // the supervisor's reason for the decision — distinct from the
+    // worker's original `LeaveRequest.reason`.
+    const decisionReason = parsed.data.reason ?? parsed.data.note ?? null;
+    // Reject path requires a reason — per Wave 2 spec the mobile shows a
+    // reason-sheet on Reject. Approve may omit reason.
+    if (action === 'reject' && (!decisionReason || decisionReason.length === 0)) {
+      reply.code(400).send({
+        error: 'REASON_REQUIRED',
+        message: 'Provide a reason when rejecting a leave request.',
+      });
+      return;
+    }
     const newState = action === 'approve' ? 'APPROVED' : 'REJECTED';
 
     try {
@@ -136,15 +163,52 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
           return { kind: 'ALREADY_DECIDED' as const, state: leave.state };
         }
 
+        // Cluster A fix (P0) — portfolio check mirrors Wave 2's
+        // decisions-service `leaveRequestSource`: caller must be a
+        // supervisor whose portfolio includes the worker's primary
+        // site. LeaveRequest has no "originating supervisor" field
+        // (workers request their own leave; supervisors only decide),
+        // so portfolio binding is the only valid responsibility gate.
+        const workerPrimarySiteId = await deriveWorkerPrimarySiteId(tx, {
+          companyId: auth.companyId,
+          workerId: leave.workerId,
+        });
+        const portfolio = await getSitesSupervisedByUser(tx, {
+          companyId: auth.companyId,
+          userId: auth.userId,
+        });
+        const portfolioSiteIds = new Set(portfolio.map((p) => p.siteId));
+        const isResponsibleSupervisor =
+          workerPrimarySiteId !== null && portfolioSiteIds.has(workerPrimarySiteId);
+        if (!isResponsibleSupervisor) {
+          return { kind: 'NOT_RESPONSIBLE' as const };
+        }
+
         const decidedAt = new Date();
-        const updated = await tx.leaveRequest.update({
-          where: { id: leave.id },
+        // Cluster A fix (P0) — conditional UPDATE so concurrent deciders
+        // can't both succeed. Without this guard the earlier
+        // findFirst→update pattern allows two callers to pass the
+        // `state === 'REQUESTED'` check and both fire side effects.
+        const updateResult = await tx.leaveRequest.updateMany({
+          where: { id: leave.id, companyId: auth.companyId, state: 'REQUESTED' },
           data: {
             state: newState,
             decidedBy: auth.userId,
             decidedAt,
-            decisionNote: note,
+            decisionNote: decisionReason,
           },
+        });
+        if (updateResult.count === 0) {
+          // Race: another caller decided between our read and our write.
+          // Re-read to surface the actual terminal state to the loser.
+          const after = await tx.leaveRequest.findFirstOrThrow({
+            where: { id: leave.id, companyId: auth.companyId },
+            select: { state: true },
+          });
+          return { kind: 'ALREADY_DECIDED' as const, state: after.state };
+        }
+        const updated = await tx.leaveRequest.findFirstOrThrow({
+          where: { id: leave.id, companyId: auth.companyId },
         });
 
         await recordAuditEvent(tx, {
@@ -157,8 +221,12 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
             workerName: leave.worker.name,
             fromDate: leave.fromDate.toISOString().slice(0, 10),
             toDate: leave.toDate.toISOString().slice(0, 10),
-            reason: leave.reason,
-            note,
+            // Original worker-supplied reason for the leave.
+            workerReason: leave.reason,
+            // Supervisor's decision reason (Cluster A fix — this used to
+            // be overwritten by `leave.reason` and the supervisor's
+            // typed reason was silently discarded).
+            decisionReason,
           },
         });
 
@@ -173,6 +241,7 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
             fromDate: leave.fromDate.toISOString().slice(0, 10),
             toDate: leave.toDate.toISOString().slice(0, 10),
             decidedBy: auth.userId,
+            decisionReason,
           },
         });
 
@@ -181,6 +250,14 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
 
       if (out.kind === 'NOT_FOUND') {
         reply.code(404).send({ error: 'LEAVE_NOT_FOUND', message: 'Leave request not found' });
+        return;
+      }
+      if (out.kind === 'NOT_RESPONSIBLE') {
+        reply.code(403).send({
+          error: 'NOT_RESPONSIBLE',
+          message:
+            "You are not the supervisor responsible for this worker. Only the originating supervisor or a supervisor bound to the worker's primary site may decide this leave.",
+        });
         return;
       }
       if (out.kind === 'ALREADY_DECIDED') {

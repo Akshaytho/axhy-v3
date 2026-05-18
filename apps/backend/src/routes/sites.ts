@@ -24,9 +24,8 @@ import type { LogComplaintOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
-import { recordAuditEvent } from '../lib/audit-event.js';
-import { enqueueOutbox } from '../lib/outbox.js';
 import { getEffectiveBinding } from '../lib/effective-responsibility.js';
+import { createComplaintWithInitialMessage } from '../lib/services/complaint-service.js';
 
 /**
  * Register site-scoped supervisor routes on the given Fastify app.
@@ -55,65 +54,32 @@ export async function registerSitesRoutes(app: FastifyInstance): Promise<void> {
       const { text, severity } = parsed.data;
 
       try {
-        const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-          const site = await tx.site.findFirst({
-            where: { id: siteId, companyId: auth.companyId },
-          });
-          if (!site) {
-            return { kind: 'NOT_FOUND' as const };
-          }
-
-          const complaint = await tx.complaint.create({
-            data: {
-              companyId: auth.companyId,
-              siteId,
-              supervisorId: auth.userId,
-              // Wave 3 (2026-05-18) — `createdByUserId` is the audit
-              // attribution for who actually invoked the action; under
-              // acting-supervisor windows it may diverge from supervisorId.
-              // For the direct button route the caller IS the actor.
-              createdByUserId: auth.userId,
-              text,
-              severity,
-              // Default kind for the direct-button route is `other` until
-              // the supervisor UI exposes a kind picker. Chat tool-loop
-              // sets kind explicitly via `propose_log_complaint`.
-              kind: 'other',
-              state: 'OPEN',
-            },
-          });
-
-          await recordAuditEvent(tx, {
+        // Cluster H fix (P2, 2026-05-18): the direct-button route now
+        // goes through the same `createComplaintWithInitialMessage`
+        // service the chat tool-loop uses, so a complaint logged via
+        // button has the same on-disk shape as one logged via chat
+        // (Complaint row + initial supervisor ComplaintMessage + audit +
+        // outbox, all in one tx). Previously the two paths drifted —
+        // button-route complaints had zero ComplaintMessage rows so the
+        // thread view rendered as empty.
+        const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+          createComplaintWithInitialMessage(tx, {
             companyId: auth.companyId,
-            kind: 'SITE_COMPLAINT_LOGGED',
-            actorId: auth.userId,
-            targetId: complaint.id,
-            payload: {
-              siteId,
-              siteName: site.name,
-              severity,
-              text,
-            },
-          });
+            siteId,
+            supervisorUserId: auth.userId,
+            createdByUserId: auth.userId,
+            text,
+            severity,
+            // Default kind for the direct-button route is `other` until
+            // the supervisor UI exposes a kind picker. The chat tool-loop
+            // sets kind explicitly via `propose_log_complaint`.
+            kind: 'other',
+            observedAt: null,
+            origin: 'BUTTON',
+          }),
+        );
 
-          // Notify HR via WhatsApp (Phase C — stubbed in dispatcher today)
-          await enqueueOutbox(tx, {
-            companyId: auth.companyId,
-            topic: 'hr.site_complaint',
-            payload: {
-              complaintId: complaint.id,
-              siteId,
-              siteName: site.name,
-              supervisorId: auth.userId,
-              severity,
-              text,
-            },
-          });
-
-          return { kind: 'OK' as const, complaint };
-        });
-
-        if (out.kind === 'NOT_FOUND') {
+        if (out.kind === 'SITE_NOT_FOUND') {
           reply.code(404).send({
             error: 'SITE_NOT_FOUND',
             message: 'Site not found in this company',
@@ -123,11 +89,11 @@ export async function registerSitesRoutes(app: FastifyInstance): Promise<void> {
 
         const result: LogComplaintOutput = {
           ok: true,
-          complaintId: out.complaint.id,
-          siteId: out.complaint.siteId,
-          severity: out.complaint.severity as LogComplaintOutput['severity'],
-          loggedBy: out.complaint.supervisorId,
-          loggedAt: out.complaint.createdAt.toISOString(),
+          complaintId: out.complaintId,
+          siteId,
+          severity,
+          loggedBy: auth.userId,
+          loggedAt: new Date().toISOString(),
         };
         reply.send(result);
       } catch (err) {
