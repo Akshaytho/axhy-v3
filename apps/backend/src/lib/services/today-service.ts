@@ -57,6 +57,7 @@ import {
   type TodayWorkerT,
 } from '@axhy/shared-schema';
 
+import { startOfISTDay, endOfISTDay, mondayBasedDayIndexIST, istTimeOnDate } from '../ist-date.js';
 import { getSitesSupervisedByUser } from '../effective-responsibility.js';
 
 const LATE_THRESHOLD_MINUTES = 15;
@@ -138,8 +139,8 @@ export async function buildTodayForSupervisor(
   }
 
   const siteIds = portfolio.map((p) => p.siteId);
-  const dayStart = startOfUtcDay(at);
-  const dayEnd = endOfUtcDay(at);
+  const dayStart = startOfISTDay(at);
+  const dayEnd = endOfISTDay(at);
   const todayDate = dayStart;
 
   const [siteRows, assignmentRows, todaysFlaggedVisits] = await Promise.all([
@@ -217,7 +218,7 @@ export async function buildTodayForSupervisor(
 
   // ---- Aggregation ---------------------------------------------------------
 
-  const todayDayIndex = mondayBasedDayIndex(at); // Mon=0..Sun=6
+  const todayDayIndex = mondayBasedDayIndexIST(at); // Mon=0..Sun=6
   const attendanceByWorker = new Map(todaysAttendance.map((a) => [a.workerId, a]));
   const visitsByWorker = new Map<string, typeof todaysVisits>();
   for (const v of todaysVisits) {
@@ -313,23 +314,6 @@ export async function buildTodayForSupervisor(
 // Pure helpers
 // ───────────────────────────────────────────────────────────────────────────
 
-function startOfUtcDay(d: Date): Date {
-  const s = new Date(d);
-  s.setUTCHours(0, 0, 0, 0);
-  return s;
-}
-
-function endOfUtcDay(d: Date): Date {
-  const e = new Date(d);
-  e.setUTCHours(24, 0, 0, 0);
-  return e;
-}
-
-/** Returns 0 for Monday … 6 for Sunday (matches Assignment.dayMask layout). */
-function mondayBasedDayIndex(d: Date): number {
-  return (d.getUTCDay() + 6) % 7;
-}
-
 /** True when the assignment's dayMask has a non-`_` character at index. */
 function dayMaskMatchesIndex(mask: string, index: number): boolean {
   if (index < 0 || index >= mask.length) return false;
@@ -370,10 +354,7 @@ function deriveWorkerState(args: DeriveStateArgs): TodayWorkerStateT {
  * today). Null when shiftStart cannot be parsed.
  */
 function minutesAfterShiftStart(startedAt: Date, shiftStart: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(shiftStart);
-  if (!match) return null;
-  const [, hh, mm] = match;
-  const shiftAt = new Date(startedAt);
-  shiftAt.setUTCHours(Number(hh), Number(mm), 0, 0);
+  const shiftAt = istTimeOnDate(startedAt, shiftStart);
+  if (!shiftAt) return null;
   return Math.floor((startedAt.getTime() - shiftAt.getTime()) / 60_000);
 }

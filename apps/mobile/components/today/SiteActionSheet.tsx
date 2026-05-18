@@ -40,13 +40,14 @@ type ActionRow = {
   id: ActionId;
   label: string;
   icon: React.ComponentProps<typeof Feather>['name'];
+  enabled: boolean;
 };
 
 const ACTIONS: ActionRow[] = [
-  { id: 'priority', label: 'Mark as priority', icon: 'star' },
-  { id: 'rule', label: 'Add site rule', icon: 'plus-circle' },
-  { id: 'replacement', label: 'Send replacement', icon: 'user-plus' },
-  { id: 'maps', label: 'Open in maps', icon: 'map-pin' },
+  { id: 'replacement', label: 'Send replacement', icon: 'user-plus', enabled: true },
+  { id: 'priority', label: 'Mark as priority', icon: 'star', enabled: false },
+  { id: 'rule', label: 'Add site rule', icon: 'plus-circle', enabled: false },
+  { id: 'maps', label: 'Open in maps', icon: 'map-pin', enabled: false },
 ];
 
 /**
@@ -94,17 +95,25 @@ export function SiteActionSheet({ visible, site, onClose }: SiteActionSheetProps
             {ACTIONS.map((action) => (
               <Pressable
                 key={action.id}
-                style={({ pressed }) => [s.row, pressed && s.rowPressed]}
-                onPress={() => handleRowPress(action.id)}
+                style={({ pressed }) => [
+                  s.row,
+                  pressed && action.enabled && s.rowPressed,
+                  !action.enabled && s.rowDisabled,
+                ]}
+                onPress={() => action.enabled && handleRowPress(action.id)}
+                disabled={!action.enabled}
                 accessibilityRole="button"
               >
                 <Feather
                   name={action.icon}
                   size={18}
-                  color={tokens.color.ink.secondary}
+                  color={action.enabled ? tokens.color.ink.secondary : tokens.color.ink.placeholder}
                   style={s.rowIcon}
                 />
-                <Text style={s.rowLabel}>{action.label}</Text>
+                <Text style={[s.rowLabel, !action.enabled && s.rowLabelDisabled]}>
+                  {action.label}
+                </Text>
+                {!action.enabled && <Text style={s.comingSoon}>Soon</Text>}
               </Pressable>
             ))}
           </View>
@@ -166,6 +175,20 @@ const s = StyleSheet.create({
     fontSize: tokens.type.body.size,
     fontWeight: String(tokens.weight.medium) as '500',
     color: tokens.color.ink.primary,
+    flex: 1,
+  },
+  rowDisabled: {
+    opacity: 0.5,
+  },
+  rowLabelDisabled: {
+    color: tokens.color.ink.placeholder,
+  },
+  comingSoon: {
+    fontSize: 10,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    color: tokens.color.ink.placeholder,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   cancel: {
     paddingVertical: tokens.space[3],

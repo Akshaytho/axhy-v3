@@ -60,7 +60,7 @@ export function useAckHRUpdate() {
     mutationFn: ({ id, text }) =>
       apiFetch<HRAckResponseT>(`/supervisor/updates/${id}/acknowledge`, {
         method: 'POST',
-        body: JSON.stringify({ text }),
+        body: { text },
       }),
     onSuccess: () => void invalidate(),
   });

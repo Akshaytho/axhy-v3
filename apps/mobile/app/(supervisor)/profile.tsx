@@ -36,15 +36,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 import type { MeOutput } from '@axhy/shared-schema';
+import * as SecureStore from 'expo-secure-store';
 
 import { apiFetch } from '../../lib/api';
 import { onAppLogout } from '../../lib/identity-lifecycle';
 import { useDrawer } from '../../components/Drawer';
 import { useLocaleStrings, setLocale } from '../../lib/i18n/use-locale';
 
-// ─── Storage helpers (web: localStorage; native: direct localStorage unavailable but
-//     non-sensitive prefs are fine in localStorage on web, and for native we mirror
-//     the same synchronous-looking API the auth-store already uses for web builds) ───
 
 const isWeb = Platform.OS === 'web';
 
@@ -52,12 +50,22 @@ function prefGet(key: string, defaultVal: string): string {
   if (isWeb && typeof localStorage !== 'undefined') {
     return localStorage.getItem(key) ?? defaultVal;
   }
-  return defaultVal;
+  try {
+    return SecureStore.getItem(key) ?? defaultVal;
+  } catch {
+    return defaultVal;
+  }
 }
 
 function prefSet(key: string, value: string): void {
   if (isWeb && typeof localStorage !== 'undefined') {
     localStorage.setItem(key, value);
+    return;
+  }
+  try {
+    SecureStore.setItem(key, value);
+  } catch {
+    // SecureStore can fail on some Android devices — swallow for non-critical prefs
   }
 }
 

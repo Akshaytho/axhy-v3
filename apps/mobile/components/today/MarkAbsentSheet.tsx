@@ -50,7 +50,7 @@ export function MarkAbsentSheet({ worker, onClose }: MarkAbsentSheetProps) {
         `/workers/${input.workerId}/mark-absent`,
         {
           method: 'POST',
-          body: JSON.stringify({ date: today, status: input.status, reason: input.reason }),
+          body: { date: today, status: input.status, reason: input.reason },
         },
       );
     },

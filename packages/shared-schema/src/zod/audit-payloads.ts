@@ -387,7 +387,7 @@ export const DwiDismissedPayloadSchema = z.object({
   tier: z.enum(['NOTE', 'OPERATIONAL', 'PERSONNEL', 'EMPLOYMENT']),
   dismissedAt: z.string().datetime(),
   dismissedBy: z.string().uuid(),
-  dismissedReason: z.string().min(1).max(2000),
+  dismissedReason: z.string().max(2000).nullable(),
   /**
    * The original supervisorId from the DWI row at propose-time. Same rationale
    * as DwiAppliedPayload.originalSupervisorId.

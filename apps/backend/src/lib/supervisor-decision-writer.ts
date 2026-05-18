@@ -623,7 +623,7 @@ export async function dismissProposedDecision(
       tier: row.tier as DwiTier,
       dismissedAt: dismissedAt.toISOString(),
       dismissedBy: input.actorUserId,
-      dismissedReason: input.reason,
+      dismissedReason: input.reason ?? null,
       originalSupervisorId: row.supervisorId,
     },
   });

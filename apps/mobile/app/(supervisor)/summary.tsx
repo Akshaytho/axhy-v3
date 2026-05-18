@@ -185,8 +185,8 @@ function TimelineRow({ entry, isLast }: { entry: SummaryTimelineEntryT; isLast: 
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
   return `${hh}:${mm}`;
 }
 
