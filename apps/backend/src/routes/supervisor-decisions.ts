@@ -26,8 +26,10 @@
  * @derives(master-plan §G) — supervisor surface
  */
 
+import crypto from 'node:crypto';
+
 import type { FastifyInstance } from 'fastify';
-import { DismissDecisionInput, DecisionsQueryInput } from '@axhy/shared-schema';
+import { DismissDecisionInput, DecisionsQueryInput, decisionSpecByKind } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
@@ -145,4 +147,78 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
       }
     },
   );
+
+  // -------------------------------------------------------------------------
+  // POST /decisions/:id/apply — thin adapter to /chat/apply (QA-water-flow
+  // Bug A 2026-05-18). The actions[] contract in /supervisor/decisions
+  // emits this endpoint string for SupervisorDecision rows. Before this
+  // route existed, every "Apply" tap from mobile 404'd because the
+  // endpoint was never registered.
+  //
+  // This adapter:
+  //   1. Reads the SupervisorDecision row, verifies tenant + PROPOSED state
+  //   2. Reconstructs ApplyDecisionCardInput from row (kind → toolName via
+  //      decisionSpecByKind; payload → toolInput; decisionId from URL)
+  //   3. Forwards to /chat/apply via fastify.inject() so the real apply
+  //      flow (race-safe lifecycle + atomic domain write) runs unchanged
+  //
+  // We don't re-implement the dispatch — that lives in /chat/apply and is
+  // already battle-tested + covered by chat-apply-* tests. Production-grade
+  // rule: don't duplicate critical paths.
+  // -------------------------------------------------------------------------
+  app.post('/decisions/:id/apply', { preHandler: requireAuth }, async (req, reply) => {
+    const auth = req.auth;
+    if (!auth) {
+      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+      return;
+    }
+    const { id } = req.params as { id: string };
+
+    const row = await prisma.supervisorDecision.findFirst({
+      where: { id, companyId: auth.companyId },
+      select: { id: true, kind: true, payload: true, appliedAt: true, dismissedAt: true },
+    });
+    if (!row) {
+      reply.code(404).send({ error: 'NOT_FOUND', message: 'Decision not found' });
+      return;
+    }
+    if (row.appliedAt !== null) {
+      reply.code(409).send({ error: 'ALREADY_APPLIED' });
+      return;
+    }
+    if (row.dismissedAt !== null) {
+      reply.code(409).send({ error: 'ALREADY_DISMISSED' });
+      return;
+    }
+
+    const spec = decisionSpecByKind.get(row.kind);
+    if (!spec || spec.toolName === undefined) {
+      reply.code(422).send({
+        error: 'KIND_NOT_APPLYABLE',
+        message: `Decision kind "${row.kind}" has no apply tool wired`,
+      });
+      return;
+    }
+
+    const idempotencyKey =
+      (req.headers['idempotency-key'] as string | undefined) ?? crypto.randomUUID();
+    const authorization = req.headers.authorization;
+
+    const inner = await app.inject({
+      method: 'POST',
+      url: '/chat/apply',
+      headers: {
+        ...(authorization ? { authorization } : {}),
+        'idempotency-key': idempotencyKey,
+        'content-type': 'application/json',
+      },
+      payload: {
+        toolName: spec.toolName,
+        toolInput: (row.payload ?? {}) as Record<string, unknown>,
+        decisionId: row.id,
+      },
+    });
+
+    reply.code(inner.statusCode).send(inner.json());
+  });
 }
