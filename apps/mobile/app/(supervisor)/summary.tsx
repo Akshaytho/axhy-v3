@@ -66,7 +66,7 @@ export default function SummaryScreen() {
             <MetricTile
               label="CHANGES TODAY"
               value={summary.data?.changesToday ?? 0}
-              sub="atomic batches"
+              sub="changes saved"
               tone="accent"
             />
             <MetricTile

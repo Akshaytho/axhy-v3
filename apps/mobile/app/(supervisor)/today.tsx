@@ -163,7 +163,7 @@ export default function TodayScreen() {
               </View>
             ) : null}
 
-            <Text style={s.footerHint}>Pull to refresh · Updates live</Text>
+            <Text style={s.footerHint}>Pull down to refresh</Text>
           </>
         ) : null}
       </ScrollView>
