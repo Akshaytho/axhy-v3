@@ -54,6 +54,7 @@ import {
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { withIdempotency } from '../lib/idempotency-key.js';
 import {
   appendComplaintMessage,
   markComplaintMessageRead,
@@ -260,6 +261,9 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
   );
 
   // ── POST /complaints/:id/messages ────────────────────────────────────────
+  // Idempotency-Key supported (Cluster F fix): a Slow-3G double-tap with
+  // the same key returns the cached reply outcome instead of appending
+  // two ComplaintMessage rows + double-incrementing HR's unread counter.
   app.post<{ Params: { id: string } }>(
     '/complaints/:id/messages',
     { preHandler: requireAuth },
@@ -277,45 +281,62 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
       const complaintId = req.params.id;
       const authorRole = complaintRoleFromAuthRole(auth.role);
 
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-        // Tenant + ownership check for supervisor caller. HR-portal callers
-        // (future) skip the createdByUserId filter; out-of-scope this wave.
-        const complaint = await tx.complaint.findFirst({
-          where: {
-            id: complaintId,
-            companyId: auth.companyId,
-            ...(authorRole === 'SUPERVISOR' ? { createdByUserId: auth.userId } : {}),
-          },
-          select: { id: true },
-        });
-        if (!complaint) return { kind: 'COMPLAINT_NOT_FOUND' as const };
-        return appendComplaintMessage(tx, {
+      await withIdempotency(
+        req,
+        reply,
+        {
           companyId: auth.companyId,
-          complaintId,
-          authorUserId: auth.userId,
-          authorRole,
-          body: parsed.data.body,
-          attachments: parsed.data.attachments ?? null,
-        });
-      });
+          // Scope by complaintId so the same key on a DIFFERENT complaint
+          // doesn't accidentally collide.
+          routeKey: `POST:/complaints/${complaintId}/messages`,
+        },
+        async () => {
+          const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+            // Tenant + ownership check for supervisor caller. HR-portal
+            // callers (future) skip the createdByUserId filter; out-of-
+            // scope this wave.
+            const complaint = await tx.complaint.findFirst({
+              where: {
+                id: complaintId,
+                companyId: auth.companyId,
+                ...(authorRole === 'SUPERVISOR' ? { createdByUserId: auth.userId } : {}),
+              },
+              select: { id: true },
+            });
+            if (!complaint) return { kind: 'COMPLAINT_NOT_FOUND' as const };
+            return appendComplaintMessage(tx, {
+              companyId: auth.companyId,
+              complaintId,
+              authorUserId: auth.userId,
+              authorRole,
+              body: parsed.data.body,
+              attachments: parsed.data.attachments ?? null,
+            });
+          });
 
-      if (out.kind === 'COMPLAINT_NOT_FOUND') {
-        reply.code(404).send({ error: 'COMPLAINT_NOT_FOUND' });
-        return;
-      }
-      if (out.kind === 'COMPLAINT_TERMINAL') {
-        reply.code(409).send({
-          error: 'COMPLAINT_TERMINAL',
-          state: out.state,
-          message: `Complaint is already ${out.state}; cannot append messages`,
-        });
-        return;
-      }
-      reply.code(201).send({
-        ok: true,
-        messageId: out.messageId,
-        createdAt: out.createdAt.toISOString(),
-      });
+          if (out.kind === 'COMPLAINT_NOT_FOUND') {
+            return { status: 404, body: { error: 'COMPLAINT_NOT_FOUND' } };
+          }
+          if (out.kind === 'COMPLAINT_TERMINAL') {
+            return {
+              status: 409,
+              body: {
+                error: 'COMPLAINT_TERMINAL',
+                state: out.state,
+                message: `Complaint is already ${out.state}; cannot append messages`,
+              },
+            };
+          }
+          return {
+            status: 201,
+            body: {
+              ok: true,
+              messageId: out.messageId,
+              createdAt: out.createdAt.toISOString(),
+            },
+          };
+        },
+      );
     },
   );
 

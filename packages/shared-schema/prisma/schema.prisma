@@ -76,6 +76,12 @@ model Company {
   replacementInvites     ReplacementInvite[]
   // Wave 3 complaint threading (2026-05-18)
   complaintMessages      ComplaintMessage[]
+  // Sprint 1 deep-review Cluster G fix (2026-05-18) — ComplaintMessageRead
+  // back-relation so a Company cascade-delete sweeps read-receipts too.
+  complaintMessageReads  ComplaintMessageRead[]
+  // Sprint 1 deep-review Cluster F fix (2026-05-18) — IdempotencyKey
+  // back-relation. Cascade-delete prevents orphan cached responses.
+  idempotencyKeys        IdempotencyKey[]
 
   @@schema("axhy")
 }
@@ -372,6 +378,36 @@ model ChatMessage {
   company Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId, threadId, createdAt])
+  @@schema("axhy")
+}
+
+/// Generic HTTP idempotency cache — Sprint 1 deep-review Cluster F fix
+/// (2026-05-18). Cached response by (companyId, routeKey, idempotencyKey)
+/// so a state-changing POST that's retried within the 10-minute TTL
+/// returns the same response without re-running the handler. Mirrors
+/// `ChatRequestLog`'s shape; the delta is `routeKey` so one table
+/// serves every route that opts in via the `withIdempotency` helper.
+///
+/// @derives(2026-05-18-sprint-1-deep-review.md Cluster F)
+/// @derives(feedback_production_grade_workflow_rules.md — P8 retries/double-taps)
+model IdempotencyKey {
+  companyId      String   @db.Uuid
+  /// e.g. "POST:/supervisor/replacement-invites"
+  routeKey       String
+  /// Client-supplied UUID from the Idempotency-Key header.
+  idempotencyKey String
+  /// HTTP status code of the cached response.
+  responseStatus Int
+  /// Full JSON response body the client saw on the first call.
+  responseJson   Json
+  createdAt      DateTime @default(now())
+  /// createdAt + 10 minutes
+  expiresAt      DateTime
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, routeKey, idempotencyKey])
+  @@index([expiresAt])
   @@schema("axhy")
 }
 
@@ -746,6 +782,12 @@ model ComplaintMessageRead {
   readAt      DateTime @default(now())
 
   message ComplaintMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  // Cluster G fix (P2, 2026-05-18): companyId FK back-relation. Without
+  // it, a Company hard-delete would leave orphan rows with a dangling
+  // companyId. RLS / withTenantContext still isolated correctly without
+  // the FK, but defense-in-depth requires the DB-level cascade.
+  // See `docs/findings/2026-05-18-sprint-1-deep-review.md` Cluster G.
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@id([messageId, actorUserId])
   @@index([companyId, actorUserId])
