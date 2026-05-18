@@ -1,55 +1,58 @@
 /**
  * ReplacementInvite (F28) domain service — Wave 1 backend.
  *
- * The PUBG-squad invite primitive: supervisor broadcasts an invite to N
- * candidate workers, first to accept wins, siblings auto-EXPIRE in the same
- * transaction. Race-safety lives here so route handlers stay thin.
+ * Single-recipient cover request. Supervisor sends ONE invite to ONE
+ * worker; 2-minute TTL; on terminal state (ACCEPTED / DECLINED / EXPIRED /
+ * CANCELLED) supervisor may send a fresh invite to the same worker or a
+ * different one. NOT a multi-worker broadcast — see
+ * `feedback_replacement_invite_single_recipient.md` (locked 2026-05-18).
+ *
+ * The single-recipient model is the production-grade design here: the only
+ * race-safety needed is the conditional UPDATE on `status='PENDING'` for
+ * accept / decline / cancel, which Postgres serialises naturally at the
+ * row level. No advisory lock, no partial unique index, no sibling-expire
+ * logic — that machinery is only needed for broadcast designs and would
+ * be over-engineered noise here.
  *
  * Functions:
- *   - `createReplacementInviteGroup`
- *       One transaction: validate site + candidates (all in tenant + linked
- *       to a Worker row), generate `groupId`, insert N invite rows, enqueue
- *       N push notifications, emit N `REPLACEMENT_INVITE_SENT` audit events.
+ *   - `createReplacementInvite`
+ *       Validate site + visit + candidate (linked Worker in tenant) →
+ *       insert one row → emit `REPLACEMENT_INVITE_SENT` audit → enqueue
+ *       one `replacement_invite` Notification (push). All in one tx.
  *
  *   - `acceptReplacementInvite`
- *       Atomic accept. Conditional UPDATE on `status='PENDING'` wins the
- *       row; if `updatedCount=0` the caller already lost (sibling won, or
- *       already declined / expired / cancelled). On success: expire all
- *       siblings in the same group, create the Assignment that fulfills the
- *       cover, emit audit + push to supervisor + push to losing candidates.
+ *       Conditional UPDATE on (id, companyId, toWorkerId, status='PENDING').
+ *       updatedCount=0 → classify (NOT_FOUND / NOT_YOURS / ALREADY_DECIDED)
+ *       on a follow-up read. On success: find the Worker row, create an
+ *       ACTIVE one-day Assignment, emit audit + push to supervisor.
  *
  *   - `declineReplacementInvite`
- *       Conditional UPDATE to DECLINED. If after the decline the group has
- *       no PENDING rows remaining and no ACCEPTED row, emit an "all
- *       declined" SupervisorDecision row so the supervisor sees the outcome
- *       in the Decisions queue (Wave 2 absorbs via `additionalDecisionSources`
- *       in Sprint 2; this wave only creates the row).
+ *       Conditional UPDATE → DECLINED. Emit audit + push supervisor.
  *
- *   - `cancelReplacementInviteGroup`
- *       Supervisor recalls the broadcast. Bulk-flip all PENDING in group to
- *       CANCELLED. Push each former candidate.
+ *   - `cancelReplacementInvite`
+ *       Supervisor cancels their own PENDING invite. Conditional UPDATE
+ *       → CANCELLED. Push the worker.
  *
  *   - `sweepExpiredReplacementInvites`
- *       Cron-style sweep. UPDATE all PENDING past expiresAt to EXPIRED in
- *       one statement, then per-group emit a SupervisorDecision row.
+ *       Cron-style sweep. UPDATE all PENDING past expiresAt to EXPIRED;
+ *       for each emit a `REPLACEMENT_INVITE_OUTCOME` SupervisorDecision
+ *       row + push the supervisor.
  *
  * Cross-tenant isolation:
  *   Every function requires `companyId` and filters all WHERE clauses on
- *   it. Defense in depth: routes also wrap calls in `withTenantContext` so
- *   the RLS GUC fires if a future query slips through.
+ *   it. Defense in depth: routes wrap calls in `withTenantContext` so the
+ *   RLS GUC fires if a future query slips through.
  *
  * @derives(master-plan §P.4 — ReplacementInvite)
- * @derives(master-plan §G:976 — PUBG-style invite locked design)
- * @derives(replacement-invite-feature-spec.md, 2026-05-18)
+ * @derives(master-plan §G — supervisor surface)
+ * @derives(feedback_replacement_invite_single_recipient.md, 2026-05-18)
  * @derives(supervisor-30day-scenarios.md scenarios #39–46 — swaps + emergency cover)
  */
 
-import { randomUUID } from 'node:crypto';
-
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
-  CreateReplacementInviteGroupInput,
-  type CreateReplacementInviteGroupInputT,
+  CreateReplacementInviteInput,
+  type CreateReplacementInviteInputT,
   ReplacementInviteStatusSchema,
   REPLACEMENT_INVITE_TIMING,
   type ReplacementInviteRowT,
@@ -59,14 +62,10 @@ import { recordAuditEvent } from '../audit-event.js';
 
 const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
 
-/**
- * Shape of a ReplacementInvite row as returned by the DB. Kept local so we
- * don't import the generated Prisma type at every callsite.
- */
+/** Local DB-row shape so we don't depend on the generated Prisma type at every callsite. */
 type ReplacementInviteDbRow = {
   id: string;
   companyId: string;
-  groupId: string;
   fromSupervisorId: string;
   toWorkerId: string;
   visitId: string | null;
@@ -86,7 +85,6 @@ function toRow(
 ): ReplacementInviteRowT {
   return {
     id: r.id,
-    groupId: r.groupId,
     fromSupervisorId: r.fromSupervisorId,
     toWorkerId: r.toWorkerId,
     toWorkerName,
@@ -102,35 +100,35 @@ function toRow(
   };
 }
 
-// ─── createReplacementInviteGroup ──────────────────────────────────────────
+// ─── createReplacementInvite ───────────────────────────────────────────────
 
 /** @derives(master-plan §P.4) */
-export type CreateGroupInput = CreateReplacementInviteGroupInputT & {
+export type CreateInput = CreateReplacementInviteInputT & {
   companyId: string;
   fromSupervisorId: string;
 };
 
 /** @derives(master-plan §P.4) */
-export type CreateGroupResult =
-  | { kind: 'OK'; groupId: string; invites: ReplacementInviteRowT[] }
+export type CreateResult =
+  | { kind: 'OK'; invite: ReplacementInviteRowT }
   | { kind: 'SITE_NOT_FOUND' }
   | { kind: 'VISIT_NOT_FOUND' }
-  | { kind: 'CANDIDATE_NOT_FOUND'; missingUserId: string }
-  | { kind: 'CANDIDATE_NOT_LINKED_TO_WORKER'; userId: string };
+  | { kind: 'CANDIDATE_NOT_FOUND' }
+  | { kind: 'CANDIDATE_NOT_LINKED_TO_WORKER' };
 
 /**
- * Validate + create the full broadcast in one tx. Either every row inserts
- * + every push enqueues, or none do.
  * @derives(master-plan §P.4)
+ * Create a single-recipient invite in one tx. Either the row inserts AND
+ * the push enqueues AND the audit fires, or none do.
  */
-export async function createReplacementInviteGroup(
+export async function createReplacementInvite(
   tx: Prisma.TransactionClient,
-  input: CreateGroupInput,
-): Promise<CreateGroupResult> {
-  CreateReplacementInviteGroupInput.parse({
+  input: CreateInput,
+): Promise<CreateResult> {
+  CreateReplacementInviteInput.parse({
     siteId: input.siteId,
     scheduledStart: input.scheduledStart,
-    candidateUserIds: input.candidateUserIds,
+    candidateUserId: input.candidateUserId,
     visitId: input.visitId ?? null,
     expiresInSec: input.expiresInSec,
   });
@@ -149,12 +147,12 @@ export async function createReplacementInviteGroup(
     if (!visit) return { kind: 'VISIT_NOT_FOUND' };
   }
 
-  // Every candidate must (a) be a User in this tenant via Membership and
+  // Candidate must (a) be a User with a Membership in this tenant and
   // (b) have a Worker row linked. Workers without a User row cannot
-  // currently receive invites; that surface lights up when the worker
-  // mobile lands in Phase D.
-  const candidates = await tx.user.findMany({
-    where: { id: { in: input.candidateUserIds } },
+  // receive invites; that surface lights up when the worker mobile lands
+  // in Phase D.
+  const candidate = await tx.user.findFirst({
+    where: { id: input.candidateUserId },
     select: {
       id: true,
       name: true,
@@ -162,82 +160,70 @@ export async function createReplacementInviteGroup(
       workerProfile: { select: { id: true, companyId: true } },
     },
   });
-  const candidateById = new Map(candidates.map((c) => [c.id, c]));
-
-  for (const uid of input.candidateUserIds) {
-    const c = candidateById.get(uid);
-    if (!c || c.memberships.length === 0) {
-      return { kind: 'CANDIDATE_NOT_FOUND', missingUserId: uid };
-    }
-    if (!c.workerProfile || c.workerProfile.companyId !== input.companyId) {
-      return { kind: 'CANDIDATE_NOT_LINKED_TO_WORKER', userId: uid };
-    }
+  if (!candidate || candidate.memberships.length === 0) {
+    return { kind: 'CANDIDATE_NOT_FOUND' };
+  }
+  if (!candidate.workerProfile || candidate.workerProfile.companyId !== input.companyId) {
+    return { kind: 'CANDIDATE_NOT_LINKED_TO_WORKER' };
   }
 
-  const groupId = randomUUID();
   const sentAt = new Date();
   const expiresInSec = input.expiresInSec ?? REPLACEMENT_INVITE_TIMING.DEFAULT_EXPIRES_IN_SEC;
   const expiresAt = new Date(sentAt.getTime() + expiresInSec * 1000);
   const scheduledStart = new Date(input.scheduledStart);
 
-  const created: ReplacementInviteRowT[] = [];
-  for (const uid of input.candidateUserIds) {
-    const row = await tx.replacementInvite.create({
-      data: {
-        companyId: input.companyId,
-        groupId,
-        fromSupervisorId: input.fromSupervisorId,
-        toWorkerId: uid,
-        visitId: input.visitId ?? null,
-        siteId: input.siteId,
-        scheduledStart,
-        status: 'PENDING',
-        sentAt,
-        expiresAt,
-      },
-    });
-
-    await recordAuditEvent(tx, {
+  const row = await tx.replacementInvite.create({
+    data: {
       companyId: input.companyId,
-      kind: 'REPLACEMENT_INVITE_SENT',
-      actorId: input.fromSupervisorId,
-      targetId: row.id,
+      fromSupervisorId: input.fromSupervisorId,
+      toWorkerId: input.candidateUserId,
+      visitId: input.visitId ?? null,
+      siteId: input.siteId,
+      scheduledStart,
+      status: 'PENDING',
+      sentAt,
+      expiresAt,
+    },
+  });
+
+  await recordAuditEvent(tx, {
+    companyId: input.companyId,
+    kind: 'REPLACEMENT_INVITE_SENT',
+    actorId: input.fromSupervisorId,
+    targetId: row.id,
+    payload: {
+      toWorkerUserId: input.candidateUserId,
+      siteId: input.siteId,
+      siteName: site.name,
+      scheduledStart: scheduledStart.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    },
+  });
+
+  // Push to candidate. Existing dispatcher fans Notification rows to
+  // OneSignal — we just enqueue here.
+  await tx.notification.create({
+    data: {
+      companyId: input.companyId,
+      audienceUserId: input.candidateUserId,
+      kind: 'replacement_invite',
+      channel: 'push',
+      priority: 'URGENT',
       payload: {
-        groupId,
-        toWorkerUserId: uid,
+        inviteId: row.id,
+        fromSupervisorUserId: input.fromSupervisorId,
         siteId: input.siteId,
         siteName: site.name,
         scheduledStart: scheduledStart.toISOString(),
         expiresAt: expiresAt.toISOString(),
       },
-    });
+    },
+  });
 
-    // Push to candidate. The dispatcher will fan this out to OneSignal +
-    // mark deliveredAt; we just enqueue the Notification row here.
-    await tx.notification.create({
-      data: {
-        companyId: input.companyId,
-        audienceUserId: uid,
-        kind: 'replacement_invite',
-        channel: 'push',
-        priority: 'URGENT',
-        payload: {
-          inviteId: row.id,
-          groupId,
-          fromSupervisorUserId: input.fromSupervisorId,
-          siteId: input.siteId,
-          siteName: site.name,
-          scheduledStart: scheduledStart.toISOString(),
-          expiresAt: expiresAt.toISOString(),
-        },
-      },
-    });
-
-    const toWorkerName = candidateById.get(uid)?.name ?? null;
-    created.push(toRow(row as ReplacementInviteDbRow, site.name, toWorkerName));
-  }
-
-  return { kind: 'OK', groupId, invites: created };
+  return {
+    kind: 'OK',
+    invite: toRow(row as ReplacementInviteDbRow, site.name, candidate.name ?? null),
+  };
 }
 
 // ─── acceptReplacementInvite ───────────────────────────────────────────────
@@ -251,97 +237,33 @@ export type AcceptInput = {
 
 /** @derives(master-plan §P.4) */
 export type AcceptResult =
-  | {
-      kind: 'OK';
-      invite: ReplacementInviteRowT;
-      assignmentId: string;
-      expiredSiblingCount: number;
-    }
+  | { kind: 'OK'; invite: ReplacementInviteRowT; assignmentId: string }
   | { kind: 'INVITE_NOT_FOUND' }
-  | { kind: 'ALREADY_DECIDED'; status: string }
   | { kind: 'NOT_YOUR_INVITE' }
+  | { kind: 'ALREADY_DECIDED'; status: string }
   | { kind: 'WORKER_ROW_MISSING' };
 
 /**
- * Race-safe accept:
- *   1. Conditional UPDATE on (id, companyId, toWorkerId, status='PENDING').
- *      If 0 rows updated, classify why and return appropriate error.
- *   2. Expire all PENDING siblings in same groupId.
- *   3. Find Worker row for the accepting user; create one-day Assignment
- *      covering the scheduledStart date (DRAFT state — supervisor can edit
- *      after the fact if needed).
- *   4. Audit + push supervisor (winner) + push losers (sibling_accepted).
- *
- * Three concurrent calls on the same group: exactly one returns OK; the
- * other two get ALREADY_DECIDED. Verified by test.
- *
- * @derives(master-plan §P.4 — race-safety)
+ * @derives(master-plan §P.4)
+ * Conditional UPDATE on (id, companyId, toWorkerId, status='PENDING').
+ * Postgres serialises row-level access — no advisory lock or partial
+ * unique index needed because there's exactly one row per invite.
  */
-/** @derives(master-plan §P.4) — race-safe accept entry point */
 export async function acceptReplacementInvite(
   tx: Prisma.TransactionClient,
   input: AcceptInput,
 ): Promise<AcceptResult> {
-  // Race-safety: lookup the row's groupId first, then take a Postgres
-  // transaction-scoped advisory lock keyed on the groupId hash. The lock
-  // serialises the per-group critical section (accept + sibling-expire +
-  // assignment-create) WITHOUT a deadlock cycle that arises when two
-  // concurrent transactions each hold a row-level ACCEPTED lock on
-  // different rows and then attempt to UPDATE each other's row to
-  // EXPIRED. Advisory locks are auto-released on tx commit/rollback.
-  //
-  // Defense in depth: the partial unique index
-  // `ReplacementInvite_one_accepted_per_group_uniq` (groupId WHERE
-  // status='ACCEPTED') is the DB-level guarantee that even if the lock
-  // is bypassed (e.g. cross-replica without shared lock state — Postgres
-  // advisory locks are per-instance), two ACCEPTED rows can never
-  // coexist in the same group.
-  const probe = await tx.replacementInvite.findFirst({
-    where: { id: input.inviteId, companyId: input.companyId },
-    select: { id: true, groupId: true, toWorkerId: true, status: true },
+  const updated = await tx.replacementInvite.updateMany({
+    where: {
+      id: input.inviteId,
+      companyId: input.companyId,
+      toWorkerId: input.workerUserId,
+      status: 'PENDING',
+    },
+    data: { status: 'ACCEPTED', respondedAt: new Date(), respondReason: 'accept' },
   });
-  if (!probe) return { kind: 'INVITE_NOT_FOUND' };
-  if (probe.toWorkerId !== input.workerUserId) return { kind: 'NOT_YOUR_INVITE' };
-  if (probe.status !== 'PENDING') return { kind: 'ALREADY_DECIDED', status: probe.status };
 
-  // Acquire the per-group advisory lock. hashtext() yields a stable int4
-  // from the groupId text; pg_advisory_xact_lock(int4) is the right
-  // single-arg form. Same approach as Postgres-cookbook serialisation.
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${probe.groupId}::text))`;
-
-  // Atomic accept via updateMany. After the advisory lock, only one
-  // tx-per-group is in flight at a time so updatedCount=1 is the
-  // expected outcome unless a prior accept already won and committed.
-  let updatedCount = 0;
-  try {
-    const updated = await tx.replacementInvite.updateMany({
-      where: {
-        id: input.inviteId,
-        companyId: input.companyId,
-        toWorkerId: input.workerUserId,
-        status: 'PENDING',
-      },
-      data: { status: 'ACCEPTED', respondedAt: new Date(), respondReason: 'accept' },
-    });
-    updatedCount = updated.count;
-  } catch (err) {
-    const code = (err as { code?: string }).code;
-    if (code === 'P2002') {
-      // Partial unique index fired — another worker in the same group
-      // beat us across the commit boundary. Look up actual state for
-      // the caller-visible envelope.
-      const existing = await tx.replacementInvite.findFirst({
-        where: { id: input.inviteId, companyId: input.companyId },
-        select: { id: true, toWorkerId: true, status: true },
-      });
-      if (!existing) return { kind: 'INVITE_NOT_FOUND' };
-      if (existing.toWorkerId !== input.workerUserId) return { kind: 'NOT_YOUR_INVITE' };
-      return { kind: 'ALREADY_DECIDED', status: existing.status };
-    }
-    throw err;
-  }
-
-  if (updatedCount === 0) {
+  if (updated.count === 0) {
     const existing = await tx.replacementInvite.findFirst({
       where: { id: input.inviteId, companyId: input.companyId },
       select: { id: true, toWorkerId: true, status: true },
@@ -351,14 +273,12 @@ export async function acceptReplacementInvite(
     return { kind: 'ALREADY_DECIDED', status: existing.status };
   }
 
-  // Refetch the row + site name + worker name (kept simple: 2 reads is fine
-  // at the call rate — invite-accept is human-paced, not RPS-heavy).
+  // Refetch with site + worker names for the response envelope.
   const invite = await tx.replacementInvite.findFirstOrThrow({
     where: { id: input.inviteId, companyId: input.companyId },
     select: {
       id: true,
       companyId: true,
-      groupId: true,
       fromSupervisorId: true,
       toWorkerId: true,
       visitId: true,
@@ -374,34 +294,20 @@ export async function acceptReplacementInvite(
     },
   });
 
-  // Expire all PENDING siblings — same tx so partial state is impossible.
-  const siblingExpire = await tx.replacementInvite.updateMany({
-    where: {
-      companyId: input.companyId,
-      groupId: invite.groupId,
-      status: 'PENDING',
-      id: { not: invite.id },
-    },
-    data: { status: 'EXPIRED', respondedAt: new Date(), respondReason: 'sibling_accepted' },
-  });
-
-  // Worker row required to materialise the Assignment. By construction of
-  // createReplacementInviteGroup, this row was verified at send-time. We
-  // re-verify here defensively in case the worker was unlinked after send.
+  // Worker row required to materialise the Assignment. Verified at send
+  // time; re-checked here defensively in case the worker was unlinked
+  // between send and accept.
   const worker = await tx.worker.findFirst({
     where: { companyId: input.companyId, userId: input.workerUserId },
-    select: { id: true, name: true },
+    select: { id: true },
   });
   if (!worker) return { kind: 'WORKER_ROW_MISSING' };
 
-  // One-day cover assignment. ShiftStart at scheduledStart, validFrom/Until
-  // bracket the same day. State=ACTIVE so the cover takes effect immediately
-  // (supervisor confirmed the swap via the accept; no further approval).
-  // dayMask = 7-char "MTWTFSS" mask with only the matching day kept; other
-  // positions become underscore. Convention per Assignment.dayMask schema:
-  // Mon = index 0, Sun = index 6.
-  const dayOfWeekJs = invite.scheduledStart.getDay(); // 0=Sun..6=Sat in JS
-  const mondayFirstIndex = (dayOfWeekJs + 6) % 7; // Mon=0..Sun=6
+  // One-day cover assignment. State=ACTIVE: the supervisor confirmed the
+  // swap by accepting; no further approval needed. dayMask follows the
+  // Assignment.dayMask convention (7-char Mon-Sun, kept char vs underscore).
+  const dayOfWeekJs = invite.scheduledStart.getDay(); // 0=Sun..6=Sat
+  const mondayFirstIndex = (dayOfWeekJs + 6) % 7;
   const DAY_CHARS = 'MTWTFSS';
   const dayMask = DAY_CHARS.split('')
     .map((c, idx) => (idx === mondayFirstIndex ? c : '_'))
@@ -412,13 +318,8 @@ export async function acceptReplacementInvite(
   const validUntil = new Date(validFrom);
   validUntil.setHours(23, 59, 59, 999);
 
-  // shiftStart in "HH:mm" 24-hour. toTimeString gives "HH:MM:SS GMT…"; slice
-  // the first 5 chars. Use UTC so the value is timezone-stable across server
-  // boots.
   const pad2 = (n: number): string => n.toString().padStart(2, '0');
   const shiftStart = `${pad2(invite.scheduledStart.getUTCHours())}:${pad2(invite.scheduledStart.getUTCMinutes())}`;
-  // shiftEnd defaults to scheduledStart + 8h (sensible default for cover);
-  // supervisor can refine in the assignment view if needed.
   const shiftEndDate = new Date(invite.scheduledStart.getTime() + 8 * 60 * 60 * 1000);
   const shiftEnd = `${pad2(shiftEndDate.getUTCHours())}:${pad2(shiftEndDate.getUTCMinutes())}`;
 
@@ -443,17 +344,15 @@ export async function acceptReplacementInvite(
     actorId: input.workerUserId,
     targetId: invite.id,
     payload: {
-      groupId: invite.groupId,
       assignmentId: assignment.id,
       fromSupervisorId: invite.fromSupervisorId,
       siteId: invite.siteId,
       siteName: invite.site.name,
       scheduledStart: invite.scheduledStart.toISOString(),
-      siblingsExpired: siblingExpire.count,
     },
   });
 
-  // Push supervisor — winner notification.
+  // Push supervisor — accepted notification.
   await tx.notification.create({
     data: {
       companyId: input.companyId,
@@ -463,7 +362,6 @@ export async function acceptReplacementInvite(
       priority: 'URGENT',
       payload: {
         outcome: 'accepted',
-        groupId: invite.groupId,
         inviteId: invite.id,
         winnerWorkerUserId: input.workerUserId,
         winnerWorkerName: invite.toWorker.name,
@@ -475,49 +373,10 @@ export async function acceptReplacementInvite(
     },
   });
 
-  // Push losers — sibling_accepted notification.
-  if (siblingExpire.count > 0) {
-    const losers = await tx.replacementInvite.findMany({
-      where: {
-        companyId: input.companyId,
-        groupId: invite.groupId,
-        status: 'EXPIRED',
-        respondReason: 'sibling_accepted',
-      },
-      select: { toWorkerId: true },
-    });
-    for (const loser of losers) {
-      await tx.notification.create({
-        data: {
-          companyId: input.companyId,
-          audienceUserId: loser.toWorkerId,
-          kind: 'replacement_invite',
-          channel: 'push',
-          priority: 'STANDARD',
-          payload: {
-            outcome: 'sibling_accepted',
-            groupId: invite.groupId,
-            siteId: invite.siteId,
-            siteName: invite.site.name,
-            scheduledStart: invite.scheduledStart.toISOString(),
-          },
-        },
-      });
-    }
-  }
-
   return {
     kind: 'OK',
-    invite: toRow(
-      {
-        ...invite,
-        respondReason: invite.respondReason,
-      } as ReplacementInviteDbRow,
-      invite.site.name,
-      invite.toWorker.name,
-    ),
+    invite: toRow(invite as ReplacementInviteDbRow, invite.site.name, invite.toWorker.name ?? null),
     assignmentId: assignment.id,
-    expiredSiblingCount: siblingExpire.count,
   };
 }
 
@@ -533,10 +392,10 @@ export type DeclineInput = {
 
 /** @derives(master-plan §P.4) */
 export type DeclineResult =
-  | { kind: 'OK'; allDeclined: boolean }
+  | { kind: 'OK' }
   | { kind: 'INVITE_NOT_FOUND' }
-  | { kind: 'ALREADY_DECIDED'; status: string }
-  | { kind: 'NOT_YOUR_INVITE' };
+  | { kind: 'NOT_YOUR_INVITE' }
+  | { kind: 'ALREADY_DECIDED'; status: string };
 
 /** @derives(master-plan §P.4) */
 export async function declineReplacementInvite(
@@ -567,16 +426,14 @@ export async function declineReplacementInvite(
     return { kind: 'ALREADY_DECIDED', status: existing.status };
   }
 
-  // Did everyone in the group decline? If so, surface to supervisor.
+  // Refetch supervisor + site so we can push the supervisor.
   const declined = await tx.replacementInvite.findFirstOrThrow({
     where: { id: input.inviteId, companyId: input.companyId },
-    select: { groupId: true, fromSupervisorId: true, siteId: true, scheduledStart: true },
-  });
-  const remaining = await tx.replacementInvite.count({
-    where: {
-      companyId: input.companyId,
-      groupId: declined.groupId,
-      status: { in: ['PENDING', 'ACCEPTED'] },
+    select: {
+      fromSupervisorId: true,
+      siteId: true,
+      scheduledStart: true,
+      site: { select: { name: true } },
     },
   });
 
@@ -585,79 +442,56 @@ export async function declineReplacementInvite(
     kind: 'REPLACEMENT_INVITE_DECLINED',
     actorId: input.workerUserId,
     targetId: input.inviteId,
-    payload: {
-      groupId: declined.groupId,
-      reason: input.reason ?? 'decline',
-      remainingNonTerminal: remaining,
+    payload: { reason: input.reason ?? 'decline' },
+  });
+
+  await tx.notification.create({
+    data: {
+      companyId: input.companyId,
+      audienceUserId: declined.fromSupervisorId,
+      kind: 'replacement_invite',
+      channel: 'push',
+      priority: 'URGENT',
+      payload: {
+        outcome: 'declined',
+        inviteId: input.inviteId,
+        siteId: declined.siteId,
+        siteName: declined.site.name,
+        scheduledStart: declined.scheduledStart.toISOString(),
+        reason: input.reason ?? null,
+      },
     },
   });
 
-  let allDeclined = false;
-  if (remaining === 0) {
-    allDeclined = true;
-    await emitGroupOutcomeDecision(tx, {
-      companyId: input.companyId,
-      groupId: declined.groupId,
-      supervisorId: declined.fromSupervisorId,
-      outcome: 'all_declined',
-      siteId: declined.siteId,
-      scheduledStart: declined.scheduledStart,
-    });
-    // Push supervisor — all-declined notification.
-    await tx.notification.create({
-      data: {
-        companyId: input.companyId,
-        audienceUserId: declined.fromSupervisorId,
-        kind: 'replacement_invite',
-        channel: 'push',
-        priority: 'URGENT',
-        payload: {
-          outcome: 'all_declined',
-          groupId: declined.groupId,
-          siteId: declined.siteId,
-          scheduledStart: declined.scheduledStart.toISOString(),
-        },
-      },
-    });
-  }
-
-  return { kind: 'OK', allDeclined };
+  return { kind: 'OK' };
 }
 
-// ─── cancelReplacementInviteGroup ──────────────────────────────────────────
+// ─── cancelReplacementInvite ───────────────────────────────────────────────
 
 /** @derives(master-plan §P.4) */
 export type CancelInput = {
   companyId: string;
-  groupId: string;
+  inviteId: string;
   fromSupervisorId: string;
 };
 
 /** @derives(master-plan §P.4) */
 export type CancelResult =
-  | { kind: 'OK'; cancelledCount: number }
-  | { kind: 'GROUP_NOT_FOUND' }
-  | { kind: 'NOT_YOUR_GROUP' };
+  | { kind: 'OK' }
+  | { kind: 'INVITE_NOT_FOUND' }
+  | { kind: 'NOT_YOUR_INVITE' }
+  | { kind: 'ALREADY_DECIDED'; status: string };
 
 /** @derives(master-plan §P.4) */
-export async function cancelReplacementInviteGroup(
+export async function cancelReplacementInvite(
   tx: Prisma.TransactionClient,
   input: CancelInput,
 ): Promise<CancelResult> {
-  // Ownership probe — any row in the group reveals fromSupervisorId.
-  const probe = await tx.replacementInvite.findFirst({
-    where: { companyId: input.companyId, groupId: input.groupId },
-    select: { fromSupervisorId: true, siteId: true, scheduledStart: true },
-  });
-  if (!probe) return { kind: 'GROUP_NOT_FOUND' };
-  if (probe.fromSupervisorId !== input.fromSupervisorId) {
-    return { kind: 'NOT_YOUR_GROUP' };
-  }
-
   const updated = await tx.replacementInvite.updateMany({
     where: {
+      id: input.inviteId,
       companyId: input.companyId,
-      groupId: input.groupId,
+      fromSupervisorId: input.fromSupervisorId,
       status: 'PENDING',
     },
     data: {
@@ -668,52 +502,55 @@ export async function cancelReplacementInviteGroup(
   });
 
   if (updated.count === 0) {
-    // Nothing left to cancel — group already fully resolved.
-    return { kind: 'OK', cancelledCount: 0 };
+    const existing = await tx.replacementInvite.findFirst({
+      where: { id: input.inviteId, companyId: input.companyId },
+      select: { id: true, fromSupervisorId: true, status: true },
+    });
+    if (!existing) return { kind: 'INVITE_NOT_FOUND' };
+    if (existing.fromSupervisorId !== input.fromSupervisorId) return { kind: 'NOT_YOUR_INVITE' };
+    return { kind: 'ALREADY_DECIDED', status: existing.status };
   }
+
+  const cancelled = await tx.replacementInvite.findFirstOrThrow({
+    where: { id: input.inviteId, companyId: input.companyId },
+    select: {
+      toWorkerId: true,
+      siteId: true,
+      scheduledStart: true,
+      site: { select: { name: true } },
+    },
+  });
 
   await recordAuditEvent(tx, {
     companyId: input.companyId,
     kind: 'REPLACEMENT_INVITE_CANCELLED',
     actorId: input.fromSupervisorId,
-    targetId: input.groupId,
+    targetId: input.inviteId,
     payload: {
-      groupId: input.groupId,
-      cancelledCount: updated.count,
-      siteId: probe.siteId,
-      scheduledStart: probe.scheduledStart.toISOString(),
+      siteId: cancelled.siteId,
+      scheduledStart: cancelled.scheduledStart.toISOString(),
     },
   });
 
-  // Push each cancelled candidate.
-  const cancelledRows = await tx.replacementInvite.findMany({
-    where: {
+  // Push the candidate so their pending banner disappears.
+  await tx.notification.create({
+    data: {
       companyId: input.companyId,
-      groupId: input.groupId,
-      status: 'CANCELLED',
-      respondReason: 'supervisor_cancelled',
-    },
-    select: { toWorkerId: true },
-  });
-  for (const c of cancelledRows) {
-    await tx.notification.create({
-      data: {
-        companyId: input.companyId,
-        audienceUserId: c.toWorkerId,
-        kind: 'replacement_invite',
-        channel: 'push',
-        priority: 'STANDARD',
-        payload: {
-          outcome: 'supervisor_cancelled',
-          groupId: input.groupId,
-          siteId: probe.siteId,
-          scheduledStart: probe.scheduledStart.toISOString(),
-        },
+      audienceUserId: cancelled.toWorkerId,
+      kind: 'replacement_invite',
+      channel: 'push',
+      priority: 'STANDARD',
+      payload: {
+        outcome: 'supervisor_cancelled',
+        inviteId: input.inviteId,
+        siteId: cancelled.siteId,
+        siteName: cancelled.site.name,
+        scheduledStart: cancelled.scheduledStart.toISOString(),
       },
-    });
-  }
+    },
+  });
 
-  return { kind: 'OK', cancelledCount: updated.count };
+  return { kind: 'OK' };
 }
 
 // ─── sweepExpiredReplacementInvites ────────────────────────────────────────
@@ -725,93 +562,68 @@ export type SweepResult = {
 };
 
 /**
- * Cron-style sweep. PENDING rows past expiresAt flip to EXPIRED in one
- * statement; we then re-aggregate by groupId and emit a SupervisorDecision
- * row for each fully-resolved group that has zero ACCEPTED rows.
+ * @derives(master-plan §P.4) — cron sweep entry point
  *
- * Multi-replica safe: the conditional UPDATE on `status='PENDING'` is
- * naturally idempotent; a second replica's UPDATE finds 0 rows. Outcome
- * decisions are deduped via a `findFirst` cheap-skip on existing rows.
- *
- * @derives(master-plan §P.4 — cron sweep)
+ * Conditional UPDATE on `status='PENDING' AND expiresAt < now`. Naturally
+ * idempotent: a second replica's sweep finds 0 rows once the first
+ * completes. Outcome SupervisorDecision rows are deduped by a findFirst
+ * cheap-skip keyed on (kind, targetId).
  */
-/** @derives(master-plan §P.4) — cron sweep entry point */
 export async function sweepExpiredReplacementInvites(
   client: PrismaClient | Prisma.TransactionClient,
   now: Date = new Date(),
 ): Promise<SweepResult> {
-  // Step 1 — flip every overdue PENDING to EXPIRED in one statement.
-  // Returning syntax is the cleanest way to capture the affected rows for
-  // step 2; we use raw SQL because Prisma's updateMany doesn't return rows.
-  // The status CHECK + responded-at consistency CHECK on the table mean
-  // we must set respondedAt at the same moment, which raw UPDATE does
-  // atomically.
-  const sweptRows: Array<{ id: string; groupId: string; companyId: string }> =
-    await client.$queryRaw`
+  // Flip every overdue PENDING to EXPIRED in one statement. Raw SQL
+  // because Prisma's updateMany doesn't return rows, and we need the
+  // (id, supervisorId, companyId, siteId, scheduledStart) tuple to emit
+  // per-invite outcome decisions. The status CHECK + responded-at
+  // consistency CHECK at the table level mean we must set respondedAt
+  // here too, which one statement does atomically.
+  const sweptRows: Array<{
+    id: string;
+    companyId: string;
+    fromSupervisorId: string;
+    siteId: string;
+    scheduledStart: Date;
+  }> = await client.$queryRaw`
       UPDATE "axhy"."ReplacementInvite"
          SET "status" = 'EXPIRED',
              "respondedAt" = ${now},
              "respondReason" = 'cron_expired'
        WHERE "status" = 'PENDING'
          AND "expiresAt" < ${now}
-      RETURNING "id", "groupId", "companyId"
+      RETURNING "id", "companyId", "fromSupervisorId", "siteId", "scheduledStart"
     `;
 
   if (sweptRows.length === 0) {
     return { expiredCount: 0, outcomeDecisionsEmitted: 0 };
   }
 
-  // Step 2 — collapse to unique groups + emit one outcome decision per group
-  // that now has zero non-terminal rows AND no ACCEPTED row.
-  const uniqueGroups = new Map<string, { groupId: string; companyId: string }>();
-  for (const row of sweptRows) {
-    uniqueGroups.set(`${row.companyId}:${row.groupId}`, {
-      groupId: row.groupId,
-      companyId: row.companyId,
-    });
-  }
-
   let outcomeDecisionsEmitted = 0;
-  for (const { groupId, companyId } of uniqueGroups.values()) {
-    const nonTerminal = await client.replacementInvite.count({
-      where: { companyId, groupId, status: 'PENDING' },
-    });
-    if (nonTerminal > 0) continue; // still has live PENDING rows (shouldn't happen post-sweep)
-
-    const accepted = await client.replacementInvite.findFirst({
-      where: { companyId, groupId, status: 'ACCEPTED' },
-      select: { id: true },
-    });
-    if (accepted) continue; // someone won — outcome already pushed at accept time
-
-    // Group is fully expired with no winner. Emit outcome decision.
-    const sample = await client.replacementInvite.findFirstOrThrow({
-      where: { companyId, groupId },
-      select: { fromSupervisorId: true, siteId: true, scheduledStart: true },
-    });
-    const emitted = await emitGroupOutcomeDecision(client, {
-      companyId,
-      groupId,
-      supervisorId: sample.fromSupervisorId,
+  for (const row of sweptRows) {
+    const emitted = await emitInviteOutcomeDecision(client, {
+      companyId: row.companyId,
+      inviteId: row.id,
+      supervisorId: row.fromSupervisorId,
       outcome: 'expired_no_accept',
-      siteId: sample.siteId,
-      scheduledStart: sample.scheduledStart,
+      siteId: row.siteId,
+      scheduledStart: row.scheduledStart,
     });
     if (emitted) outcomeDecisionsEmitted++;
 
-    // Push supervisor.
+    // Push supervisor — invite expired with no response.
     await client.notification.create({
       data: {
-        companyId,
-        audienceUserId: sample.fromSupervisorId,
+        companyId: row.companyId,
+        audienceUserId: row.fromSupervisorId,
         kind: 'replacement_invite',
         channel: 'push',
         priority: 'URGENT',
         payload: {
           outcome: 'expired_no_accept',
-          groupId,
-          siteId: sample.siteId,
-          scheduledStart: sample.scheduledStart.toISOString(),
+          inviteId: row.id,
+          siteId: row.siteId,
+          scheduledStart: row.scheduledStart.toISOString(),
         },
       },
     });
@@ -820,27 +632,23 @@ export async function sweepExpiredReplacementInvites(
   return { expiredCount: sweptRows.length, outcomeDecisionsEmitted };
 }
 
-// ─── Internal: emit a REPLACEMENT_INVITE_OUTCOME SupervisorDecision row ────
+// ─── Internal: emit REPLACEMENT_INVITE_OUTCOME SupervisorDecision row ──────
 
 type EmitOutcomeInput = {
   companyId: string;
-  groupId: string;
+  inviteId: string;
   supervisorId: string;
-  outcome: 'expired_no_accept' | 'all_declined';
+  outcome: 'expired_no_accept';
   siteId: string;
   scheduledStart: Date;
 };
 
 /**
- * Emits a SupervisorDecision row that Wave 2's Decisions queue will surface
- * (once Wave 1 is wired into `additionalDecisionSources` in Sprint 2). For
- * Wave 1 the row lives in the table; Sprint 2 makes it visible.
- *
- * Idempotency: skip if the row already exists for this (groupId, outcome).
- * Concurrent sweeps + a decline-all both calling this are safe — the
- * dedup-find avoids double-emit.
+ * Idempotent emit — skip if outcome already exists for this (kind, inviteId).
+ * Lets Wave 2's Decisions queue surface the outcome (Sprint 2 mobile wires
+ * the `additionalDecisionSources` plug-in for ReplacementInvite).
  */
-async function emitGroupOutcomeDecision(
+async function emitInviteOutcomeDecision(
   client: Prisma.TransactionClient | PrismaClient,
   input: EmitOutcomeInput,
 ): Promise<boolean> {
@@ -849,7 +657,7 @@ async function emitGroupOutcomeDecision(
       companyId: input.companyId,
       supervisorId: input.supervisorId,
       kind: 'REPLACEMENT_INVITE_OUTCOME',
-      targetId: input.groupId,
+      targetId: input.inviteId,
     },
     select: { id: true },
   });
@@ -861,9 +669,9 @@ async function emitGroupOutcomeDecision(
       supervisorId: input.supervisorId,
       kind: 'REPLACEMENT_INVITE_OUTCOME',
       tier: 'OPERATIONAL',
-      targetId: input.groupId,
+      targetId: input.inviteId,
       payload: {
-        groupId: input.groupId,
+        inviteId: input.inviteId,
         outcome: input.outcome,
         siteId: input.siteId,
         scheduledStart: input.scheduledStart.toISOString(),
@@ -876,12 +684,8 @@ async function emitGroupOutcomeDecision(
     companyId: input.companyId,
     kind: 'REPLACEMENT_INVITE_OUTCOME_DECISION_EMITTED',
     actorId: SYSTEM_ACTOR_ID,
-    targetId: input.groupId,
-    payload: {
-      groupId: input.groupId,
-      supervisorId: input.supervisorId,
-      outcome: input.outcome,
-    },
+    targetId: input.inviteId,
+    payload: { supervisorId: input.supervisorId, outcome: input.outcome },
   });
 
   return true;
