@@ -1115,7 +1115,7 @@ export default function ActivityScreen() {
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <TopAppBar title={titleText} subtitle={strings.activity.title.toUpperCase() + ' · PROOF'} />
+      <TopAppBar title={titleText} subtitle={strings.activity.title.toUpperCase() + ' · LOG'} />
 
       <FlatList
         data={rows}

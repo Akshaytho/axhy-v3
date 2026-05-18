@@ -656,7 +656,7 @@ const swapRequestSource: DecisionSource = {
         tier: 'OPERATIONAL',
         kind: 'SWAP_REQUEST_PENDING',
         title: `Swap ${sw.fromWorker.name} → ${sw.toWorker.name}`,
-        body: `${sw.site.name} · ${sw.effectiveAt.toISOString()}${sw.reason ? ` · ${sw.reason}` : ''}`,
+        body: `${sw.site.name} · ${formatHumanDateTimeIST(sw.effectiveAt)}${sw.reason ? ` · ${sw.reason}` : ''}`,
         workerName: sw.fromWorker.name,
         siteName: sw.site.name,
         proposedAt: sw.createdAt.toISOString(),
@@ -678,6 +678,21 @@ function swapSection(effectiveAt: Date, at: Date): DecisionSectionT {
 // ===========================================================================
 // Shared helpers
 // ===========================================================================
+
+// QA-round3 fix (R3-04): swap-request decision body was leaking raw ISO into
+// the supervisor card ("IT Park C · 2026-05-09T10:02:56.947Z · …"). Format in
+// IST so Suresh reads "May 9, 10:02 AM" instead.
+const SWAP_DATE_FMT = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+});
+function formatHumanDateTimeIST(d: Date): string {
+  return SWAP_DATE_FMT.format(d);
+}
 
 async function getCachedWorkerPrimarySite(
   tx: Prisma.TransactionClient,
