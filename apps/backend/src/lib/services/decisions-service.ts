@@ -164,18 +164,43 @@ export type DecisionSource = {
  */
 type DecisionsCursorPayload = {
   /** Section ordinal of the last row on the prior page. */
-  priority: 0 | 1 | 2;
+  priority: 0 | 1 | 2 | 3;
   /** ISO `proposedAt` of the last row on the prior page. */
   proposedAt: string;
   /** Stable row id of the last row on the prior page; tiebreaks identical timestamps. */
   id: string;
 };
 
-const SECTION_PRIORITY: Record<DecisionSectionT, 0 | 1 | 2> = {
+const SECTION_PRIORITY: Record<DecisionSectionT, 0 | 1 | 2 | 3> = {
   NEEDS_YOU_NOW: 0,
   ROUTINE: 1,
-  FAILED_REVIEW: 2,
+  STALE: 2,
+  FAILED_REVIEW: 3,
 };
+
+/**
+ * Anything pending for longer than this gets demoted to the STALE section
+ * (regardless of which source it came from). Keeps NEEDS_YOU_NOW bounded.
+ *
+ * @derives(feedback_stale_decisions_section_after_48h.md, 2026-05-18)
+ */
+const STALE_THRESHOLD_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Demote rows whose proposedAt is older than the staleness threshold into
+ * the STALE section. FAILED_REVIEW is never demoted — it's a different
+ * lane (failed AI review) and has its own UX. Mutates `rows` in place.
+ */
+function applyStaleness(rows: DecisionRowT[], at: Date): void {
+  const cutoffMs = at.getTime() - STALE_THRESHOLD_MS;
+  for (const r of rows) {
+    if (r.section === 'FAILED_REVIEW') continue;
+    if (r.section === 'STALE') continue;
+    if (new Date(r.proposedAt).getTime() < cutoffMs) {
+      r.section = 'STALE';
+    }
+  }
+}
 
 function encodeCursor(p: DecisionsCursorPayload): string {
   return Buffer.from(JSON.stringify(p), 'utf8').toString('base64url');
@@ -261,6 +286,9 @@ export async function buildDecisionsForSupervisor(
   const sourceResults = await Promise.all(sources.map((s) => s.loadRows(tx, ctx)));
   const allRows = sourceResults.flat();
 
+  // ── 2b. Apply staleness — demote rows > 48h old to STALE section. ──
+  applyStaleness(allRows, at);
+
   // ── 3. Sort by (section, proposedAt asc, id asc — stable tiebreaker). ──
   allRows.sort((a, b) => {
     const aPri = SECTION_PRIORITY[a.section];
@@ -292,6 +320,7 @@ export async function buildDecisionsForSupervisor(
   // ── 5. Counts — for THIS page (back-compat) + cross-page total via pageInfo. ──
   const needsYouNow = pageRows.filter((r) => r.section === 'NEEDS_YOU_NOW').length;
   const routine = pageRows.filter((r) => r.section === 'ROUTINE').length;
+  const stale = pageRows.filter((r) => r.section === 'STALE').length;
   const failedReview = pageRows.filter((r) => r.section === 'FAILED_REVIEW').length;
 
   const lastRow = pageRows.length > 0 ? pageRows[pageRows.length - 1]! : null;
@@ -306,7 +335,7 @@ export async function buildDecisionsForSupervisor(
 
   return DecisionsResponse.parse({
     rows: pageRows,
-    counts: { needsYouNow, routine, failedReview, total: pageRows.length },
+    counts: { needsYouNow, routine, stale, failedReview, total: pageRows.length },
     pageInfo: {
       cursor: nextCursor,
       hasMore,
