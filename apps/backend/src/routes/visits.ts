@@ -71,7 +71,11 @@ export async function registerVisitsRoutes(app: FastifyInstance): Promise<void> 
       await withIdempotency(
         req,
         reply,
-        { companyId: auth.companyId, routeKey: 'POST:/visits/:id/resolve' },
+        // Cluster B fix (P0, deep-review 2026-05-18): routeKey MUST embed the
+        // resource id, not the literal `:id` placeholder. Without this, the
+        // same Idempotency-Key reused across different visits in the same
+        // tenant would return the cached body for the wrong visit.
+        { companyId: auth.companyId, routeKey: `POST:/visits/${visitId}/resolve` },
         async () => {
           const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
             resolveFlaggedVisit(tx, {
@@ -146,7 +150,8 @@ export async function registerVisitsRoutes(app: FastifyInstance): Promise<void> 
       await withIdempotency(
         req,
         reply,
-        { companyId: auth.companyId, routeKey: 'POST:/visits/:id/reject' },
+        // Cluster B fix (P0, deep-review 2026-05-18): resource-id-embedded routeKey.
+        { companyId: auth.companyId, routeKey: `POST:/visits/${visitId}/reject` },
         async () => {
           const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
             rejectFlaggedVisit(tx, {

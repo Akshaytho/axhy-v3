@@ -61,6 +61,7 @@ import {
 } from '@axhy/shared-schema';
 
 import { recordAuditEvent } from '../audit-event.js';
+import { enqueueOutbox } from '../outbox.js';
 
 /** Result discriminator for the Reverse path. */
 export type ReverseActivityResult =
@@ -191,6 +192,28 @@ export async function reverseActivity(
         },
       });
       compensatingAuditEventId = ev.id;
+      // Cluster C fix (P0, deep-review 2026-05-18): inverse-notification.
+      // The original WORKER_MARKED_ABSENT emits `worker.marked_absent` so
+      // the worker hears "you've been marked absent." The reverse must
+      // tell them the absence was cleared — otherwise the worker stays
+      // home thinking the supervisor still has them marked absent.
+      const absentWorker = await tx.worker.findFirst({
+        where: { id: workerId, companyId: input.companyId },
+        select: { id: true, name: true, phone: true },
+      });
+      await enqueueOutbox(tx, {
+        companyId: input.companyId,
+        topic: 'worker.absence_cleared',
+        payload: {
+          workerId,
+          workerName: absentWorker?.name ?? null,
+          workerPhone: absentWorker?.phone ?? null,
+          date,
+          reversedBy: input.supervisorUserId,
+          sourceAuditEventId: source.id,
+          compensatingAuditEventId: ev.id,
+        },
+      });
       break;
     }
     case 'LEAVE_APPROVED': {
@@ -216,6 +239,37 @@ export async function reverseActivity(
         },
       });
       compensatingAuditEventId = ev.id;
+      // Cluster C fix (P0, deep-review 2026-05-18): inverse-notification.
+      // The original LEAVE_APPROVED emits `worker.leave_approved`. The
+      // reverse flips LeaveRequest back to REQUESTED — the worker had
+      // planned the days off. Tell them.
+      const revertedLeave = await tx.leaveRequest.findFirst({
+        where: { id: leaveRequestId, companyId: input.companyId },
+        select: {
+          id: true,
+          workerId: true,
+          fromDate: true,
+          toDate: true,
+          worker: { select: { name: true, phone: true } },
+        },
+      });
+      if (revertedLeave) {
+        await enqueueOutbox(tx, {
+          companyId: input.companyId,
+          topic: 'worker.leave_reverted',
+          payload: {
+            leaveRequestId,
+            workerId: revertedLeave.workerId,
+            workerName: revertedLeave.worker.name,
+            workerPhone: revertedLeave.worker.phone,
+            fromDate: revertedLeave.fromDate.toISOString().slice(0, 10),
+            toDate: revertedLeave.toDate.toISOString().slice(0, 10),
+            reversedBy: input.supervisorUserId,
+            sourceAuditEventId: source.id,
+            compensatingAuditEventId: ev.id,
+          },
+        });
+      }
       break;
     }
     case 'ASSIGNMENT_CREATED': {
@@ -248,6 +302,34 @@ export async function reverseActivity(
         },
       });
       compensatingAuditEventId = ev.id;
+      // Cluster C fix (P0, deep-review 2026-05-18): inverse-notification.
+      // The reverse terminates the assignment — the worker may have
+      // already been told they're rostered. Tell them it's gone.
+      const terminatedAssignment = await tx.assignment.findFirst({
+        where: { id: assignmentId, companyId: input.companyId },
+        select: {
+          id: true,
+          workerId: true,
+          siteId: true,
+          worker: { select: { name: true, phone: true } },
+        },
+      });
+      if (terminatedAssignment) {
+        await enqueueOutbox(tx, {
+          companyId: input.companyId,
+          topic: 'worker.assignment_terminated_by_supervisor',
+          payload: {
+            assignmentId,
+            workerId: terminatedAssignment.workerId,
+            workerName: terminatedAssignment.worker.name,
+            workerPhone: terminatedAssignment.worker.phone,
+            siteId: terminatedAssignment.siteId,
+            reversedBy: input.supervisorUserId,
+            sourceAuditEventId: source.id,
+            compensatingAuditEventId: ev.id,
+          },
+        });
+      }
       break;
     }
     case 'REPLACEMENT_INVITE_ACCEPTED': {
@@ -290,6 +372,37 @@ export async function reverseActivity(
         },
       });
       compensatingAuditEventId = ev.id;
+      // Cluster C fix (P0, deep-review 2026-05-18): inverse-notification.
+      // The accepted-invite worker got an `accepted` push at acceptance
+      // time. Tell them the cover is reversed — otherwise they show up
+      // and the original worker doesn't.
+      const invite = await tx.replacementInvite.findFirst({
+        where: { id: inviteId, companyId: input.companyId },
+        select: {
+          id: true,
+          toWorkerId: true,
+          siteId: true,
+          scheduledStart: true,
+          toWorker: { select: { name: true } },
+        },
+      });
+      if (invite) {
+        await enqueueOutbox(tx, {
+          companyId: input.companyId,
+          topic: 'worker.cover_invite_reversed',
+          payload: {
+            inviteId,
+            assignmentId,
+            toWorkerUserId: invite.toWorkerId,
+            toWorkerName: invite.toWorker.name,
+            siteId: invite.siteId,
+            scheduledStart: invite.scheduledStart.toISOString(),
+            reversedBy: input.supervisorUserId,
+            sourceAuditEventId: source.id,
+            compensatingAuditEventId: ev.id,
+          },
+        });
+      }
       break;
     }
   }

@@ -282,11 +282,24 @@ async function persistChatTurn(input: {
    * Each entry is { type:'image', url }.
    */
   userAttachments: ReadonlyArray<{ type: 'image'; url: string }>;
+  /**
+   * Cluster A fix (P0, deep-review 2026-05-18). When present, the supervisor
+   * is amending the named SupervisorDecision via chat. The id is persisted
+   * on the user-row's `toolCalls` JSON under `amendTargetDecisionId` so the
+   * audit trail records the intent. The route also surfaces this back to
+   * mobile as `didAmend: true` so the client can gate its "amend complete"
+   * celebration on actual amendment, not just any successful tool call.
+   *
+   * @derives(2026-05-18-sprint-2-deep-review.md Cluster A)
+   */
+  amendTargetDecisionId: string | null;
 }): Promise<{
   chatMessageId: string;
   assistantText: string;
   decisionCard: Record<string, unknown> | null;
   decisionCards: Array<Record<string, unknown>> | null;
+  /** True iff the caller supplied a validated amend.targetDecisionId. */
+  didAmend: boolean;
 }> {
   // Wave 4b Phase 2.5 — wrap in withTenantContext so the Postgres GUC
   // `axhy.current_company_id` is set inside the tx → RLS policies fire.
@@ -308,6 +321,17 @@ async function persistChatTurn(input: {
       update: { lastMessageAt: new Date() },
     });
 
+    // Cluster A fix (P0): build the user-row's `toolCalls` JSON to carry
+    // BOTH attachments (Wave 3) AND amendTargetDecisionId (Sprint 2 deep-
+    // review). Both piggyback on this field to avoid a schema migration
+    // for opaque payload metadata.
+    const userToolCallsJson: Record<string, unknown> = {};
+    if (input.userAttachments.length > 0) {
+      userToolCallsJson.attachments = input.userAttachments;
+    }
+    if (input.amendTargetDecisionId) {
+      userToolCallsJson.amendTargetDecisionId = input.amendTargetDecisionId;
+    }
     await tx.chatMessage.create({
       data: {
         companyId: input.companyId,
@@ -316,12 +340,9 @@ async function persistChatTurn(input: {
         transcript: input.userText,
         voiceConfidence: input.voiceConfidence,
         idempotencyKey: input.idempotencyKey,
-        // Wave 3 — photo attachments persisted on the user-row's
-        // `toolCalls` JSON under `attachments`. See `userAttachments`
-        // docstring above for rationale.
         toolCalls:
-          input.userAttachments.length > 0
-            ? ({ attachments: input.userAttachments } as Prisma.InputJsonValue)
+          Object.keys(userToolCallsJson).length > 0
+            ? (userToolCallsJson as Prisma.InputJsonValue)
             : Prisma.JsonNull,
       },
     });
@@ -400,6 +421,12 @@ async function persistChatTurn(input: {
   return {
     chatMessageId: result,
     assistantText: input.assistantText,
+    // Cluster A fix (P0, deep-review 2026-05-18): didAmend is the signal
+    // mobile uses to decide whether to fire the "amend complete → nav to
+    // /decisions?focus=<id>" celebration. Before this fix the celebration
+    // fired on ANY successful tool call regardless of whether amendment
+    // happened — see the deep-review findings doc.
+    didAmend: input.amendTargetDecisionId !== null,
     ...(input.decisionCards.length > 1
       ? {
           decisionCard: null,
@@ -432,6 +459,35 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
+    // Cluster A fix (P0, deep-review 2026-05-18): amend.targetDecisionId
+    // validation. Before this fix the field was Zod-parsed and silently
+    // discarded — mobile would celebrate a successful tool call as a
+    // "completed amendment" regardless of whether amendment actually
+    // occurred. The validation here ensures (a) the target decision
+    // exists, (b) it belongs to the caller's tenant, (c) the caller is
+    // the supervisor on that decision. Persistence + didAmend signal
+    // come later in this handler.
+    let validatedAmendDecisionId: string | null = null;
+    if (parsed.data.amend?.targetDecisionId) {
+      const targetId = parsed.data.amend.targetDecisionId;
+      const targetDecision = await prisma.supervisorDecision.findFirst({
+        where: {
+          id: targetId,
+          companyId: auth.companyId,
+          supervisorId: auth.userId,
+        },
+        select: { id: true },
+      });
+      if (!targetDecision) {
+        reply.code(404).send({
+          error: 'AMEND_TARGET_NOT_FOUND',
+          message: 'Decision being amended was not found in your tenant or is not owned by you.',
+        });
+        return;
+      }
+      validatedAmendDecisionId = targetDecision.id;
+    }
+
     const dedup = await checkIdempotency(prisma, auth.companyId, idempotencyKey);
     if (dedup.cached) {
       reply.code(200).send(dedup.responseJson);
@@ -458,6 +514,12 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         costInr: 0,
         cacheTokens: null,
         userAttachments: parsed.data.attachments ?? [],
+        // Cluster A fix (P0, 2026-05-18): didAmend semantic is "backend
+        // acknowledged the amendment intent" (validated + persisted), not
+        // "tool successfully executed." Help short-circuit still persists
+        // the intent on the user-row's toolCalls JSON so the audit trail
+        // is complete even on the help path.
+        amendTargetDecisionId: validatedAmendDecisionId,
       });
       await recordIdempotency(
         prisma,
@@ -517,10 +579,26 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       // is out of scope). The note is enough to bias the intent classifier
       // toward `log_complaint` when a photo is attached.
       const attachmentCount = parsed.data.attachments?.length ?? 0;
+      // Cluster A fix (P0, deep-review 2026-05-18): when amend is active,
+      // fetch the original decision and inject its summary so the AI
+      // treats this turn as an amendment of that specific decision, not
+      // a fresh action. Without this hint the AI executes the new tool
+      // as if it were unrelated — mobile then celebrates a "successful
+      // amendment" that didn't happen.
+      let amendHint = '';
+      if (validatedAmendDecisionId) {
+        const targetRow = await prisma.supervisorDecision.findFirst({
+          where: { id: validatedAmendDecisionId, companyId: auth.companyId },
+          select: { kind: true, tier: true, targetId: true, payload: true },
+        });
+        if (targetRow) {
+          amendHint = `\n\n[AMEND MODE — the supervisor is amending an existing decision: kind=${targetRow.kind}, tier=${targetRow.tier}, targetId=${targetRow.targetId ?? 'null'}. Treat this turn as a CORRECTION of that decision. If the new instruction supersedes the original, emit the appropriate tool call AND include "amend_of=${validatedAmendDecisionId}" in the decision card payload.]`;
+        }
+      }
       const userMessageWithAttachmentHint =
-        attachmentCount > 0
+        (attachmentCount > 0
           ? `${parsed.data.text}\n\n[Supervisor attached ${attachmentCount} photo${attachmentCount === 1 ? '' : 's'}. Treat as evidence supporting a possible complaint.]`
-          : parsed.data.text;
+          : parsed.data.text) + amendHint;
 
       const loopResult = await openaiToolLoop({
         apiKey,
@@ -936,6 +1014,10 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // response.usage.prompt_tokens_details (null when SDK omits).
         cacheTokens: loopResult.cacheTokens,
         userAttachments: parsed.data.attachments ?? [],
+        // Cluster A fix (P0, deep-review 2026-05-18): persist the
+        // validated amend target so the audit trail records intent
+        // AND the response carries `didAmend: true` for mobile.
+        amendTargetDecisionId: validatedAmendDecisionId,
       });
 
       await recordIdempotency(

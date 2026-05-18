@@ -69,7 +69,8 @@ export async function registerActivityRoutes(app: FastifyInstance): Promise<void
       await withIdempotency(
         req,
         reply,
-        { companyId: auth.companyId, routeKey: 'POST:/activity/:id/reverse' },
+        // Cluster B fix (P0, deep-review 2026-05-18): resource-id-embedded routeKey.
+        { companyId: auth.companyId, routeKey: `POST:/activity/${auditEventId}/reverse` },
         async () => {
           const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
             reverseActivity(tx, {
@@ -168,7 +169,8 @@ export async function registerActivityRoutes(app: FastifyInstance): Promise<void
       await withIdempotency(
         req,
         reply,
-        { companyId: auth.companyId, routeKey: 'POST:/activity/:id/soft-flag' },
+        // Cluster B fix (P0, deep-review 2026-05-18): resource-id-embedded routeKey.
+        { companyId: auth.companyId, routeKey: `POST:/activity/${auditEventId}/soft-flag` },
         async () => {
           const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
             softFlagActivity(tx, {

@@ -80,6 +80,14 @@ export type ChatMessageResponse = {
    * single turn (compound utterance). When set, decisionCard is null. Wave 4a-PRO Task 10.
    */
   decisionCards?: NonNullable<DecisionCardData>[] | null;
+  /**
+   * Cluster A fix (Sprint 2 deep-review 2026-05-18). Server-set flag that
+   * tells the client whether THIS turn actually amended an existing
+   * decision. True iff the request carried a valid `amend.targetDecisionId`
+   * AND the backend validated + persisted it. Mobile gates the
+   * "amend complete" celebration on this — not on whether any tool fired.
+   */
+  didAmend?: boolean;
 };
 
 export type SendChatMessageInput = {
