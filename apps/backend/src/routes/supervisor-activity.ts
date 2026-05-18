@@ -21,7 +21,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth } from '../middleware/tenant-context.js';
 import {
   buildActivityForSupervisor,
   type DateFilter,
@@ -81,16 +81,15 @@ export async function registerSupervisorActivityRoutes(app: FastifyInstance): Pr
         : 'all';
 
       try {
-        const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-          buildActivityForSupervisor(tx, {
-            companyId: auth.companyId,
-            userId: auth.userId,
-            limit,
-            dateFilter,
-            siteIdFilter,
-            kindFilter,
-          }),
-        );
+        // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
+        const out = await buildActivityForSupervisor(prisma, {
+          companyId: auth.companyId,
+          userId: auth.userId,
+          limit,
+          dateFilter,
+          siteIdFilter,
+          kindFilter,
+        });
         reply.code(200).send(out);
       } catch (err) {
         req.log.error({ err }, 'GET /supervisor/activity failed');

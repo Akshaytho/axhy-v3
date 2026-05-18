@@ -54,6 +54,20 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     const sub = moduleName.slice('react'.length);
     return { type: 'sourceFile', filePath: require.resolve(REACT_PATH + sub) };
   }
+  // `.js`-suffixed relative imports → `.ts`/`.tsx` fallback. The workspace
+  // packages (shared-schema, ui-tokens, api-client, etc.) use NodeNext ESM
+  // semantics where TS sources reference each other with `.js` extensions.
+  // Node's TypeScript loader maps this automatically; Metro's stock
+  // resolver does not. Without this fallback every `export * from
+  // './zod/auth.js'` inside `@axhy/shared-schema` fails to bundle.
+  if (moduleName.endsWith('.js') && (moduleName.startsWith('./') || moduleName.startsWith('../'))) {
+    const candidate = moduleName.slice(0, -3); // strip ".js"
+    try {
+      return context.resolveRequest(context, candidate, platform);
+    } catch {
+      // fall through to the normal resolution path below
+    }
+  }
   if (originalResolver) {
     return originalResolver(context, moduleName, platform);
   }

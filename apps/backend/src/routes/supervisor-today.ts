@@ -21,7 +21,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth } from '../middleware/tenant-context.js';
 import { buildTodayForSupervisor } from '../lib/services/today-service.js';
 
 export async function registerSupervisorTodayRoutes(app: FastifyInstance): Promise<void> {
@@ -33,12 +33,19 @@ export async function registerSupervisorTodayRoutes(app: FastifyInstance): Promi
     }
 
     try {
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-        buildTodayForSupervisor(tx, {
-          companyId: auth.companyId,
-          userId: auth.userId,
-        }),
-      );
+      // Perf-fix (Cluster 1, QA-walkthrough 2026-05-18): read paths
+      // pass the bare `prisma` client so Promise.all queries land on
+      // separate pooled connections (genuine parallelism). The previous
+      // `withTenantContext` wrapper put everything inside one Prisma
+      // transaction, which serialises queries on a single connection
+      // and adds 1 RTT per query × Mac↔Railway distance. Result was
+      // 12s cold / 3.4s warm for /supervisor/today. Every read query
+      // already filters by `companyId` explicitly so app-level isolation
+      // is unchanged; we trade RLS-as-defense-in-depth for ~3-4× speed.
+      const out = await buildTodayForSupervisor(prisma, {
+        companyId: auth.companyId,
+        userId: auth.userId,
+      });
       reply.code(200).send(out);
     } catch (err) {
       req.log.error({ err }, 'GET /supervisor/today failed');

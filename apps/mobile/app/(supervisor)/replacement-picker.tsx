@@ -60,6 +60,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   FlatList,
   Modal,
   Pressable,
@@ -69,15 +71,6 @@ import {
   View,
   type ListRenderItem,
 } from 'react-native';
-import Animated, {
-  cancelAnimation,
-  useAnimatedProps,
-  useSharedValue,
-  withTiming,
-  Easing,
-  runOnJS,
-  useFrameCallback,
-} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -594,44 +587,49 @@ function WaitingBody({
     return Math.max(1, expiresAtMs - sentAtMs);
   }, [invite.sentAt, expiresAtMs]);
 
-  // UI-thread countdown — shared values updated via frame callback, NOT setState.
-  const remainingMs = useSharedValue<number>(Math.max(0, expiresAtMs - Date.now()));
-  const progress = useSharedValue<number>(
-    Math.max(0, Math.min(1, (expiresAtMs - Date.now()) / totalMs)),
+  // Second-precision countdown via standard React state — Reanimated worklets
+  // are not enabled in this project's babel config (per chat-upgrades-mobile
+  // done-memo § Q-3). 1Hz updates are enough for a 2-minute mm:ss display;
+  // the progress bar uses RN's built-in Animated.Value with native driver
+  // so the bar itself decays smoothly even though the label ticks per-second.
+  const [labelMmSs, setLabelMmSs] = useState<string>(() =>
+    formatMmSs(Math.max(0, expiresAtMs - Date.now())),
   );
-
-  // JS-thread mirror of the mm:ss label — driven by useFrameCallback at ~1Hz.
-  const [labelMmSs, setLabelMmSs] = useState<string>(() => formatMmSs(remainingMs.value));
-  const lastSecondRef = useRef<number>(Math.floor(remainingMs.value / 1000));
-
-  useFrameCallback(() => {
-    'worklet';
-    const now = Date.now();
-    const left = Math.max(0, expiresAtMs - now);
-    remainingMs.value = left;
-    progress.value = Math.max(0, Math.min(1, left / totalMs));
-    const second = Math.floor(left / 1000);
-    if (second !== lastSecondRef.current) {
-      lastSecondRef.current = second;
-      runOnJS(setLabelMmSs)(formatMmSs(left));
-    }
-  });
-
-  // Smooth animated progress decay — withTiming on the UI thread.
   useEffect(() => {
-    cancelAnimation(progress);
-    progress.value = withTiming(0, {
+    const tick = (): void => {
+      const left = Math.max(0, expiresAtMs - Date.now());
+      setLabelMmSs(formatMmSs(left));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAtMs]);
+
+  // Smooth bar decay — Animated.Value runs on UI thread via useNativeDriver
+  // for the opacity-equivalent of width via interpolation. RN doesn't allow
+  // useNativeDriver:true for width directly; use a transform scaleX trick
+  // anchored at the left edge for the same visual result.
+  const progressAnim = useRef(
+    new Animated.Value(Math.max(0, Math.min(1, (expiresAtMs - Date.now()) / totalMs))),
+  ).current;
+  useEffect(() => {
+    progressAnim.stopAnimation();
+    Animated.timing(progressAnim, {
+      toValue: 0,
       duration: Math.max(0, expiresAtMs - Date.now()),
       easing: Easing.linear,
-    });
+      useNativeDriver: true,
+    }).start();
     return () => {
-      cancelAnimation(progress);
+      progressAnim.stopAnimation();
     };
-  }, [expiresAtMs, progress]);
+  }, [expiresAtMs, progressAnim]);
 
-  const barAnimatedProps = useAnimatedProps(() => ({
-    width: `${Math.max(0, Math.min(100, progress.value * 100))}%` as `${number}%`,
-  }));
+  const barAnimatedStyle = {
+    transform: [
+      { translateX: progressAnim.interpolate({ inputRange: [0, 1], outputRange: [-200, 0] }) },
+    ],
+  };
 
   // Outcome poll — 5s while PENDING, frozen on terminal state.
   const outcomeQuery = useReplacementInviteOutcome(invite.id);
@@ -668,7 +666,7 @@ function WaitingBody({
       <Text style={s.waitingSubtitle}>{strings.replacement.waitingSubtitle(labelMmSs)}</Text>
 
       <View style={s.progressTrack}>
-        <Animated.View style={[s.progressFill, barAnimatedProps]} />
+        <Animated.View style={[s.progressFill, barAnimatedStyle]} />
       </View>
 
       <Pressable

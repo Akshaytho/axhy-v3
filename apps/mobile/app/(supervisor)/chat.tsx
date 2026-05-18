@@ -254,8 +254,13 @@ export default function ChatScreen(): JSX.Element {
   const supervisorFirstName = me?.user.name?.trim().split(/\s+/)[0] ?? 'there';
 
   // Supervisor portfolio counts.
+  // Cluster 2 fix (QA-walkthrough 2026-05-18): keep sitesActive +
+  // workersActive as null until the context query resolves. Pre-fix
+  // the header would say "0 sites · 0 workers active" before the
+  // query landed, which is a lie when the tenant has real data.
   const { data: context } = useSupervisorContextQuery();
-  const { sitesActive, workersActive } = context ?? { sitesActive: 0, workersActive: 0 };
+  const sitesActive = context?.sitesActive ?? null;
+  const workersActive = context?.workersActive ?? null;
 
   // ─── Photo attach ──────────────────────────────────────────────────────────
 

@@ -15,7 +15,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth } from '../middleware/tenant-context.js';
 import { buildSupervisorContext } from '../lib/services/supervisor-context-service.js';
 
 /**
@@ -32,12 +32,11 @@ export async function registerSupervisorContextRoutes(app: FastifyInstance): Pro
     }
 
     try {
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-        buildSupervisorContext(tx, {
-          companyId: auth.companyId,
-          userId: auth.userId,
-        }),
-      );
+      // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
+      const out = await buildSupervisorContext(prisma, {
+        companyId: auth.companyId,
+        userId: auth.userId,
+      });
       reply.code(200).send(out);
     } catch (err) {
       req.log.error({ err }, 'GET /supervisor/context failed');

@@ -101,10 +101,23 @@ export type BuildTodayArgs = {
 /**
  * Build the `GET /supervisor/today` response for the caller.
  *
+ * Perf-fix (Cluster 1, QA-walkthrough 2026-05-18): accepts either a
+ * `Prisma.TransactionClient` (legacy, queries serialise on one
+ * connection) or a `PrismaClient` (read-path, queries run in parallel
+ * via the connection pool — the `Promise.all`s below become genuine
+ * concurrent dispatches). The route layer now passes the bare client
+ * for read paths; mutations still wrap in `withTenantContext`.
+ *
+ * Pre-fix: `/supervisor/today` was 12s (cold) / 3.4s (warm) — every
+ * `Promise.all` of `tx.X.findMany` actually serialised because Prisma
+ * interactive transactions queue queries on a single connection. With
+ * the bare client each query lands on its own pooled connection.
+ *
  * @derives(panel-2026-05-17) — Today slice
+ * @derives(2026-05-18-supervisor-qa-walkthrough.md Cluster 1)
  */
 export async function buildTodayForSupervisor(
-  tx: Prisma.TransactionClient,
+  tx: Prisma.TransactionClient | import('@prisma/client').PrismaClient,
   args: BuildTodayArgs,
 ): Promise<TodayResponseT> {
   const at = args.at ?? new Date();
