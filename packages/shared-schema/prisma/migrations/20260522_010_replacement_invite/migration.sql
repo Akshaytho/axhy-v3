@@ -3,33 +3,41 @@
 -- Locked 2026-05-18 under the v2 30-day supervisor simulation plan
 -- (`docs/plans/2026-05-18-supervisor-30-day-real-life-simulation-v2.md` §3 Wave 1).
 --
--- Scope:
---   Create `axhy.ReplacementInvite` (PUBG-style multi-worker invite broadcast).
---   The table replaces a stub model introduced by Wave 3 commit 2d16919 so
---   parallel sub-agents could `prisma generate` while Wave 1 was incomplete.
---   This migration is the definitive table shape; the stub is purely a
---   schema-level convenience and never had its own migration.
+-- HISTORICAL NOTE — read with migration 011 (drop_group) for the final shape:
+--   This migration was originally drafted (and applied) with a `groupId`
+--   column + a partial unique index on `(groupId) WHERE status='ACCEPTED'`
+--   for a multi-worker broadcast design. The founder revised the product
+--   on 2026-05-18 (same day, after this migration ran) to single-recipient
+--   invites — see `feedback_replacement_invite_single_recipient.md`.
+--   Migration 011 drops the broadcast machinery. Reading 010 in isolation
+--   will leave you with the wrong mental model; the canonical post-011
+--   shape is "one invite per (supervisor, worker, slot)".
+--
+-- Scope (010 + 011 combined, i.e. the final shipped shape):
+--   Create `axhy.ReplacementInvite` — single-recipient cover request
+--   between supervisor and one worker, 2-min TTL, status enum + CHECKs,
+--   indexed for cron sweep + supervisor / worker inbox + activity feed.
 --
 -- Lifecycle invariants enforced at the DB level (P-rule P1):
 --   - status IN ('PENDING','ACCEPTED','DECLINED','EXPIRED','CANCELLED')
 --   - expiresAt > sentAt
 --   - terminal-state rows have respondedAt set (PARTIAL CHECK below).
 --
--- Indexes — sized for the cron sweep + supervisor/worker inbox + group-atomic
--- operations. The cron predicate (status='PENDING' AND expiresAt < NOW())
+-- Indexes — sized for the cron sweep + supervisor / worker inbox + activity
+-- feed. The cron predicate (status='PENDING' AND expiresAt < NOW())
 -- hits the first index; the supervisor and worker list queries hit the
--- composite (companyId, *, status) indexes; group operations pivot on groupId.
+-- composite (companyId, *, status) indexes.
 --
 -- Rollback note:
 --   Down-migration: `DROP TABLE axhy."ReplacementInvite";`
 --   No data loss for any other table — this is purely additive. Wave 3's
---   stub-replacement is overwritten here; rolling this back returns the
---   schema to a stub-shaped column set, which is harmless to existing data
---   (the stub had a strict-superset of nullable columns).
+--   coordination-stub (introduced for parallel-subagent prisma generate)
+--   is overwritten here; rolling this back returns the schema to a
+--   stub-shaped column set, which is harmless to existing data (the stub
+--   had a strict-superset of nullable columns).
 --
 -- @derives(master-plan §P.4 — ReplacementInvite)
--- @derives(master-plan §G:976 — replacement-picker locked design)
--- @derives(replacement-invite-feature-spec.md, 2026-05-18)
+-- @derives(feedback_replacement_invite_single_recipient.md, 2026-05-18)
 -- @derives(supervisor-30day-scenarios.md scenarios #39–46 + emergency cover)
 
 CREATE TABLE IF NOT EXISTS "axhy"."ReplacementInvite" (

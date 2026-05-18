@@ -62,6 +62,15 @@ import { recordAuditEvent } from '../audit-event.js';
 
 const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
 
+/**
+ * Cron sweep per-tick batch cap. The cron runs every 30s; anything past
+ * this limit rolls to the next tick. Chosen to comfortably exceed
+ * realistic per-tick expiry volume (founder said 38 workers / supervisor,
+ * worst case ~5 simultaneous outstanding invites per supervisor at a
+ * given moment) without risking per-row tx pile-up on a slow shard.
+ */
+const BATCH_LIMIT = 100;
+
 /** Local DB-row shape so we don't depend on the generated Prisma type at every callsite. */
 type ReplacementInviteDbRow = {
   id: string;
@@ -304,19 +313,45 @@ export async function acceptReplacementInvite(
   if (!worker) return { kind: 'WORKER_ROW_MISSING' };
 
   // One-day cover assignment. State=ACTIVE: the supervisor confirmed the
-  // swap by accepting; no further approval needed. dayMask follows the
-  // Assignment.dayMask convention (7-char Mon-Sun, kept char vs underscore).
-  const dayOfWeekJs = invite.scheduledStart.getDay(); // 0=Sun..6=Sat
-  const mondayFirstIndex = (dayOfWeekJs + 6) % 7;
+  // swap by accepting; no further approval needed.
+  //
+  // All time-zone math runs in UTC to keep the day-of-week, validFrom,
+  // validUntil, and shiftStart/shiftEnd computations on the same clock.
+  // Earlier version mixed local-TZ `getDay()` + `setHours()` with UTC
+  // `getUTCHours()` — review caller flagged it as a "bug-magnet" because
+  // a scheduledStart at 23:30 UTC on Mon would compute a Mon dayMask but
+  // local-TZ validFrom could fall on Tue, leaving the Assignment's
+  // validity window inconsistent with its day-of-week.
+  const dayOfWeekUtc = invite.scheduledStart.getUTCDay(); // 0=Sun..6=Sat
+  const mondayFirstIndex = (dayOfWeekUtc + 6) % 7;
   const DAY_CHARS = 'MTWTFSS';
   const dayMask = DAY_CHARS.split('')
     .map((c, idx) => (idx === mondayFirstIndex ? c : '_'))
     .join('');
 
-  const validFrom = new Date(invite.scheduledStart);
-  validFrom.setHours(0, 0, 0, 0);
-  const validUntil = new Date(validFrom);
-  validUntil.setHours(23, 59, 59, 999);
+  // UTC-aligned validity window for the same UTC day as scheduledStart.
+  const validFrom = new Date(
+    Date.UTC(
+      invite.scheduledStart.getUTCFullYear(),
+      invite.scheduledStart.getUTCMonth(),
+      invite.scheduledStart.getUTCDate(),
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
+  const validUntil = new Date(
+    Date.UTC(
+      invite.scheduledStart.getUTCFullYear(),
+      invite.scheduledStart.getUTCMonth(),
+      invite.scheduledStart.getUTCDate(),
+      23,
+      59,
+      59,
+      999,
+    ),
+  );
 
   const pad2 = (n: number): string => n.toString().padStart(2, '0');
   const shiftStart = `${pad2(invite.scheduledStart.getUTCHours())}:${pad2(invite.scheduledStart.getUTCMinutes())}`;
@@ -563,73 +598,113 @@ export type SweepResult = {
 
 /**
  * @derives(master-plan §P.4) — cron sweep entry point
+ * @derives(2026-05-18-sprint-1-deep-review.md Cluster D)
  *
- * Conditional UPDATE on `status='PENDING' AND expiresAt < now`. Naturally
- * idempotent: a second replica's sweep finds 0 rows once the first
- * completes. Outcome SupervisorDecision rows are deduped by a findFirst
- * cheap-skip keyed on (kind, targetId).
+ * Per-invite atomicity (Cluster D fix, 2026-05-18): each candidate row
+ * has its three side effects — UPDATE to EXPIRED, outcome
+ * `SupervisorDecision`, supervisor Notification — committed in one
+ * `prisma.$transaction`. A crash mid-sweep leaves overdue rows still
+ * PENDING (recovered on the next tick) rather than EXPIRED-without-
+ * outcome-or-push. Mirrors the `binding-expire-sweep` gold-standard
+ * pattern in `jobs/binding-expire-sweep.ts`.
+ *
+ * Multi-replica safe: each row's UPDATE is `WHERE id=? AND status='PENDING'`
+ * so only the first replica's UPDATE returns count=1; subsequent
+ * replicas see count=0 and skip the audit + notification cleanly.
+ *
+ * Outcome SupervisorDecision rows are deduped by a findFirst cheap-skip
+ * keyed on (kind, targetId) inside the tx as defense in depth (after
+ * the UPDATE wins-by-count check is the primary mechanism).
  */
 export async function sweepExpiredReplacementInvites(
-  client: PrismaClient | Prisma.TransactionClient,
+  client: PrismaClient,
   now: Date = new Date(),
 ): Promise<SweepResult> {
-  // Flip every overdue PENDING to EXPIRED in one statement. Raw SQL
-  // because Prisma's updateMany doesn't return rows, and we need the
-  // (id, supervisorId, companyId, siteId, scheduledStart) tuple to emit
-  // per-invite outcome decisions. The status CHECK + responded-at
-  // consistency CHECK at the table level mean we must set respondedAt
-  // here too, which one statement does atomically.
-  const sweptRows: Array<{
-    id: string;
-    companyId: string;
-    fromSupervisorId: string;
-    siteId: string;
-    scheduledStart: Date;
-  }> = await client.$queryRaw`
-      UPDATE "axhy"."ReplacementInvite"
-         SET "status" = 'EXPIRED',
-             "respondedAt" = ${now},
-             "respondReason" = 'cron_expired'
-       WHERE "status" = 'PENDING'
-         AND "expiresAt" < ${now}
-      RETURNING "id", "companyId", "fromSupervisorId", "siteId", "scheduledStart"
-    `;
+  // Step 1 — find candidate rows. SELECT-only, no mutation yet. The
+  // per-row tx in step 2 re-asserts `status='PENDING'` in the UPDATE
+  // WHERE so multi-replica is naturally safe.
+  //
+  // `take: BATCH_LIMIT` caps the number of rows processed in one tick
+  // so a backlog from a failed previous sweep (or a thundering-herd
+  // mistake) can't blow the per-transaction time budget. Anything left
+  // over rolls to the next tick — the cron runs every 30s.
+  const candidates = await client.replacementInvite.findMany({
+    where: { status: 'PENDING', expiresAt: { lt: now } },
+    select: {
+      id: true,
+      companyId: true,
+      fromSupervisorId: true,
+      siteId: true,
+      scheduledStart: true,
+    },
+    take: BATCH_LIMIT,
+    orderBy: { expiresAt: 'asc' },
+  });
 
-  if (sweptRows.length === 0) {
+  if (candidates.length === 0) {
     return { expiredCount: 0, outcomeDecisionsEmitted: 0 };
   }
 
+  let expiredCount = 0;
   let outcomeDecisionsEmitted = 0;
-  for (const row of sweptRows) {
-    const emitted = await emitInviteOutcomeDecision(client, {
-      companyId: row.companyId,
-      inviteId: row.id,
-      supervisorId: row.fromSupervisorId,
-      outcome: 'expired_no_accept',
-      siteId: row.siteId,
-      scheduledStart: row.scheduledStart,
-    });
-    if (emitted) outcomeDecisionsEmitted++;
 
-    // Push supervisor — invite expired with no response.
-    await client.notification.create({
-      data: {
-        companyId: row.companyId,
-        audienceUserId: row.fromSupervisorId,
-        kind: 'replacement_invite',
-        channel: 'push',
-        priority: 'URGENT',
-        payload: {
-          outcome: 'expired_no_accept',
+  for (const row of candidates) {
+    // Per-row tx — UPDATE + outcome + notification commit together.
+    // Failure of any step inside rolls back ALL three for this row;
+    // the next sweep tick re-picks the row up because it's still
+    // PENDING (and still past expiresAt).
+    //
+    // Explicit timeout: each tx does 3 small DB ops; 10s is generous
+    // even on a slow Railway shard. Prisma's default is 5s which we
+    // observed hitting during a backlog-recovery test run.
+    const perRowResult = await client.$transaction(
+      async (tx) => {
+        const updateResult = await tx.replacementInvite.updateMany({
+          where: { id: row.id, companyId: row.companyId, status: 'PENDING' },
+          data: { status: 'EXPIRED', respondedAt: now, respondReason: 'cron_expired' },
+        });
+        if (updateResult.count === 0) {
+          // Another replica beat us, OR the row transitioned out of
+          // PENDING (worker accepted/declined in the window between our
+          // SELECT and our UPDATE). Either way, no side effects from us.
+          return { expired: false, outcomeEmitted: false };
+        }
+
+        const outcomeEmitted = await emitInviteOutcomeDecision(tx, {
+          companyId: row.companyId,
           inviteId: row.id,
+          supervisorId: row.fromSupervisorId,
+          outcome: 'expired_no_accept',
           siteId: row.siteId,
-          scheduledStart: row.scheduledStart.toISOString(),
-        },
+          scheduledStart: row.scheduledStart,
+        });
+
+        await tx.notification.create({
+          data: {
+            companyId: row.companyId,
+            audienceUserId: row.fromSupervisorId,
+            kind: 'replacement_invite',
+            channel: 'push',
+            priority: 'URGENT',
+            payload: {
+              outcome: 'expired_no_accept',
+              inviteId: row.id,
+              siteId: row.siteId,
+              scheduledStart: row.scheduledStart.toISOString(),
+            },
+          },
+        });
+
+        return { expired: true, outcomeEmitted };
       },
-    });
+      { timeout: 10_000, maxWait: 5_000 },
+    );
+
+    if (perRowResult.expired) expiredCount++;
+    if (perRowResult.outcomeEmitted) outcomeDecisionsEmitted++;
   }
 
-  return { expiredCount: sweptRows.length, outcomeDecisionsEmitted };
+  return { expiredCount, outcomeDecisionsEmitted };
 }
 
 // ─── Internal: emit REPLACEMENT_INVITE_OUTCOME SupervisorDecision row ──────

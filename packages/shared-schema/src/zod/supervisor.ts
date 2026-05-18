@@ -133,11 +133,25 @@ export type CreateLeaveRequestInput = z.infer<typeof CreateLeaveRequestInput>;
 
 /**
  * Input shape for POST /leave-requests/:id/approve and /reject.
+ *
+ * `reason` is the supervisor's reason for the decision (e.g. "site is
+ * short-staffed Friday — cannot approve"). Distinct from the worker's
+ * original `LeaveRequest.reason`. Mobile renders a reason-sheet on
+ * reject; the value is persisted in the AuditEvent payload as
+ * `decisionReason` so the worker (and HR) can see WHY their leave was
+ * decided one way or the other.
+ *
+ * `note` is kept as a back-compat alias for `reason` — older mobile
+ * builds may still post `note`. The route coalesces.
+ *
  * @derives(data-flow §5 — approve leave PERSONNEL tier)
  * @derives(ADR-0007)
+ * @derives(2026-05-18-sprint-1-deep-review.md Cluster A)
  */
 export const LeaveDecisionInput = z.object({
-  /** Optional supervisor note attached to the decision. */
+  /** Supervisor's reason for the decision (preferred). */
+  reason: z.string().trim().max(500).optional(),
+  /** Back-compat alias for older mobile builds. */
   note: z.string().trim().max(500).optional(),
 });
 
