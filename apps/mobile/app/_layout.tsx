@@ -29,6 +29,8 @@
 
 import { useEffect } from 'react';
 import { Slot } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { Feather } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
 
@@ -36,9 +38,16 @@ import { queryClient } from '../lib/query-client';
 import { initializeOneSignal } from '../lib/identity-lifecycle';
 
 export default function RootLayout() {
+  // QA-round3 R3-09/R3-10: preload Feather icon font so the FAB mic, hamburger
+  // ≡, chevrons, etc. paint with glyphs on first render instead of FOIT-ing
+  // in over 1-2s and leaving Suresh staring at a bare orange circle.
+  const [fontsLoaded] = useFonts(Feather.font);
+
   useEffect(() => {
     initializeOneSignal();
   }, []);
+
+  if (!fontsLoaded) return null;
 
   return (
     <SafeAreaProvider>
