@@ -99,6 +99,10 @@ class ServiceDomainError extends Error {
  */
 function httpStatusForServiceDomainCode(code: string): number {
   if (code === 'WORKER_NOT_FOUND' || code === 'SITE_NOT_FOUND') return 404;
+  // Worker already in a terminal/in-flight termination state — same shape
+  // the legacy propose_termination route returned (409) before the L1
+  // sentinel-pattern refactor (audit P1 — chat-path audit 2026-05-18).
+  if (code === 'ALREADY_TERMINATING') return 409;
   return 400;
 }
 
@@ -1402,84 +1406,67 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         reason: string;
         reasonDetail?: string;
       };
-      // F-002.9 — reorder: validate worker FIRST (before applyProposedDecision),
-      // then lifecycle commit, then worker.update. Returning sentinels from the
-      // tx callback COMMITS the tx (lesson L1 in production-grade-rulebook
-      // memory), so validation failures must happen BEFORE any state-changing
-      // write. After this reorder, the early-return paths still commit but with
-      // no state change since no write has happened yet.
+      // Audit P1 refactor (2026-05-18): replaced the L1-fragile
+      // sentinel-return-from-tx-callback pattern with throw + outer catch,
+      // matching the 4 modern apply branches above. Returning sentinels
+      // from inside withTenantContext(tx) COMMITS the tx — safe today
+      // (each early-return runs before any write) but one careless reorder
+      // would land a partial commit. Throw + rollback is the production-
+      // grade shape per production-grade-rulebook L1.
       //
-      // F-002 §3b: lifecycle transition + worker.update share the same tx —
-      // fully atomic. If either throws, both roll back.
+      // F-002 §3b: lifecycle transition + worker.update share one tx —
+      // fully atomic. If anything throws, the whole tx rolls back.
       // F-002.5: decisionId is required (Zod-enforced).
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-        // Step 1: validate worker FIRST (no writes happen on validation failure).
-        const w = await tx.worker.findFirst({
-          where: { id: wid, companyId: auth.companyId },
-        });
-        if (!w) return { kind: 'NOT_FOUND' as const };
-        if (w.state === 'TERMINATED' || w.state === 'TERMINATION_PENDING') {
-          return { kind: 'ALREADY' as const };
-        }
+      try {
+        const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+          // Step 1: validate worker FIRST.
+          const w = await tx.worker.findFirst({
+            where: { id: wid, companyId: auth.companyId },
+          });
+          if (!w) throw new ServiceDomainError('WORKER_NOT_FOUND');
+          if (w.state === 'TERMINATED' || w.state === 'TERMINATION_PENDING') {
+            throw new ServiceDomainError('ALREADY_TERMINATING');
+          }
 
-        // Step 2: lifecycle commit (applyProposedDecision uses race-safe
-        // conditional UPDATE + emits DWI_APPLIED). Throws on lifecycle guard
-        // failure; tx rolls back if so.
-        try {
+          // Step 2: lifecycle commit. LifecycleError throws bubble out to
+          // the outer catch; the tx rolls back automatically.
           await applyProposedDecision(tx, {
             companyId: auth.companyId,
             decisionId: parsed.data.decisionId,
             actorUserId: auth.userId,
           });
-        } catch (err) {
-          if (err instanceof LifecycleError) {
-            return { kind: 'LIFECYCLE_ERROR' as const, code: err.code };
-          }
-          throw err;
-        }
 
-        // Step 3: worker.update + WORKER_TERMINATION_REQUESTED audit.
-        // Per Worker state machine (packages/state-machines/src/worker.ts):
-        // ACTIVE on TERMINATE → TERMINATION_PENDING. Wave 2b ChangeRequest
-        // workflow handles the TERMINATION_PENDING → TERMINATED finalization.
-        // If this throws, the tx (including the lifecycle commit) rolls back.
-        const updated = await tx.worker.update({
-          where: { id: wid },
-          data: { state: 'TERMINATION_PENDING' },
+          // Step 3: worker.update + audit.
+          const updated = await tx.worker.update({
+            where: { id: wid },
+            data: { state: 'TERMINATION_PENDING' },
+          });
+          await recordAuditEvent(tx, {
+            companyId: auth.companyId,
+            kind: 'WORKER_TERMINATION_REQUESTED',
+            actorId: auth.userId,
+            targetId: wid,
+            payload: {
+              effectiveDate,
+              reason,
+              reasonDetail: reasonDetail ?? null,
+              previousState: w.state,
+            },
+          });
+          return { worker: updated };
         });
-        await recordAuditEvent(tx, {
-          companyId: auth.companyId,
-          kind: 'WORKER_TERMINATION_REQUESTED',
-          actorId: auth.userId,
-          targetId: wid,
-          payload: {
-            effectiveDate,
-            reason,
-            reasonDetail: reasonDetail ?? null,
-            previousState: w.state,
-          },
-        });
-        return { kind: 'OK' as const, worker: updated };
-      });
-      if (out.kind === 'LIFECYCLE_ERROR') {
-        const httpStatus =
-          out.code === 'NOT_FOUND' || out.code === 'CROSS_TENANT'
-            ? 404
-            : out.code === 'NOT_RESPONSIBLE'
-              ? 403
-              : 409;
-        reply.code(httpStatus).send({ error: out.code });
-        return;
+        reply.code(200).send({ workerId: out.worker.id, state: out.worker.state });
+      } catch (err) {
+        if (err instanceof LifecycleError) {
+          reply.code(httpStatusForLifecycleCode(err.code)).send({ error: err.code });
+          return;
+        }
+        if (err instanceof ServiceDomainError) {
+          reply.code(httpStatusForServiceDomainCode(err.code)).send({ error: err.code });
+          return;
+        }
+        throw err;
       }
-      if (out.kind === 'NOT_FOUND') {
-        reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
-        return;
-      }
-      if (out.kind === 'ALREADY') {
-        reply.code(409).send({ error: 'ALREADY_TERMINATING' });
-        return;
-      }
-      reply.code(200).send({ workerId: out.worker.id, state: out.worker.state });
       return;
     }
 
@@ -1510,67 +1497,65 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
 
       // Wave 4b Phase 2.5 — wrap in withTenantContext so the Postgres GUC
       // `axhy.current_company_id` is set inside the tx → RLS policies fire.
-      // Panel-flagged Tier-1 fix; `persistChatTurn` (line ~146) was wrapped
-      // in the same commit so every chat-route transaction is now scoped.
       //
       // F-002.4 — fully atomic apply for living-doc: the DWI lifecycle
-      // transition and the LivingDoc write share one transaction. Same
-      // atomicity guarantee as propose_termination. If applyProposedDecision
-      // throws (lifecycle guard failure) or the LivingDoc write throws, the
-      // whole tx rolls back; neither effect happens.
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-        try {
+      // transition and the LivingDoc write share one transaction. If
+      // applyProposedDecision throws (lifecycle guard failure) or the
+      // LivingDoc write throws, the whole tx rolls back; neither effect
+      // happens.
+      //
+      // Audit P1 refactor (2026-05-18): removed the sentinel-return
+      // pattern. LifecycleError now bubbles out of the tx callback so
+      // Postgres rolls the tx back; the outer catch translates to HTTP.
+      try {
+        const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
           await applyProposedDecision(tx, {
             companyId: auth.companyId,
             decisionId: body.decisionId,
             actorUserId: auth.userId,
           });
-        } catch (err) {
-          if (err instanceof LifecycleError) {
-            return { kind: 'LIFECYCLE_ERROR' as const, code: err.code };
-          }
-          throw err;
-        }
-        // Upsert ensures the row exists (matches getLivingDoc behavior;
-        // first-time supervisors won't have a row yet).
-        const doc = await tx.livingDoc.upsert({
-          where: {
-            companyId_supervisorId: {
-              companyId: auth.companyId,
-              supervisorId: auth.userId,
+          // Upsert ensures the row exists (first-time supervisor has no row).
+          const doc = await tx.livingDoc.upsert({
+            where: {
+              companyId_supervisorId: {
+                companyId: auth.companyId,
+                supervisorId: auth.userId,
+              },
             },
-          },
-          create: { companyId: auth.companyId, supervisorId: auth.userId },
-          update: {},
+            create: { companyId: auth.companyId, supervisorId: auth.userId },
+            update: {},
+          });
+          const existing = (doc[column] as unknown as Array<Record<string, unknown>>) ?? [];
+          const updated = await tx.livingDoc.update({
+            where: { id: doc.id },
+            data: {
+              [column]: [...existing, newRule] as Prisma.InputJsonValue,
+              version: { increment: 1 },
+            },
+            select: { version: true },
+          });
+          await recordAuditEvent(tx, {
+            companyId: auth.companyId,
+            kind: 'LIVING_DOC_RULE_ADDED',
+            actorId: auth.userId,
+            targetId: ruleId,
+            payload: {
+              section: p.section,
+              visibility: p.visibility,
+              ruleText: p.ruleText,
+              version: updated.version,
+            },
+          });
+          return { ruleId, version: updated.version };
         });
-        const existing = (doc[column] as unknown as Array<Record<string, unknown>>) ?? [];
-        const updated = await tx.livingDoc.update({
-          where: { id: doc.id },
-          data: {
-            [column]: [...existing, newRule] as Prisma.InputJsonValue,
-            version: { increment: 1 },
-          },
-          select: { version: true },
-        });
-        await recordAuditEvent(tx, {
-          companyId: auth.companyId,
-          kind: 'LIVING_DOC_RULE_ADDED',
-          actorId: auth.userId,
-          targetId: ruleId,
-          payload: {
-            section: p.section,
-            visibility: p.visibility,
-            ruleText: p.ruleText,
-            version: updated.version,
-          },
-        });
-        return { kind: 'OK' as const, ruleId, version: updated.version };
-      });
-      if (out.kind === 'LIFECYCLE_ERROR') {
-        reply.code(httpStatusForLifecycleCode(out.code)).send({ error: out.code });
-        return;
+        reply.code(200).send({ ruleId: out.ruleId, version: out.version });
+      } catch (err) {
+        if (err instanceof LifecycleError) {
+          reply.code(httpStatusForLifecycleCode(err.code)).send({ error: err.code });
+          return;
+        }
+        throw err;
       }
-      reply.code(200).send({ ruleId: out.ruleId, version: out.version });
       return;
     }
 
