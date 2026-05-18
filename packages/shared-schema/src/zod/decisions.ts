@@ -42,12 +42,11 @@ export type DecisionTierT = z.infer<typeof DecisionsTierSchema>;
  * @derives(master-plan §G) — supervisor surface
  */
 /**
- * STALE is for pending decisions older than 48h that the supervisor hasn't
- * acted on. They stay actionable but lose red-dot urgency — keeps the
- * NEEDS_YOU_NOW queue bounded and lets fresh items get attention.
- * @derives(feedback_stale_decisions_section_after_48h.md, 2026-05-18)
+ * No STALE section — the 48h-old rule is auto-dismiss-and-vanish, not demote
+ * (founder lock 2026-05-18 PM, reverses 2026-05-18 AM). See
+ * feedback_stale_decisions_section_after_48h.md.
  */
-export const DecisionSectionSchema = z.enum(['NEEDS_YOU_NOW', 'ROUTINE', 'STALE', 'FAILED_REVIEW']);
+export const DecisionSectionSchema = z.enum(['NEEDS_YOU_NOW', 'ROUTINE', 'FAILED_REVIEW']);
 export type DecisionSectionT = z.infer<typeof DecisionSectionSchema>;
 
 /**
@@ -242,7 +241,12 @@ export const DecisionsResponse = z
     counts: z.object({
       needsYouNow: z.number().int().nonnegative(),
       routine: z.number().int().nonnegative(),
-      stale: z.number().int().nonnegative(),
+      /**
+       * Number of decisions auto-dismissed in THIS response cycle (the read
+       * triggered a sweep of >48h pending rows). Lets mobile show a small
+       * toast "3 stale decisions auto-dismissed". Per founder lock 2026-05-18 PM.
+       */
+      autoDismissedThisRead: z.number().int().nonnegative(),
       failedReview: z.number().int().nonnegative(),
       total: z.number().int().nonnegative(),
     }),

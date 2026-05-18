@@ -32,7 +32,7 @@ function encodeCursor(p: { priority: number; proposedAt: string; id: string }): 
 
 function decodeCursor(
   token: string,
-): { priority: 0 | 1 | 2 | 3; proposedAt: string; id: string } | null {
+): { priority: 0 | 1 | 2; proposedAt: string; id: string } | null {
   try {
     const raw = Buffer.from(token, 'base64url').toString('utf8');
     const parsed = JSON.parse(raw) as unknown;
@@ -48,8 +48,9 @@ function decodeCursor(
       const proposedAt = obj.proposedAt;
       const id = obj.id;
       if (
-        // POST-FIX bound: 0|1|2|3 accepts STALE=2 + FAILED_REVIEW=3.
-        (priority === 0 || priority === 1 || priority === 2 || priority === 3) &&
+        // Post-STALE-rollback (2026-05-18 PM): STALE section removed; the
+        // 48h rule is auto-dismiss-and-vanish. Priority bound is back to 0|1|2.
+        (priority === 0 || priority === 1 || priority === 2) &&
         typeof proposedAt === 'string' &&
         typeof id === 'string'
       ) {
@@ -77,20 +78,16 @@ describe('decodeCursor — STALE + FAILED_REVIEW priority bound (regression)', (
     expect(decodeCursor(token)?.priority).toBe(1);
   });
 
-  it('accepts priority=2 (STALE) round-trip', () => {
+  it('accepts priority=2 (FAILED_REVIEW) round-trip', () => {
+    // Post-STALE-rollback: FAILED_REVIEW is back to priority 2 (STALE
+    // section is gone, decisions auto-vanish at 48h instead).
     const token = encodeCursor({ priority: 2, proposedAt: '2026-05-18T10:00:00.000Z', id: 'c' });
     expect(decodeCursor(token)?.priority).toBe(2);
   });
 
-  it('accepts priority=3 (FAILED_REVIEW) round-trip — the audit P0-1 regression', () => {
-    // PRE-FIX BEHAVIOR (bug): decoder rejected priority=3 → returned null →
-    // caller treated as missing cursor → pagination restarted from the top.
-    // POST-FIX BEHAVIOR: priority=3 round-trips cleanly.
+  it('rejects priority=3 (no STALE section exists anymore)', () => {
     const token = encodeCursor({ priority: 3, proposedAt: '2026-05-18T10:00:00.000Z', id: 'd' });
-    const decoded = decodeCursor(token);
-    expect(decoded).not.toBeNull();
-    expect(decoded?.priority).toBe(3);
-    expect(decoded?.id).toBe('d');
+    expect(decodeCursor(token)).toBeNull();
   });
 
   it('rejects out-of-range priority (defense in depth)', () => {

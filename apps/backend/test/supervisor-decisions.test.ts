@@ -191,7 +191,7 @@ describe('GET /supervisor/decisions — happy path', () => {
       counts: {
         needsYouNow: number;
         routine: number;
-        stale: number;
+        autoDismissedThisRead: number;
         failedReview: number;
         total: number;
       };
@@ -226,7 +226,7 @@ describe('GET /supervisor/decisions — happy path', () => {
     // Section counts: 2 NEEDS_YOU_NOW (PERSONNEL + EMPLOYMENT), 1 ROUTINE
     expect(body.counts.needsYouNow).toBe(2);
     expect(body.counts.routine).toBe(1);
-    expect(body.counts.stale).toBe(0);
+    expect(body.counts.autoDismissedThisRead).toBe(0);
     expect(body.counts.failedReview).toBe(0);
 
     // Ordering: NEEDS_YOU_NOW rows come before ROUTINE rows.
@@ -274,7 +274,7 @@ describe('GET /supervisor/decisions — empty state', () => {
     expect(body.rows).toHaveLength(0);
     expect(body.counts.needsYouNow).toBe(0);
     expect(body.counts.routine).toBe(0);
-    expect(body.counts.stale).toBe(0);
+    expect(body.counts.autoDismissedThisRead).toBe(0);
     expect(body.counts.failedReview).toBe(0);
     expect(body.counts.total).toBe(0);
   });

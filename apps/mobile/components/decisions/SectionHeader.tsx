@@ -16,7 +16,6 @@ import type { DecisionSectionT } from '@axhy/shared-schema';
 const SECTION_LABEL: Record<DecisionSectionT, string> = {
   NEEDS_YOU_NOW: 'NEEDS YOU NOW',
   ROUTINE: 'ROUTINE',
-  STALE: 'STALE · OVER 48H',
   FAILED_REVIEW: 'FAILED · REVIEW',
 };
 
@@ -24,7 +23,6 @@ const SECTION_LABEL: Record<DecisionSectionT, string> = {
 const SECTION_COLOR: Record<DecisionSectionT, string> = {
   NEEDS_YOU_NOW: tokens.color.semantic.bad,
   ROUTINE: tokens.color.ink.tertiary,
-  STALE: tokens.color.ink.placeholder,
   FAILED_REVIEW: tokens.color.ink.placeholder,
 };
 
