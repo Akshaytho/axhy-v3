@@ -154,6 +154,26 @@ export default function ReplacementPickerScreen() {
   const [stage, setStage] = useState<Stage>({ kind: 'pick' });
   const [search, setSearch] = useState('');
 
+  // Cluster D fix (QA-rewalk 2026-05-18): derive human-readable
+  // context from the Today query when the route only carries IDs.
+  // The picker was reporting B2-11 ("ignores URL params") because the
+  // QA test passed `siteId` + `originalWorkerUserId` but not the
+  // pre-formatted `siteName` / `originalWorkerName` strings — the
+  // ContextStrip rendered null. Now we fall back to the Today data.
+  const resolvedSiteName = useMemo(() => {
+    if (params.siteName) return params.siteName;
+    if (!params.siteId || !today.data) return null;
+    const site = today.data.sites.find((s) => s.id === params.siteId);
+    return site?.name ?? null;
+  }, [params.siteId, params.siteName, today.data]);
+
+  const resolvedOriginalWorkerName = useMemo(() => {
+    if (params.originalWorkerName) return params.originalWorkerName;
+    if (!params.originalWorkerUserId || !today.data) return null;
+    const worker = today.data.workers.find((w) => w.id === params.originalWorkerUserId);
+    return worker?.name ?? null;
+  }, [params.originalWorkerUserId, params.originalWorkerName, today.data]);
+
   // Build candidate list out of the supervisor's Today portfolio. This bounds
   // the list to one supervisor's reachable workers (usually 25–80) so the
   // FlatList stays buttery; cross-portfolio invites are out of scope.
@@ -260,11 +280,11 @@ export default function ReplacementPickerScreen() {
         onClose={handleClose}
       />
       <ContextStrip
-        siteName={params.siteName ?? null}
+        siteName={resolvedSiteName}
         scheduledStart={params.scheduledStart ?? null}
         replacingForLabel={
-          params.originalWorkerName
-            ? strings.replacement.replacingFor(params.originalWorkerName)
+          resolvedOriginalWorkerName
+            ? strings.replacement.replacingFor(resolvedOriginalWorkerName)
             : null
         }
       />

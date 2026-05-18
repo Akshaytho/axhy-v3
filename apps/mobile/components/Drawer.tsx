@@ -76,14 +76,23 @@ type DrawerItem = {
   sub: string | null;
 };
 
+// Cluster C fix (QA-rewalk 2026-05-18): drawer subtitles must be either
+// truthful (derived from real data) or omitted. Pre-fix the drawer
+// shipped:
+//   - Hardcoded fake numbers "23 rules · 12 aliases · 8 site notes" that
+//     contradicted the Memory screen's empty state (B2-08).
+//   - An un-interpolated placeholder "{N} sites · {M} with active
+//     rules" (B2-07).
+// Until each entry has a real query backing its subtitle, the subtitle
+// is omitted (`sub: null`) — the icon + label alone is enough.
 const DRAWER_ITEMS: DrawerItem[] = [
-  { icon: 'user', label: 'My profile', sub: 'Stats · streaks · prefs' },
-  { icon: 'zap', label: 'Memory & rules', sub: '23 rules · 12 aliases · 8 site notes' },
-  { icon: 'map', label: 'My sites', sub: '{N} sites · {M} with active rules' },
+  { icon: 'user', label: 'My profile', sub: null },
+  { icon: 'zap', label: 'Memory & rules', sub: null },
+  { icon: 'map', label: 'My sites', sub: null },
   { icon: 'globe', label: 'Language', sub: 'English · हिन्दी · తెలుగు' },
   { icon: 'bell', label: 'Notifications', sub: 'Push · WhatsApp · Email' },
   { icon: 'help-circle', label: 'How to use Axhy', sub: '60-sec video · examples' },
-  { icon: 'pause', label: 'Temporary mode', sub: 'Pause AI for the day' },
+  { icon: 'pause', label: 'Temporary mode', sub: null },
   { icon: 'log-out', label: 'Sign out', sub: null },
 ];
 
@@ -270,7 +279,7 @@ export function Drawer({ open, onClose }: DrawerProps) {
 
         {/* Footer build stamp */}
         <View style={s.footer}>
-          <Text style={s.footerText}>AXHY · v3 · BUILD 2026.05.08</Text>
+          <Text style={s.footerText}>AXHY · v3 · BUILD 2026.05.18</Text>
         </View>
       </Animated.View>
 
