@@ -7,8 +7,16 @@
  *
  * Tapping a row expands an action drawer with two buttons:
  *   - Share to WhatsApp — opens wa.me deeplink with composed message text.
- *   - Reverse — enabled within 30 min; beyond that, greyed + "Window closed"
- *     subtext. Tapping when fresh shows an honest placeholder modal.
+ *   - Reverse — enabled within 30 min; beyond that, greyed + "Window closed".
+ *
+ * Reverse flow (Wave 4 compliance, 2026-05-18):
+ *   - Within the 30-min window  → typed-phrase ("REVERSE") confirmation
+ *     sheet → POST /activity/:id/reverse. Backend dispatches per-kind
+ *     compensating writer (ATTENDANCE_REVERSED, LEAVE_REVERSED, …).
+ *   - Beyond the window         → plain confirmation sheet "Send to HR for
+ *     review?" → POST /activity/:id/soft-flag. Backend creates a
+ *     LATE_REVERSAL_REQUEST SupervisorDecision row HR will surface in the
+ *     HR portal once it lands.
  *
  * Filter chips are wired to the backend: tapping any chip updates the
  * query key + URL params, triggering a TanStack Query refetch for the
@@ -21,9 +29,10 @@
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
+ * @derives(2026-05-18-supervisor-30-day-real-life-simulation-v2.md §3 Wave 4)
  */
 
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -34,16 +43,19 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 import type { ActivityRowT } from '@axhy/shared-schema';
+import { isReversibleActivityKind } from '@axhy/shared-schema';
 
 import { TopAppBar } from '../../components/today/TopAppBar';
 import { useActivityQuery } from '../../lib/queries/use-activity';
 import { useTodayQuery } from '../../lib/queries/use-today';
+import { useReverseActivity, useSoftFlagActivity } from '../../lib/queries/use-activity-reverse';
 import { useLocaleStrings } from '../../lib/i18n/use-locale';
 
 // ---------------------------------------------------------------------------
@@ -421,54 +433,237 @@ const rowS = StyleSheet.create({
 });
 
 // ---------------------------------------------------------------------------
-// ReverseModal — honest placeholder until routing slice ships
+// ReverseConfirmModal — typed-phrase confirmation for in-window reverse
 // ---------------------------------------------------------------------------
 
+const REVERSE_PHRASE = 'REVERSE';
+
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-type ReverseModalProps = {
+type ReverseConfirmModalProps = {
   row: ActivityRowT | null;
+  isPending: boolean;
+  error: string | null;
   onClose: () => void;
+  onSubmit: (row: ActivityRowT) => void;
 };
 
 /**
- * Placeholder confirmation modal for the Reverse action.
- * Shown when supervisor taps Reverse on a fresh (≤30 min) row.
- * No mutation is performed — routing slice wires this up next.
+ * Typed-phrase confirmation for the in-window Reverse action.
+ * The supervisor must type "REVERSE" before the submit button enables —
+ * Reverse is state-destructive (undoes an Attendance, LeaveRequest,
+ * Assignment, or ReplacementInvite acceptance), so the typed-phrase guard
+ * mirrors the EMPLOYMENT-tier DecisionCard discipline.
  */
-function ReverseModal({ row, onClose }: ReverseModalProps) {
+function ReverseConfirmModal({
+  row,
+  isPending,
+  error,
+  onClose,
+  onSubmit,
+}: ReverseConfirmModalProps) {
+  const [phrase, setPhrase] = useState('');
+
+  // Reset typed phrase every time the modal opens on a new row.
+  useEffect(() => {
+    if (row) setPhrase('');
+  }, [row?.id]);
+
+  const matches = phrase.trim().toUpperCase() === REVERSE_PHRASE;
+  const canSubmit = matches && !isPending && row !== null;
+
+  const handleSubmit = () => {
+    if (!row || !canSubmit) return;
+    onSubmit(row);
+  };
+
+  const handleBackdropClose = () => {
+    if (isPending) return;
+    onClose();
+  };
+
+  const summary = row?.summary ?? '';
+
   return (
     <Modal
       visible={row !== null}
       transparent
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={handleBackdropClose}
       statusBarTranslucent
     >
-      <Pressable style={modalS.backdrop} onPress={onClose} accessibilityLabel="Close modal">
+      <Pressable style={modalS.backdrop} onPress={handleBackdropClose} accessibilityLabel="Close">
         <Pressable
           style={modalS.sheet}
           onPress={() => {
             /* absorb tap */
           }}
         >
-          <Text style={modalS.title}>Reverse coming with routing slice</Text>
-          <Text style={modalS.body}>
-            Full reversal logic ships with the routing slice. Tap OK to dismiss.
+          <Text style={modalS.eyebrowDanger}>REVERSE ACTION</Text>
+          <Text style={modalS.title}>Reverse this action?</Text>
+          <Text style={modalS.body}>{summary}</Text>
+          <Text style={modalS.bodyMuted}>
+            This undoes the underlying change (attendance, leave, assignment, or replacement
+            acceptance). Audit trail records both the original action and the reversal.
           </Text>
+
+          <Text style={modalS.fieldLabel}>Type REVERSE to confirm</Text>
+          <TextInput
+            value={phrase}
+            onChangeText={setPhrase}
+            placeholder="REVERSE"
+            placeholderTextColor={tokens.color.ink.placeholder}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            style={[modalS.input, matches && modalS.inputMatches]}
+            editable={!isPending}
+            accessibilityLabel="Type REVERSE to confirm"
+            maxLength={32}
+          />
+
+          {error !== null && (
+            <View style={modalS.errorCard}>
+              <Text style={modalS.errorText}>{error}</Text>
+            </View>
+          )}
+
           <View style={modalS.btnRow}>
             <Pressable
               accessibilityRole="button"
-              onPress={onClose}
+              accessibilityLabel="Cancel"
+              onPress={handleBackdropClose}
+              disabled={isPending}
               style={({ pressed }) => [modalS.btn, modalS.btnCancel, pressed && modalS.btnPressed]}
             >
               <Text style={modalS.btnCancelLabel}>Cancel</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              onPress={onClose}
+              accessibilityLabel={isPending ? 'Reversing…' : 'Reverse'}
+              accessibilityState={{ disabled: !canSubmit }}
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              style={({ pressed }) => [
+                modalS.btn,
+                canSubmit ? modalS.btnDanger : modalS.btnDisabled,
+                pressed && canSubmit && modalS.btnPressed,
+              ]}
+            >
+              <Text style={canSubmit ? modalS.btnDangerLabel : modalS.btnDisabledLabel}>
+                {isPending ? 'Reversing…' : 'Reverse'}
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SoftFlagConfirmModal — plain confirmation for beyond-window soft-flag
+// ---------------------------------------------------------------------------
+
+/** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
+type SoftFlagConfirmModalProps = {
+  row: ActivityRowT | null;
+  isPending: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (row: ActivityRowT, note: string | null) => void;
+};
+
+/**
+ * Plain confirmation sheet for the beyond-window soft-flag action.
+ * Optional free-form note is forwarded to HR. No typed-phrase guard —
+ * soft-flag is non-destructive (just creates an HR-review row).
+ */
+function SoftFlagConfirmModal({
+  row,
+  isPending,
+  error,
+  onClose,
+  onSubmit,
+}: SoftFlagConfirmModalProps) {
+  const [note, setNote] = useState('');
+  useEffect(() => {
+    if (row) setNote('');
+  }, [row?.id]);
+
+  const handleSubmit = () => {
+    if (!row || isPending) return;
+    const trimmed = note.trim();
+    onSubmit(row, trimmed.length > 0 ? trimmed : null);
+  };
+
+  const handleBackdropClose = () => {
+    if (isPending) return;
+    onClose();
+  };
+
+  const summary = row?.summary ?? '';
+
+  return (
+    <Modal
+      visible={row !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={handleBackdropClose}
+      statusBarTranslucent
+    >
+      <Pressable style={modalS.backdrop} onPress={handleBackdropClose} accessibilityLabel="Close">
+        <Pressable
+          style={modalS.sheet}
+          onPress={() => {
+            /* absorb tap */
+          }}
+        >
+          <Text style={modalS.eyebrowWarn}>WINDOW CLOSED · HR REVIEW</Text>
+          <Text style={modalS.title}>Send to HR for review?</Text>
+          <Text style={modalS.body}>{summary}</Text>
+          <Text style={modalS.bodyMuted}>
+            The 30-minute reversal window has closed. HR will see this request in their queue and
+            decide whether to apply the reversal.
+          </Text>
+
+          <Text style={modalS.fieldLabel}>Optional note for HR</Text>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder="(optional) Add context for HR"
+            placeholderTextColor={tokens.color.ink.placeholder}
+            multiline
+            numberOfLines={3}
+            style={modalS.inputMulti}
+            editable={!isPending}
+            accessibilityLabel="Optional note for HR"
+            maxLength={1000}
+          />
+
+          {error !== null && (
+            <View style={modalS.errorCard}>
+              <Text style={modalS.errorText}>{error}</Text>
+            </View>
+          )}
+
+          <View style={modalS.btnRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+              onPress={handleBackdropClose}
+              disabled={isPending}
+              style={({ pressed }) => [modalS.btn, modalS.btnCancel, pressed && modalS.btnPressed]}
+            >
+              <Text style={modalS.btnCancelLabel}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={isPending ? 'Sending…' : 'Send to HR'}
+              accessibilityState={{ disabled: isPending }}
+              onPress={handleSubmit}
+              disabled={isPending}
               style={({ pressed }) => [modalS.btn, modalS.btnOk, pressed && modalS.btnPressed]}
             >
-              <Text style={modalS.btnOkLabel}>OK</Text>
+              <Text style={modalS.btnOkLabel}>{isPending ? 'Sending…' : 'Send to HR'}</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -536,6 +731,93 @@ const modalS = StyleSheet.create({
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.surface.card,
   },
+  btnDanger: {
+    backgroundColor: tokens.color.semantic.bad,
+  },
+  btnDangerLabel: {
+    fontSize: 14,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    color: tokens.color.surface.card,
+  },
+  btnDisabled: {
+    backgroundColor: tokens.color.surface.paper3,
+    opacity: 0.6,
+  },
+  btnDisabledLabel: {
+    fontSize: 14,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    color: tokens.color.ink.tertiary,
+  },
+  eyebrowDanger: {
+    fontSize: tokens.type.caption.size,
+    fontWeight: String(tokens.weight.bold) as '700',
+    color: tokens.color.semantic.bad,
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  eyebrowWarn: {
+    fontSize: tokens.type.caption.size,
+    fontWeight: String(tokens.weight.bold) as '700',
+    color: tokens.color.semantic.warn,
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  bodyMuted: {
+    fontSize: 13,
+    color: tokens.color.ink.tertiary,
+    lineHeight: 13 * 1.45,
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: tokens.type.caption.size,
+    fontWeight: String(tokens.weight.bold) as '700',
+    color: tokens.color.ink.tertiary,
+    letterSpacing: 1.0,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: tokens.color.surface.paper2,
+    borderColor: tokens.color.surface.cardEdge,
+    borderWidth: 1,
+    borderRadius: tokens.radius.r3,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: tokens.color.ink.primary,
+    fontFamily: tokens.font.mono,
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  inputMatches: {
+    borderColor: tokens.color.semantic.ok,
+  },
+  inputMulti: {
+    backgroundColor: tokens.color.surface.paper2,
+    borderColor: tokens.color.surface.cardEdge,
+    borderWidth: 1,
+    borderRadius: tokens.radius.r3,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: tokens.color.ink.primary,
+    minHeight: 64,
+    textAlignVertical: 'top',
+    marginBottom: 6,
+  },
+  errorCard: {
+    marginTop: 6,
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: tokens.radius.r2,
+    backgroundColor: tokens.color.semantic.badSoft,
+    borderLeftWidth: 4,
+    borderLeftColor: tokens.color.semantic.bad,
+  },
+  errorText: {
+    fontSize: 13,
+    color: tokens.color.ink.primary,
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -580,12 +862,16 @@ const KIND_CHIP_TO_PARAM: Record<KindChip, string> = {
  *
  * Row tap → expand action drawer (Share to WhatsApp + Reverse).
  * Share taps open a WhatsApp deeplink with composed message text.
- * Reverse shows a placeholder modal; full reversal ships with routing slice.
+ * Reverse taps route to one of two confirmation modals based on the
+ * row's age + kind:
+ *   - in-window + reversible kind   → ReverseConfirmModal (typed-phrase)
+ *   - past-window or non-reversible → SoftFlagConfirmModal (plain confirm)
  *
  * Filter chips are fully wired to the backend via `useActivityQuery`.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — supervisor surface
+ * @derives(2026-05-18-supervisor-30-day-real-life-simulation-v2.md §3 Wave 4)
  */
 export default function ActivityScreen() {
   const strings = useLocaleStrings();
@@ -631,8 +917,13 @@ export default function ActivityScreen() {
   // Expanded row id — null means all rows collapsed.
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
-  // Reverse modal — holds the row whose modal is open, null means closed.
-  const [reverseModalRow, setReverseModalRow] = useState<ActivityRowT | null>(null);
+  // Reverse modal — holds the row whose typed-phrase confirm sheet is open.
+  const [reverseRow, setReverseRow] = useState<ActivityRowT | null>(null);
+  // Soft-flag modal — holds the row whose HR-review confirm sheet is open.
+  const [softFlagRow, setSoftFlagRow] = useState<ActivityRowT | null>(null);
+
+  const reverseMutation = useReverseActivity();
+  const softFlagMutation = useSoftFlagActivity();
 
   const rows = q.data?.rows ?? [];
   const count = rows.length;
@@ -653,14 +944,66 @@ export default function ActivityScreen() {
   }, []);
 
   /**
-   * Handles a Reverse tap.
-   * Within the 30-min window → open placeholder modal.
-   * Beyond window → the button is greyed, but tapping is still allowed for
-   * soft-flag behaviour (not yet wired; modal is honest no-op for now).
+   * Routes a Reverse tap to the right confirmation modal.
+   *
+   * Decision matrix:
+   *   - Row is within the 30-min window AND its kind is in
+   *     REVERSIBLE_ACTIVITY_KINDS                       → ReverseConfirmModal
+   *   - Otherwise (past window OR non-reversible kind)  → SoftFlagConfirmModal
+   *
+   * The backend enforces the same window + kind gates; this routing is
+   * purely a UX optimisation so the supervisor sees the right copy from
+   * the start instead of an error toast.
    */
   const handleReverse = useCallback((row: ActivityRowT) => {
-    setReverseModalRow(row);
+    const inWindow = isWithinReverseWindow(row.when);
+    const isReversibleKind = isReversibleActivityKind(row.kind);
+    if (inWindow && isReversibleKind) {
+      setReverseRow(row);
+    } else {
+      setSoftFlagRow(row);
+    }
   }, []);
+
+  const submitReverse = useCallback(
+    (row: ActivityRowT) => {
+      reverseMutation.mutate(
+        { auditEventId: row.id },
+        {
+          onSuccess: () => {
+            setReverseRow(null);
+          },
+        },
+      );
+    },
+    [reverseMutation],
+  );
+
+  const submitSoftFlag = useCallback(
+    (row: ActivityRowT, note: string | null) => {
+      softFlagMutation.mutate(
+        { auditEventId: row.id, note },
+        {
+          onSuccess: () => {
+            setSoftFlagRow(null);
+          },
+        },
+      );
+    },
+    [softFlagMutation],
+  );
+
+  const closeReverseModal = useCallback(() => {
+    if (reverseMutation.isPending) return;
+    setReverseRow(null);
+    reverseMutation.reset();
+  }, [reverseMutation]);
+
+  const closeSoftFlagModal = useCallback(() => {
+    if (softFlagMutation.isPending) return;
+    setSoftFlagRow(null);
+    softFlagMutation.reset();
+  }, [softFlagMutation]);
 
   /** Stable renderItem for FlatList — won't change identity between renders. */
   const renderItem = useCallback(
@@ -767,8 +1110,6 @@ export default function ActivityScreen() {
     [dateChip, siteChipId, kindChip, siteChipOptions, q.isLoading, q.isError, q.error, rows.length],
   );
 
-  const closeReverseModal = useCallback(() => setReverseModalRow(null), []);
-
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       <TopAppBar title={titleText} subtitle={strings.activity.title.toUpperCase() + ' · PROOF'} />
@@ -791,7 +1132,20 @@ export default function ActivityScreen() {
         }
       />
 
-      <ReverseModal row={reverseModalRow} onClose={closeReverseModal} />
+      <ReverseConfirmModal
+        row={reverseRow}
+        isPending={reverseMutation.isPending}
+        error={reverseMutation.error instanceof Error ? reverseMutation.error.message : null}
+        onClose={closeReverseModal}
+        onSubmit={submitReverse}
+      />
+      <SoftFlagConfirmModal
+        row={softFlagRow}
+        isPending={softFlagMutation.isPending}
+        error={softFlagMutation.error instanceof Error ? softFlagMutation.error.message : null}
+        onClose={closeSoftFlagModal}
+        onSubmit={submitSoftFlag}
+      />
     </SafeAreaView>
   );
 }

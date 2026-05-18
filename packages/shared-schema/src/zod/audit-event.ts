@@ -46,6 +46,12 @@ export const AuditEventKindSchema = z.enum([
   'CALENDAR_ENTRY_PROMOTED',
   // ── Visit ──────────────────────────────────────────────────────────
   'VISIT_ENDED',
+  // ── Wave 4 compliance flow (2026-05-18) — flagged-visit review ─────
+  'VISIT_RESOLVED',
+  'VISIT_REJECTED',
+  // ── Wave 4 compliance flow (2026-05-18) — activity reverse + soft-flag ─
+  'ACTIVITY_REVERSED',
+  'ACTIVITY_LATE_REVERSAL_REQUESTED',
   // ── Chat / DWI ─────────────────────────────────────────────────────
   'CHAT_MESSAGE_CREATED',
   'DWI_PROPOSED',
