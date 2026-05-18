@@ -36,6 +36,7 @@ import { FloorPulse } from '../../components/today/FloorPulse';
 import { SiteCard } from '../../components/today/SiteCard';
 import { MarkAbsentSheet } from '../../components/today/MarkAbsentSheet';
 import { FlaggedReviewSheet } from '../../components/today/FlaggedReviewSheet';
+import { WorkerActionSheet } from '../../components/today/WorkerActionSheet';
 import { useLocaleStrings } from '../../lib/i18n/use-locale';
 
 export default function TodayScreen() {
@@ -43,6 +44,10 @@ export default function TodayScreen() {
   const strings = useLocaleStrings();
   const [markAbsentTarget, setMarkAbsentTarget] = useState<TodayWorkerT | null>(null);
   const [flaggedTarget, setFlaggedTarget] = useState<TodayFlaggedVisitT | null>(null);
+  // Long-press menu target — opens WorkerActionSheet with "Find replacement".
+  // Kept separate from markAbsentTarget so a long-press never accidentally
+  // triggers the mark-absent flow.
+  const [workerActionTarget, setWorkerActionTarget] = useState<TodayWorkerT | null>(null);
 
   const onRefresh = useCallback(() => {
     void today.refetch();
@@ -53,6 +58,22 @@ export default function TodayScreen() {
   const handleWorkerPress = useCallback((w: TodayWorkerT) => {
     setMarkAbsentTarget(w);
   }, []);
+
+  // Long-press handler — stable identity for the same memo reason.
+  const handleWorkerLongPress = useCallback((w: TodayWorkerT) => {
+    setWorkerActionTarget(w);
+  }, []);
+
+  const handleWorkerActionClose = useCallback(() => {
+    setWorkerActionTarget(null);
+  }, []);
+
+  // Look up the worker's site name from the today payload so the picker
+  // context strip can display it without doing a second round-trip.
+  const workerActionSiteName = useMemo(() => {
+    if (!workerActionTarget || !today.data) return null;
+    return today.data.sites.find((sit) => sit.id === workerActionTarget.siteId)?.name ?? null;
+  }, [workerActionTarget, today.data]);
 
   // Re-compute when data refreshes or when the locale changes (strings
   // ref changes). The hooks-deps lint plugin isn't loaded in this repo's
@@ -113,6 +134,7 @@ export default function TodayScreen() {
                     site={site}
                     workers={data.workers}
                     onWorkerPress={handleWorkerPress}
+                    onWorkerLongPress={handleWorkerLongPress}
                   />
                 ))}
               </View>
@@ -148,6 +170,12 @@ export default function TodayScreen() {
 
       <MarkAbsentSheet worker={markAbsentTarget} onClose={() => setMarkAbsentTarget(null)} />
       <FlaggedReviewSheet visit={flaggedTarget} onClose={() => setFlaggedTarget(null)} />
+      <WorkerActionSheet
+        visible={workerActionTarget !== null}
+        worker={workerActionTarget}
+        siteName={workerActionSiteName}
+        onClose={handleWorkerActionClose}
+      />
     </SafeAreaView>
   );
 }
