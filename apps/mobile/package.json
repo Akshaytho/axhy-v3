@@ -29,6 +29,7 @@
     "expo": "~54.0.34",
     "expo-audio": "~1.1.1",
     "expo-camera": "~17.0.10",
+    "expo-font": "^55.0.7",
     "expo-image-manipulator": "~14.0.8",
     "expo-keep-awake": "~15.0.8",
     "expo-localization": "~17.0.8",

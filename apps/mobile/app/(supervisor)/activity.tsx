@@ -1033,9 +1033,12 @@ export default function ActivityScreen() {
   const listHeader = useMemo(
     () => (
       <>
-        {/* Filter chip panel */}
+        {/* Filter chip panel. QA-round3 R3-08: added WHEN/WHERE/WHAT eyebrows
+            so Suresh can see at a glance which row belongs to which filter
+            group instead of guessing the boundaries. */}
         <View style={s.filterPanel}>
-          {/* Row 1: date */}
+          {/* Row 1: WHEN (date) */}
+          <Text style={s.filterEyebrow}>WHEN</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1051,8 +1054,9 @@ export default function ActivityScreen() {
             ))}
           </ScrollView>
 
-          {/* Row 2: site — populated from Today data; falls back to "All sites" only
+          {/* Row 2: WHERE (site) — populated from Today data; falls back to "All sites" only
               while Today is still loading. Real siteId UUIDs are used as filter values. */}
+          <Text style={s.filterEyebrow}>WHERE</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1068,7 +1072,8 @@ export default function ActivityScreen() {
             ))}
           </ScrollView>
 
-          {/* Row 3: kind */}
+          {/* Row 3: WHAT (kind) */}
+          <Text style={s.filterEyebrow}>WHAT</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1177,6 +1182,16 @@ const s = StyleSheet.create({
     gap: tokens.space[1],
     paddingHorizontal: 14,
     paddingVertical: 2,
+  },
+  filterEyebrow: {
+    fontSize: tokens.type.caption.size,
+    fontFamily: tokens.font.mono,
+    fontWeight: String(tokens.weight.bold) as '700',
+    color: tokens.color.ink.tertiary,
+    letterSpacing: tokens.type.caption.size * 0.08,
+    textTransform: 'uppercase',
+    paddingHorizontal: 14,
+    marginTop: tokens.space[1],
   },
   scroll: {
     paddingHorizontal: 14,

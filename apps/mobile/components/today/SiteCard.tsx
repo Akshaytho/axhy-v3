@@ -132,7 +132,7 @@ export const SiteCard = memo(
                   <Text style={[s.coverPillText, { color: tone.fg }]}>{tone.label}</Text>
                 </View>
                 <Text style={s.ratio}>
-                  {site.workersOn}/{site.workersDue}
+                  {site.workersOn} of {site.workersDue} here
                 </Text>
                 {!open ? <Text style={s.hint}>TAP TO VIEW WORKERS →</Text> : null}
               </View>
