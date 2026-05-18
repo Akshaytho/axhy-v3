@@ -222,7 +222,11 @@ function decodeCursor(token: string): DecisionsCursorPayload | null {
       const proposedAt = obj.proposedAt;
       const id = obj.id;
       if (
-        (priority === 0 || priority === 1 || priority === 2) &&
+        // QA-water-flow audit P0-1 (2026-05-18): priority bumped to 0|1|2|3
+        // when STALE section was added — FAILED_REVIEW is now 3, not 2. Prior
+        // bound was silently rejecting valid FAILED_REVIEW page-end cursors
+        // and restarting pagination from the top.
+        (priority === 0 || priority === 1 || priority === 2 || priority === 3) &&
         typeof proposedAt === 'string' &&
         typeof id === 'string'
       ) {
