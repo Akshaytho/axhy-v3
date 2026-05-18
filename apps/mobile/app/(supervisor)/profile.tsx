@@ -33,11 +33,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 import type { MeOutput } from '@axhy/shared-schema';
 
 import { apiFetch } from '../../lib/api';
 import { onAppLogout } from '../../lib/identity-lifecycle';
+import { useDrawer } from '../../components/Drawer';
 import { useLocaleStrings, setLocale } from '../../lib/i18n/use-locale';
 
 // ─── Storage helpers (web: localStorage; native: direct localStorage unavailable but
@@ -341,6 +343,34 @@ const modal = StyleSheet.create({
 // ─── ProfileScreen ────────────────────────────────────────────────────────────
 
 /**
+ * Hamburger ≡ button rendered top-left of the Profile header so the
+ * supervisor can re-open the drawer from this screen and navigate to
+ * any other drawer entry (My sites, Memory & rules, etc).
+ *
+ * Pre-this-fix: Profile had its own custom header with no menu button.
+ * The QA real-user walk caught it: tapping "My sites" from the drawer
+ * after navigating to Profile returned "Drawer entry not tappable"
+ * because the drawer wasn't reachable from Profile at all.
+ *
+ * Per founder lock 2026-05-18 PM: "all things on side bar should be
+ * working as expected" — every drawer screen must expose the drawer.
+ */
+function MenuButton(): JSX.Element {
+  const { openDrawer } = useDrawer();
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel="Menu"
+      onPress={openDrawer}
+      style={s.menuButton}
+      hitSlop={10}
+    >
+      <Feather name="menu" size={22} color={tokens.color.ink.primary} />
+    </TouchableOpacity>
+  );
+}
+
+/**
  * @derives(ADR-0003) @derives(ADR-0007) @derives(ADR-0021)
  * @derives(master-plan §G) — supervisor surface
  */
@@ -418,6 +448,7 @@ export default function ProfileScreen() {
       <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           <View style={s.header}>
+            <MenuButton />
             <View style={s.avatar}>
               <Text style={s.avatarText}>·</Text>
             </View>
@@ -439,6 +470,7 @@ export default function ProfileScreen() {
       <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           <View style={s.header}>
+            <MenuButton />
             <View style={s.avatar}>
               <Text style={s.avatarText}>·</Text>
             </View>
@@ -463,6 +495,7 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={s.header}>
+          <MenuButton />
           <View style={s.avatar}>
             <Text style={s.avatarText}>{initial}</Text>
           </View>
@@ -608,6 +641,12 @@ const s = StyleSheet.create({
     gap: 14,
     paddingHorizontal: tokens.space[1],
     marginBottom: tokens.space[6],
+  },
+  menuButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatar: {
     width: 64,
