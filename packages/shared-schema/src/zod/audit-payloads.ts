@@ -399,3 +399,101 @@ export const DwiDismissedPayloadSchema = z.object({
  * @derives(ADR-0003)
  */
 export type DwiDismissedPayload = z.infer<typeof DwiDismissedPayloadSchema>;
+
+// ============================================================================
+// Wave 4 compliance — FlaggedReview Resolve / Reject + Activity Reverse +
+// soft-flag (2026-05-18). Each kind has a typed payload so downstream
+// consumers (Activity feed, HR portal once it lands) can render without
+// guessing field shapes.
+// @derives(2026-05-18-supervisor-30-day-real-life-simulation-v2.md §3 Wave 4)
+// @derives(feedback_tests_must_prove_the_bug_existed.md)
+// ============================================================================
+
+/**
+ * Payload for VISIT_RESOLVED: emitted when a supervisor reviews an AI-flagged
+ * visit and confirms the worker's submission was fine. Flips Visit.flagged
+ * from true → false. Optional `supervisorReason` (free-form, max 1000 chars)
+ * captures any context the supervisor typed in the FlaggedReviewSheet.
+ *
+ * `previousState` snapshots the Visit's `state` column at the moment of
+ * resolution — the resolve write itself does not mutate `state`, only the
+ * `flagged` bit, so this is purely for audit reconstruction.
+ *
+ * @derives(2026-05-18-supervisor-30-day-real-life-simulation-v2.md §3 Wave 4)
+ */
+export const VisitResolvedPayloadSchema = z.object({
+  visitId: z.string().uuid(),
+  workerId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  previousState: z.string().min(1).max(64),
+  supervisorReason: z.string().min(1).max(1000).nullable(),
+  resolvedAt: z.string().datetime(),
+  resolvedBy: z.string().uuid(),
+});
+
+/** Inferred VisitResolvedPayload type. */
+export type VisitResolvedPayload = z.infer<typeof VisitResolvedPayloadSchema>;
+
+/**
+ * Payload for VISIT_REJECTED: emitted when a supervisor reviews an AI-flagged
+ * visit and decides the worker's submission was not acceptable. Visit state
+ * transitions to `REJECTED`. Typed-phrase confirmation ("REJECT") was required
+ * on the client side; the server enforces a non-empty `supervisorReason`
+ * (min 1, max 1000 chars) so audit can reconstruct WHY the visit was rejected.
+ *
+ * @derives(2026-05-18-supervisor-30-day-real-life-simulation-v2.md §3 Wave 4)
+ */
+export const VisitRejectedPayloadSchema = z.object({
+  visitId: z.string().uuid(),
+  workerId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  previousState: z.string().min(1).max(64),
+  supervisorReason: z.string().min(1).max(1000),
+  rejectedAt: z.string().datetime(),
+  rejectedBy: z.string().uuid(),
+});
+
+/** Inferred VisitRejectedPayload type. */
+export type VisitRejectedPayload = z.infer<typeof VisitRejectedPayloadSchema>;
+
+/**
+ * Payload for ACTIVITY_REVERSED: emitted when a supervisor undoes an earlier
+ * action within the 30-minute reversal window. The source audit row's `id`
+ * + `kind` are captured so the audit chain can be reconstructed in either
+ * direction. The compensating action's own audit row (e.g. ATTENDANCE_REVERSED,
+ * LEAVE_REVERSED, ASSIGNMENT_REVERSED) is emitted separately by the service
+ * layer; this row records the supervisor-initiated reversal intent.
+ *
+ * @derives(2026-05-18-supervisor-30-day-real-life-simulation-v2.md §3 Wave 4)
+ */
+export const ActivityReversedPayloadSchema = z.object({
+  sourceAuditEventId: z.string().uuid(),
+  sourceKind: z.string().min(1).max(64),
+  reversedAt: z.string().datetime(),
+  reversedBy: z.string().uuid(),
+});
+
+/** Inferred ActivityReversedPayload type. */
+export type ActivityReversedPayload = z.infer<typeof ActivityReversedPayloadSchema>;
+
+/**
+ * Payload for ACTIVITY_LATE_REVERSAL_REQUESTED: emitted when a supervisor
+ * asks HR to undo an action that is past the 30-minute window. Creates an
+ * HR-review SupervisorDecision row (kind = `LATE_REVERSAL_REQUEST`, tier =
+ * `OPERATIONAL`) that the HR portal will surface when it lands. The
+ * `decisionId` field links back to that row.
+ *
+ * @derives(2026-05-18-supervisor-30-day-real-life-simulation-v2.md §3 Wave 4)
+ */
+export const ActivityLateReversalRequestedPayloadSchema = z.object({
+  sourceAuditEventId: z.string().uuid(),
+  sourceKind: z.string().min(1).max(64),
+  decisionId: z.string().uuid(),
+  requestedAt: z.string().datetime(),
+  requestedBy: z.string().uuid(),
+});
+
+/** Inferred ActivityLateReversalRequestedPayload type. */
+export type ActivityLateReversalRequestedPayload = z.infer<
+  typeof ActivityLateReversalRequestedPayloadSchema
+>;
