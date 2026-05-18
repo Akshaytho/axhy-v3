@@ -26,8 +26,6 @@
  * @derives(master-plan §G) — supervisor surface
  */
 
-import crypto from 'node:crypto';
-
 import type { FastifyInstance } from 'fastify';
 import { DismissDecisionInput, DecisionsQueryInput, decisionSpecByKind } from '@axhy/shared-schema';
 
@@ -200,18 +198,39 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
       return;
     }
 
-    const idempotencyKey =
-      (req.headers['idempotency-key'] as string | undefined) ?? crypto.randomUUID();
+    // QA-water-flow audit P0-2 (2026-05-18): mandate idempotency-key from
+    // the caller. The previous fallback to crypto.randomUUID() created a
+    // fresh key on every mobile retry, defeating the /chat/apply dedup
+    // cache. A user-visible retry then surfaced ALREADY_APPLIED 409 (state
+    // safe, UX broken). Mobile must generate one key per Apply tap and
+    // resend it on retry.
+    const idempotencyKey = req.headers['idempotency-key'];
+    if (typeof idempotencyKey !== 'string' || idempotencyKey.length === 0) {
+      reply.code(400).send({
+        error: 'IDEMPOTENCY_KEY_REQUIRED',
+        message: 'Idempotency-Key header is required for /decisions/:id/apply',
+      });
+      return;
+    }
+
+    // Audit P1 finding (2026-05-18): forward observability headers so the
+    // downstream /chat/apply log line carries the inbound request
+    // correlation (x-request-id, traceparent, user-agent).
+    const forwarded: Record<string, string> = {
+      'idempotency-key': idempotencyKey,
+      'content-type': 'application/json',
+    };
     const authorization = req.headers.authorization;
+    if (authorization) forwarded.authorization = authorization;
+    for (const h of ['x-request-id', 'traceparent', 'tracestate', 'user-agent'] as const) {
+      const v = req.headers[h];
+      if (typeof v === 'string') forwarded[h] = v;
+    }
 
     const inner = await app.inject({
       method: 'POST',
       url: '/chat/apply',
-      headers: {
-        ...(authorization ? { authorization } : {}),
-        'idempotency-key': idempotencyKey,
-        'content-type': 'application/json',
-      },
+      headers: forwarded,
       payload: {
         toolName: spec.toolName,
         toolInput: (row.payload ?? {}) as Record<string, unknown>,
@@ -219,6 +238,15 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
       },
     });
 
-    reply.code(inner.statusCode).send(inner.json());
+    // Audit P2 finding (2026-05-18): inner.json() throws on non-JSON
+    // bodies (e.g. a downstream 500 with no payload). Falls back to the
+    // raw body string so the inbound caller still sees the status.
+    let body: unknown;
+    try {
+      body = inner.json();
+    } catch {
+      body = { error: 'UPSTREAM_NON_JSON', body: inner.body };
+    }
+    reply.code(inner.statusCode).send(body);
   });
 }
