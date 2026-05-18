@@ -544,7 +544,7 @@ export default function ProfileScreen() {
           <Text style={s.signOutText}>{strings.common.signOut}</Text>
         </TouchableOpacity>
 
-        <Text style={s.build}>AXHY · v3 · BUILD 2026.05.08</Text>
+        <Text style={s.build}>AXHY · v3 · BUILD 2026.05.18</Text>
       </ScrollView>
 
       {/* Language picker modal */}
