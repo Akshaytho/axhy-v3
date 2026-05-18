@@ -350,7 +350,13 @@ describe('GET /supervisor/decisions — UNION ALL across 3 sources', () => {
         kind: string;
         actions: Array<{ label: string; style: string; endpoint: string; method: string }>;
       }>;
-      counts: { needsYouNow: number; routine: number; failedReview: number; total: number };
+      counts: {
+        needsYouNow: number;
+        routine: number;
+        stale: number;
+        failedReview: number;
+        total: number;
+      };
       pageInfo: {
         cursor: string | null;
         hasMore: boolean;
