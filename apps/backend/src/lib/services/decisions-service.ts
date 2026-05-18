@@ -163,43 +163,107 @@ export type DecisionSource = {
  * @derives(Wave 2 plan §3F)
  */
 type DecisionsCursorPayload = {
-  /** Section ordinal of the last row on the prior page. */
-  priority: 0 | 1 | 2 | 3;
+  /**
+   * Section ordinal of the last row on the prior page. 0=NEEDS_YOU_NOW,
+   * 1=ROUTINE, 2=FAILED_REVIEW (no STALE — auto-dismiss handles old rows).
+   */
+  priority: 0 | 1 | 2;
   /** ISO `proposedAt` of the last row on the prior page. */
   proposedAt: string;
   /** Stable row id of the last row on the prior page; tiebreaks identical timestamps. */
   id: string;
 };
 
-const SECTION_PRIORITY: Record<DecisionSectionT, 0 | 1 | 2 | 3> = {
+const SECTION_PRIORITY: Record<DecisionSectionT, 0 | 1 | 2> = {
   NEEDS_YOU_NOW: 0,
   ROUTINE: 1,
-  STALE: 2,
-  FAILED_REVIEW: 3,
+  FAILED_REVIEW: 2,
 };
 
 /**
- * Anything pending for longer than this gets demoted to the STALE section
- * (regardless of which source it came from). Keeps NEEDS_YOU_NOW bounded.
+ * Pending decisions older than this threshold auto-dismiss with an audit
+ * trail. The supervisor never sees them; the dismissed-reason explains
+ * "auto-dismissed: no action for 48h" in /supervisor/activity.
  *
- * @derives(feedback_stale_decisions_section_after_48h.md, 2026-05-18)
+ * @derives(feedback_stale_decisions_section_after_48h.md, 2026-05-18 PM)
  */
 const STALE_THRESHOLD_MS = 48 * 60 * 60 * 1000;
 
 /**
- * Demote rows whose proposedAt is older than the staleness threshold into
- * the STALE section. FAILED_REVIEW is never demoted — it's a different
- * lane (failed AI review) and has its own UX. Mutates `rows` in place.
+ * Auto-sweep batch cap per read. Prevents pathological cleanup latency when
+ * a supervisor returns from a 2-week vacation with 500+ accumulated rows;
+ * the rest get swept on the next read.
  */
-function applyStaleness(rows: DecisionRowT[], at: Date): void {
-  const cutoffMs = at.getTime() - STALE_THRESHOLD_MS;
-  for (const r of rows) {
-    if (r.section === 'FAILED_REVIEW') continue;
-    if (r.section === 'STALE') continue;
-    if (new Date(r.proposedAt).getTime() < cutoffMs) {
-      r.section = 'STALE';
-    }
-  }
+const AUTO_SWEEP_BATCH = 100;
+
+/**
+ * Auto-dismiss pending SupervisorDecision rows older than the staleness
+ * threshold. Runs inside the same tx as the read. Race-safe:
+ *   - The `updateMany` WHERE re-checks `appliedAt IS NULL AND dismissedAt IS NULL`,
+ *     so a concurrent manual apply that beats us writes the row first; our
+ *     UPDATE sees count 0 and doesn't dismiss it.
+ *   - LeaveRequest / SwapRequest sources have their own lifecycle (REQUESTED/SENT
+ *     state); we don't auto-dismiss those — only SupervisorDecision rows. The
+ *     domain-side state machine drives stale-leave / stale-swap handling.
+ *
+ * Returns the number of rows actually dismissed in this sweep so the response
+ * can include it in `counts.autoDismissedThisRead` for a mobile toast.
+ *
+ * @derives(feedback_stale_decisions_section_after_48h.md, 2026-05-18 PM)
+ */
+async function autoSweepStaleDecisions(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+  at: Date,
+): Promise<number> {
+  const cutoff = new Date(at.getTime() - STALE_THRESHOLD_MS);
+  const candidates = await tx.supervisorDecision.findMany({
+    where: {
+      companyId,
+      createdAt: { lt: cutoff },
+      appliedAt: null,
+      dismissedAt: null,
+    },
+    select: { id: true, kind: true, supervisorId: true, tier: true },
+    take: AUTO_SWEEP_BATCH,
+  });
+  if (candidates.length === 0) return 0;
+
+  const ids = candidates.map((c) => c.id);
+  const updated = await tx.supervisorDecision.updateMany({
+    where: {
+      id: { in: ids },
+      appliedAt: null,
+      dismissedAt: null,
+    },
+    data: {
+      dismissedAt: at,
+      dismissedReason: 'auto-dismissed: no action for 48h',
+    },
+  });
+  if (updated.count === 0) return 0;
+
+  // Emit one audit event per dismissed row. The actorId is the original
+  // supervisor so the audit timeline reads "Ravi's decision auto-dismissed
+  // after 48h" — keeps accountability with the human who owned the queue.
+  // DWI_EXPIRED is the existing audit-event kind reserved for "the
+  // decision expired by timeout, no supervisor action". Distinct from
+  // DWI_DISMISSED (manual) and DWI_APPLIED (transition).
+  await tx.auditEvent.createMany({
+    data: candidates.map((c) => ({
+      companyId,
+      kind: 'DWI_EXPIRED',
+      actorId: c.supervisorId,
+      targetId: c.id,
+      payload: {
+        reason: 'auto-dismissed: no action for 48h',
+        kind: c.kind,
+        tier: c.tier,
+      } as Prisma.InputJsonValue,
+    })),
+  });
+
+  return updated.count;
 }
 
 function encodeCursor(p: DecisionsCursorPayload): string {
@@ -222,11 +286,10 @@ function decodeCursor(token: string): DecisionsCursorPayload | null {
       const proposedAt = obj.proposedAt;
       const id = obj.id;
       if (
-        // QA-water-flow audit P0-1 (2026-05-18): priority bumped to 0|1|2|3
-        // when STALE section was added — FAILED_REVIEW is now 3, not 2. Prior
-        // bound was silently rejecting valid FAILED_REVIEW page-end cursors
-        // and restarting pagination from the top.
-        (priority === 0 || priority === 1 || priority === 2 || priority === 3) &&
+        // Post-STALE-rollback (2026-05-18 PM): STALE section removed in favor
+        // of auto-dismiss-and-vanish; FAILED_REVIEW back to 2. Priority bound
+        // is 0|1|2 again.
+        (priority === 0 || priority === 1 || priority === 2) &&
         typeof proposedAt === 'string' &&
         typeof id === 'string'
       ) {
@@ -287,11 +350,19 @@ export async function buildDecisionsForSupervisor(
     ...(args.additionalDecisionSources ?? []),
   ];
 
+  // ── 1b. Auto-sweep — dismiss SupervisorDecision rows older than 48h
+  //         BEFORE the sources run, so the swept rows never appear in this
+  //         response. Race-safe (conditional updateMany re-checks lifecycle).
+  let autoDismissedThisRead = 0;
+  try {
+    autoDismissedThisRead = await autoSweepStaleDecisions(tx, args.companyId, at);
+  } catch {
+    // Don't fail the whole read if the sweep hits an issue — log via the
+    // standard Prisma error path; supervisor still sees their queue.
+  }
+
   const sourceResults = await Promise.all(sources.map((s) => s.loadRows(tx, ctx)));
   const allRows = sourceResults.flat();
-
-  // ── 2b. Apply staleness — demote rows > 48h old to STALE section. ──
-  applyStaleness(allRows, at);
 
   // ── 3. Sort by (section, proposedAt asc, id asc — stable tiebreaker). ──
   allRows.sort((a, b) => {
@@ -324,7 +395,6 @@ export async function buildDecisionsForSupervisor(
   // ── 5. Counts — for THIS page (back-compat) + cross-page total via pageInfo. ──
   const needsYouNow = pageRows.filter((r) => r.section === 'NEEDS_YOU_NOW').length;
   const routine = pageRows.filter((r) => r.section === 'ROUTINE').length;
-  const stale = pageRows.filter((r) => r.section === 'STALE').length;
   const failedReview = pageRows.filter((r) => r.section === 'FAILED_REVIEW').length;
 
   const lastRow = pageRows.length > 0 ? pageRows[pageRows.length - 1]! : null;
@@ -339,7 +409,13 @@ export async function buildDecisionsForSupervisor(
 
   return DecisionsResponse.parse({
     rows: pageRows,
-    counts: { needsYouNow, routine, stale, failedReview, total: pageRows.length },
+    counts: {
+      needsYouNow,
+      routine,
+      autoDismissedThisRead,
+      failedReview,
+      total: pageRows.length,
+    },
     pageInfo: {
       cursor: nextCursor,
       hasMore,

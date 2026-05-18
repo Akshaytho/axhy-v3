@@ -353,7 +353,7 @@ describe('GET /supervisor/decisions — UNION ALL across 3 sources', () => {
       counts: {
         needsYouNow: number;
         routine: number;
-        stale: number;
+        autoDismissedThisRead: number;
         failedReview: number;
         total: number;
       };

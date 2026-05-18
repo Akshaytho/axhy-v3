@@ -59,7 +59,7 @@ import { useLocaleStrings } from '../../lib/i18n/use-locale';
 // ---------------------------------------------------------------------------
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-const SECTION_ORDER: DecisionSectionT[] = ['NEEDS_YOU_NOW', 'ROUTINE', 'STALE', 'FAILED_REVIEW'];
+const SECTION_ORDER: DecisionSectionT[] = ['NEEDS_YOU_NOW', 'ROUTINE', 'FAILED_REVIEW'];
 
 // ---------------------------------------------------------------------------
 // Deep-link param parser
@@ -115,7 +115,6 @@ export default function DecisionsScreen() {
     const grouped: Record<DecisionSectionT, DecisionRowT[]> = {
       NEEDS_YOU_NOW: [],
       ROUTINE: [],
-      STALE: [],
       FAILED_REVIEW: [],
     };
     for (const row of q.data?.rows ?? []) {
@@ -213,9 +212,7 @@ export default function DecisionsScreen() {
             {SECTION_ORDER.map((section) => {
               const rows = bySection[section];
               if (rows.length === 0) return null;
-              // STALE items stay actionable but lose visual urgency (no red
-              // border). FAILED_REVIEW is a different lane entirely.
-              const isFaded = section === 'FAILED_REVIEW' || section === 'STALE';
+              const isFaded = section === 'FAILED_REVIEW';
               return (
                 <View key={section} style={s.section}>
                   <SectionHeader section={section} count={rows.length} />
