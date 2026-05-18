@@ -278,8 +278,12 @@ describe('water-flow #2 — AI clarifies missing info instead of inventing', () 
 
 describe('water-flow #3 — mixed-kind utterance + multi-turn context retention', () => {
   it('Ravi speaks one mixed utterance (absent + leave + swap); AI emits at least 2 distinct decision kinds', async () => {
+    // Use names actually in the tenant (Sundeep + Lakshmi). Earlier draft
+    // referenced "Priya" who doesn't exist — AI correctly refused to invent
+    // a worker, returned 0 cards (master plan §G no-silent-writes rule).
+    // The test was wrong; this is the corrected scenario.
     const mixed =
-      'Priya is sick today mark her absent at Apollo. Also Lakshmi needs leave next week ' +
+      'Sundeep is sick today mark him absent at Apollo. Also Lakshmi needs leave next week ' +
       'Tuesday Wednesday Thursday for a family function.';
     const res = await sendChat(mixed);
     const tools = allToolNames(res);
