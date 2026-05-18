@@ -54,6 +54,11 @@ export async function registerSwapRequestRoutes(app: FastifyInstance): Promise<v
       return;
     }
 
+    if (auth.role !== 'SUPERVISOR') {
+      reply.code(403).send({ error: 'SUPERVISOR_ROLE_REQUIRED' });
+      return;
+    }
+
     const { fromWorkerId, toWorkerId, siteId, effectiveAt, reason } = parsed.data;
     const effectiveDate = new Date(effectiveAt);
     if (effectiveDate.getTime() <= Date.now()) {
@@ -65,18 +70,27 @@ export async function registerSwapRequestRoutes(app: FastifyInstance): Promise<v
     }
 
     try {
-      // F-002.b (round-2 R2b-iii): route is now a thin wrapper around
-      // createSwapRequestService. /chat/apply (F-002.15) calls the same
-      // service INSIDE its own withTenantContext for atomic lifecycle +
-      // domain.
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-        createSwapRequestService(
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        const portfolio = await getSitesSupervisedByUser(tx, {
+          companyId: auth.companyId,
+          userId: auth.userId,
+        });
+        if (!portfolio.some((p) => p.siteId === siteId)) {
+          return { kind: 'NOT_RESPONSIBLE' as const };
+        }
+        return createSwapRequestService(
           tx,
           { fromWorkerId, toWorkerId, siteId, effectiveAt, reason: reason ?? null },
           { companyId: auth.companyId, userId: auth.userId },
-        ),
-      );
+        );
+      });
 
+      if (out.kind === 'NOT_RESPONSIBLE') {
+        reply
+          .code(403)
+          .send({ error: 'NOT_RESPONSIBLE', message: 'Site is not in your portfolio' });
+        return;
+      }
       if (out.kind === 'WORKER_NOT_FOUND') {
         reply.code(404).send({
           error: 'WORKER_NOT_FOUND',

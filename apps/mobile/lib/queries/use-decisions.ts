@@ -38,7 +38,7 @@ export function useDismissDecision() {
     mutationFn: async (id: string) =>
       apiFetch(`/supervisor/decisions/${id}/dismiss`, {
         method: 'POST',
-        body: JSON.stringify({}),
+        body: {},
       }),
     onSuccess: () => void invalidate(),
   });

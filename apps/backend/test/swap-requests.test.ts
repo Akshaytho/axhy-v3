@@ -123,6 +123,21 @@ beforeAll(async () => {
   });
   otherTenantSiteId = sOther.id;
 
+  // B-02 audit fix (2026-05-19): POST /swap-requests now verifies the
+  // supervisor's portfolio includes the target site. Tests need an
+  // effective binding to siteA or the happy-path returns 403.
+  await prismaRaw.siteSupervisorBinding.create({
+    data: {
+      companyId: companyAId,
+      siteId: siteAId,
+      userId: supervisorId,
+      actingForUserId: null,
+      effectiveFrom: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      reason: 'swap-requests test seed',
+      createdBy: supervisorId,
+    },
+  });
+
   accessToken = await issueAccessToken({
     userId: supervisorId,
     companyId: companyAId,
@@ -141,6 +156,9 @@ afterAll(async () => {
     where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
   });
   await prismaRaw.swapRequest.deleteMany({
+    where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
+  });
+  await prismaRaw.siteSupervisorBinding.deleteMany({
     where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
   });
   await prismaRaw.site.deleteMany({
@@ -229,7 +247,13 @@ describe('POST /swap-requests', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('returns 404 for cross-tenant site', async () => {
+  // B-02 audit fix (2026-05-19): a cross-tenant siteId is now blocked by the
+  // portfolio guard BEFORE the service layer's site-not-found check fires.
+  // 403 NOT_RESPONSIBLE replaces the prior 404 SITE_NOT_FOUND. Both are
+  // valid tenant-isolation responses; the new one tells the supervisor
+  // exactly why the request was rejected (not their site) instead of
+  // pretending the site doesn't exist anywhere.
+  it('returns 403 NOT_RESPONSIBLE for cross-tenant site (portfolio guard)', async () => {
     const res = await inject(
       'POST',
       '/swap-requests',
@@ -241,7 +265,8 @@ describe('POST /swap-requests', () => {
       },
       authHeader(),
     );
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: string }).error).toBe('NOT_RESPONSIBLE');
   });
 
   it('happy path: writes SwapRequest + AuditEvent + 2 Outbox rows', async () => {

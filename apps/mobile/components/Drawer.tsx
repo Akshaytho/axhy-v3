@@ -42,6 +42,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 
@@ -164,8 +165,15 @@ export function Drawer({ open, onClose }: DrawerProps) {
     // can read it.
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
+    const isoVal = endOfToday.toISOString();
     if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-      localStorage.setItem('axhy_ai_paused_until', endOfToday.toISOString());
+      localStorage.setItem('axhy_ai_paused_until', isoVal);
+    } else {
+      try {
+        SecureStore.setItem('axhy_ai_paused_until', isoVal);
+      } catch {
+        /* swallow */
+      }
     }
     setPauseModalVisible(false);
     onClose();

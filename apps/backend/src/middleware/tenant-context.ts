@@ -66,6 +66,7 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
       error: 'AUTH_INVALID',
       message: 'Token invalid or expired',
     });
+    return;
   }
 }
 

@@ -298,6 +298,13 @@ function DecisionCardImpl({
   const [employmentInput, setEmploymentInput] = useState('');
   const employmentMatches =
     isEmployment && row.confirmPhrase != null ? employmentInput === row.confirmPhrase : false;
+  const runAction = useDecisionAction();
+  const handleEmploymentConfirm = useCallback(() => {
+    const primary = row.actions.find((a) => a.style === 'primary');
+    if (primary) {
+      runAction.mutate({ action: primary });
+    }
+  }, [row, runAction]);
 
   // ── Amend-mode banner gate ─────────────────────────────────────────────
   const showAmendBanner = amendActive && readAmendable(row);
@@ -365,7 +372,7 @@ function DecisionCardImpl({
             onChangeInput={setEmploymentInput}
             matches={employmentMatches}
             isDismissing={isDismissing}
-            onConfirm={() => onDismiss(row.id)}
+            onConfirm={handleEmploymentConfirm}
             onDismiss={() => onDismiss(row.id)}
           />
         ) : row.actions.length > 0 ? (

@@ -29,8 +29,12 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 import { LOCALE_STORAGE_KEY, getStrings, type LocaleCode, type LocaleStrings } from './strings';
+
+const isWeb = Platform.OS === 'web';
 
 // ─── Module-level store ───────────────────────────────────────────────────────
 
@@ -42,9 +46,16 @@ const listeners = new Set<() => void>();
  * Safe to call in any environment.
  */
 function readStoredLocale(): LocaleCode {
-  if (typeof localStorage !== 'undefined') {
+  if (isWeb && typeof localStorage !== 'undefined') {
     const raw = localStorage.getItem(LOCALE_STORAGE_KEY);
     if (raw === 'hi' || raw === 'te') return raw;
+  } else if (!isWeb) {
+    try {
+      const raw = SecureStore.getItem(LOCALE_STORAGE_KEY);
+      if (raw === 'hi' || raw === 'te') return raw;
+    } catch {
+      /* first launch or unavailable */
+    }
   }
   return 'en';
 }
@@ -85,8 +96,14 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
  * (the DOM `storage` event does NOT fire for writes from the same tab).
  */
 export function setLocale(code: LocaleCode): void {
-  if (typeof localStorage !== 'undefined') {
+  if (isWeb && typeof localStorage !== 'undefined') {
     localStorage.setItem(LOCALE_STORAGE_KEY, code);
+  } else if (!isWeb) {
+    try {
+      SecureStore.setItem(LOCALE_STORAGE_KEY, code);
+    } catch {
+      /* swallow */
+    }
   }
   if (code !== currentLocale) {
     currentLocale = code;

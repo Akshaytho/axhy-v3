@@ -19,6 +19,8 @@
 import type { Prisma } from '@prisma/client';
 import { ActivityResponse, type ActivityResponseT } from '@axhy/shared-schema';
 
+import { todayISTBounds, yesterdayISTBounds, thisWeekISTBounds } from '../ist-date.js';
+
 import { summarizeAuditKind } from './audit-summary.js';
 
 const DEFAULT_LIMIT = 50;
@@ -74,48 +76,8 @@ export type BuildActivityArgs = {
 };
 
 // ---------------------------------------------------------------------------
-// Date-range helpers (UTC)
+// Date-range helpers (IST — India Standard Time, UTC+05:30)
 // ---------------------------------------------------------------------------
-
-/**
- * Returns [startInclusive, endExclusive) UTC bounds for today.
- *
- * @derives(ADR-0003)
- */
-function todayUTCBounds(): { gte: Date; lt: Date } {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const end = new Date(start.getTime() + 86_400_000);
-  return { gte: start, lt: end };
-}
-
-/**
- * Returns [startInclusive, endExclusive) UTC bounds for yesterday.
- *
- * @derives(ADR-0003)
- */
-function yesterdayUTCBounds(): { gte: Date; lt: Date } {
-  const today = todayUTCBounds();
-  return { gte: new Date(today.gte.getTime() - 86_400_000), lt: today.gte };
-}
-
-/**
- * Returns [startInclusive, endExclusive) UTC bounds for the current ISO week
- * (Monday 00:00 UTC → following Monday 00:00 UTC).
- *
- * @derives(ADR-0003)
- */
-function thisWeekUTCBounds(): { gte: Date; lt: Date } {
-  const now = new Date();
-  const day = now.getUTCDay(); // 0 = Sun, 1 = Mon, …, 6 = Sat
-  // ISO week starts on Monday; distance from Monday = (day + 6) % 7
-  const daysFromMonday = (day + 6) % 7;
-  const monday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysFromMonday),
-  );
-  const nextMonday = new Date(monday.getTime() + 7 * 86_400_000);
-  return { gte: monday, lt: nextMonday };
-}
 
 /**
  * Convert a `DateFilter` value to a Prisma `createdAt` where-clause fragment.
@@ -127,11 +89,11 @@ function thisWeekUTCBounds(): { gte: Date; lt: Date } {
 function dateFilterToWhere(filter: DateFilter): { gte: Date; lt: Date } | undefined {
   switch (filter) {
     case 'today':
-      return todayUTCBounds();
+      return todayISTBounds();
     case 'yesterday':
-      return yesterdayUTCBounds();
+      return yesterdayISTBounds();
     case 'this-week':
-      return thisWeekUTCBounds();
+      return thisWeekISTBounds();
     case 'all':
       return undefined;
   }
