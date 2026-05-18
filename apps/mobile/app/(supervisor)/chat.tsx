@@ -412,22 +412,22 @@ export default function ChatScreen(): JSX.Element {
           },
         ]);
 
-        // Amend completion: when in amend mode AND the AI emitted at least
-        // one propose_* tool result, treat the amend as complete — dismiss
-        // the banner and route the supervisor back to the focused decision.
-        if (amendTargetId) {
-          const hadTool =
-            (res.decisionCards && res.decisionCards.length > 0) || res.decisionCard !== null;
-          if (hadTool) {
-            const focusId = amendTargetId;
-            setAmendTargetId(null);
-            // expo-router push with query so the Decisions screen can
-            // scroll to / highlight the amended card.
-            router.push({
-              pathname: '/(supervisor)/decisions',
-              params: { focus: focusId },
-            });
-          }
+        // Amend completion: gate on the server's `didAmend` flag — the
+        // backend only sets it to true when it (a) validated the amend
+        // target belongs to this supervisor in this tenant and (b)
+        // persisted the amend intent on the user-row's audit payload.
+        //
+        // Cluster A fix (Sprint 2 deep-review 2026-05-18). Before this,
+        // the celebration fired on any tool result, so the banner would
+        // green-flash for X when the AI marked a completely different
+        // worker absent. Now mobile trusts the server's own contract.
+        if (amendTargetId && res.didAmend === true) {
+          const focusId = amendTargetId;
+          setAmendTargetId(null);
+          router.push({
+            pathname: '/(supervisor)/decisions',
+            params: { focus: focusId },
+          });
         }
       } catch (err) {
         setMessages((prev) =>
