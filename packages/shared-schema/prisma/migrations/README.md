@@ -36,13 +36,22 @@ caused a Prisma history-drift error.
 
 **Discipline going forward:**
 
-- Every new migration's directory prefix MUST be today's calendar
-  date (UTC) — `date -u +%Y%m%d`.
+- Prisma applies migrations in lexicographic order. The directory
+  prefix MUST always sort AFTER every already-applied migration —
+  otherwise a fresh deploy would try to apply a "today" migration
+  before the future-dated Sprint-1 rows that depend on its
+  successors. So the active rule is:
+  `max(latest existing prefix + 1 day, today UTC)`.
+- Today (2026-05-18) this resolves to `20260524_…` because the
+  latest existing prefix is `20260523_…`. From 2026-05-24 onwards
+  the two clauses converge and "today's UTC date" alone is correct.
 - Parallel subagents authoring migrations on the same day MUST
   coordinate sequence numbers via the integration step before
   applying. A simple `ls prisma/migrations | tail -3` before
   generating the migration filename is enough.
-- If a CI date-guard ever lands, exempt these three rows (009 / 010 / 011) by name; future migrations should not need the exemption.
+- If a CI date-guard ever lands, exempt the Sprint-1 three rows
+  (009 / 010 / 011) by name; once they age out (real calendar date
+  ≥ 2026-05-23) no exemption is needed.
 
 ## Active migration sequence (lexicographic apply order)
 

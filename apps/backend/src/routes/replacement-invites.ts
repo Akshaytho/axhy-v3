@@ -45,6 +45,7 @@ import {
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { withIdempotency } from '../lib/idempotency-key.js';
 import {
   createReplacementInvite,
   acceptReplacementInvite,
@@ -83,6 +84,8 @@ type IdParams = FastifyRequest<{ Params: { id: string } }>;
  */
 export async function registerReplacementInviteRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /supervisor/replacement-invites ─────────────────────────────────
+  // Idempotency-Key supported (Cluster F fix): a Slow-3G double-tap with
+  // the same key returns the cached invite row instead of creating two.
   app.post('/supervisor/replacement-invites', { preHandler: requireAuth }, async (req, reply) => {
     const auth = req.auth;
     if (!auth) {
@@ -99,49 +102,55 @@ export async function registerReplacementInviteRoutes(app: FastifyInstance): Pro
       return;
     }
 
-    const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-      createReplacementInvite(tx, {
-        ...parsed.data,
-        companyId: auth.companyId,
-        fromSupervisorId: auth.userId,
-      }),
-    );
+    await withIdempotency(
+      req,
+      reply,
+      { companyId: auth.companyId, routeKey: 'POST:/supervisor/replacement-invites' },
+      async () => {
+        const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+          createReplacementInvite(tx, {
+            ...parsed.data,
+            companyId: auth.companyId,
+            fromSupervisorId: auth.userId,
+          }),
+        );
 
-    if (out.kind === 'SITE_NOT_FOUND') {
-      reply.code(404).send({ error: 'SITE_NOT_FOUND' });
-      return;
-    }
-    if (out.kind === 'VISIT_NOT_FOUND') {
-      reply.code(404).send({ error: 'VISIT_NOT_FOUND' });
-      return;
-    }
-    if (out.kind === 'CANDIDATE_NOT_FOUND') {
-      reply.code(404).send({ error: 'CANDIDATE_NOT_FOUND' });
-      return;
-    }
-    if (out.kind === 'CANDIDATE_NOT_LINKED_TO_WORKER') {
-      reply.code(409).send({
-        error: 'CANDIDATE_NOT_LINKED_TO_WORKER',
-        message:
-          'Candidate must have a linked Worker row in this tenant. ' +
-          'Unlinked users cannot receive replacement invites.',
-      });
-      return;
-    }
+        if (out.kind === 'SITE_NOT_FOUND') {
+          return { status: 404, body: { error: 'SITE_NOT_FOUND' } };
+        }
+        if (out.kind === 'VISIT_NOT_FOUND') {
+          return { status: 404, body: { error: 'VISIT_NOT_FOUND' } };
+        }
+        if (out.kind === 'CANDIDATE_NOT_FOUND') {
+          return { status: 404, body: { error: 'CANDIDATE_NOT_FOUND' } };
+        }
+        if (out.kind === 'CANDIDATE_NOT_LINKED_TO_WORKER') {
+          return {
+            status: 409,
+            body: {
+              error: 'CANDIDATE_NOT_LINKED_TO_WORKER',
+              message:
+                'Candidate must have a linked Worker row in this tenant. ' +
+                'Unlinked users cannot receive replacement invites.',
+            },
+          };
+        }
 
-    req.log.info(
-      {
-        event: 'replacement_invite.sent',
-        inviteId: out.invite.id,
-        toWorkerUserId: out.invite.toWorkerId,
-        siteId: parsed.data.siteId,
-        fromSupervisorId: auth.userId,
-        expiresAt: out.invite.expiresAt,
+        req.log.info(
+          {
+            event: 'replacement_invite.sent',
+            inviteId: out.invite.id,
+            toWorkerUserId: out.invite.toWorkerId,
+            siteId: parsed.data.siteId,
+            fromSupervisorId: auth.userId,
+            expiresAt: out.invite.expiresAt,
+          },
+          'replacement-invite sent',
+        );
+
+        return { status: 201, body: { ok: true, invite: out.invite } };
       },
-      'replacement-invite sent',
     );
-
-    reply.code(201).send({ ok: true, invite: out.invite });
   });
 
   // ── POST /worker/replacement-invites/:id/accept ──────────────────────────

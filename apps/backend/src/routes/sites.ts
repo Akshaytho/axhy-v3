@@ -25,6 +25,7 @@ import type { LogComplaintOutput } from '@axhy/shared-schema';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { getEffectiveBinding } from '../lib/effective-responsibility.js';
+import { withIdempotency } from '../lib/idempotency-key.js';
 import { createComplaintWithInitialMessage } from '../lib/services/complaint-service.js';
 
 /**
@@ -54,48 +55,63 @@ export async function registerSitesRoutes(app: FastifyInstance): Promise<void> {
       const { text, severity } = parsed.data;
 
       try {
-        // Cluster H fix (P2, 2026-05-18): the direct-button route now
-        // goes through the same `createComplaintWithInitialMessage`
-        // service the chat tool-loop uses, so a complaint logged via
-        // button has the same on-disk shape as one logged via chat
-        // (Complaint row + initial supervisor ComplaintMessage + audit +
-        // outbox, all in one tx). Previously the two paths drifted —
-        // button-route complaints had zero ComplaintMessage rows so the
-        // thread view rendered as empty.
-        const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-          createComplaintWithInitialMessage(tx, {
+        // Idempotency-Key supported (Cluster F): the button-route is the
+        // single highest-frequency double-tap candidate (supervisor on
+        // Slow 3G angrily taps "Log complaint" three times). Same key
+        // returns cached complaintId instead of creating three rows.
+        await withIdempotency(
+          req,
+          reply,
+          {
             companyId: auth.companyId,
-            siteId,
-            supervisorUserId: auth.userId,
-            createdByUserId: auth.userId,
-            text,
-            severity,
-            // Default kind for the direct-button route is `other` until
-            // the supervisor UI exposes a kind picker. The chat tool-loop
-            // sets kind explicitly via `propose_log_complaint`.
-            kind: 'other',
-            observedAt: null,
-            origin: 'BUTTON',
-          }),
+            routeKey: `POST:/sites/${siteId}/complaints`,
+          },
+          async () => {
+            // Cluster H fix (P2, 2026-05-18): the direct-button route now
+            // goes through the same `createComplaintWithInitialMessage`
+            // service the chat tool-loop uses, so a complaint logged via
+            // button has the same on-disk shape as one logged via chat
+            // (Complaint row + initial supervisor ComplaintMessage +
+            // audit + outbox, all in one tx).
+            const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+              createComplaintWithInitialMessage(tx, {
+                companyId: auth.companyId,
+                siteId,
+                supervisorUserId: auth.userId,
+                createdByUserId: auth.userId,
+                text,
+                severity,
+                // Default kind for the direct-button route is `other`
+                // until the supervisor UI exposes a kind picker. The
+                // chat tool-loop sets kind explicitly via
+                // `propose_log_complaint`.
+                kind: 'other',
+                observedAt: null,
+                origin: 'BUTTON',
+              }),
+            );
+
+            if (out.kind === 'SITE_NOT_FOUND') {
+              return {
+                status: 404,
+                body: {
+                  error: 'SITE_NOT_FOUND',
+                  message: 'Site not found in this company',
+                },
+              };
+            }
+
+            const result: LogComplaintOutput = {
+              ok: true,
+              complaintId: out.complaintId,
+              siteId,
+              severity,
+              loggedBy: auth.userId,
+              loggedAt: new Date().toISOString(),
+            };
+            return { status: 200, body: result };
+          },
         );
-
-        if (out.kind === 'SITE_NOT_FOUND') {
-          reply.code(404).send({
-            error: 'SITE_NOT_FOUND',
-            message: 'Site not found in this company',
-          });
-          return;
-        }
-
-        const result: LogComplaintOutput = {
-          ok: true,
-          complaintId: out.complaintId,
-          siteId,
-          severity,
-          loggedBy: auth.userId,
-          loggedAt: new Date().toISOString(),
-        };
-        reply.send(result);
       } catch (err) {
         req.log.error({ err }, 'log-complaint failed');
         reply.code(500).send({ error: 'INTERNAL', message: 'Could not log complaint' });
