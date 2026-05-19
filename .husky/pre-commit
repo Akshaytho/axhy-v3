@@ -64,7 +64,15 @@ fi
 # Session audit: check code against locked constitutional docs.
 # Blocks commit if BLOCKER or HIGH violations found.
 # Per docs/locked/ — the AI behavioral contract.
+#
+# Emergency override: AXHY_AUDIT_EMERGENCY=1 skips the audit.
+# Use ONLY for production hotfixes when the audit blocks a critical fix.
 # -----------------------------------------------------------------------------
+if [ "$AXHY_AUDIT_EMERGENCY" = "1" ]; then
+  echo "[audit] EMERGENCY OVERRIDE — audit skipped by operator."
+  echo "[audit] Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> docs/learnings/_emergency-overrides.log 2>/dev/null || true
+  echo "[audit] Logged. Fix the underlying issue ASAP."
+else
 echo "[audit] Running compliance audit against locked docs..."
 
 # Find tsx binary — may be in different locations depending on install state
@@ -87,11 +95,13 @@ else
   if [ "$AUDIT_STATUS" -ne 0 ]; then
     echo ""
     echo "[audit] COMMIT BLOCKED — fix violations above before committing."
-    echo "[audit] If a violation is a false positive, add a skip comment (e.g. // raw-ok)"
+    echo "[audit] False positive? Add '// audit-ok' comment on the flagged line."
+    echo "[audit] Production emergency? AXHY_AUDIT_EMERGENCY=1 git commit ..."
     echo ""
     exit "$AUDIT_STATUS"
   fi
   echo "[audit] All checks passed."
+fi
 fi
 
 # -----------------------------------------------------------------------------

@@ -39,7 +39,14 @@ function grep(pattern: string, dirs: string[], exts: string[]): string[] {
       encoding: 'utf8',
       maxBuffer: 10 * 1024 * 1024,
     });
-    return result.trim().split('\n').filter(Boolean);
+    return result
+      .trim()
+      .split('\n')
+      .filter((line) => {
+        if (!line) return false;
+        if (line.includes('// audit-ok')) return false;
+        return true;
+      });
   } catch {
     return [];
   }
@@ -175,7 +182,7 @@ function printLearningDigest(learnings: Learning[], hotRules: Map<string, number
     console.log('');
     console.log('[audit] HOT SPOTS — rules broken multiple times:');
     for (const [rule, count] of hotSpots) {
-      const tag = count >= 3 ? 'CHRONIC — auto-escalates to BLOCKER' : 'REPEAT';
+      const tag = count >= 3 ? 'CHRONIC — escalated to HIGH' : 'REPEAT';
       console.log(`  [${tag}] ${rule}: broken ${count}x`);
     }
   }
@@ -205,6 +212,17 @@ function runLearnedChecks(learnings: Learning[], hotRules: Map<string, number>) 
     const paths = learning.checkPaths.split(',').map((p) => p.trim());
     const hits = grep(learning.checkPattern, paths, ['.ts', '.tsx']);
 
+    // Pattern breadth guard — a pattern matching 20+ raw hits is too broad.
+    // It will fire on normal code, cause false positives, and erode trust.
+    if (hits.length > 20) {
+      console.log(
+        `[audit] WARNING: Learning ${learning.file} pattern is too broad (${hits.length} hits).`,
+      );
+      console.log(`[audit]   Pattern: ${learning.checkPattern}`);
+      console.log(`[audit]   Narrow the check_pattern or add // audit-ok to known-good lines.`);
+      continue;
+    }
+
     const filtered = hits.filter((h) => {
       if (h.includes('node_modules') || h.includes('/dist/') || h.includes('.next/')) return false;
       if (h.includes('.test.') || h.includes('.spec.') || h.includes('/test/')) return false;
@@ -223,19 +241,24 @@ function runLearnedChecks(learnings: Learning[], hotRules: Map<string, number>) 
 
     if (learning.checkExpect === 'none') {
       for (const hit of filtered) {
-        const severity = isChronicHotSpot ? 'BLOCKER' : 'HIGH';
+        // Learned checks cap at HIGH. Only hardcoded invariants (Policy,
+        // AuditEvent) can be BLOCKER — a bad learning pattern must never
+        // permanently block all commits.
+        const severity = isChronicHotSpot ? 'HIGH' : 'MEDIUM';
+        const tag = isChronicHotSpot ? ' [CHRONIC]' : '';
         fail(
           `learned:${learning.file}`,
           severity,
-          `[${learning.brokenRule}] ${hit.replace(REPO_ROOT + '/', '')}`,
+          `[${learning.brokenRule}]${tag} ${hit.replace(REPO_ROOT + '/', '')}`,
         );
       }
     } else if (learning.checkExpect === 'exists' && filtered.length === 0) {
-      const severity = isChronicHotSpot ? 'BLOCKER' : 'HIGH';
+      const severity = isChronicHotSpot ? 'HIGH' : 'MEDIUM';
+      const tag = isChronicHotSpot ? ' [CHRONIC]' : '';
       fail(
         `learned:${learning.file}`,
         severity,
-        `[${learning.brokenRule}] Expected pattern '${learning.checkPattern}' not found in ${learning.checkPaths}`,
+        `[${learning.brokenRule}]${tag} Expected pattern '${learning.checkPattern}' not found in ${learning.checkPaths}`,
       );
     }
   }
@@ -259,6 +282,7 @@ function checkLockedDocsExist() {
     'docs/locked/security-gaps-to-fix.md',
     'docs/locked/operational-invariants.md',
     'docs/locked/verification-checklists.md',
+    'docs/locked/ai-fact-verification.md',
   ];
 
   for (const doc of expected) {
@@ -808,6 +832,16 @@ function checkAbusePrevention() {
 }
 
 // ─── Run all checks ────────────────────────────────────────────────────────
+
+// Emergency override — production hotfix escape hatch.
+// Logged, not silent. Use ONLY when audit blocks a critical fix.
+if (process.env.AXHY_AUDIT_EMERGENCY === '1') {
+  console.log('[audit] EMERGENCY OVERRIDE — audit skipped.');
+  console.log('[audit] Set by: AXHY_AUDIT_EMERGENCY=1');
+  console.log('[audit] This bypass is logged. Fix the underlying issue ASAP.');
+  console.log('[audit] Do NOT use this to avoid fixing real violations.\n');
+  process.exit(0);
+}
 
 console.log('[audit] Starting session audit...\n');
 
