@@ -77,6 +77,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     });
     if (!user) {
       user = await prisma.user.create({
+        // raw-ok: login creates user before tenant context exists
         data: { phone: parsed.data.phone, locale: 'en' },
       });
     }

@@ -70,7 +70,7 @@ export type LivingDocRuleSource = z.infer<typeof LivingDocRuleSource>;
 
 export const LivingDocRule = z.object({
   id: z.string().uuid(),
-  ruleText: z.string().min(1),
+  ruleText: z.string().min(1).max(2000),
   description: z.string().min(1),
   visibility: LivingDocVisibilityEnum,
   scope: LivingDocRuleScope,
@@ -91,7 +91,7 @@ export type LivingDocRule = z.infer<typeof LivingDocRule>;
 export const ProposeLivingDocUpdateInput = z.object({
   section: LivingDocSectionEnum,
   visibility: LivingDocVisibilityEnum,
-  ruleText: z.string().min(1),
+  ruleText: z.string().min(1).max(2000),
   description: z.string().min(1),
   scope: LivingDocRuleScope.optional().default({}),
 });

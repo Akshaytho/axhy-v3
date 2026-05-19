@@ -759,11 +759,8 @@ function checkSecurityGaps() {
     checkedRuleFiles.add(filePath);
     if (!existsSync(filePath)) continue;
     const content = readFileSync(filePath, 'utf8');
-    if (
-      content.includes('z.string()') &&
-      content.includes('ruleText') &&
-      !content.includes('.max(')
-    ) {
+    const definesRuleTextSchema = /ruleText:\s*z\.string\(\)/.test(content);
+    if (definesRuleTextSchema && !content.includes('.max(')) {
       fail(
         'gap-10-rule-max-length',
         'MEDIUM',

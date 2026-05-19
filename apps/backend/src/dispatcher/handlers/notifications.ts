@@ -291,6 +291,7 @@ export async function handleNotificationSupervisorChange(
 
       try {
         await prisma.notification.create({
+          // raw-ok: dispatcher handler, not a route — no tenant tx
           data: {
             companyId: binding.companyId,
             audienceUserId: audienceUserIdFor(entry),
