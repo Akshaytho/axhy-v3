@@ -42,5 +42,54 @@ if [ -n "$STAGED_LEARNINGS" ]; then
     exit 1
   fi
 
-  echo "[learning] Rule-breaking disclosure found + all learnings have detection patterns."
+  # Anti-gaming: verify check_pattern matches real code (1-20 files).
+  # A pattern matching 0 files is fake. A pattern matching 50+ is too broad.
+  # Both are signs of Claude gaming the learning system.
+  FAKE_PATTERNS=""
+  BROAD_PATTERNS=""
+  for learning_file in $STAGED_LEARNINGS; do
+    if [ -f "$learning_file" ]; then
+      PATTERN=$(grep '^check_pattern:' "$learning_file" 2>/dev/null | sed 's/^check_pattern:[[:space:]]*//' | tr -d '"' | tr -d "'" || true)
+      CPATHS=$(grep '^check_paths:' "$learning_file" 2>/dev/null | sed 's/^check_paths:[[:space:]]*//' | tr -d '"' | tr -d "'" || true)
+      EXPECT=$(grep '^check_expect:' "$learning_file" 2>/dev/null | sed 's/^check_expect:[[:space:]]*//' | tr -d '"' | tr -d "'" || true)
+
+      if [ -n "$PATTERN" ] && [ -n "$CPATHS" ]; then
+        # Count matches across check_paths
+        MATCH_COUNT=0
+        for cdir in $(echo "$CPATHS" | tr ',' ' '); do
+          cdir=$(echo "$cdir" | tr -d ' ')
+          if [ -d "$cdir" ]; then
+            COUNT=$(grep -rn --include='*.ts' --include='*.tsx' "$PATTERN" "$cdir" 2>/dev/null | wc -l || true)
+            MATCH_COUNT=$((MATCH_COUNT + COUNT))
+          fi
+        done
+
+        if [ "$MATCH_COUNT" -eq 0 ] && [ "$EXPECT" != "exists" ]; then
+          FAKE_PATTERNS="$FAKE_PATTERNS\n  $learning_file (pattern '$PATTERN' matches 0 files)"
+        elif [ "$MATCH_COUNT" -gt 30 ]; then
+          BROAD_PATTERNS="$BROAD_PATTERNS\n  $learning_file (pattern '$PATTERN' matches $MATCH_COUNT lines — too broad)"
+        fi
+      fi
+    fi
+  done
+
+  if [ -n "$FAKE_PATTERNS" ]; then
+    echo ""
+    echo "[learning] BLOCKED: These learning check_patterns match ZERO files:"
+    echo -e "$FAKE_PATTERNS"
+    echo "[learning] A pattern that matches nothing is useless or fake."
+    echo "[learning] Write a pattern that catches the ACTUAL violation in REAL code."
+    echo ""
+    exit 1
+  fi
+
+  if [ -n "$BROAD_PATTERNS" ]; then
+    echo ""
+    echo "[learning] WARNING: These check_patterns are very broad:"
+    echo -e "$BROAD_PATTERNS"
+    echo "[learning] Broad patterns cause false positives. Consider narrowing."
+    echo ""
+  fi
+
+  echo "[learning] Rule-breaking disclosure found + all learnings have valid detection patterns."
 fi

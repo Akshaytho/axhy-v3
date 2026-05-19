@@ -891,6 +891,93 @@ if (learnedCheckCount > 0) {
   console.log('[audit] Phase 3: No learned checks yet (add check_pattern to learnings)');
 }
 
+// Phase 4: Anti-gaming integrity checks — detect Claude cheating the audit
+console.log('[audit] Phase 4: Integrity checks...');
+
+// 4a: Skip comment budget — if there are too many // audit-ok comments,
+// Claude is spraying skips instead of fixing code. The escape hatch is
+// meant for rare false positives, not wholesale bypass.
+const SKIP_PATTERNS = [
+  '// audit-ok',
+  '// raw-ok',
+  '// stream-ok',
+  '// budget-exempt',
+  '// learned-ok',
+  '// auth-exempt',
+  '// tenant-exempt',
+  '// apply-ok',
+];
+let totalSkips = 0;
+for (const pat of SKIP_PATTERNS) {
+  const skipHits = grep(pat.replace('// ', '//\\s*'), ['apps', 'packages'], ['.ts', '.tsx']);
+  const real = skipHits.filter(
+    (h) => !h.includes('node_modules') && !h.includes('/dist/') && !h.includes('session-audit.ts'),
+  );
+  totalSkips += real.length;
+}
+if (totalSkips > 15) {
+  fail(
+    'integrity-skip-budget',
+    'BLOCKER',
+    `${totalSkips} audit-skip comments in codebase (budget: 15). Claude is gaming the audit — remove skips and fix the real violations.`,
+  );
+} else if (totalSkips > 8) {
+  fail(
+    'integrity-skip-budget',
+    'HIGH',
+    `${totalSkips} audit-skip comments in codebase (warning at 8). Review whether each skip is justified.`,
+  );
+} else if (totalSkips > 0) {
+  console.log(`[audit] Skip comment budget: ${totalSkips}/15 used`);
+}
+
+// 4b: Learning pattern validation — every learning with check_pattern
+// must match at least 1 file (otherwise the pattern is fake/broken).
+for (const learning of learnings) {
+  if (!learning.checkPattern || !learning.checkPaths) continue;
+  const paths = learning.checkPaths.split(',').map((p) => p.trim());
+  const testHits = grep(learning.checkPattern, paths, ['.ts', '.tsx', '.md']);
+  // A pattern that matches 0 files is either fake or outdated
+  if (testHits.length === 0 && learning.checkExpect === 'none') {
+    fail(
+      'integrity-dead-pattern',
+      'MEDIUM',
+      `Learning ${learning.file} has check_pattern that matches 0 files — pattern may be fake or outdated`,
+    );
+  }
+}
+
+// 4c: Comment-keyword gaming — detect audit keywords placed in comments
+// to satisfy grep checks without implementing the actual behavior.
+// Heuristic check — high thresholds to avoid flagging legitimate docs.
+// withTenantContext/rateLimit removed: too commonly referenced in docs.
+const GAMING_KEYWORDS = [
+  {
+    pattern: '//.*\\$executeRaw\\|//.*\\$queryRaw',
+    label: '$executeRaw/$queryRaw in comments',
+    threshold: 6,
+  },
+  { pattern: '//.*assertWithinBudget', label: 'assertWithinBudget in comments', threshold: 4 },
+];
+for (const kw of GAMING_KEYWORDS) {
+  const gamingHits = grep(kw.pattern, ['apps/backend/src'], ['.ts']);
+  const real = gamingHits.filter(
+    (h) =>
+      !h.includes('node_modules') &&
+      !h.includes('/dist/') &&
+      !h.includes('.test.') &&
+      !h.includes('session-audit.ts') &&
+      !h.includes('@derives'),
+  );
+  if (real.length > kw.threshold) {
+    fail(
+      'integrity-comment-gaming',
+      'MEDIUM',
+      `${kw.label}: ${real.length} occurrences (threshold ${kw.threshold}). Review whether these are documentation or audit evasion.`,
+    );
+  }
+}
+
 // ─── Report ────────────────────────────────────────────────────────────────
 
 const blockers = violations.filter((v) => v.severity === 'BLOCKER');

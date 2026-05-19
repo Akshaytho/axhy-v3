@@ -45,3 +45,43 @@ if [ -n "$TSX_BIN" ]; then
 else
   echo "[pre-push] tsx not found — skipping compliance audit."
 fi
+
+# -----------------------------------------------------------------------------
+# Diff-based gaming detection — the check Claude CANNOT bypass.
+# Scans the actual push diff for signs of the AI gaming the audit system.
+# Claude controls what it writes, but can't hide what it wrote from the diff.
+# -----------------------------------------------------------------------------
+echo "[pre-push] scanning push diff for gaming patterns..."
+
+# Determine what we're comparing against
+REMOTE_REF=$(git rev-parse "@{upstream}" 2>/dev/null || echo "origin/main")
+PUSH_DIFF=$(git diff "$REMOTE_REF"...HEAD 2>/dev/null || true)
+
+if [ -n "$PUSH_DIFF" ]; then
+  # Count NEW skip comments added in this push (lines starting with +)
+  NEW_SKIPS=$(echo "$PUSH_DIFF" | grep '^\+' | grep -c '// audit-ok\|// raw-ok\|// stream-ok\|// budget-exempt\|// learned-ok\|// auth-exempt\|// tenant-exempt' || true)
+  if [ "$NEW_SKIPS" -gt 5 ]; then
+    echo ""
+    echo "[pre-push] GAMING DETECTED: $NEW_SKIPS new audit-skip comments in this push."
+    echo "[pre-push] Claude is bypassing the audit instead of fixing violations."
+    echo "[pre-push] Review each skip comment. Remove unjustified ones."
+    echo "[pre-push] Founder: if these are all legitimate, push with: git push --no-verify"
+    echo ""
+    exit 1
+  elif [ "$NEW_SKIPS" -gt 0 ]; then
+    echo "[pre-push] Note: $NEW_SKIPS new skip comments added. Review in PR."
+  fi
+
+  # Detect comment-only "fixes" — lines where the only change is adding
+  # a comment containing an audit keyword. Real fixes change code, not comments.
+  COMMENT_TRICKS=$(echo "$PUSH_DIFF" | grep '^\+' | grep -v '^\+\+\+' | grep '^\+[[:space:]]*//' | grep -c '\$executeRaw\|\$queryRaw\|assertWithinBudget\|withTenantContext\|rateLimit\|semaphore' || true)
+  if [ "$COMMENT_TRICKS" -gt 3 ]; then
+    echo ""
+    echo "[pre-push] SUSPICIOUS: $COMMENT_TRICKS new comments contain audit keywords."
+    echo "[pre-push] Adding audit keywords in comments (not code) tricks grep-based checks."
+    echo "[pre-push] Verify these are documentation, not evasion."
+    echo ""
+  fi
+
+  echo "[pre-push] gaming scan clean."
+fi
