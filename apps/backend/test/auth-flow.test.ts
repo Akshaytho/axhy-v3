@@ -84,39 +84,54 @@ describe('auth flow', () => {
   });
 
   it('rate-limits 4th OTP request within 15 min', async () => {
-    // 1st was just made above; issue 2 more, then 4th must be 429
-    await inject('POST', '/auth/otp/request', { phone: TEST_PHONE });
-    await inject('POST', '/auth/otp/request', { phone: TEST_PHONE });
-    const fourth = await inject('POST', '/auth/otp/request', { phone: TEST_PHONE });
-    expect(fourth.statusCode).toBe(429);
+    // ADR-0024 (2026-05-20): OTP store moved to Redis. The dev rate-limit
+    // cap is 100/15min when AXHY_OTP_BYPASS=1 (see lib/otp-store.ts), so
+    // 4 requests don't trip the cap any more — this is intentional dev
+    // ergonomics. Temporarily flip to prod mode to exercise the cap.
+    const prev = process.env.AXHY_OTP_BYPASS;
+    delete process.env.AXHY_OTP_BYPASS;
+    // Use a separate phone so the prior bypass-mode counters don't
+    // interfere — prod cap is 3.
+    const tempPhone = `+9189${String(Date.now()).slice(-8)}`;
+    try {
+      await inject('POST', '/auth/otp/request', { phone: tempPhone });
+      await inject('POST', '/auth/otp/request', { phone: tempPhone });
+      await inject('POST', '/auth/otp/request', { phone: tempPhone });
+      const fourth = await inject('POST', '/auth/otp/request', { phone: tempPhone });
+      expect(fourth.statusCode).toBe(429);
+    } finally {
+      process.env.AXHY_OTP_BYPASS = prev;
+    }
   });
 
   it('verify with wrong code → 401, with right code + no membership → 403', async () => {
-    // Wrong code
+    // Wrong code → 401
     const wrong = await inject('POST', '/auth/otp/verify', { phone: TEST_PHONE, code: '000000' });
     expect(wrong.statusCode).toBe(401);
 
-    // Read the right code from DB (test-mode bypass means no SMS was sent)
-    // OTP is hashed in storage, so we re-issue and use a known code path:
-    // Easier: directly insert a known-hash OTP row.
-    const knownCode = '424242';
-    const crypto = await import('node:crypto');
-    const hash = crypto.createHash('sha256').update(`${TEST_PHONE}:${knownCode}`).digest('hex');
-    await prismaRaw.$executeRawUnsafe(
-      `INSERT INTO axhy.otp_attempts (phone, code_hash, expires_at)
-       VALUES ($1, $2, now() + interval '5 minutes')`,
-      TEST_PHONE,
-      hash,
-    );
+    // ADR-0024: OTP store is Redis now. Test used to raw-SQL-insert a
+    // known hash into `axhy.otp_attempts`; that's a Postgres-side hack
+    // that's invisible to the Redis hot path. Use the AXHY_OTP_BYPASS=1
+    // magic code '123456' instead — same semantic (a "known" code that
+    // the verify path accepts without needing the random-issued code).
+    // Issue a fresh OTP first so the rate-limit counter has a row + the
+    // verify path has an attempt to consume.
+    const reqRes = await inject('POST', '/auth/otp/request', {
+      phone: `+91999${String(Date.now()).slice(-7)}`,
+    });
+    expect(reqRes.statusCode).toBe(200);
+    await inject('POST', '/auth/otp/request', { phone: TEST_PHONE });
 
-    const right = await inject('POST', '/auth/otp/verify', { phone: TEST_PHONE, code: knownCode });
+    const right = await inject('POST', '/auth/otp/verify', {
+      phone: TEST_PHONE,
+      code: '123456',
+    });
     expect(right.statusCode).toBe(403); // user gets created, but no membership → 403
     const body = right.json() as { error: string };
     expect(body.error).toBe('NO_MEMBERSHIPS');
   });
 
   it('verify with valid code AND active membership → JWTs + memberships array', async () => {
-    // Find the user we just created in the previous test
     const user = await prismaRaw.user.findUnique({ where: { phone: TEST_PHONE } });
     expect(user).not.toBeNull();
     userId = user!.id;
@@ -125,19 +140,12 @@ describe('auth flow', () => {
       data: { companyId: companyAId, userId: user!.id, role: 'WORKER' },
     });
 
-    // Issue another fresh OTP — DELETE prior to clear rate-limit window
-    await prismaRaw.$executeRawUnsafe(`DELETE FROM axhy.otp_attempts WHERE phone = $1`, TEST_PHONE);
-    const freshCode = '777777';
-    const crypto = await import('node:crypto');
-    const hash = crypto.createHash('sha256').update(`${TEST_PHONE}:${freshCode}`).digest('hex');
-    await prismaRaw.$executeRawUnsafe(
-      `INSERT INTO axhy.otp_attempts (phone, code_hash, expires_at)
-       VALUES ($1, $2, now() + interval '5 minutes')`,
-      TEST_PHONE,
-      hash,
-    );
-
-    const res = await inject('POST', '/auth/otp/verify', { phone: TEST_PHONE, code: freshCode });
+    // Issue a fresh OTP (Redis-backed); verify with bypass magic code.
+    await inject('POST', '/auth/otp/request', { phone: TEST_PHONE });
+    const res = await inject('POST', '/auth/otp/verify', {
+      phone: TEST_PHONE,
+      code: '123456',
+    });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
       ok: true;
@@ -169,19 +177,13 @@ describe('GET /me', () => {
   });
 
   it('with valid token → returns user + company + memberships', async () => {
-    // Reuse the access token from the verify step above by re-doing verify
-    await prismaRaw.$executeRawUnsafe(`DELETE FROM axhy.otp_attempts WHERE phone = $1`, TEST_PHONE);
-    const code = '999111';
-    const crypto = await import('node:crypto');
-    const hash = crypto.createHash('sha256').update(`${TEST_PHONE}:${code}`).digest('hex');
-    await prismaRaw.$executeRawUnsafe(
-      `INSERT INTO axhy.otp_attempts (phone, code_hash, expires_at)
-       VALUES ($1, $2, now() + interval '5 minutes')`,
-      TEST_PHONE,
-      hash,
-    );
-
-    const verifyRes = await inject('POST', '/auth/otp/verify', { phone: TEST_PHONE, code });
+    // ADR-0024: Redis OTP store. Use bypass magic code (AXHY_OTP_BYPASS=1
+    // is set at the top of the file).
+    await inject('POST', '/auth/otp/request', { phone: TEST_PHONE });
+    const verifyRes = await inject('POST', '/auth/otp/verify', {
+      phone: TEST_PHONE,
+      code: '123456',
+    });
     const { accessToken } = verifyRes.json() as { accessToken: string };
 
     const res = await inject('GET', '/me', undefined, { authorization: `Bearer ${accessToken}` });

@@ -88,6 +88,29 @@ export type OpenAIToolLoopArgs = {
    */
   tenantCtx?: TenantBudgetCtx;
   /**
+   * Tier 1.1 prompt block — Company rules from Policy table, DATA-wrapped
+   * by prompt-composer.composeCompanyRulesBlock. Inserted right after the
+   * main system prompt so Layer 1 is visually FIRST (and highest priority)
+   * in the rule hierarchy per docs/locked/rule-hierarchy-three-layers.md.
+   * Empty/undefined → slot skipped.
+   * @derives(docs/locked/chat-sidebar-context-flow.md step 6)
+   */
+  companyRulesBlock?: string;
+  /**
+   * Tier 1.2 prompt block — HR rules from Policy table, DATA-wrapped by
+   * prompt-composer.composeHrRulesBlock. Inserted between Company rules
+   * and LivingDoc. Empty/undefined → slot skipped.
+   * @derives(docs/locked/rule-hierarchy-three-layers.md)
+   */
+  hrRulesBlock?: string;
+  /**
+   * Amend-mode hint, DATA-wrapped by prompt-composer.composeAmendBlock.
+   * Inserted between calendarBlock and priorMessages. Empty/undefined →
+   * not in amend mode. Replaces the raw chat.ts amendHint concat per
+   * docs/locked/chat-abuse-prevention.md Prompt Injection Defense.
+   */
+  amendBlock?: string;
+  /**
    * Tier 2 prompt block — supervisor's LivingDoc context (rules, aliases).
    * Inserted as a SECOND system message between the main system prompt
    * (Tier 1, fully stable) and priorMessages so OpenAI can cache the
@@ -114,7 +137,28 @@ export type OpenAIToolLoopArgs = {
   livingDocVersion?: number;
   companyId?: string;
   supervisorId?: string;
+  /**
+   * Optional AbortSignal — when the caller (chat route) detects a client
+   * disconnect (mobile closes app, request canceled), abort the in-flight
+   * OpenAI call so we stop burning tokens for a response nobody will read.
+   * Per friend review Wave A.2 #23.
+   */
+  abortSignal?: AbortSignal;
 };
+
+/**
+ * Singleton OpenAI client per apiKey. Friend review #4: creating a fresh
+ * OpenAI client per request thrashes the TLS handshake + connection pool.
+ * Keep one client per apiKey and reuse it.
+ */
+const openAIClients = new Map<string, OpenAI>();
+function getOpenAIClient(apiKey: string): OpenAI {
+  const existing = openAIClients.get(apiKey);
+  if (existing) return existing;
+  const client = new OpenAI({ apiKey });
+  openAIClients.set(apiKey, client);
+  return client;
+}
 
 export type OpenAIToolLoopResult = {
   finalText: string;
@@ -180,21 +224,42 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
   const choice = modelFor(surface);
   await assertWithinBudget(surface, choice.maxCostPerCallInr, args.tenantCtx);
 
-  const openai = new OpenAI({ apiKey });
+  const openai = getOpenAIClient(apiKey);
   const openaiTools = toOpenAITools(tools);
 
-  // Spec 2 §8.1 — 3-tier message structure for OpenAI by-prefix auto-cache:
-  //   Tier 1 (stable) — main systemPrompt + tools (passed via openaiTools arg)
-  //   Tier 2 (per-supervisor) — livingDocBlock as a 2nd system message
-  //   Tier 3a (per-supervisor recent) — calendarBlock as a 3rd system message
-  //   Tier 3b (per-call) — priorMessages + userMessage
-  // Empty Tier 2/3a strings are skipped so we don't waste a slot.
+  // docs/locked/chat-sidebar-context-flow.md step 6 — 6-tier message structure
+  // for OpenAI by-prefix auto-cache (Wave A 2026-05-19):
+  //   System          stable systemPrompt + tools (cached forever)
+  //   Tier 1 (L1)     companyRulesBlock — DATA-wrapped Policy rows for company
+  //   Tier 2 (L2)     hrRulesBlock      — DATA-wrapped Policy rows for HR
+  //   Tier 3 (L3)     livingDocBlock    — supervisor's personal rules
+  //   Tier 4          calendarBlock     — last 30 days CalendarEntry
+  //   Amend           amendBlock        — DATA-wrapped amend-mode hint, when active
+  //   Tier 5          priorMessages     — last N chat turns
+  //   User            userMessage       — the current turn
+  //
+  // Empty strings are skipped so we don't waste a system-message slot.
+  //
+  // Cache stability: Tier 1 + Tier 2 are per-tenant so they share a prefix
+  // across all supervisors of the same company. Tier 3 + Tier 4 are
+  // per-supervisor and cached via prompt_cache_key + livingDocVersion.
+  // Amend block is per-turn-only and lives after the cached prefix on
+  // purpose (would otherwise bust per-amend turns).
   const messages: ChatCompletionMessageParam[] = [{ role: 'system', content: systemPrompt }];
+  if (args.companyRulesBlock && args.companyRulesBlock.length > 0) {
+    messages.push({ role: 'system', content: args.companyRulesBlock });
+  }
+  if (args.hrRulesBlock && args.hrRulesBlock.length > 0) {
+    messages.push({ role: 'system', content: args.hrRulesBlock });
+  }
   if (args.livingDocBlock && args.livingDocBlock.length > 0) {
     messages.push({ role: 'system', content: args.livingDocBlock });
   }
   if (args.calendarBlock && args.calendarBlock.length > 0) {
     messages.push({ role: 'system', content: args.calendarBlock });
+  }
+  if (args.amendBlock && args.amendBlock.length > 0) {
+    messages.push({ role: 'system', content: args.amendBlock });
   }
   for (const m of args.priorMessages ?? []) {
     messages.push({ role: m.role, content: m.content });
@@ -212,13 +277,24 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
 
   const toolCalls: OpenAIToolLoopResult['toolCalls'] = [];
   const decisionCards: OpenAIToolLoopResult['decisionCards'] = [];
-  let finalUsage = { inputTokens: 0, outputTokens: 0 };
-  let finalCacheTokens: number | null = null;
+  // Friend review #1 (CRITICAL): accumulate token usage across ALL tool-loop
+  // iterations, not just the last call. Previously `finalUsage = {...}` on
+  // each iter clobbered the running total — supervisors silently exceeded
+  // their daily token budget because only the last call's tokens were
+  // recorded on ChatMessage.tokensIn/Out (supervisor-token-cap.ts reads
+  // those columns).
+  const totalUsage = { inputTokens: 0, outputTokens: 0 };
+  let totalCacheTokens: number | null = null;
   let finalText = '';
 
   for (let iter = 0; iter < maxIterations; iter++) {
     if (Date.now() - startedAt > timeoutMs) {
       throw new Error('AI_TOOL_LOOP_TIMEOUT');
+    }
+    // Friend review #23 — client disconnect should abort. Cheap check at
+    // top of each iteration before we make another API call.
+    if (args.abortSignal?.aborted) {
+      throw new Error('AI_TOOL_LOOP_ABORTED');
     }
 
     // Spec 2 §8.2 — `prompt_cache_key` is a real OpenAI request-body param
@@ -235,20 +311,39 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
       max_completion_tokens: CHAT_MAX_COMPLETION_TOKENS,
     };
     if (promptCacheKey) body.prompt_cache_key = promptCacheKey;
-    const response = await openai.chat.completions.create(body);
+    // Friend review #5 (HIGH): per-call timeout via AbortSignal so a
+    // single hung OpenAI request can't run past the loop budget. The
+    // remaining budget is total timeoutMs minus elapsed; minimum 5s so
+    // a near-deadline call still has a chance to complete instead of
+    // immediately erroring.
+    const remainingBudgetMs = Math.max(5_000, timeoutMs - (Date.now() - startedAt));
+    const perCallAc = new AbortController();
+    const onCallerAbort = (): void => perCallAc.abort();
+    if (args.abortSignal) {
+      if (args.abortSignal.aborted) onCallerAbort();
+      else args.abortSignal.addEventListener('abort', onCallerAbort, { once: true });
+    }
+    const callTimer = setTimeout(() => perCallAc.abort(), remainingBudgetMs);
+    let response: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+    try {
+      response = await openai.chat.completions.create(body, { signal: perCallAc.signal });
+    } finally {
+      clearTimeout(callTimer);
+      if (args.abortSignal) args.abortSignal.removeEventListener('abort', onCallerAbort);
+    }
 
     if (response.usage) {
-      finalUsage = {
-        inputTokens: response.usage.prompt_tokens,
-        outputTokens: response.usage.completion_tokens,
-      };
-      // Spec 2 §8.3 — capture cached_tokens for ai_cost_daily view.
-      // Null-safe: older SDK responses or models without cache surface
-      // may omit `prompt_tokens_details` entirely.
+      // Friend review #1 (CRITICAL): ACCUMULATE across iterations, not
+      // overwrite. A 3-iteration tool loop has 3 OpenAI calls, each
+      // with its own prompt_tokens + completion_tokens. The previous
+      // overwrite pattern under-counted by up to 77% on multi-tool turns.
+      totalUsage.inputTokens += response.usage.prompt_tokens;
+      totalUsage.outputTokens += response.usage.completion_tokens;
+      // Spec 2 §8.3 — accumulate cached_tokens too for ai_cost_daily.
       const detailed = (response.usage as { prompt_tokens_details?: { cached_tokens?: number } })
         .prompt_tokens_details;
       if (detailed && typeof detailed.cached_tokens === 'number') {
-        finalCacheTokens = detailed.cached_tokens;
+        totalCacheTokens = (totalCacheTokens ?? 0) + detailed.cached_tokens;
       }
     }
 
@@ -298,7 +393,29 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
         );
         parsedInput = {};
       }
-      const result = await handler(tc.function.name, parsedInput);
+      // Friend review #2 — isolate handler failures. A DB blip in
+      // find_workers should NOT kill the whole AI loop. Catch the throw,
+      // return a TOOL_FAILED error message back to the model, let it
+      // decide (retry with different args, ask the user, etc).
+      let result: Awaited<ReturnType<OpenAIToolHandler>>;
+      try {
+        result = await handler(tc.function.name, parsedInput);
+      } catch (handlerErr) {
+        const errMsg = handlerErr instanceof Error ? handlerErr.message : String(handlerErr);
+        console.warn(
+          {
+            event: 'openai_tool_loop.handler_error',
+            companyId: args.tenantCtx?.companyId,
+            supervisorId: args.supervisorId,
+            toolName: tc.function.name,
+            err: errMsg,
+          },
+          'openai-tool-loop: handler threw — returning TOOL_FAILED to model',
+        );
+        result = {
+          output: { error: 'TOOL_FAILED', message: errMsg.slice(0, 200) },
+        };
+      }
       toolCalls.push({
         toolName: tc.function.name,
         toolCallId: tc.id,
@@ -320,16 +437,16 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
     }
   }
 
-  const costInr = tokenCostInrFor(model, finalUsage);
+  const costInr = tokenCostInrFor(model, totalUsage);
 
   return {
     finalText,
     toolCalls,
     decisionCards,
     elapsedMs: Date.now() - startedAt,
-    usage: finalUsage,
+    usage: totalUsage,
     costInr,
     modelUsed: model,
-    cacheTokens: finalCacheTokens,
+    cacheTokens: totalCacheTokens,
   };
 }

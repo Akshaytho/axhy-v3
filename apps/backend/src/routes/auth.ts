@@ -35,7 +35,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const issued = await issueOtp(prisma, parsed.data.phone);
+      const issued = await issueOtp(parsed.data.phone);
       await sendOtpSms({ phone: parsed.data.phone, code: issued.code });
       const out: RequestOTPOutput = { ok: true, resendInSeconds: issued.resendInSeconds };
       reply.send(out);
@@ -57,7 +57,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const ok = await verifyOtp(prisma, parsed.data.phone, parsed.data.code);
+    const ok = await verifyOtp(parsed.data.phone, parsed.data.code);
     if (!ok) {
       reply
         .code(401)

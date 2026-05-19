@@ -54,6 +54,11 @@ export const AuditEventKindSchema = z.enum([
   'ACTIVITY_LATE_REVERSAL_REQUESTED',
   // ── Chat / DWI ─────────────────────────────────────────────────────
   'CHAT_MESSAGE_CREATED',
+  // ── Chat reload-context (Wave A, docs/locked/chat-sidebar-context-flow.md) ─
+  'CHAT_RELOAD_CONTEXT',
+  // ── LivingDoc cap (Wave A, docs/locked/livingdoc-extraction-rules.md Limits) ─
+  'LIVING_DOC_RULE_AUTO_EXPIRED',
+  'LIVING_DOC_RULE_ADDED',
   'DWI_PROPOSED',
   'DWI_APPLIED',
   'DWI_DISMISSED',

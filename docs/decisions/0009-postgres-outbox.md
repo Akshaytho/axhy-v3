@@ -1,6 +1,6 @@
 # ADR-0009: Postgres outbox over Redis
 
-- **Status:** Accepted (stub backfill — full body lands when surfaced by audit)
+- **Status:** SUPERSEDED by [ADR-0024](0024-redis-for-caches.md) (2026-05-20). Postgres outbox + AuditEvent stay on Postgres for durable delivery + audit. Cache-shaped state (rate limits, OTP, chat idempotency, concurrency semaphore, circuit-breaker state) moved to Railway-managed Redis.
 - **Date:** 2026-04-29
 
 ## Context
