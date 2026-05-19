@@ -32,7 +32,7 @@ export async function registerSupervisorContextRoutes(app: FastifyInstance): Pro
     }
 
     try {
-      // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
+      // tenant-exempt: read-only, bare prisma for parallel query dispatch.
       const out = await buildSupervisorContext(prisma, {
         companyId: auth.companyId,
         userId: auth.userId,

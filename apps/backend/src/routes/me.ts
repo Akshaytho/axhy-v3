@@ -21,11 +21,9 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    // Read-path latency fix (Cluster 1, QA-walkthrough 2026-05-18): drop
-    // the transaction wrapper. Bare `prisma` lets the 3 queries below
-    // dispatch in parallel via the connection pool instead of serialising
-    // on a single tx connection. /me was 7.5s pre-fix; with parallel
-    // dispatch it falls to ~1 RTT to Railway.
+    // tenant-exempt: read-only parallel queries, no writes.
+    // Latency fix (Cluster 1, 2026-05-18): bare prisma → parallel dispatch.
+    // /me was 7.5s with tx; ~1 RTT without.
     const [user, company, memberships] = await Promise.all([
       prisma.user.findUnique({ where: { id: auth.userId } }),
       prisma.company.findUnique({ where: { id: auth.companyId } }),

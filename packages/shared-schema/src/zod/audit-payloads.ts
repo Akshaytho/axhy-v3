@@ -284,7 +284,7 @@ export type HandoffPackageGeneratedPayload = z.infer<typeof HandoffPackageGenera
 export const LivingDocRuleAddedByHandoverPayloadSchema = z.object({
   section: z.enum(['site_rules', 'free_notes']),
   visibility: z.enum(['COMPANY', 'SUPERVISOR_OWN']),
-  ruleText: z.string().min(1),
+  ruleText: z.string().min(1).max(2000),
   version: z.number().int().nonnegative(),
   bindingId: z.string().uuid(),
   /** "handover_from_<outgoingId>" for siteRules copies; "handover_summary_<outgoingId>" for the summary entry. */

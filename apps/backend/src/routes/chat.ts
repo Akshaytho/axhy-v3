@@ -441,11 +441,53 @@ async function persistChatTurn(input: {
   };
 }
 
+// ─── Per-supervisor rate limiter (chat-abuse-prevention.md) ─────────────────
+// Sliding window: max 30 messages per supervisor per 60-second window.
+// In-memory — resets on deploy. Good enough until measured pain says otherwise.
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 30;
+const rateLimitWindows = new Map<string, { count: number; windowStart: number }>();
+
+function checkRateLimit(supervisorId: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitWindows.get(supervisorId);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitWindows.set(supervisorId, { count: 1, windowStart: now });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
+}
+
+// ─── Concurrent AI call semaphore (chat-abuse-prevention.md) ────────────────
+// Hard cap on simultaneous AI calls across all supervisors in this process.
+// Prevents a burst of requests from exhausting the OpenAI/Anthropic quota.
+const CONCURRENT_LIMIT = 50;
+let concurrentCalls = 0;
+
 export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
   app.post('/chat/messages', { preHandler: requireAuth }, async (req, reply) => {
     const auth = req.auth;
     if (!auth) {
       reply.code(401).send({ error: 'AUTH_REQUIRED' });
+      return;
+    }
+
+    // Rate limit check — per-supervisor
+    if (!checkRateLimit(auth.userId)) {
+      reply.code(429).send({
+        error: 'RATE_LIMITED',
+        message: 'Too many messages. Please wait a moment.',
+      });
+      return;
+    }
+
+    // Concurrency semaphore — global across all supervisors
+    if (concurrentCalls >= CONCURRENT_LIMIT) {
+      reply.code(429).send({
+        error: 'CONCURRENCY_LIMITED',
+        message: 'System is busy. Please try again in a few seconds.',
+      });
       return;
     }
 
@@ -602,6 +644,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           ? `${parsed.data.text}\n\n[Supervisor attached ${attachmentCount} photo${attachmentCount === 1 ? '' : 's'}. Treat as evidence supporting a possible complaint.]`
           : parsed.data.text) + amendHint;
 
+      concurrentCalls++;
       const loopResult = await openaiToolLoop({
         apiKey,
         systemPrompt: SYSTEM_PROMPT,
@@ -1045,6 +1088,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       }
       throw err;
     } finally {
+      concurrentCalls--;
       releaseChatSlot();
     }
   });

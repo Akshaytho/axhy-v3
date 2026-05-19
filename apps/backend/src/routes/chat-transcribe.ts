@@ -20,7 +20,7 @@
 import type { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireAuth } from '../middleware/tenant-context.js'; // tenant-exempt: pure Whisper proxy, no DB access
 
 /** Whisper REST response shape (only `text` is guaranteed; `language` is a
  *  non-standard extension on some wrapper APIs). */
