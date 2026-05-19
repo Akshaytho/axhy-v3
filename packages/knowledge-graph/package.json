@@ -12,6 +12,7 @@
     "test": "vitest run",
     "graph:build": "tsx src/builder.ts",
     "graph:audit": "tsx src/audit.ts",
+    "graph:lock-seed": "tsx src/lock-seed.ts",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {

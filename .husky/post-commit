@@ -5,7 +5,7 @@
 # @derives(ADR-0002)
 
 if [ -z "$DATABASE_URL" ] && [ -z "$DATABASE_PUBLIC_URL" ] && [ -z "$AXHY_DB_URL" ]; then
-  echo "[post-commit] No DATABASE_URL set; skipping graph rebuild. Run \`pnpm --filter @axhy/knowledge-graph graph:build\` manually."
+  echo "[post-commit] No DATABASE_URL set; skipping graph + brain rebuild."
   exit 0
 fi
 
@@ -14,3 +14,9 @@ fi
   pnpm --filter @axhy/knowledge-graph graph:build > /tmp/axhy-graph-build.log 2>&1 &
 )
 echo "[post-commit] Graph rebuild dispatched in background (log: /tmp/axhy-graph-build.log)"
+
+# Brain rebuild — embeds new learnings + docs so next session's impactCheck sees them
+(
+  pnpm --filter @axhy/ai-tools brain:build > /tmp/axhy-brain-build.log 2>&1 &
+)
+echo "[post-commit] Brain rebuild dispatched in background (log: /tmp/axhy-brain-build.log)"
