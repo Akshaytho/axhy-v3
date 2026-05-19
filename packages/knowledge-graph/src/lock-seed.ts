@@ -37,6 +37,11 @@ type LockRule = {
 
 const LOCK_RULES: LockRule[] = [
   {
+    pattern: 'docs/locked/%',
+    category: 'architecture_lock',
+    reason: 'Locked doc — founder-authored constitution; cannot be changed during coding sessions.',
+  },
+  {
     pattern: 'docs/decisions/%',
     category: 'adr',
     reason: 'ADR — architectural decision record. Locked by convention.',
@@ -76,7 +81,7 @@ async function main() {
 
   for (const rule of LOCK_RULES) {
     const result = await client.query(
-      `UPDATE axhy_graph.chunks
+      `UPDATE axhy_brain.chunks
        SET is_locked = true,
            locked_at = now(),
            locked_reason = $2,
@@ -95,7 +100,7 @@ async function main() {
 
   // Also classify (but don't lock) code chunks — they follow code, never locked
   const codeClassified = await client.query(
-    `UPDATE axhy_graph.chunks
+    `UPDATE axhy_brain.chunks
      SET chunk_category = 'code', updated_at = now()
      WHERE chunk_category = 'doc'
        AND source_path NOT LIKE 'docs/%'
@@ -114,7 +119,7 @@ async function main() {
       COUNT(*) FILTER (WHERE NOT is_locked) AS unlocked,
       COUNT(*) FILTER (WHERE is_stale) AS stale,
       COUNT(*) AS total
-    FROM axhy_graph.chunks
+    FROM axhy_brain.chunks
     GROUP BY chunk_category
     ORDER BY chunk_category
   `);
