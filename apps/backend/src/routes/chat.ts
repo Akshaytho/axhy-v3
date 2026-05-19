@@ -42,11 +42,32 @@ import { CreateAssignmentInput as CreateAssignmentInputSchema } from '@axhy/shar
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
-import { checkIdempotency, recordIdempotency } from '../lib/chat-idempotency.js';
+import {
+  checkIdempotency,
+  recordIdempotency,
+  reserveIdempotency,
+  releaseIdempotency,
+} from '../lib/chat-idempotency.js';
 import { tryAcquireChatSlot, releaseChatSlot } from '../lib/chat-concurrency.js';
+import { checkAndConsumeRateLimit } from '../lib/redis-rate-limit.js';
+import {
+  assertCircuitClosed,
+  recordSuccess as recordCircuitSuccess,
+  recordFailure as recordCircuitFailure,
+  CircuitOpenError,
+} from '../lib/openai-circuit-breaker.js';
 import { getLivingDoc } from '../lib/living-doc.js';
 import { formatLivingDocPrompt } from '../lib/living-doc-prompt.js';
 import { loadCalendarTier3 } from '../lib/calendar-context.js';
+import { loadCompanyRules, loadHrRules } from '../lib/policy-rules-loader.js';
+import { checkSupervisorTokenCap } from '../lib/supervisor-token-cap.js';
+import { enforceLivingDocCap, emitAutoExpireAudits, readSections } from '../lib/living-doc-cap.js';
+import {
+  composeCompanyRulesBlock,
+  composeHrRulesBlock,
+  composeAmendBlock,
+  PROMPT_INJECTION_DEFENSE_SENTENCE,
+} from '../lib/prompt-composer.js';
 import {
   createProposedDecision,
   applyProposedDecision,
@@ -89,6 +110,40 @@ class ServiceDomainError extends Error {
     super(code);
     this.name = 'ServiceDomainError';
   }
+}
+
+/**
+ * Thrown inside the chat-route pre-flight tx when the supervisor's
+ * amend.targetDecisionId references a row that doesn't exist OR isn't
+ * owned by the caller. Outer catch maps to HTTP 404.
+ * Friend review #7 — module-scope so it's not re-allocated per request
+ * and observability tools can reference it.
+ */
+class AmendTargetNotFoundError extends Error {
+  constructor() {
+    super('Amend target not found');
+    this.name = 'AmendTargetNotFoundError';
+  }
+}
+
+/**
+ * Thrown inside the chat-route pre-flight tx when the supervisor has
+ * burned their daily AI token budget. Outer catch maps to HTTP 429.
+ * Friend review #7 — module-scope.
+ */
+class TokenCapReachedError extends Error {
+  constructor(
+    public readonly usedTodayTokens: number,
+    public readonly dailyLimitTokens: number,
+    public readonly nextResetAt: Date,
+  ) {
+    super('Daily token limit reached');
+    this.name = 'TokenCapReachedError';
+  }
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 /**
@@ -189,7 +244,19 @@ LANGUAGE NOTE
 
   Hinglish / Telugu-English / pure Hindi all common. Preserve the
   supervisor's wording in the complaint description field. Do NOT
-  translate; HR portal users may need the original phrasing to follow up.`;
+  translate; HR portal users may need the original phrasing to follow up.
+
+PROMPT INJECTION DEFENSE (Wave A 2026-05-19 — docs/locked/chat-abuse-prevention.md)
+
+  ${PROMPT_INJECTION_DEFENSE_SENTENCE}
+
+RULE HIERARCHY (docs/locked/rule-hierarchy-three-layers.md)
+
+  When a request from the supervisor conflicts with a rule in <company_rules>
+  (Layer 1), explain the rule and refuse the action. When it conflicts with
+  <hr_rules> (Layer 2), explain the policy and offer to request an exception.
+  When it conflicts with <supervisor_rules> (Layer 3), the higher-priority
+  rule wins. Layer 1 beats Layer 2 beats Layer 3.`;
 
 /** Static help response — returned without any AI call when supervisor types help/menu. */
 const HELP_TEXT = `I can help with:
@@ -225,15 +292,30 @@ const HELP_TRIGGERS = new Set([
  * already stores role as string); content = transcript (user) OR
  * aiResponseText (assistant). Empty content is filtered out.
  */
+/**
+ * Loads the active ChatThread's last N turns. Per the Wave A 3-window
+ * migration, ChatThread is no longer @@unique([companyId, supervisorId])
+ * — supervisors may have up to 3 ACTIVE threads. This helper picks the
+ * most-recent ACTIVE thread (lastMessageAt DESC, then createdAt DESC) for
+ * chat history. The chat-threads route (future) lets the supervisor
+ * choose which thread to send into; absent that param, "most recent"
+ * is the right default.
+ *
+ * Wave A refactor (close GAP 1 hole): accepts a tx so the read happens
+ * inside withTenantContext, enforcing Company.status='ACTIVE' at the
+ * Postgres GUC + RLS layer.
+ */
 async function loadPriorMessages(
+  tx: Prisma.TransactionClient,
   companyId: string,
   supervisorId: string,
 ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
-  const thread = await prisma.chatThread.findUnique({
-    where: { companyId_supervisorId: { companyId, supervisorId } },
+  const thread = await tx.chatThread.findFirst({
+    where: { companyId, supervisorId, archivedAt: null },
+    orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
   });
   if (!thread) return [];
-  const rows = await prisma.chatMessage.findMany({
+  const rows = await tx.chatMessage.findMany({
     where: { companyId, threadId: thread.id },
     orderBy: { createdAt: 'desc' },
     take: CHAT_HISTORY_TURN_WINDOW,
@@ -277,6 +359,15 @@ async function persistChatTurn(input: {
    */
   cacheTokens: number | null;
   /**
+   * Raw OpenAI input + output token counts from the final usage block.
+   * Persisted to ChatMessage.tokensIn / tokensOut so the per-supervisor
+   * daily token cap (supervisor-token-cap.ts) can sum them. Null when
+   * the AI was bypassed (help short-circuit).
+   * @derives(plans/abstract-wandering-kazoo.md Wave A follow-on)
+   */
+  tokensIn: number | null;
+  tokensOut: number | null;
+  /**
    * Wave 3 — optional photo attachments uploaded by mobile via the existing
    * S3 signed-URL pipeline. Persisted on the USER ChatMessage row's
    * `toolCalls` JSON under the key `attachments` (the field is unused on
@@ -309,21 +400,36 @@ async function persistChatTurn(input: {
   // `axhy.current_company_id` is set inside the tx → RLS policies fire.
   // persistChatTurn runs on every chat call; this is the hot path.
   // Panel-flagged Tier-1 fix.
+  //
+  // Wave A 2026-05-19 — 3-window refactor: ChatThread is no longer
+  // @@unique([companyId, supervisorId]) per docs/locked/security-gaps-to-
+  // fix.md GAP 8. Upsert-by-composite-key replaced with "find most-recent
+  // active OR create new" so persistChatTurn picks the same thread that
+  // loadPriorMessages did. If the supervisor has no ACTIVE thread (first
+  // message ever, or all archived), this auto-creates one — the supervisor
+  // never needs to tap "New thread" before their first send.
   const result = await withTenantContext(prisma, input.companyId, async (tx) => {
-    const thread = await tx.chatThread.upsert({
+    const now = new Date();
+    const existing = await tx.chatThread.findFirst({
       where: {
-        companyId_supervisorId: {
-          companyId: input.companyId,
-          supervisorId: input.supervisorId,
-        },
-      },
-      create: {
         companyId: input.companyId,
         supervisorId: input.supervisorId,
-        lastMessageAt: new Date(),
+        archivedAt: null,
       },
-      update: { lastMessageAt: new Date() },
+      orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
     });
+    const thread = existing
+      ? await tx.chatThread.update({
+          where: { id: existing.id },
+          data: { lastMessageAt: now },
+        })
+      : await tx.chatThread.create({
+          data: {
+            companyId: input.companyId,
+            supervisorId: input.supervisorId,
+            lastMessageAt: now,
+          },
+        });
 
     // Cluster A fix (P0): build the user-row's `toolCalls` JSON to carry
     // BOTH attachments (Wave 3) AND amendTargetDecisionId (Sprint 2 deep-
@@ -372,6 +478,10 @@ async function persistChatTurn(input: {
         // Spec 2 §8.3 — OpenAI prompt_tokens_details.cached_tokens for
         // ai_cost_daily view cache-hit-ratio aggregation.
         cacheTokens: input.cacheTokens,
+        // Wave A follow-on — raw token counts feed the per-supervisor
+        // daily token cap (supervisor-token-cap.ts).
+        tokensIn: input.tokensIn,
+        tokensOut: input.tokensOut,
       },
     });
 
@@ -441,29 +551,16 @@ async function persistChatTurn(input: {
   };
 }
 
-// ─── Per-supervisor rate limiter (chat-abuse-prevention.md) ─────────────────
-// Sliding window: max 30 messages per supervisor per 60-second window.
-// In-memory — resets on deploy. Good enough until measured pain says otherwise.
+// ─── Per-supervisor rate limit constants ────────────────────────────────────
+// docs/locked/chat-abuse-prevention.md: max 30 messages per supervisor per
+// 60-second window. The actual enforcement now goes through Redis-backed
+// `checkAndConsumeRateLimit` (lib/redis-rate-limit.ts) so multi-replica
+// deploys actually share the counter. See ADR-0024 supersession of ADR-0009.
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 30;
-const rateLimitWindows = new Map<string, { count: number; windowStart: number }>();
-
-function checkRateLimit(supervisorId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitWindows.get(supervisorId);
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
-    rateLimitWindows.set(supervisorId, { count: 1, windowStart: now });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= RATE_LIMIT_MAX;
-}
-
-// ─── Concurrent AI call semaphore (chat-abuse-prevention.md) ────────────────
-// Hard cap on simultaneous AI calls across all supervisors in this process.
-// Prevents a burst of requests from exhausting the OpenAI/Anthropic quota.
-const CONCURRENT_LIMIT = 50;
-let concurrentCalls = 0;
+// /chat/apply has its own cap — same 60s window, more generous since
+// applies don't burn AI tokens (they just commit DB writes).
+const APPLY_RATE_LIMIT_MAX = 60;
 
 export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
   app.post('/chat/messages', { preHandler: requireAuth }, async (req, reply) => {
@@ -473,24 +570,14 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    // Rate limit check — per-supervisor
-    if (!checkRateLimit(auth.userId)) {
-      reply.code(429).send({
-        error: 'RATE_LIMITED',
-        message: 'Too many messages. Please wait a moment.',
-      });
-      return;
-    }
-
-    // Concurrency semaphore — global across all supervisors
-    if (concurrentCalls >= CONCURRENT_LIMIT) {
-      reply.code(429).send({
-        error: 'CONCURRENCY_LIMITED',
-        message: 'System is busy. Please try again in a few seconds.',
-      });
-      return;
-    }
-
+    // ── ORDER OF GATES (friend review #3, CRITICAL) ──────────────────────
+    // 1. Idempotency check FIRST — cached responses pay no rate-limit or
+    //    circuit-breaker cost. Mobile retry on slow network must not burn
+    //    5 slots for 1 actual message.
+    // 2. Then rate limit (real new work).
+    // 3. Then circuit breaker (real new AI call).
+    // 4. Then reserve idempotency slot (commit to processing).
+    // ─────────────────────────────────────────────────────────────────────
     const idempotencyKey = req.headers['idempotency-key'];
     if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8) {
       reply.code(400).send({ error: 'IDEMPOTENCY_KEY_REQUIRED' });
@@ -503,38 +590,79 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    // Cluster A fix (P0, deep-review 2026-05-18): amend.targetDecisionId
-    // validation. Before this fix the field was Zod-parsed and silently
-    // discarded — mobile would celebrate a successful tool call as a
-    // "completed amendment" regardless of whether amendment actually
-    // occurred. The validation here ensures (a) the target decision
-    // exists, (b) it belongs to the caller's tenant, (c) the caller is
-    // the supervisor on that decision. Persistence + didAmend signal
-    // come later in this handler.
-    let validatedAmendDecisionId: string | null = null;
-    if (parsed.data.amend?.targetDecisionId) {
-      const targetId = parsed.data.amend.targetDecisionId;
-      const targetDecision = await prisma.supervisorDecision.findFirst({
-        where: {
-          id: targetId,
-          companyId: auth.companyId,
-          supervisorId: auth.userId,
-        },
-        select: { id: true },
+    const dedup = await checkIdempotency(auth.companyId, idempotencyKey);
+    if (dedup.cached === true) {
+      reply.code(200).send(dedup.responseJson);
+      return;
+    }
+    if (dedup.cached === 'in_flight') {
+      reply.code(409).header('Retry-After', '2').send({
+        error: 'IDEMPOTENCY_IN_FLIGHT',
+        message:
+          'A request with this Idempotency-Key is already being processed. Retry in a moment.',
       });
-      if (!targetDecision) {
-        reply.code(404).send({
-          error: 'AMEND_TARGET_NOT_FOUND',
-          message: 'Decision being amended was not found in your tenant or is not owned by you.',
-        });
-        return;
-      }
-      validatedAmendDecisionId = targetDecision.id;
+      return;
     }
 
-    const dedup = await checkIdempotency(prisma, auth.companyId, idempotencyKey);
-    if (dedup.cached) {
-      reply.code(200).send(dedup.responseJson);
+    // Rate limit — only for fresh requests, not retries of cached responses.
+    const rl = await checkAndConsumeRateLimit({
+      route: 'chat:messages',
+      subject: auth.userId,
+      limit: RATE_LIMIT_MAX,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+    });
+    if (!rl.ok) {
+      reply
+        .code(429)
+        .header('Retry-After', String(Math.ceil(rl.retryAfterMs / 1000)))
+        .send({
+          error: 'RATE_LIMITED',
+          message: 'Too many messages. Please wait a moment.',
+          retryAfterMs: rl.retryAfterMs,
+        });
+      return;
+    }
+
+    // OpenAI circuit breaker — fast-fail when upstream is known-bad.
+    try {
+      await assertCircuitClosed();
+    } catch (err) {
+      if (err instanceof CircuitOpenError) {
+        reply
+          .code(503)
+          .header('Retry-After', String(Math.ceil(err.retryAfterMs / 1000)))
+          .send({
+            error: 'AI_TEMPORARILY_UNAVAILABLE',
+            message: 'AI service is temporarily unavailable. Try again shortly.',
+            retryAfterMs: err.retryAfterMs,
+          });
+        return;
+      }
+      throw err;
+    }
+
+    // Wave A — amend-target validation moved inside the consolidated
+    // pre-flight withTenantContext block below so Company.status='ACTIVE'
+    // is enforced for this read too.
+    let validatedAmendDecisionId: string | null = null;
+
+    // Reserve the idempotency slot AFTER passing rate-limit + circuit
+    // gates — we're now committing to actual AI work for this key.
+    const reserved = await reserveIdempotency(auth.companyId, idempotencyKey);
+    if (!reserved) {
+      // Another caller raced past us between checkIdempotency and now.
+      // Re-check; if they finalised, we serve their response. If they're
+      // still mid-flight, 409.
+      const rechecked = await checkIdempotency(auth.companyId, idempotencyKey);
+      if (rechecked.cached === true) {
+        reply.code(200).send(rechecked.responseJson);
+        return;
+      }
+      reply.code(409).header('Retry-After', '2').send({
+        error: 'IDEMPOTENCY_IN_FLIGHT',
+        message:
+          'A request with this Idempotency-Key is already being processed. Retry in a moment.',
+      });
       return;
     }
 
@@ -554,9 +682,12 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         toolCalls: [],
         decisionCards: [],
         modelUsed: 'static',
-        // Help short-circuit makes no AI call — zero cost, no cache tokens.
+        // Help short-circuit makes no AI call — zero cost, no cache tokens,
+        // no tokens consumed.
         costInr: 0,
         cacheTokens: null,
+        tokensIn: null,
+        tokensOut: null,
         userAttachments: parsed.data.attachments ?? [],
         // Cluster A fix (P0, 2026-05-18): didAmend semantic is "backend
         // acknowledged the amendment intent" (validated + persisted), not
@@ -565,18 +696,15 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // is complete even on the help path.
         amendTargetDecisionId: validatedAmendDecisionId,
       });
-      await recordIdempotency(
-        prisma,
-        auth.companyId,
-        idempotencyKey,
-        helpResponse,
-        helpResponse.chatMessageId,
-      );
+      await recordIdempotency(auth.companyId, idempotencyKey, helpResponse);
       reply.code(200).send(helpResponse);
       return;
     }
 
-    if (!tryAcquireChatSlot()) {
+    // Distributed concurrency slot — Redis ZSET, multi-replica safe
+    // (friend review #8). Caller must release in the `finally` below.
+    const chatSlot = await tryAcquireChatSlot();
+    if (chatSlot === null) {
       reply.code(503).header('Retry-After', '5').send({ error: 'CHAT_BUSY' });
       return;
     }
@@ -604,52 +732,180 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         proposeClarifyTool,
       ];
 
-      // Load last N turns from this supervisor's chat thread so the model
-      // sees prior context (otherwise every message is zero-shot).
-      const priorMessages = await loadPriorMessages(auth.companyId, auth.userId);
+      // Wave A consolidated pre-flight read — one withTenantContext block
+      // for ALL pre-AI reads. This (a) enforces Company.status='ACTIVE'
+      // via the wrapper's GAP 1 fix, (b) loads Layer 1 + Layer 2 rules
+      // from Policy table (chat-sidebar-context-flow.md step 5), (c) loads
+      // LivingDoc + Calendar + prior chat history in one tx so all data
+      // for this turn is consistent.
+      //
+      // If amend mode is active, the target lookup happens here too and
+      // returns the kind/tier/targetId for the amend hint composer. A
+      // missing or cross-tenant target throws AmendTargetNotFoundError
+      // (defined at module scope below). Friend review #7 — error classes
+      // belong at module scope so they're not re-allocated per request and
+      // can be referenced by test/middleware/observability code.
+      let preFlight: {
+        priorMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+        livingDocBlock: string;
+        livingDocVersion: number;
+        calendarBlock: string;
+        companyRulesBlock: string;
+        hrRulesBlock: string;
+        amendBlock: string;
+      };
+      try {
+        preFlight = await withTenantContext(prisma, auth.companyId, async (tx) => {
+          // GAP 4 (redesigned 2026-05-19) — per-supervisor daily TOKEN cap
+          // (default 50000/day, Policy-configurable, IST midnight reset).
+          // Token-based instead of message-count because actual AI cost
+          // scales with tokens, not message count. Checked BEFORE the AI
+          // call so we never burn a budget slot on a capped supervisor.
+          const cap = await checkSupervisorTokenCap(tx, {
+            companyId: auth.companyId,
+            supervisorId: auth.userId,
+          });
+          if (!cap.ok) {
+            throw new TokenCapReachedError(
+              cap.usedTodayTokens,
+              cap.dailyLimitTokens,
+              cap.nextResetAt,
+            );
+          }
 
-      // Spec 2 §3.5 + §6.1 + §8.1 — Tier 2 + Tier 3 prompt context.
-      // getLivingDoc upserts on first read so chat path always has a doc;
-      // formatter returns empty string when all 5 sections empty (no
-      // wasted system-message slot). loadCalendarTier3 returns empty
-      // string when no entries in last 30 days.
-      const livingDoc = await getLivingDoc(prisma, auth.companyId, auth.userId);
-      const livingDocBlock = formatLivingDocPrompt(livingDoc);
-      const calendarBlock = await loadCalendarTier3(prisma, auth.companyId, auth.userId);
+          let amendBlock = '';
+          if (parsed.data.amend?.targetDecisionId) {
+            const target = await tx.supervisorDecision.findFirst({
+              where: {
+                id: parsed.data.amend.targetDecisionId,
+                companyId: auth.companyId,
+                supervisorId: auth.userId,
+              },
+              select: { id: true, kind: true, tier: true, targetId: true },
+            });
+            if (!target) {
+              throw new AmendTargetNotFoundError();
+            }
+            validatedAmendDecisionId = target.id;
+            amendBlock = composeAmendBlock({
+              decisionId: target.id,
+              kind: target.kind,
+              tier: target.tier,
+              targetId: target.targetId,
+            });
+          }
+
+          // Friend review #3 — Promise.allSettled so a slow/failing
+          // peripheral read (calendar, LivingDoc) doesn't take down the
+          // whole chat. Each piece has a safe default: empty history,
+          // empty doc (with version 0 → no cache hit), empty calendar,
+          // empty rule lists. Any rejection is logged so ops sees it.
+          const settled = await Promise.allSettled([
+            loadPriorMessages(tx, auth.companyId, auth.userId),
+            getLivingDoc(tx, auth.companyId, auth.userId),
+            loadCalendarTier3(tx, auth.companyId, auth.userId),
+            loadCompanyRules(tx, auth.companyId),
+            loadHrRules(tx, auth.companyId),
+          ]);
+          function unwrap<T>(idx: number, label: string, fallback: T): T {
+            const r = settled[idx]!;
+            if (r.status === 'fulfilled') return r.value as T;
+            req.log.warn(
+              {
+                event: 'chat.preflight_partial_failure',
+                stream: label,
+                err: r.reason instanceof Error ? r.reason.message : String(r.reason),
+              },
+              `chat pre-flight: ${label} failed — using fallback`,
+            );
+            return fallback;
+          }
+          const priorMessages = unwrap<Array<{ role: 'user' | 'assistant'; content: string }>>(
+            0,
+            'priorMessages',
+            [],
+          );
+          const livingDoc = unwrap<Awaited<ReturnType<typeof getLivingDoc>>>(1, 'livingDoc', {
+            id: '',
+            companyId: auth.companyId,
+            supervisorId: auth.userId,
+            version: 0,
+            siteRules: [],
+            workerNotes: [],
+            clientPreferences: [],
+            recurringTasks: [],
+            freeNotes: [],
+          });
+          const calendarBlock = unwrap<string>(2, 'calendar', '');
+          const companyRules = unwrap<Awaited<ReturnType<typeof loadCompanyRules>>>(
+            3,
+            'companyRules',
+            [],
+          );
+          const hrRules = unwrap<Awaited<ReturnType<typeof loadHrRules>>>(4, 'hrRules', []);
+
+          return {
+            priorMessages,
+            livingDocBlock: formatLivingDocPrompt(livingDoc),
+            livingDocVersion: livingDoc.version,
+            calendarBlock,
+            companyRulesBlock: composeCompanyRulesBlock(companyRules),
+            hrRulesBlock: composeHrRulesBlock(hrRules),
+            amendBlock,
+          };
+        });
+      } catch (err) {
+        if (err instanceof TokenCapReachedError) {
+          reply.code(429).header('X-Token-Cap-Reset-At', err.nextResetAt.toISOString());
+          reply.send({
+            error: 'TOKEN_LIMIT_REACHED',
+            message: `You've used today's AI budget (${err.dailyLimitTokens} tokens). Resets at IST midnight.`,
+            dailyLimitTokens: err.dailyLimitTokens,
+            usedTodayTokens: err.usedTodayTokens,
+            remainingTokens: 0,
+            nextResetAt: err.nextResetAt.toISOString(),
+          });
+          return;
+        }
+        if (err instanceof AmendTargetNotFoundError) {
+          reply.code(404).send({
+            error: 'AMEND_TARGET_NOT_FOUND',
+            message: 'Decision being amended was not found in your tenant or is not owned by you.',
+          });
+          return;
+        }
+        // withTenantContext throws { statusCode: 403 } when Company is not ACTIVE.
+        if (err && typeof err === 'object' && 'statusCode' in err && err.statusCode === 403) {
+          reply.code(403).send({
+            error: 'COMPANY_NOT_ACTIVE',
+            message: 'Your company account is not active. Contact your administrator.',
+          });
+          return;
+        }
+        throw err;
+      }
 
       // Wave 3 — if the supervisor attached photos, append a brief note to
       // the user message so the AI knows they exist. The Whisper / gpt-5.4-nano
       // surface is text-only; we do not stream image bytes (Vision pipeline
       // is out of scope). The note is enough to bias the intent classifier
-      // toward `log_complaint` when a photo is attached.
+      // toward `log_complaint` when a photo is attached. The attachment
+      // hint is user-message context (it describes the supervisor's own
+      // turn), not external data — no DATA-block wrapping needed. Amend
+      // context, by contrast, comes from a prior decision row and IS now
+      // wrapped as `<amend_context>` per docs/locked/chat-abuse-prevention.md.
       const attachmentCount = parsed.data.attachments?.length ?? 0;
-      // Cluster A fix (P0, deep-review 2026-05-18): when amend is active,
-      // fetch the original decision and inject its summary so the AI
-      // treats this turn as an amendment of that specific decision, not
-      // a fresh action. Without this hint the AI executes the new tool
-      // as if it were unrelated — mobile then celebrates a "successful
-      // amendment" that didn't happen.
-      let amendHint = '';
-      if (validatedAmendDecisionId) {
-        const targetRow = await prisma.supervisorDecision.findFirst({
-          where: { id: validatedAmendDecisionId, companyId: auth.companyId },
-          select: { kind: true, tier: true, targetId: true, payload: true },
-        });
-        if (targetRow) {
-          amendHint = `\n\n[AMEND MODE — the supervisor is amending an existing decision: kind=${targetRow.kind}, tier=${targetRow.tier}, targetId=${targetRow.targetId ?? 'null'}. Treat this turn as a CORRECTION of that decision. If the new instruction supersedes the original, emit the appropriate tool call AND include "amend_of=${validatedAmendDecisionId}" in the decision card payload.]`;
-        }
-      }
       const userMessageWithAttachmentHint =
-        (attachmentCount > 0
+        attachmentCount > 0
           ? `${parsed.data.text}\n\n[Supervisor attached ${attachmentCount} photo${attachmentCount === 1 ? '' : 's'}. Treat as evidence supporting a possible complaint.]`
-          : parsed.data.text) + amendHint;
+          : parsed.data.text;
 
-      concurrentCalls++;
+      // Concurrency slot already acquired above; no per-process counter needed.
       const loopResult = await openaiToolLoop({
         apiKey,
         systemPrompt: SYSTEM_PROMPT,
         userMessage: userMessageWithAttachmentHint,
-        priorMessages,
+        priorMessages: preFlight.priorMessages,
         tools,
         maxIterations: 6,
         timeoutMs: 50000,
@@ -658,12 +914,17 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // the daily-budget gate; AICostBudgetError → 429 below.
         surface: 'voice_change_parse',
         tenantCtx: { companyId: auth.companyId, prisma },
-        // Spec 2 §8 — 3-tier prompt cache. livingDocVersion + (companyId,
-        // supervisorId) form the prompt_cache_key for routing consistency
-        // and busts cache when supervisor adds a new rule (version bump).
-        livingDocBlock,
-        calendarBlock,
-        livingDocVersion: livingDoc.version,
+        // docs/locked/chat-sidebar-context-flow.md step 6 — 6-tier prompt
+        // composition. Layer 1 (company) + Layer 2 (HR) injected as DATA
+        // blocks before Layer 3 (LivingDoc) so the rule hierarchy is
+        // visible to the model in priority order. amendBlock replaces the
+        // pre-Wave-A raw-string concat per chat-abuse-prevention.md.
+        companyRulesBlock: preFlight.companyRulesBlock,
+        hrRulesBlock: preFlight.hrRulesBlock,
+        livingDocBlock: preFlight.livingDocBlock,
+        calendarBlock: preFlight.calendarBlock,
+        amendBlock: preFlight.amendBlock,
+        livingDocVersion: preFlight.livingDocVersion,
         companyId: auth.companyId,
         supervisorId: auth.userId,
         handler: async (name, input) => {
@@ -1058,6 +1319,9 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // Spec 2 §8.3 — cached_tokens captured by openai-tool-loop from
         // response.usage.prompt_tokens_details (null when SDK omits).
         cacheTokens: loopResult.cacheTokens,
+        // Wave A follow-on — feed the per-supervisor token cap.
+        tokensIn: loopResult.usage.inputTokens,
+        tokensOut: loopResult.usage.outputTokens,
         userAttachments: parsed.data.attachments ?? [],
         // Cluster A fix (P0, deep-review 2026-05-18): persist the
         // validated amend target so the audit trail records intent
@@ -1065,13 +1329,11 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         amendTargetDecisionId: validatedAmendDecisionId,
       });
 
-      await recordIdempotency(
-        prisma,
-        auth.companyId,
-        idempotencyKey,
-        response,
-        response.chatMessageId,
-      );
+      await recordIdempotency(auth.companyId, idempotencyKey, response);
+
+      // Successful OpenAI call → reset circuit breaker counter
+      // (friend review #5).
+      await recordCircuitSuccess();
 
       reply.code(200).send(response);
     } catch (err) {
@@ -1084,12 +1346,37 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           error: 'AI_BUDGET_EXCEEDED',
           message: 'Daily AI usage limit reached. Try again tomorrow.',
         });
+        // OpenAI budget cap isn't an OpenAI outage — don't tick the circuit.
         return;
       }
+      // Friend review #2 (CRITICAL): each cleanup gets its own .catch.
+      // If `recordCircuitFailure` throws (Redis blip), `releaseIdempotency`
+      // MUST still run — otherwise the supervisor is locked out of chat
+      // for 10 minutes (TTL) because the slot stays PROCESSING. Both
+      // cleanups happen in parallel via Promise.allSettled so neither
+      // blocks the other.
+      await Promise.allSettled([
+        recordCircuitFailure().catch((cleanupErr) => {
+          req.log.warn(
+            { event: 'chat.cleanup.circuit_record_failed', err: errMsg(cleanupErr) },
+            'chat: recordCircuitFailure failed during error cleanup',
+          );
+        }),
+        releaseIdempotency(auth.companyId, idempotencyKey).catch((cleanupErr) => {
+          req.log.warn(
+            { event: 'chat.cleanup.release_idempotency_failed', err: errMsg(cleanupErr) },
+            'chat: releaseIdempotency failed during error cleanup',
+          );
+        }),
+      ]);
       throw err;
     } finally {
-      concurrentCalls--;
-      releaseChatSlot();
+      await releaseChatSlot(chatSlot).catch((cleanupErr) => {
+        req.log.warn(
+          { event: 'chat.cleanup.release_slot_failed', err: errMsg(cleanupErr) },
+          'chat: releaseChatSlot failed in finally',
+        );
+      });
     }
   });
 
@@ -1097,6 +1384,26 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
     const auth = req.auth;
     if (!auth) {
       reply.code(401).send({ error: 'AUTH_REQUIRED' });
+      return;
+    }
+    // Friend review #7 — rate limit /chat/apply too. Same Redis sliding
+    // window, more generous cap since /apply commits DB writes but burns
+    // no AI tokens.
+    const applyRl = await checkAndConsumeRateLimit({
+      route: 'chat:apply',
+      subject: auth.userId,
+      limit: APPLY_RATE_LIMIT_MAX,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+    });
+    if (!applyRl.ok) {
+      reply
+        .code(429)
+        .header('Retry-After', String(Math.ceil(applyRl.retryAfterMs / 1000)))
+        .send({
+          error: 'RATE_LIMITED',
+          message: 'Too many apply requests. Please wait a moment.',
+          retryAfterMs: applyRl.retryAfterMs,
+        });
       return;
     }
     const parsed = ApplyDecisionCardInput.safeParse(req.body);
@@ -1567,15 +1874,38 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             create: { companyId: auth.companyId, supervisorId: auth.userId },
             update: {},
           });
-          const existing = (doc[column] as unknown as Array<Record<string, unknown>>) ?? [];
+
+          // GAP 5 — enforce the 100-active-rule cap BEFORE appending the new
+          // rule. enforceLivingDocCap returns a new sections object with the
+          // oldest ACTIVE rules auto-EXPIRED until count + 1 (the rule we're
+          // about to add) is <= MAX_ACTIVE_RULES_PER_LIVING_DOC.
+          const currentSections = readSections({
+            siteRules: doc.siteRules,
+            workerNotes: doc.workerNotes,
+            clientPreferences: doc.clientPreferences,
+            recurringTasks: doc.recurringTasks,
+            freeNotes: doc.freeNotes,
+          });
+          const enforced = enforceLivingDocCap(currentSections, { expectedAddCount: 1 });
+          // Append the new rule to its destination section (post-cap).
+          enforced.sections[column as keyof typeof enforced.sections].push(newRule as never);
+
           const updated = await tx.livingDoc.update({
             where: { id: doc.id },
             data: {
-              [column]: [...existing, newRule] as Prisma.InputJsonValue,
+              siteRules: enforced.sections.siteRules as unknown as Prisma.InputJsonValue,
+              workerNotes: enforced.sections.workerNotes as unknown as Prisma.InputJsonValue,
+              clientPreferences: enforced.sections
+                .clientPreferences as unknown as Prisma.InputJsonValue,
+              recurringTasks: enforced.sections.recurringTasks as unknown as Prisma.InputJsonValue,
+              freeNotes: enforced.sections.freeNotes as unknown as Prisma.InputJsonValue,
               version: { increment: 1 },
             },
             select: { version: true },
           });
+
+          // Emit the LIVING_DOC_RULE_ADDED audit FIRST so audit-trail readers
+          // see the add before the auto-expire cascade (chronological clarity).
           await recordAuditEvent(tx, {
             companyId: auth.companyId,
             kind: 'LIVING_DOC_RULE_ADDED',
@@ -1588,9 +1918,26 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
               version: updated.version,
             },
           });
-          return { ruleId, version: updated.version };
+          if (enforced.expiries.length > 0) {
+            await emitAutoExpireAudits(tx, {
+              companyId: auth.companyId,
+              actorUserId: auth.userId,
+              livingDocVersionBeforeBump: updated.version - 1,
+              expiries: enforced.expiries,
+              triggeredBy: 'cap_overflow',
+            });
+          }
+          return {
+            ruleId,
+            version: updated.version,
+            autoExpiredCount: enforced.expiries.length,
+          };
         });
-        reply.code(200).send({ ruleId: out.ruleId, version: out.version });
+        reply.code(200).send({
+          ruleId: out.ruleId,
+          version: out.version,
+          autoExpiredCount: out.autoExpiredCount,
+        });
       } catch (err) {
         if (err instanceof LifecycleError) {
           reply.code(httpStatusForLifecycleCode(err.code)).send({ error: err.code });

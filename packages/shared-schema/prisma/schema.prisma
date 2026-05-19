@@ -328,6 +328,18 @@ model Assignment {
   @@schema("axhy")
 }
 
+/// ChatThread — per-supervisor conversation context with the AI. Each
+/// supervisor may have up to 3 ACTIVE threads (archivedAt IS NULL) per
+/// the docs/locked/security-gaps-to-fix.md GAP 8 fix. App-layer count
+/// enforcement lives in apps/backend/src/lib/chat-thread-service.ts;
+/// see migration 014_chat_thread_three_window for the constraint shape.
+///
+/// Indexes live in migration 014 only — Prisma's @@index cannot express
+/// the `WHERE archivedAt IS NULL` partial-index needed for cheap
+/// active-only lookups, so all ChatThread indexing is SQL-managed.
+///
+/// @derives(docs/locked/security-gaps-to-fix.md GAP 8)
+/// @derives(docs/locked/chat-sidebar-context-flow.md)
 model ChatThread {
   id            String    @id @default(uuid()) @db.Uuid
   companyId     String    @db.Uuid
@@ -336,12 +348,13 @@ model ChatThread {
   supervisorId  String    @db.Uuid
   createdAt     DateTime  @default(now())
   lastMessageAt DateTime?
+  /// Null = active. Non-null = archived; supervisor can still read but new
+  /// messages do not append here.
   archivedAt    DateTime?
 
   company  Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   messages ChatMessage[]
 
-  @@unique([companyId, supervisorId])
   @@schema("axhy")
 }
 
@@ -370,6 +383,14 @@ model ChatMessage {
   /// used by ai_cost_daily view for cache-hit ratio.
   /// @derives(spec-2 §8.3)
   cacheTokens     Int?
+  /// Raw OpenAI `response.usage.prompt_tokens` (input tokens, including
+  /// cached prefix). Used by the per-supervisor daily TOKEN cap
+  /// (supervisor-token-cap.ts) — supersedes the message-count cap.
+  /// Nullable so existing rows pre-migration-015 don't need backfill.
+  tokensIn        Int?
+  /// Raw OpenAI `response.usage.completion_tokens` (output tokens).
+  /// Counts toward the same supervisor daily cap.
+  tokensOut       Int?
   /// Idempotency-Key from request
   idempotencyKey  String?
   createdAt       DateTime @default(now())

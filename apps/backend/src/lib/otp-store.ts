@@ -1,163 +1,170 @@
 /**
- * OTP storage with rate-limit + expiry.
+ * OTP storage — Redis-backed per ADR-0024.
  *
- * Day 4 implementation: simple Postgres-backed store. Replace with Redis at
- * 10K+ rps (per ADR-0009 — Postgres outbox over Redis until measured pain).
+ * Wave A.2.1 follow-up — addresses friend's Wave A.2 review:
+ *   #10 atomicity via Lua (check-rate-limit + insert as one script).
+ *   #12 keys go through lib/redis-keys.ts for env-namespacing.
+ *   #15 dropped the unused `_prisma` parameter.
+ *   #24 per-issuance random salt + HMAC pepper so a leaked Redis dump
+ *       isn't immediately brute-forceable. A 6-digit code is only 1M
+ *       possibilities; bare sha256(phone:code) lets an attacker with the
+ *       hash crack any active OTP in milliseconds. Now: random 16-byte
+ *       salt + HMAC-SHA256 keyed with `AXHY_OTP_PEPPER` env var.
  *
- * Schema (created lazily on first use; idempotent):
+ * OTP MUST fail CLOSED on Redis outage (auth-critical, unlike rate limits).
  *
- *   CREATE TABLE IF NOT EXISTS axhy.otp_attempts (
- *     phone     varchar(16) NOT NULL,
- *     code_hash text        NOT NULL,
- *     issued_at timestamptz NOT NULL DEFAULT now(),
- *     expires_at timestamptz NOT NULL,
- *     consumed   boolean      NOT NULL DEFAULT false,
- *     PRIMARY KEY (phone, issued_at)
- *   );
- *   CREATE INDEX IF NOT EXISTS otp_phone_recent_idx
- *     ON axhy.otp_attempts (phone, issued_at DESC);
- *
+ * @derives(ADR-0024 — Redis for caches)
  * @derives(ADR-0007)
- * @derives(master-plan §G.1) — phone+OTP rate-limited 3/15min per phone
+ * @derives(friend review Wave A.2 #10, #12, #15, #24)
  */
 
 import crypto from 'node:crypto';
 
-import { PrismaClient } from '@prisma/client';
+import { getRedis } from './redis.js';
+import { RedisKeys } from './redis-keys.js';
 
-const OTP_TTL_SECONDS = 300; // 5 min validity
-// Master plan §G.1 prescribes 3 OTPs per phone per 15 min for prod (prevents
-// SMS-billing abuse). In dev (AXHY_OTP_BYPASS=1) we lift the cap so phone
-// smoke-testing isn't gated by a 15-min wait when a screenshot loop or
-// reload chews through OTPs. Prod default unchanged.
+const OTP_TTL_MS = 5 * 60 * 1000; // 5 min validity
+const RL_WINDOW_MS = 15 * 60 * 1000;
 const PROD_MAX_OTPS_PER_15MIN = 3;
 const DEV_MAX_OTPS_PER_15MIN = 100;
+
 function maxOtpsPer15Min(): number {
   return process.env.AXHY_OTP_BYPASS === '1' ? DEV_MAX_OTPS_PER_15MIN : PROD_MAX_OTPS_PER_15MIN;
 }
 
-function hashCode(phone: string, code: string): string {
-  // Salted with phone so a leaked DB row can't be replayed across users
-  return crypto.createHash('sha256').update(`${phone}:${code}`).digest('hex');
-}
-
-function generateCode(): string {
-  // 6-digit numeric, padded
-  return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
-}
-
-let schemaEnsured = false;
-async function ensureSchema(prisma: PrismaClient): Promise<void> {
-  if (schemaEnsured) return;
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS axhy.otp_attempts (
-      phone      varchar(16) NOT NULL,
-      code_hash  text        NOT NULL,
-      issued_at  timestamptz NOT NULL DEFAULT now(),
-      expires_at timestamptz NOT NULL,
-      consumed   boolean     NOT NULL DEFAULT false,
-      PRIMARY KEY (phone, issued_at)
-    );
-  `);
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS otp_phone_recent_idx
-      ON axhy.otp_attempts (phone, issued_at DESC);
-  `);
-  schemaEnsured = true;
+/**
+ * HMAC pepper — secret stored in env so a Redis dump alone can't brute-force
+ * OTP codes (1M possibilities for a 6-digit code = milliseconds without a
+ * pepper). Defaults to JWT_SECRET when AXHY_OTP_PEPPER unset (any deploy
+ * already has JWT_SECRET); fully empty fallback for dev only.
+ */
+function getPepper(): string {
+  return process.env.AXHY_OTP_PEPPER ?? process.env.JWT_SECRET ?? 'dev-only-fallback';
 }
 
 /**
- * Issue a new OTP for the given phone, returning the plaintext code so the
- * caller can hand it to MSG91 for SMS delivery. Enforces rate limit.
- *
- * @derives(ADR-0007)
+ * Per-issuance random salt + HMAC-SHA256 hash. The salt is stored in
+ * Redis alongside the hash so verify can recompute. Without the pepper,
+ * a Redis dump still doesn't let an attacker derive codes — they'd need
+ * the env secret too.
  */
-export async function issueOtp(
-  prisma: PrismaClient,
-  phone: string,
-): Promise<{
+function generateSalt(): string {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function hashCode(phone: string, code: string, salt: string): string {
+  return crypto.createHmac('sha256', getPepper()).update(`${phone}:${salt}:${code}`).digest('hex');
+}
+
+function generateCode(): string {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+/**
+ * Lua: atomic rate-limit + insert. KEYS[1]=rl, KEYS[2]=store
+ *   ARGV[1] = now ms; ARGV[2] = rl-window cutoff; ARGV[3] = cap
+ *   ARGV[4] = rl-window pexpire ms
+ *   ARGV[5] = rl-zset unique member; ARGV[6] = hash-field key (issuedAt)
+ *   ARGV[7] = hash-field value (salt|hash); ARGV[8] = store pexpire ms
+ * Returns 1 on success, 0 when over cap.
+ */
+const ISSUE_LUA = `
+  redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[2])
+  local count = redis.call('ZCARD', KEYS[1])
+  if count >= tonumber(ARGV[3]) then
+    return 0
+  end
+  redis.call('ZADD', KEYS[1], ARGV[1], ARGV[5])
+  redis.call('PEXPIRE', KEYS[1], ARGV[4])
+  redis.call('HSET', KEYS[2], ARGV[6], ARGV[7])
+  redis.call('PEXPIRE', KEYS[2], ARGV[8])
+  return 1
+`;
+
+/**
+ * Issue a new OTP for the given phone. Friend review #15 — no `_prisma`
+ * param.
+ *
+ * @derives(ADR-0007) @derives(ADR-0024)
+ */
+export async function issueOtp(phone: string): Promise<{
   code: string;
   expiresAt: Date;
   resendInSeconds: number;
 }> {
-  await ensureSchema(prisma);
-
-  // Rate-limit: prod 3 / 15 min per phone; dev 100 / 15 min (AXHY_OTP_BYPASS=1)
+  const redis = getRedis();
+  const now = Date.now();
   const cap = maxOtpsPer15Min();
-  const count = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
-    `SELECT COUNT(*)::bigint AS count
-     FROM axhy.otp_attempts
-     WHERE phone = $1 AND issued_at > now() - interval '15 minutes'`,
-    phone,
-  );
-  if (Number(count[0]?.count ?? 0) >= cap) {
+  const code = generateCode();
+  const salt = generateSalt();
+  const codeHash = hashCode(phone, code, salt);
+  const expiresAt = new Date(now + OTP_TTL_MS);
+  const rlMember = `${now}-${crypto.randomUUID()}`;
+  // Encoded as `salt|hash` so verify can split + re-hash.
+  const fieldValue = `${salt}|${codeHash}`;
+
+  const result = (await redis.eval(
+    ISSUE_LUA,
+    2,
+    RedisKeys.otpRateLimit(phone),
+    RedisKeys.otpStore(phone),
+    String(now),
+    String(now - RL_WINDOW_MS),
+    String(cap),
+    String(RL_WINDOW_MS + 1_000),
+    rlMember,
+    String(now),
+    fieldValue,
+    String(OTP_TTL_MS + 1_000),
+  )) as number;
+
+  if (result === 0) {
     throw new Error(`OTP_RATE_LIMITED: ${cap} OTPs allowed per phone per 15 minutes`);
   }
-
-  const code = generateCode();
-  const codeHash = hashCode(phone, code);
-  const expiresAt = new Date(Date.now() + OTP_TTL_SECONDS * 1000);
-
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO axhy.otp_attempts (phone, code_hash, expires_at)
-     VALUES ($1, $2, $3)`,
-    phone,
-    codeHash,
-    expiresAt,
-  );
 
   return { code, expiresAt, resendInSeconds: 60 };
 }
 
 /**
- * Verify a submitted OTP. Returns true on success and marks the row consumed.
- * Returns false (does NOT throw) on invalid / expired / already-consumed.
+ * Verify a submitted OTP. Returns true on success and consumes the entry.
+ * Friend review #15 — no `_prisma` param.
  *
- * @derives(ADR-0007)
+ * @derives(ADR-0007) @derives(ADR-0024)
  */
-export async function verifyOtp(
-  prisma: PrismaClient,
-  phone: string,
-  code: string,
-): Promise<boolean> {
-  await ensureSchema(prisma);
+export async function verifyOtp(phone: string, code: string): Promise<boolean> {
+  const redis = getRedis();
 
-  // Dev-mode magic code: bypass mode accepts a fixed code so the app can be
-  // exercised without reading DB rows or waiting on SMS. Real-code path below
-  // still works (so existing tests that read the issued code keep passing).
+  // Dev bypass.
   if (process.env.AXHY_OTP_BYPASS === '1' && code === '123456') {
-    // Mark the most recent unconsumed row consumed so rate-limit + reuse
-    // semantics still match production.
-    await prisma.$executeRawUnsafe(
-      `UPDATE axhy.otp_attempts
-       SET consumed = true
-       WHERE phone = $1 AND consumed = false AND expires_at > now()`,
-      phone,
-    );
+    try {
+      const entries = await redis.hgetall(RedisKeys.otpStore(phone));
+      const newest = Object.keys(entries).sort((a, b) => Number(b) - Number(a))[0];
+      if (newest) await redis.hdel(RedisKeys.otpStore(phone), newest);
+    } catch {
+      /* best-effort */
+    }
     return true;
   }
 
-  const codeHash = hashCode(phone, code);
+  const entries = await redis.hgetall(RedisKeys.otpStore(phone));
+  const now = Date.now();
+  for (const [issuedAtRaw, fieldValue] of Object.entries(entries)) {
+    const issuedAt = Number(issuedAtRaw);
+    if (!Number.isFinite(issuedAt)) continue;
+    if (now - issuedAt > OTP_TTL_MS) continue;
+    const [salt, storedHash] = fieldValue.split('|');
+    if (!salt || !storedHash) continue;
+    const expected = hashCode(phone, code, salt);
+    // crypto.timingSafeEqual to avoid timing-side-channel — the hashes
+    // are hex strings of equal length, so cast to Buffer of same length.
+    const a = Buffer.from(storedHash, 'hex');
+    const b = Buffer.from(expected, 'hex');
+    if (a.length !== b.length) continue;
+    if (!crypto.timingSafeEqual(a, b)) continue;
 
-  const rows = await prisma.$queryRawUnsafe<
-    Array<{ phone: string; issued_at: Date; expires_at: Date; consumed: boolean }>
-  >(
-    `SELECT phone, issued_at, expires_at, consumed
-     FROM axhy.otp_attempts
-     WHERE phone = $1 AND code_hash = $2 AND consumed = false AND expires_at > now()
-     ORDER BY issued_at DESC
-     LIMIT 1`,
-    phone,
-    codeHash,
-  );
-
-  const row = rows[0];
-  if (!row) return false;
-
-  await prisma.$executeRawUnsafe(
-    `UPDATE axhy.otp_attempts SET consumed = true WHERE phone = $1 AND issued_at = $2`,
-    row.phone,
-    row.issued_at,
-  );
-  return true;
+    const deleted = await redis.hdel(RedisKeys.otpStore(phone), issuedAtRaw);
+    if (deleted >= 1) return true;
+    return false; // lost race
+  }
+  return false;
 }

@@ -1,0 +1,25 @@
+-- Migration 014b — fix-up for 014_chat_thread_three_window
+--
+-- The 014 migration dropped a CONSTRAINT named
+-- "ChatThread_companyId_supervisorId_key", but Prisma's `@@unique([...])`
+-- creates a UNIQUE INDEX (not a constraint) under that name. So the
+-- 014 DROP CONSTRAINT IF EXISTS was a silent no-op.
+--
+-- This migration drops the actual unique INDEX so the 3-window contract
+-- becomes enforceable.
+--
+-- Verification (run before + after on Railway):
+--   SELECT indexname FROM pg_indexes
+--   WHERE schemaname='axhy' AND tablename='ChatThread';
+--
+-- Before: "ChatThread_companyId_supervisorId_key" present (unique, btree)
+-- After:  index absent; only the 014 partial active idx + the archivedAt idx remain.
+--
+-- Rollback:
+--   CREATE UNIQUE INDEX "ChatThread_companyId_supervisorId_key"
+--     ON "axhy"."ChatThread" ("companyId", "supervisorId");
+--
+-- @derives(plans/abstract-wandering-kazoo.md Phase 1)
+-- @derives(docs/locked/security-gaps-to-fix.md GAP 8)
+
+DROP INDEX IF EXISTS "axhy"."ChatThread_companyId_supervisorId_key";

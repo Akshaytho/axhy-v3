@@ -30,7 +30,7 @@
  * @derives(master-plan §G) — supervisor surface
  */
 
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Linking,
@@ -47,6 +47,11 @@ import { router } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 
 import { onAppLogout } from '../lib/identity-lifecycle';
+import {
+  useReloadContextMutation,
+  useReloadContextStateQuery,
+  isReloadLimitReachedError,
+} from '../lib/queries/use-reload-context';
 
 // ---------------------------------------------------------------------------
 // DrawerContext — lets TopAppBar.tsx call openDrawer() without prop-drilling.
@@ -86,19 +91,62 @@ type DrawerItem = {
 //     rules" (B2-07).
 // Until each entry has a real query backing its subtitle, the subtitle
 // is omitted (`sub: null`) — the icon + label alone is enough.
-const DRAWER_ITEMS: DrawerItem[] = [
-  { icon: 'user', label: 'My profile', sub: null },
-  { icon: 'zap', label: 'Memory & rules', sub: null },
-  { icon: 'map', label: 'My sites', sub: null },
-  { icon: 'globe', label: 'Language', sub: 'English · हिन्दी · తెలుగు' },
-  { icon: 'bell', label: 'Notifications', sub: 'Push · WhatsApp · Email' },
-  { icon: 'help-circle', label: 'How to use Axhy', sub: '60-sec video · examples' },
-  { icon: 'pause', label: 'Temporary mode', sub: null },
-  { icon: 'log-out', label: 'Sign out', sub: null },
-];
+/**
+ * Drawer items as a function of dynamic state. Reload-context subtitle
+ * reads `${remaining}/${dailyLimit} today` so the supervisor sees the
+ * budget at-a-glance.
+ *
+ * Per docs/locked/chat-sidebar-context-flow.md Reload Context Button:
+ * 3/day per supervisor with IST midnight reset. The Drawer is the only
+ * surface that exposes the action — the chat surface itself does not
+ * (founder lock 2026-05-19 — keeps the chat surface clean).
+ */
+function buildDrawerItems(
+  reloadState: {
+    usedToday: number;
+    remaining: number;
+    dailyLimit: number;
+  } | null,
+): DrawerItem[] {
+  const reloadSub =
+    reloadState !== null ? `${reloadState.remaining}/${reloadState.dailyLimit} today` : null;
+  return [
+    { icon: 'user', label: 'My profile', sub: null },
+    { icon: 'zap', label: 'Memory & rules', sub: null },
+    { icon: 'refresh-cw', label: 'Reload context', sub: reloadSub },
+    { icon: 'map', label: 'My sites', sub: null },
+    { icon: 'globe', label: 'Language', sub: 'English · हिन्दी · తెలుగు' },
+    { icon: 'bell', label: 'Notifications', sub: 'Push · WhatsApp · Email' },
+    { icon: 'help-circle', label: 'How to use Axhy', sub: '60-sec video · examples' },
+    { icon: 'pause', label: 'Temporary mode', sub: null },
+    { icon: 'log-out', label: 'Sign out', sub: null },
+  ];
+}
 
 const DRAWER_WIDTH = 280;
 const SLIDE_DURATION = 220;
+
+/**
+ * Build stamp shown in the drawer footer. Reads from EXPO_PUBLIC_* env vars
+ * threaded through at bundle time so the stamp can't lie about freshness
+ * after a build. Falls back to the package version when env vars are
+ * unset (typical for `expo start` dev).
+ *
+ * EAS Build / GH Actions: set EXPO_PUBLIC_BUILD_SHA + EXPO_PUBLIC_BUILD_DATE
+ * so the stamp shows e.g. "AXHY · v0.0.1 · 12a4f6e · 2026-05-19".
+ *
+ * @derives(plans/abstract-wandering-kazoo.md Phase 3 follow-on,
+ *   docs/learnings catch #4 completion)
+ */
+function buildStampText(): string {
+  const version = process.env.EXPO_PUBLIC_APP_VERSION ?? '0.0.1';
+  const sha = process.env.EXPO_PUBLIC_BUILD_SHA ?? '';
+  const date = process.env.EXPO_PUBLIC_BUILD_DATE ?? '';
+  const parts = [`AXHY · v${version}`];
+  if (sha) parts.push(sha.slice(0, 7));
+  if (date) parts.push(date);
+  return parts.join(' · ');
+}
 
 // ---------------------------------------------------------------------------
 // Drawer component
@@ -151,6 +199,33 @@ export function Drawer({ open, onClose }: DrawerProps) {
   }, [open, slideAnim, backdropAnim]);
 
   const [pauseModalVisible, setPauseModalVisible] = useState(false);
+  const [reloadToast, setReloadToast] = useState<string | null>(null);
+
+  const reloadStateQuery = useReloadContextStateQuery();
+  const reloadMutation = useReloadContextMutation();
+  const drawerItems = useMemo(
+    () => buildDrawerItems(reloadStateQuery.data ?? null),
+    [reloadStateQuery.data],
+  );
+
+  async function handleReloadContext() {
+    try {
+      const result = await reloadMutation.mutateAsync();
+      setReloadToast(
+        `Refreshed memory + calendar. ${result.remaining}/${result.dailyLimit} left today.`,
+      );
+      // Toast auto-clears after 2.5s
+      setTimeout(() => setReloadToast(null), 2500);
+    } catch (err) {
+      if (isReloadLimitReachedError(err)) {
+        setReloadToast("You've used today's 3 reloads. Resets at IST midnight.");
+        setTimeout(() => setReloadToast(null), 3500);
+      } else {
+        setReloadToast(err instanceof Error ? `Reload failed: ${err.message}` : 'Reload failed.');
+        setTimeout(() => setReloadToast(null), 3500);
+      }
+    }
+  }
 
   async function handleSignOut() {
     onClose();
@@ -191,6 +266,10 @@ export function Drawer({ open, onClose }: DrawerProps) {
       case 'Memory & rules':
         router.push('/(supervisor)/memory');
         onClose();
+        return;
+      case 'Reload context':
+        // Don't close the drawer — toast shows here.
+        void handleReloadContext();
         return;
       case 'My sites':
         router.push('/(supervisor)/sites');
@@ -247,19 +326,23 @@ export function Drawer({ open, onClose }: DrawerProps) {
       <Animated.View style={[s.panel, { transform: [{ translateX: slideAnim }] }]}>
         {/* Items */}
         <View style={s.list}>
-          {DRAWER_ITEMS.map((item, index) => {
+          {drawerItems.map((item, index) => {
             const isSignOut = item.label === 'Sign out';
+            const isReloading = item.label === 'Reload context' && reloadMutation.isPending;
             return (
               <Pressable
                 key={item.label}
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
+                accessibilityState={{ busy: isReloading }}
+                disabled={isReloading}
                 onPress={() => handleItemPress(item)}
                 style={({ pressed }) => [
                   s.item,
                   isSignOut && s.itemSignOut,
-                  index === DRAWER_ITEMS.length - 2 && s.itemBeforeSignOut,
+                  index === drawerItems.length - 2 && s.itemBeforeSignOut,
                   pressed && s.itemPressed,
+                  isReloading && s.itemDisabled,
                 ]}
               >
                 {/* Icon badge */}
@@ -285,9 +368,18 @@ export function Drawer({ open, onClose }: DrawerProps) {
           })}
         </View>
 
-        {/* Footer build stamp */}
+        {/* Reload-context inline toast — appears just above the footer */}
+        {reloadToast !== null ? (
+          <View style={s.reloadToast}>
+            <Text style={s.reloadToastText}>{reloadToast}</Text>
+          </View>
+        ) : null}
+
+        {/* Footer build stamp — derived from expo-constants so it can't lie
+            about freshness. Falls back to "v3" if the manifest field is
+            missing (dev environment, pre-EAS). */}
         <View style={s.footer}>
-          <Text style={s.footerText}>AXHY · v3 · BUILD 2026.05.18</Text>
+          <Text style={s.footerText}>{buildStampText()}</Text>
         </View>
       </Animated.View>
 
@@ -458,6 +550,21 @@ const s = StyleSheet.create({
   },
   itemPressed: {
     backgroundColor: tokens.color.surface.paper2,
+  },
+  itemDisabled: {
+    opacity: 0.55,
+  },
+  reloadToast: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    backgroundColor: tokens.color.surface.paper2,
+    borderTopWidth: 1,
+    borderTopColor: tokens.color.surface.cardEdge,
+  },
+  reloadToastText: {
+    fontSize: 13,
+    color: tokens.color.ink.secondary,
+    lineHeight: 18,
   },
   iconBadge: {
     width: 28,

@@ -24,6 +24,10 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
     // tenant-exempt: read-only parallel queries, no writes.
     // Latency fix (Cluster 1, 2026-05-18): bare prisma → parallel dispatch.
     // /me was 7.5s with tx; ~1 RTT without.
+    // learned-ok: intentional Promise.all — /me is foundational, mobile
+    // app calls it on every screen mount and depends on ALL three rows;
+    // partial-degradation here would mask real errors (e.g. orphan user
+    // with no company) that should surface as 404 not silent-success.
     const [user, company, memberships] = await Promise.all([
       prisma.user.findUnique({ where: { id: auth.userId } }),
       prisma.company.findUnique({ where: { id: auth.companyId } }),

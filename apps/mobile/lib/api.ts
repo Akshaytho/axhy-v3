@@ -60,8 +60,13 @@ type RequestOptions = {
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true } = options;
 
+  // Set Content-Type only when there's an actual body. Fastify rejects
+  // POSTs with Content-Type: application/json but no body
+  // ("Body cannot be empty when content-type is set to 'application/json'"),
+  // which broke the Wave A POST /chat/reload-context that intentionally has
+  // no payload.
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     ...(options.headers ?? {}),
   };
 
