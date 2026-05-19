@@ -375,10 +375,8 @@ async function persistChatTurn(input: {
       },
     });
 
-    // Spec 2 §9.2 — atomic UPDATE … SET col=col+x inside the same tx as
-    // the ChatMessage write. Race-free at the 50-concurrent semaphore
-    // because the increment is a single DB statement, no app-level
-    // read-modify-write. Zero-cost paths short-circuit inside incrementSpend.
+    // Spec 2 §9.2 — atomic UPDATE via $executeRaw inside incrementSpend().
+    // Single-statement col=col+x, no app-level read-modify-write race.
     await incrementSpend(input.companyId, input.costInr, tx);
 
     // F-002 §3a: write PROPOSED SupervisorDecision rows for each decision card

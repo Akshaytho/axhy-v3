@@ -9,6 +9,129 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 pnpm exec lint-staged
 
 # -----------------------------------------------------------------------------
+# Locked doc guard: if docs/locked/ files are staged, they MUST have an
+# amendment entry. Locked docs are constitutional — changes need a paper trail.
+# Amendment format: "## Amendment YYYY-MM-DD" section with what/why/who.
+# -----------------------------------------------------------------------------
+MODIFIED_LOCKED=$(git diff --cached --diff-filter=M --name-only -- 'docs/locked/*.md' 2>/dev/null)
+NEW_LOCKED=$(git diff --cached --diff-filter=A --name-only -- 'docs/locked/*.md' 2>/dev/null)
+
+if [ -n "$MODIFIED_LOCKED" ] || [ -n "$NEW_LOCKED" ]; then
+  # FOUNDER APPROVAL REQUIRED for ANY change to locked docs
+  if [ "$AXHY_FOUNDER_APPROVED" != "1" ]; then
+    echo ""
+    echo "[locked] BLOCKED: Changes to docs/locked/ require founder review."
+    if [ -n "$MODIFIED_LOCKED" ]; then
+      echo "[locked] Modified:"
+      echo "$MODIFIED_LOCKED" | sed 's/^/  /'
+    fi
+    if [ -n "$NEW_LOCKED" ]; then
+      echo "[locked] New:"
+      echo "$NEW_LOCKED" | sed 's/^/  /'
+    fi
+    echo ""
+    echo "[locked] Claude Code cannot modify locked docs without founder approval."
+    echo "[locked] Founder: review the changes, then commit with:"
+    echo "  AXHY_FOUNDER_APPROVED=1 git commit ..."
+    echo ""
+    exit 1
+  fi
+
+  # Modified files (not new) need amendment sections
+  if [ -n "$MODIFIED_LOCKED" ]; then
+    MISSING_AMENDMENT=""
+    for locked_file in $MODIFIED_LOCKED; do
+      DIFF=$(git diff --cached -- "$locked_file" 2>/dev/null)
+      if ! echo "$DIFF" | grep -q '+## Amendment'; then
+        MISSING_AMENDMENT="$MISSING_AMENDMENT\n  $locked_file"
+      fi
+    done
+
+    if [ -n "$MISSING_AMENDMENT" ]; then
+      echo ""
+      echo "[locked] Founder-approved, but these modified files need an amendment trail:"
+      echo -e "$MISSING_AMENDMENT"
+      echo ""
+      echo "[locked] Add '## Amendment YYYY-MM-DD' section with: What changed, Why, Requested by"
+      echo ""
+      exit 1
+    fi
+  fi
+  echo "[locked] Founder-approved. Locked doc changes verified."
+fi
+
+# -----------------------------------------------------------------------------
+# Session audit: check code against locked constitutional docs.
+# Blocks commit if BLOCKER or HIGH violations found.
+# Per docs/locked/ — the AI behavioral contract.
+# -----------------------------------------------------------------------------
+echo "[audit] Running compliance audit against locked docs..."
+
+# Find tsx binary — may be in different locations depending on install state
+TSX_BIN=""
+for candidate in \
+  "./packages/ai-tools/node_modules/.bin/tsx" \
+  "./node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs" \
+  "./apps/backend/node_modules/.bin/tsx"; do
+  if [ -x "$candidate" ]; then
+    TSX_BIN="$candidate"
+    break
+  fi
+done
+
+if [ -z "$TSX_BIN" ]; then
+  echo "[audit] tsx not found — skipping audit (run pnpm install to enable)"
+else
+  "$TSX_BIN" packages/ai-tools/src/session-audit.ts
+  AUDIT_STATUS=$?
+  if [ "$AUDIT_STATUS" -ne 0 ]; then
+    echo ""
+    echo "[audit] COMMIT BLOCKED — fix violations above before committing."
+    echo "[audit] If a violation is a false positive, add a skip comment (e.g. // raw-ok)"
+    echo ""
+    exit "$AUDIT_STATUS"
+  fi
+  echo "[audit] All checks passed."
+fi
+
+# -----------------------------------------------------------------------------
+# Targeted learning warnings: tell you which learnings apply to the files
+# you just changed. Runs in pure bash — no tsx needed.
+# This catches context amnesia: even if Claude forgot to check, this prints it.
+# -----------------------------------------------------------------------------
+STAGED_FILES=$(git diff --cached --name-only 2>/dev/null)
+LEARNING_DIR="docs/learnings"
+
+if [ -n "$STAGED_FILES" ] && [ -d "$LEARNING_DIR" ]; then
+  WARNINGS=""
+  for learning in "$LEARNING_DIR"/*.md; do
+    [ "$(basename "$learning")" = "README.md" ] && continue
+    [ ! -f "$learning" ] && continue
+    check_paths=$(grep '^check_paths:' "$learning" 2>/dev/null | sed 's/^check_paths:[[:space:]]*//' | tr -d '"' | tr -d "'")
+    [ -z "$check_paths" ] && continue
+    broken_rule=$(grep '^broken_rule:' "$learning" 2>/dev/null | sed 's/^broken_rule:[[:space:]]*//' | tr -d '"' | tr -d "'")
+
+    for staged in $STAGED_FILES; do
+      for cpath in $(echo "$check_paths" | tr ',' ' '); do
+        cpath=$(echo "$cpath" | tr -d ' ')
+        if echo "$staged" | grep -q "$cpath"; then
+          WARNINGS="$WARNINGS\n  $staged -> $broken_rule ($(basename "$learning"))"
+          break 2
+        fi
+      done
+    done
+  done
+
+  if [ -n "$WARNINGS" ]; then
+    echo ""
+    echo "[audit] LEARNING WARNINGS for your staged files:"
+    echo -e "$WARNINGS"
+    echo "[audit] Review these learnings before proceeding."
+    echo ""
+  fi
+fi
+
+# -----------------------------------------------------------------------------
 # Auto-regen handoff outputs when canonical handoff sources are staged.
 # Per handoff/execution-state/INDEX.md rules 7 + 8 + 13.
 # -----------------------------------------------------------------------------

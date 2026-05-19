@@ -195,13 +195,13 @@ async function upsertChunks(files: string[]): Promise<{ inserted: number; skippe
       continue;
     }
 
-    // Remove any older versions of this file
     await client.query(`DELETE FROM axhy_graph.chunks WHERE source_path = $1`, [sourcePath]);
 
     const vec = await embed(content.slice(0, 8000)); // cap input length
     await client.query(
       `INSERT INTO axhy_graph.chunks
-       (source_path, start_line, end_line, content, content_hash, language, embedding, metadata)
+       (source_path, start_line, end_line, content, content_hash, language,
+        embedding, metadata)
        VALUES ($1, 1, $2, $3, $4, $5, $6::vector, $7::jsonb)`,
       [
         sourcePath,

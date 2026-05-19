@@ -34,3 +34,22 @@ export * from './tools/termination.js';
 export * from './tools/complaint.js';
 export * from './sonnet-tool-loop.js';
 export * from './openai-tool-loop.js';
+
+export {
+  vectorSearch,
+  impactCheck,
+  markStaleByPath,
+  clearStale,
+  lockChunk,
+  unlockChunk,
+  setDerivedPaths,
+  setDerivedPathsBySource,
+  setClient as setVectorClient,
+  disconnect as disconnectVector,
+} from './vector-knowledge.js';
+export type {
+  ChunkCategory,
+  VectorSearchInput,
+  ChunkResult,
+  ImpactCheckResult,
+} from './vector-knowledge.js';

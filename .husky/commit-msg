@@ -1,0 +1,46 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# Learning loop enforcement: if learning files are staged, the commit message
+# must reference which rule was broken. This ensures Claude Code discloses
+# violations rather than silently committing fixes.
+# Per docs/learnings/README.md — the self-improving rule system.
+# -----------------------------------------------------------------------------
+
+STAGED_LEARNINGS=$(git diff --cached --name-only -- 'docs/learnings/*.md' 2>/dev/null | grep -v README.md || true)
+
+if [ -n "$STAGED_LEARNINGS" ]; then
+  COMMIT_MSG_FILE="$1"
+  if ! grep -qi "learning\|broke rule\|broken_rule\|violation" "$COMMIT_MSG_FILE"; then
+    echo ""
+    echo "[learning] Learning files staged but commit message doesn't reference the rule break."
+    echo "[learning] Include 'Learning:' or 'Broke rule:' in your commit message."
+    echo "[learning] Staged learnings:"
+    echo "$STAGED_LEARNINGS" | sed 's/^/  /'
+    echo ""
+    exit 1
+  fi
+
+  # Enforce machine-readable detection — every learning MUST have check_pattern
+  # Without it, the learning is just a note. With it, it becomes a live audit check.
+  MISSING_PATTERN=""
+  for learning_file in $STAGED_LEARNINGS; do
+    if [ -f "$learning_file" ]; then
+      if ! grep -q '^check_pattern:' "$learning_file"; then
+        MISSING_PATTERN="$MISSING_PATTERN\n  $learning_file"
+      fi
+    fi
+  done
+  if [ -n "$MISSING_PATTERN" ]; then
+    echo ""
+    echo "[learning] BLOCKED: These learning files are missing 'check_pattern:' in frontmatter:"
+    echo -e "$MISSING_PATTERN"
+    echo "[learning] Every learning MUST have check_pattern so it becomes a live audit check."
+    echo "[learning] Add: check_pattern, check_paths, check_expect to the frontmatter."
+    echo ""
+    exit 1
+  fi
+
+  echo "[learning] Rule-breaking disclosure found + all learnings have detection patterns."
+fi

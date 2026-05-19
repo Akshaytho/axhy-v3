@@ -94,6 +94,16 @@ export async function withTenantContext<T>(
         `SELECT set_config('axhy.current_company_id', $1, true)`,
         companyId,
       );
+
+      // security-gaps-to-fix.md Gap 1: reject requests for SUSPENDED companies.
+      const company = await tx.company.findUnique({
+        where: { id: companyId },
+        select: { status: true },
+      });
+      if (!company || company.status !== 'ACTIVE') {
+        throw Object.assign(new Error('Company is not ACTIVE'), { statusCode: 403 });
+      }
+
       return await fn(tx);
     },
     { timeout: 30_000, maxWait: 10_000 },

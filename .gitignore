@@ -2,6 +2,9 @@
 node_modules/
 .pnpm-store/
 
+# local audit state (per-machine, not shared)
+docs/locked/.audit-hashes.json
+
 # build outputs
 dist/
 build/
@@ -58,6 +61,12 @@ packages/shared-schema/src/generated/
 **/scripts/screenshot-*.mjs
 apps/admin-web/render-r4.mjs
 apps/admin-web/public/design-review/
+
+# QA/debug artifacts (Claude-generated, not production code)
+scripts/devtools-capture/
+**/scripts/debug-*.mjs
+**/scripts/qa-*.ts
+**/scripts/capture-*.mjs
 
 # bootstrap-seed + ad-hoc script outputs (P1.5b — 2026-05-17)
 tmp/

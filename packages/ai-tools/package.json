@@ -10,6 +10,10 @@
     "lint": "echo 'lint placeholder'",
     "typecheck": "tsc --noEmit",
     "test": "echo 'test placeholder'",
+    "audit": "tsx src/session-audit.ts",
+    "brain:build": "tsx src/brain-builder.ts",
+    "brain:compact": "tsx src/brain-compact.ts",
+    "brain:lock-seed": "tsx src/brain-lock-seed.ts",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
@@ -18,9 +22,12 @@
     "@axhy/shared-schema": "workspace:*",
     "@anthropic-ai/sdk": "^0.30.0",
     "@prisma/client": "^5.22.0",
-    "openai": "^4.65.0"
+    "openai": "^4.65.0",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }
 }

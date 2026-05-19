@@ -6,12 +6,42 @@
 
 if [ -z "$DATABASE_URL" ] && [ -z "$DATABASE_PUBLIC_URL" ] && [ -z "$AXHY_DB_URL" ]; then
   echo "[pre-push] No DATABASE_URL; skipping graph audit (push allowed but unaudited)."
-  exit 0
+else
+  # Phase 1 lock: graph audit on every push (fast — no full rebuild).
+  echo "[pre-push] running graph audit..."
+  pnpm --filter @axhy/knowledge-graph graph:audit || {
+    echo "[pre-push] graph audit failed — orphans or dead-link detected"
+    exit 1
+  }
 fi
 
-# Phase 1 lock: graph audit on every push (fast — no full rebuild).
-echo "[pre-push] running graph audit..."
-pnpm --filter @axhy/knowledge-graph graph:audit || {
-  echo "[pre-push] graph audit failed — orphans or dead-link detected"
-  exit 1
-}
+# Defense in depth: re-run session audit before push.
+# Catches violations from --no-verify commits or context amnesia.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+TSX_BIN=""
+for candidate in \
+  "./packages/ai-tools/node_modules/.bin/tsx" \
+  "./node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs" \
+  "./apps/backend/node_modules/.bin/tsx"; do
+  if [ -x "$candidate" ]; then
+    TSX_BIN="$candidate"
+    break
+  fi
+done
+
+if [ -n "$TSX_BIN" ]; then
+  echo "[pre-push] running compliance audit..."
+  "$TSX_BIN" packages/ai-tools/src/session-audit.ts
+  AUDIT_STATUS=$?
+  if [ "$AUDIT_STATUS" -ne 0 ]; then
+    echo ""
+    echo "[pre-push] PUSH BLOCKED — audit violations found. Fix before pushing."
+    echo ""
+    exit "$AUDIT_STATUS"
+  fi
+  echo "[pre-push] audit clean."
+else
+  echo "[pre-push] tsx not found — skipping compliance audit."
+fi
