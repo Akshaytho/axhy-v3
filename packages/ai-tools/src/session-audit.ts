@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from '
 import { join, relative } from 'node:path';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -32,10 +32,13 @@ function fail(check: string, severity: Violation['severity'], detail: string) {
 }
 
 function grep(pattern: string, dirs: string[], exts: string[]): string[] {
-  const extArgs = exts.map((e) => `--include='*${e}'`).join(' ');
-  const dirArgs = dirs.map((d) => join(REPO_ROOT, d)).join(' ');
+  const erePattern = pattern.replace(/\\[|]/g, (m) => (m === '\\|' ? '|' : m));
+  const args = ['-rn', '-E'];
+  for (const e of exts) args.push(`--include=*${e}`);
+  args.push(erePattern);
+  for (const d of dirs) args.push(join(REPO_ROOT, d));
   try {
-    const result = execSync(`grep -rn ${extArgs} '${pattern}' ${dirArgs} 2>/dev/null || true`, {
+    const result = execFileSync('grep', args, {
       encoding: 'utf8',
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -47,7 +50,10 @@ function grep(pattern: string, dirs: string[], exts: string[]): string[] {
         if (line.includes('// audit-ok')) return false;
         return true;
       });
-  } catch {
+  } catch (err: unknown) {
+    const code = (err as { status?: number }).status;
+    if (code === 1) return [];
+    console.error(`[audit] grep FAILED for pattern "${pattern}": exit code ${code}`);
     return [];
   }
 }
@@ -930,12 +936,15 @@ if (totalSkips > 15) {
 
 // 4b: Learning pattern validation — every learning with check_pattern
 // must match at least 1 file (otherwise the pattern is fake/broken).
+// Exception: check_expect='none' means the pattern is a PREVENTION check —
+// 0 matches is the desired state (the bad pattern doesn't exist). Only flag
+// as dead when check_expect='exists' and the pattern finds nothing.
 for (const learning of learnings) {
   if (!learning.checkPattern || !learning.checkPaths) continue;
+  if (learning.checkExpect === 'none') continue;
   const paths = learning.checkPaths.split(',').map((p) => p.trim());
   const testHits = grep(learning.checkPattern, paths, ['.ts', '.tsx', '.md']);
-  // A pattern that matches 0 files is either fake or outdated
-  if (testHits.length === 0 && learning.checkExpect === 'none') {
+  if (testHits.length === 0) {
     fail(
       'integrity-dead-pattern',
       'MEDIUM',

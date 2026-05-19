@@ -20,7 +20,7 @@
  * @derives(ADR-0023) — embed_general surface
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
@@ -316,11 +316,33 @@ async function wireDerivedFromPaths(files: string[]): Promise<number> {
   return wired;
 }
 
+// ─── Schema bootstrap ───────────────────────────────────────────────────────
+
+async function ensureSchema(): Promise<void> {
+  const migrationPath = join(REPO_ROOT, 'scripts/migrations/0003-brain-schema.sql');
+  if (!existsSync(migrationPath)) {
+    console.error('[brain] Missing 0003-brain-schema.sql — cannot bootstrap.');
+    process.exit(1);
+  }
+  const schemaCheck = await client.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_schema = 'axhy_brain' AND table_name = 'chunks'`,
+  );
+  if ((schemaCheck.rowCount ?? 0) > 0) {
+    console.log('[brain] Schema axhy_brain.chunks exists.');
+    return;
+  }
+  console.log('[brain] Schema missing — bootstrapping from 0003-brain-schema.sql...');
+  const sql = readFileSync(migrationPath, 'utf8');
+  await client.query(sql);
+  console.log('[brain] Schema created.');
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log('[brain] Starting brain build...');
   await client.connect();
+  await ensureSchema();
 
   const allFiles: string[] = [];
   for (const dir of SCAN_DIRS) {
