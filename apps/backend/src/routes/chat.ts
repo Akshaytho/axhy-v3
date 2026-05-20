@@ -62,6 +62,7 @@ import { loadCalendarTier3 } from '../lib/calendar-context.js';
 import { loadCompanyRules, loadHrRules } from '../lib/policy-rules-loader.js';
 import { checkSupervisorTokenCap } from '../lib/supervisor-token-cap.js';
 import { enforceLivingDocCap, emitAutoExpireAudits, readSections } from '../lib/living-doc-cap.js';
+import { embedTurnAsync } from '../lib/turn-embedder.js';
 import {
   composeCompanyRulesBlock,
   composeHrRulesBlock,
@@ -390,6 +391,10 @@ async function persistChatTurn(input: {
   amendTargetDecisionId: string | null;
 }): Promise<{
   chatMessageId: string;
+  /** Wave A.3 Phase 1 — surfaced so the route can fire embedTurnAsync for semantic retrieval. */
+  threadId: string;
+  /** Wave A.3 Phase 1 — distinguishes the user-side message ID from the assistant-side `chatMessageId`. */
+  userMessageId: string;
   assistantText: string;
   decisionCard: Record<string, unknown> | null;
   decisionCards: Array<Record<string, unknown>> | null;
@@ -442,7 +447,7 @@ async function persistChatTurn(input: {
     if (input.amendTargetDecisionId) {
       userToolCallsJson.amendTargetDecisionId = input.amendTargetDecisionId;
     }
-    await tx.chatMessage.create({
+    const userMsg = await tx.chatMessage.create({
       data: {
         companyId: input.companyId,
         threadId: thread.id,
@@ -527,11 +532,17 @@ async function persistChatTurn(input: {
       },
     });
 
-    return assistantMsg.id;
+    return {
+      assistantMessageId: assistantMsg.id,
+      userMessageId: userMsg.id,
+      threadId: thread.id,
+    };
   });
 
   return {
-    chatMessageId: result,
+    chatMessageId: result.assistantMessageId,
+    threadId: result.threadId,
+    userMessageId: result.userMessageId,
     assistantText: input.assistantText,
     // Cluster A fix (P0, deep-review 2026-05-18): didAmend is the signal
     // mobile uses to decide whether to fire the "amend complete → nav to
@@ -1330,6 +1341,29 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       });
 
       await recordIdempotency(auth.companyId, idempotencyKey, response);
+
+      // Wave A.3 Phase 1 — fire-and-forget embedding for future semantic
+      // retrieval. MUST NOT block the reply; failures logged, never thrown.
+      // @derives(docs/locked/vector-rag-context-assembly.md §9.2 + §11)
+      void embedTurnAsync({
+        companyId: auth.companyId,
+        supervisorId: auth.userId,
+        threadId: response.threadId,
+        userMessageId: response.userMessageId,
+        assistantMessageId: response.chatMessageId,
+        userText: parsed.data.text,
+        assistantText: loopResult.finalText,
+        toolCalls: loopResult.toolCalls.map((tc) => ({
+          name: tc.toolName,
+          input: tc.input,
+        })),
+        decisionCards: loopResult.decisionCards,
+      }).catch((err) => {
+        req.log.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          'turn embedding failed',
+        );
+      });
 
       // Successful OpenAI call → reset circuit breaker counter
       // (friend review #5).
