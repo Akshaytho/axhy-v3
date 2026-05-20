@@ -1,0 +1,54 @@
+# Exclude content not needed by Railway build/runtime — shrinks the
+# upload + image size. Same syntax as .gitignore. Backend, admin-web,
+# and supervisor-preview deploys all share this file.
+#
+# Image-size baseline 2026-05-20: 943 MB. Target: <500 MB.
+
+# Other apps' build artifacts — backend never imports these
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/mobile/web-build/
+apps/mobile/ios/build/
+apps/mobile/android/.gradle/
+apps/mobile/android/build/
+
+# Screenshots + capture artifacts (Playwright outputs)
+apps/mobile/screenshots-*/
+apps/mobile/screenshots-supervisor/
+apps/*/screenshots-*/
+
+# Mobile-only configs that don't affect backend builds
+apps/mobile/google-services.json
+apps/mobile/eas.json
+
+# Local environment files — Railway injects via service env vars
+.env.local
+.env.development.local
+.env.production.local
+apps/*/.env.local
+apps/*/.env.development.local
+apps/*/.env.production.local
+
+# Connectedness build artifact (8 MB HTML blob, not used at runtime)
+connectedness/
+
+# Docs that don't affect runtime
+docs/screenshots/
+docs/prototypes/
+
+# Test artifacts
+**/coverage/
+**/.nyc_output/
+**/test-results/
+**/playwright-report/
+
+# Editor + IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+logs/
+/tmp/
