@@ -19,7 +19,9 @@ import {
   CreateSwapRequestInput,
 } from '@axhy/shared-schema';
 import { z } from 'zod';
-import { CHAT_HISTORY_TURN_WINDOW } from '@axhy/business-rules';
+// CHAT_HISTORY_TURN_WINDOW now imported by `lib/prior-messages.ts` (the
+// fallback path inside assembleSemanticContext) — chat.ts no longer
+// uses it directly after the Wave A.3 Phase 2 semantic-retrieval swap.
 import {
   openaiToolLoop,
   AICostBudgetError,
@@ -63,6 +65,7 @@ import { loadCompanyRules, loadHrRules } from '../lib/policy-rules-loader.js';
 import { checkSupervisorTokenCap } from '../lib/supervisor-token-cap.js';
 import { enforceLivingDocCap, emitAutoExpireAudits, readSections } from '../lib/living-doc-cap.js';
 import { embedTurnAsync } from '../lib/turn-embedder.js';
+import { assembleSemanticContext, type SemanticContextResult } from '../lib/semantic-context.js';
 import {
   composeCompanyRulesBlock,
   composeHrRulesBlock,
@@ -257,7 +260,15 @@ RULE HIERARCHY (docs/locked/rule-hierarchy-three-layers.md)
   (Layer 1), explain the rule and refuse the action. When it conflicts with
   <hr_rules> (Layer 2), explain the policy and offer to request an exception.
   When it conflicts with <supervisor_rules> (Layer 3), the higher-priority
-  rule wins. Layer 1 beats Layer 2 beats Layer 3.`;
+  rule wins. Layer 1 beats Layer 2 beats Layer 3.
+
+BREVITY (Phase 4 cost-reduction — docs/locked/vector-rag-context-assembly.md §7)
+
+You are a supervisor's AI assistant. Be direct and brief.
+- Action responses: state what you did in 1-2 sentences, then show the decision card.
+- Informational responses: answer in 2-3 sentences max.
+- Never restate the supervisor's request back to them.
+- Never explain how tools work. Just use them.`;
 
 /** Static help response — returned without any AI call when supervisor types help/menu. */
 const HELP_TEXT = `I can help with:
@@ -284,51 +295,11 @@ const HELP_TRIGGERS = new Set([
 // CHAT_HISTORY_TURN_WINDOW constant from @axhy/business-rules
 // (centralized Wave 4b Phase 2.5 cleanup).
 
-/**
- * Load the last N turns of the supervisor's chat thread, oldest → newest,
- * formatted for openaiToolLoop's `priorMessages`. Returns [] when there
- * is no prior thread (first message ever from this supervisor).
- *
- * Each row is mapped: ChatMessage.role → 'user' | 'assistant' (database
- * already stores role as string); content = transcript (user) OR
- * aiResponseText (assistant). Empty content is filtered out.
- */
-/**
- * Loads the active ChatThread's last N turns. Per the Wave A 3-window
- * migration, ChatThread is no longer @@unique([companyId, supervisorId])
- * — supervisors may have up to 3 ACTIVE threads. This helper picks the
- * most-recent ACTIVE thread (lastMessageAt DESC, then createdAt DESC) for
- * chat history. The chat-threads route (future) lets the supervisor
- * choose which thread to send into; absent that param, "most recent"
- * is the right default.
- *
- * Wave A refactor (close GAP 1 hole): accepts a tx so the read happens
- * inside withTenantContext, enforcing Company.status='ACTIVE' at the
- * Postgres GUC + RLS layer.
- */
-async function loadPriorMessages(
-  tx: Prisma.TransactionClient,
-  companyId: string,
-  supervisorId: string,
-): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
-  const thread = await tx.chatThread.findFirst({
-    where: { companyId, supervisorId, archivedAt: null },
-    orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
-  });
-  if (!thread) return [];
-  const rows = await tx.chatMessage.findMany({
-    where: { companyId, threadId: thread.id },
-    orderBy: { createdAt: 'desc' },
-    take: CHAT_HISTORY_TURN_WINDOW,
-  });
-  return rows
-    .reverse()
-    .map((m) => ({
-      role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
-      content: m.role === 'assistant' ? (m.aiResponseText ?? '') : (m.transcript ?? ''),
-    }))
-    .filter((m) => m.content.length > 0);
-}
+// Wave A.3 Phase 2 — `loadPriorMessages` was extracted to
+// `../lib/prior-messages.ts` and is now the fallback path inside
+// `assembleSemanticContext` (semantic retrieval; see
+// docs/locked/vector-rag-context-assembly.md §10.3). The route below
+// calls `assembleSemanticContext` instead of `loadPriorMessages` directly.
 
 /**
  * Persist a user-message + assistant-response turn. Used by both the
@@ -758,6 +729,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       // can be referenced by test/middleware/observability code.
       let preFlight: {
         priorMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+        /** Wave A.3 Phase 4 — entity-context hint block from semantic retrieval, or null when no entities found / fallback path. */
+        entityHints: string | null;
         livingDocBlock: string;
         livingDocVersion: number;
         calendarBlock: string;
@@ -811,8 +784,20 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           // whole chat. Each piece has a safe default: empty history,
           // empty doc (with version 0 → no cache hit), empty calendar,
           // empty rule lists. Any rejection is logged so ops sees it.
+          // Wave A.3 Phase 2 — `loadPriorMessages` swap. By default,
+          // `assembleSemanticContext` runs pgvector similarity search.
+          // The `SEMANTIC_CONTEXT_KILL_SWITCH` env var (Phase 5 — permanent
+          // ops kill switch) can engage fallback to the blind 10-turn window
+          // if set to 'true'. Default (unset or 'false') runs semantic.
+          // @derives(docs/locked/vector-rag-context-assembly.md §5 + §9.1)
           const settled = await Promise.allSettled([
-            loadPriorMessages(tx, auth.companyId, auth.userId),
+            assembleSemanticContext({
+              tx,
+              companyId: auth.companyId,
+              supervisorId: auth.userId,
+              threadId: null, // function resolves active thread internally
+              userMessage: parsed.data.text,
+            }),
             getLivingDoc(tx, auth.companyId, auth.userId),
             loadCalendarTier3(tx, auth.companyId, auth.userId),
             loadCompanyRules(tx, auth.companyId),
@@ -831,11 +816,27 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             );
             return fallback;
           }
-          const priorMessages = unwrap<Array<{ role: 'user' | 'assistant'; content: string }>>(
-            0,
-            'priorMessages',
-            [],
-          );
+          const semanticResult = unwrap<SemanticContextResult>(0, 'semanticContext', {
+            priorMessages: [],
+            entityHints: null,
+            retrievalMeta: {
+              source: 'fallback',
+              semanticTurnsRetrieved: 0,
+              continuityTurnsAdded: 0,
+              totalTokensEstimate: 0,
+              retrievalLatencyMs: 0,
+              queryEmbeddingLatencyMs: 0,
+              retrievalTopK: 0,
+              retrievalUsedK: 0,
+              maxSimilarityScore: null,
+              minSimilarityScore: null,
+              semanticMiss: false,
+              baselineWindowTokens: 0,
+              costDeltaVsBaseline: 0,
+            },
+          });
+          const priorMessages = semanticResult.priorMessages;
+          const entityHints = semanticResult.entityHints;
           const livingDoc = unwrap<Awaited<ReturnType<typeof getLivingDoc>>>(1, 'livingDoc', {
             id: '',
             companyId: auth.companyId,
@@ -857,6 +858,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
 
           return {
             priorMessages,
+            entityHints,
             livingDocBlock: formatLivingDocPrompt(livingDoc),
             livingDocVersion: livingDoc.version,
             calendarBlock,
@@ -911,11 +913,23 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           ? `${parsed.data.text}\n\n[Supervisor attached ${attachmentCount} photo${attachmentCount === 1 ? '' : 's'}. Treat as evidence supporting a possible complaint.]`
           : parsed.data.text;
 
+      // Wave A.3 Phase 4 — prepend semantic-retrieval entity hints (if
+      // any) so the model can skip find_workers / find_sites lookups
+      // when the entity is already known from past turns. Spec §6 calls
+      // for a separate Tier 5b system message; this minimal Phase 4
+      // ships as a prefix on the user message (same model effect, less
+      // openai-tool-loop surface area). Promoted to a proper system
+      // block in a follow-up if measurement shows quality regressions.
+      // @derives(docs/locked/vector-rag-context-assembly.md §6)
+      const userMessageWithHints = preFlight.entityHints
+        ? `${preFlight.entityHints}\n\n${userMessageWithAttachmentHint}`
+        : userMessageWithAttachmentHint;
+
       // Concurrency slot already acquired above; no per-process counter needed.
       const loopResult = await openaiToolLoop({
         apiKey,
         systemPrompt: SYSTEM_PROMPT,
-        userMessage: userMessageWithAttachmentHint,
+        userMessage: userMessageWithHints,
         priorMessages: preFlight.priorMessages,
         tools,
         maxIterations: 6,
