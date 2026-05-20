@@ -17,7 +17,7 @@
  * @derives(ADR-0004) — prisma singleton
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, afterAll, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
 process.env.AXHY_OTP_BYPASS = '1';
@@ -28,6 +28,9 @@ const dbUrl =
 process.env.DATABASE_URL = dbUrl;
 
 const prismaRaw = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+
+// Unique prefix per test run — prevents slug/name collisions on parallel CI runs.
+const TEST_PREFIX = 'te-' + Date.now() + '-';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -95,6 +98,26 @@ async function deleteByCompanyId(companyId: string): Promise<void> {
   );
 }
 
+/**
+ * Create a real Company row so FK constraints from axhy_chat.turn_embeddings
+ * are satisfied. Returns the new company's id.
+ * Callers must push the returned id into cleanupCompanyIds.
+ */
+async function createTestCompany(): Promise<string> {
+  const uniq = crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+  // Derive a phone from the unique hex digits to guarantee global uniqueness.
+  const phoneDigits = uniq.replace(/[a-f]/gi, (c) => String(c.charCodeAt(0) % 10));
+  const co = await prismaRaw.company.create({
+    data: {
+      name: TEST_PREFIX + 'Co-' + uniq,
+      slug: TEST_PREFIX + 'co-' + uniq,
+      ownerPhone: '+91' + phoneDigits,
+      ownerName: 'TestOwner',
+    },
+  });
+  return co.id;
+}
+
 /** Minimal valid EmbedTurnInput with all required fields. */
 function makeInput(
   overrides: Partial<{
@@ -139,9 +162,27 @@ describe('turn-embedder', () => {
     for (const id of cleanupCompanyIds) {
       await deleteByCompanyId(id);
     }
+    // Delete real Company rows created during this test.
+    // turn_embeddings rows are already gone (deleted above by company) so no FK violation.
+    if (cleanupCompanyIds.length > 0) {
+      await prismaRaw.company.deleteMany({ where: { id: { in: cleanupCompanyIds } } });
+    }
     cleanupUserMessageIds = [];
     cleanupCompanyIds = [];
     vi.restoreAllMocks();
+  });
+
+  // Safety net: runs after all tests in this suite finish.
+  // Catches any company rows that leaked if a test threw before pushing to cleanupCompanyIds.
+  afterAll(async () => {
+    await prismaRaw.$executeRawUnsafe(
+      `DELETE FROM "axhy_chat"."turn_embeddings" WHERE company_id IN (
+         SELECT id FROM "axhy"."Company" WHERE slug LIKE $1
+       )`,
+      TEST_PREFIX + '%',
+    );
+    await prismaRaw.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+    await prismaRaw.$disconnect();
   });
 
   // ── Test 1: Happy path ──────────────────────────────────────────────────
@@ -149,7 +190,10 @@ describe('turn-embedder', () => {
   it('happy path: embeds turn and writes row with non-empty combined_text and token_count > 0', async () => {
     const { embedTurnAsync } = await import('../src/lib/turn-embedder.js');
 
-    const input = makeInput();
+    const companyId = await createTestCompany();
+    cleanupCompanyIds.push(companyId);
+
+    const input = makeInput({ companyId });
     cleanupUserMessageIds.push(input.userMessageId);
 
     await embedTurnAsync(input);
@@ -169,7 +213,10 @@ describe('turn-embedder', () => {
   it('idempotency: calling embedTurnAsync twice for same userMessageId inserts exactly 1 row', async () => {
     const { embedTurnAsync } = await import('../src/lib/turn-embedder.js');
 
-    const input = makeInput();
+    const companyId = await createTestCompany();
+    cleanupCompanyIds.push(companyId);
+
+    const input = makeInput({ companyId });
     cleanupUserMessageIds.push(input.userMessageId);
 
     await embedTurnAsync(input);
@@ -184,9 +231,11 @@ describe('turn-embedder', () => {
   it('tenant isolation: rows for company A and B are independent; cross-company SELECT returns 0', async () => {
     const { embedTurnAsync } = await import('../src/lib/turn-embedder.js');
 
-    const companyIdA = crypto.randomUUID();
-    const companyIdB = crypto.randomUUID();
-    const companyIdC = crypto.randomUUID(); // third company — no rows; used for cross-tenant assert
+    // A and B need real rows so embedTurnAsync INSERT satisfies the FK constraint.
+    const companyIdA = await createTestCompany();
+    const companyIdB = await createTestCompany();
+    // C is never inserted into — SELECT COUNT returns 0 regardless of whether the Company row exists.
+    const companyIdC = crypto.randomUUID();
 
     cleanupCompanyIds.push(companyIdA, companyIdB);
 
@@ -212,7 +261,11 @@ describe('turn-embedder', () => {
   it('decision turns: row has has_decision = true when decisionCards is non-empty', async () => {
     const { embedTurnAsync } = await import('../src/lib/turn-embedder.js');
 
+    const companyId = await createTestCompany();
+    cleanupCompanyIds.push(companyId);
+
     const input = makeInput({
+      companyId,
       decisionCards: [{ kind: 'shift_change', summary: 'Move Ramesh to site B' }],
     });
     cleanupUserMessageIds.push(input.userMessageId);
@@ -229,7 +282,11 @@ describe('turn-embedder', () => {
   it('tool turns: row has has_tool_call = true and tool_names matches input', async () => {
     const { embedTurnAsync } = await import('../src/lib/turn-embedder.js');
 
+    const companyId = await createTestCompany();
+    cleanupCompanyIds.push(companyId);
+
     const input = makeInput({
+      companyId,
       toolCalls: [
         { name: 'getAttendance', input: { date: '2026-05-20' } },
         { name: 'listWorkers', input: {} },
@@ -263,7 +320,10 @@ describe('turn-embedder', () => {
   it('empty assistantText: embeds successfully; combined_text contains "Assistant: " suffix', async () => {
     const { embedTurnAsync } = await import('../src/lib/turn-embedder.js');
 
-    const input = makeInput({ assistantText: '' });
+    const companyId = await createTestCompany();
+    cleanupCompanyIds.push(companyId);
+
+    const input = makeInput({ companyId, assistantText: '' });
     cleanupUserMessageIds.push(input.userMessageId);
 
     await embedTurnAsync(input);
@@ -286,7 +346,10 @@ describe('turn-embedder', () => {
     const { embedTurnAsync } = await import('../src/lib/turn-embedder.js');
     const embeddingsModule = await import('../src/lib/openai-embeddings.js');
 
-    const input = makeInput();
+    const companyId = await createTestCompany();
+    cleanupCompanyIds.push(companyId);
+
+    const input = makeInput({ companyId });
     cleanupUserMessageIds.push(input.userMessageId);
 
     const spy = vi
@@ -312,7 +375,7 @@ describe('turn-embedder', () => {
   it('anonymizeTurnEmbeddings: sets combined_text to "[anonymized]" and zeroes the embedding', async () => {
     const { embedTurnAsync, anonymizeTurnEmbeddings } = await import('../src/lib/turn-embedder.js');
 
-    const companyId = crypto.randomUUID();
+    const companyId = await createTestCompany();
     cleanupCompanyIds.push(companyId);
 
     const input = makeInput({ companyId });
