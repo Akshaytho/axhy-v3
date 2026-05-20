@@ -21,9 +21,12 @@
  */
 
 import type { Redis } from 'ioredis';
+import pino from 'pino';
 
 import { getRedis } from './redis.js';
 import { RedisKeys } from './redis-keys.js';
+
+const log = pino({ name: 'redis-rate-limit' });
 
 export type RateLimitCheckArgs = {
   /** Route key, e.g. "chat:messages" or "chat:apply" or "auth:otp". */
@@ -122,7 +125,7 @@ function failOpenOrClosed(
       resetAtMs: now + args.windowMs,
     };
   }
-  console.warn(
+  log.warn(
     { event: 'rate_limit.redis_unreachable', err: errMsg(err), route: args.route },
     'rate-limit: Redis unreachable — failing open',
   );

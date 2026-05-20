@@ -15,8 +15,11 @@
  */
 
 import type { Prisma, PrismaClient } from '@prisma/client';
+import pino from 'pino';
 import { LivingDocRule, type LivingDocRule as Rule } from '@axhy/shared-schema';
 import { safeParseOrLog, type SafeParseLogger } from '@axhy/errors';
+
+const log = pino({ name: 'living-doc' });
 
 export type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -26,7 +29,7 @@ export type DbClient = PrismaClient | Prisma.TransactionClient;
  */
 const defaultLog: SafeParseLogger = {
   warn(obj, msg) {
-    console.warn(msg ?? 'living-doc warn', obj);
+    log.warn(obj, msg ?? 'living-doc warn');
   },
 };
 

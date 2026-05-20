@@ -34,9 +34,12 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Redis } from 'ioredis';
+import pino from 'pino';
 
 import { getRedis } from './redis.js';
 import { RedisKeys } from './redis-keys.js';
+
+const log = pino({ name: 'chat-concurrency' });
 
 function safeIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -119,7 +122,7 @@ export async function tryAcquireChatSlot(): Promise<SlotToken | null> {
     if (res < 0) return null;
     return token;
   } catch (err) {
-    console.warn(
+    log.warn(
       { event: 'chat_concurrency.acquire_failed', err: errMsg(err) },
       'chat-concurrency: acquire failed — failing open',
     );
@@ -142,7 +145,7 @@ export async function releaseChatSlot(token: SlotToken): Promise<void> {
   try {
     await redis.zrem(RedisKeys.chatConcurrency(), token);
   } catch (err) {
-    console.warn(
+    log.warn(
       { event: 'chat_concurrency.release_failed', err: errMsg(err), token },
       'chat-concurrency: release failed — slot will reap on TTL',
     );

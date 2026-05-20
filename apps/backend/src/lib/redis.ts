@@ -21,6 +21,9 @@
  */
 
 import { Redis } from 'ioredis';
+import pino from 'pino';
+
+const log = pino({ name: 'redis' });
 
 let client: Redis | null = null;
 
@@ -57,7 +60,7 @@ export function getRedis(): Redis {
     // (the consumers of this client decide their fallback behavior).
     // Log so ops sees the pain.
 
-    console.warn(
+    log.warn(
       { event: 'redis.client_error', err: err instanceof Error ? err.message : String(err) },
       'redis: client error',
     );
