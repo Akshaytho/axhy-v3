@@ -118,30 +118,44 @@ export async function embedTurnAsync(input: EmbedTurnInput): Promise<void> {
   //         $4 user_message_id, $5 assistant_message_id,
   //         $6 combined_text, $7 embedding::vector, $8 token_count,
   //         $9 has_decision, $10 has_tool_call, $11 tool_names::text[]
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO "axhy_chat"."turn_embeddings"
-       ( company_id,  supervisor_id,  thread_id,
-         user_message_id,  assistant_message_id,
-         combined_text,  embedding,  token_count,
-         has_decision,  has_tool_call,  tool_names )
-     VALUES
-       ( $1::uuid, $2::uuid, $3::uuid,
-         $4::uuid, $5::uuid,
-         $6, $7::vector, $8,
-         $9, $10, $11::text[] )
-     ON CONFLICT (user_message_id) DO NOTHING`,
-    input.companyId,
-    input.supervisorId,
-    input.threadId,
-    input.userMessageId,
-    input.assistantMessageId,
-    combinedText,
-    embeddingLiteral,
-    tokenCount,
-    hasDecision,
-    hasToolCall,
-    toolNames,
-  );
+  //
+  // Wave A.3 Phase 2.5 — RLS-aware. Migration 017 enables RLS on
+  // axhy_chat.turn_embeddings with policy
+  //   USING (company_id::text = current_setting('axhy.current_company_id'))
+  // Since embedTurnAsync runs fire-and-forget AFTER chat.ts's
+  // withTenantContext has returned, the per-connection GUC from that
+  // outer scope is gone. We wrap the INSERT in its own tx that calls
+  // set_config(..., true) so the GUC is set ONLY for this statement's
+  // session and rolls back at tx end. Matches the withTenantContext
+  // pattern at apps/backend/src/middleware/tenant-context.ts.
+  // @derives(docs/locked/vector-rag-context-assembly.md §3.3)
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('axhy.current_company_id', ${input.companyId}, true)`;
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "axhy_chat"."turn_embeddings"
+         ( company_id,  supervisor_id,  thread_id,
+           user_message_id,  assistant_message_id,
+           combined_text,  embedding,  token_count,
+           has_decision,  has_tool_call,  tool_names )
+       VALUES
+         ( $1::uuid, $2::uuid, $3::uuid,
+           $4::uuid, $5::uuid,
+           $6, $7::vector, $8,
+           $9, $10, $11::text[] )
+       ON CONFLICT (user_message_id) DO NOTHING`,
+      input.companyId,
+      input.supervisorId,
+      input.threadId,
+      input.userMessageId,
+      input.assistantMessageId,
+      combinedText,
+      embeddingLiteral,
+      tokenCount,
+      hasDecision,
+      hasToolCall,
+      toolNames,
+    );
+  });
 
   log.info(
     {
