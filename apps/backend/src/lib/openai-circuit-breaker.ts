@@ -25,8 +25,12 @@
  * @derives(friend review Wave A.2 #5, #9, #11, #12, #17)
  */
 
+import pino from 'pino';
+
 import { getRedis } from './redis.js';
 import { RedisKeys } from './redis-keys.js';
+
+const log = pino({ name: 'openai-circuit-breaker' });
 
 /**
  * Safe int env parser — defaults silently when the env var is missing OR
@@ -145,7 +149,7 @@ export async function recordSuccess(): Promise<void> {
       .del(RedisKeys.circuitOpenUntil())
       .exec();
   } catch (err) {
-    console.warn(
+    log.warn(
       { event: 'circuit.record_success_failed', err: errMsg(err) },
       'circuit-breaker: success-recording failed',
     );
@@ -177,7 +181,7 @@ export async function recordFailure(): Promise<CircuitState> {
         .set(RedisKeys.circuitOpenUntil(), String(openUntil))
         .pexpire(RedisKeys.circuitOpenUntil(), OPEN_DURATION_MS + 1_000)
         .exec();
-      console.warn(
+      log.warn(
         {
           event: 'circuit.opened',
           failures,
@@ -191,7 +195,7 @@ export async function recordFailure(): Promise<CircuitState> {
     }
     return 'CLOSED';
   } catch (err) {
-    console.warn(
+    log.warn(
       { event: 'circuit.record_failure_failed', err: errMsg(err) },
       'circuit-breaker: failure-recording failed',
     );
