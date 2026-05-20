@@ -28,7 +28,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "clean": "turbo run clean && rm -rf node_modules",
     "db:migrate": "node scripts/run-migrations.mjs",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
