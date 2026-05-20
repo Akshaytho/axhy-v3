@@ -3,7 +3,7 @@ broken_rule: 'chat-reload-context.ts and me.ts still use Promise.all — one slo
 persona: all
 date: 2026-05-20
 session: 'Wave A deep code review — CORRECTED after full file audit'
-check_pattern: 'Promise.all(['
+check_pattern: 'Promise\.all\(\['
 check_paths: 'apps/backend/src/routes'
 check_expect: 'exists'
 ---

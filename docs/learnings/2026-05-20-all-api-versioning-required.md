@@ -3,7 +3,7 @@ broken_rule: 'no API versioning — routes are /chat/messages not /v1/chat/messa
 persona: all
 date: 2026-05-20
 session: 'Wave A deep code review — production hardening gaps'
-check_pattern: "app.post('/chat/"
+check_pattern: 'app\.post\(.*/chat/'
 check_paths: 'apps/backend/src/routes'
 check_expect: 'exists'
 ---

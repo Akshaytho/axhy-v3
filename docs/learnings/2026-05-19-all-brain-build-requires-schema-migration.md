@@ -3,7 +3,7 @@ broken_rule: 'self-reasoning protocol Phase 2 (impactCheck/vectorSearch) must be
 persona: all
 date: 2026-05-19
 session: 'Wave A — sidebar + chat AI compliance'
-check_pattern: 'axhy_brain'
+check_pattern: 'axhy_brain\.chunks'
 check_paths: 'packages/ai-tools/src'
 check_expect: 'exists'
 ---
