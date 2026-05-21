@@ -14,12 +14,13 @@ import {
   VerifyOTPInput,
   VerifyOTPOutput,
 } from '@axhy/shared-schema';
-import type { Role } from '@axhy/shared-schema';
+import { RoleSchema, type Role } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { issueOtp, verifyOtp } from '../lib/otp-store.js';
 import { sendOtpSms } from '../lib/msg91.js';
 import { issueAccessToken, issueRefreshToken } from '../lib/jwt.js';
+import { workerOtpVerifiedService } from '../lib/services/worker-otp-verified-service.js';
 
 /**
  * Register /auth/* routes.
@@ -98,6 +99,41 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
     // Default to first membership's company; mobile picker can rotate via /auth/switch later.
     const active = memberships[0]!;
+
+    // F-006b 2026-05-21: if the active membership is WORKER, look up the
+    // Worker row and fire the OTP_VERIFIED machine event when in
+    // PENDING_ACTIVATION. The service is idempotent — it returns
+    // NO_TRANSITION (no DB write) for any other state. Wrapped in a
+    // best-effort transaction so token issuance is never blocked by a
+    // transition failure; the gap is logged for ops.
+    if (active.role === RoleSchema.enum.WORKER) {
+      try {
+        // 15s timeout covers the 5-query cold-connection path against
+        // Railway proxy (~8s observed in first-call real-DB tests).
+        // Warm subsequent calls complete in <1s; this only matters for
+        // the first OTP verify in a fresh process.
+        await prisma.$transaction(
+          async (tx) => {
+            const worker = await tx.worker.findFirst({
+              where: { userId: user.id, companyId: active.companyId },
+            });
+            if (!worker) return;
+            await workerOtpVerifiedService(tx, {
+              workerId: worker.id,
+              companyId: active.companyId,
+              userId: user.id,
+            });
+          },
+          { timeout: 15_000, maxWait: 10_000 },
+        );
+      } catch (err) {
+        req.log.warn(
+          { err, userId: user.id, companyId: active.companyId },
+          'worker OTP_VERIFIED transition failed; auth proceeds',
+        );
+      }
+    }
+
     const accessToken = await issueAccessToken({
       userId: user.id,
       companyId: active.companyId,

@@ -114,6 +114,8 @@ model User {
   // F28 ReplacementInvite back-relations (2026-05-18 — Wave 1 backend)
   sentReplacementInvites     ReplacementInvite[] @relation("ReplacementInviteFromSupervisor")
   receivedReplacementInvites ReplacementInvite[] @relation("ReplacementInviteToWorker")
+  // F-006b 2026-05-21 — DPDP one-page consent. Append-only.
+  consentLogs                ConsentLog[]
 
   @@index([companyId])
   @@schema("axhy")
@@ -1316,6 +1318,33 @@ model ReplacementInvite {
   @@index([companyId, toWorkerId, status])
   /// General list query — supervisor activity feed.
   @@index([companyId, sentAt])
+  @@schema("axhy")
+}
+
+/// F-006b 2026-05-21 — DPDP consent log. Append-only audit row written on
+/// first-run consent acceptance per MVP_V2_ALIGNED_PLAN.md §13 M22 (single-
+/// page consent, replaces V2's 3-page carousel).
+///
+/// Cross-tenant: workers consent to the Axhy platform privacy policy, not
+/// to the cleaning company. Hence no companyId column — userId only.
+///
+/// Append-only. Each call to POST /worker/consent inserts a new row. The
+/// latest row by acceptedAt represents the current consent state. Older
+/// rows preserved for DPDP forensics.
+///
+/// @derives(MVP_V2_ALIGNED_PLAN.md §6 + §13 M22)
+/// @derives(F-006b worker-shell relaxation)
+model ConsentLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  /// Version string of the policy at time of acceptance (e.g., "2026-05-21").
+  policyVersion String   @db.VarChar(32)
+  acceptedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, acceptedAt(sort: Desc)])
   @@schema("axhy")
 }
 

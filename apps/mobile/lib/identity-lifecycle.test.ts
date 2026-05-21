@@ -157,11 +157,32 @@ describe('identity-lifecycle — onIdentifiedLogin', () => {
     warnSpy.mockRestore();
   });
 
-  // Case 8: mismatched-order reject (JWT-scoped rule)
-  it('rejects when memberships[0] is WORKER even if SUPERVISOR exists at index 1', async () => {
+  // Case 8a (F-006b 2026-05-21): WORKER at memberships[0] is now ACCEPTED.
+  // Tokens persist with activeRole=WORKER; OneSignal.login fires once.
+  it('accepts WORKER at memberships[0] — persists tokens with activeRole=WORKER and calls OneSignal.login', async () => {
     const result = makeAuthResult([
       { role: 'WORKER', companyId: 'A' },
       { role: 'SUPERVISOR', companyId: 'B' },
+    ]);
+
+    await onIdentifiedLogin(result);
+
+    expect(mockedSetTokens).toHaveBeenCalledTimes(1);
+    expect(mockedSetTokens).toHaveBeenCalledWith({
+      accessToken: 'header.payload.sig',
+      refreshToken: 'refresh-token',
+      activeRole: 'WORKER',
+    });
+    expect(oneSignalLogin).toHaveBeenCalledTimes(1);
+    expect(oneSignalLogin).toHaveBeenCalledWith('user-uuid-123');
+  });
+
+  // Case 8b (F-006b 2026-05-21): unsupported role (HR/OWNER) at memberships[0]
+  // still throws. Splits the previous Case 8 (non-supervisor throws) by role.
+  it('rejects HR at memberships[0] even when WORKER exists at index 1', async () => {
+    const result = makeAuthResult([
+      { role: 'HR', companyId: 'A' },
+      { role: 'WORKER', companyId: 'B' },
     ]);
 
     await expect(onIdentifiedLogin(result)).rejects.toBeInstanceOf(
@@ -171,11 +192,19 @@ describe('identity-lifecycle — onIdentifiedLogin', () => {
     expect(oneSignalLogin).not.toHaveBeenCalled();
   });
 
-  // Case 9: no-SUPERVISOR reject (and empty memberships)
-  it('rejects WORKER-only memberships and empty memberships array', async () => {
-    await expect(onIdentifiedLogin(makeAuthResult([{ role: 'WORKER' }]))).rejects.toBeInstanceOf(
-      NonSupervisorRoleNotSupportedError,
-    );
+  // Case 9a (F-006b 2026-05-21): WORKER-only membership now ACCEPTED.
+  // Splits the previous Case 9 — workers no longer reject when SUPERVISOR is absent.
+  it('accepts WORKER-only membership', async () => {
+    await onIdentifiedLogin(makeAuthResult([{ role: 'WORKER' }]));
+
+    expect(mockedSetTokens).toHaveBeenCalledTimes(1);
+    expect(mockedSetTokens).toHaveBeenCalledWith(expect.objectContaining({ activeRole: 'WORKER' }));
+    expect(oneSignalLogin).toHaveBeenCalledTimes(1);
+  });
+
+  // Case 9b (F-006b 2026-05-21): empty memberships array still throws.
+  // Splits the previous Case 9 — empty-array path unchanged from F-006a.
+  it('rejects empty memberships array', async () => {
     await expect(onIdentifiedLogin(makeAuthResult([]))).rejects.toBeInstanceOf(
       NonSupervisorRoleNotSupportedError,
     );
@@ -234,12 +263,30 @@ describe('identity-lifecycle — onColdStartReady', () => {
     expect(result.route).toBe('/(supervisor)/profile');
   });
 
-  // Case 10: defensive cold-start logout
-  it('on stale tokens.activeRole !== SUPERVISOR: calls onAppLogout + routes to /(auth)/phone', async () => {
+  // Case 10a (F-006b 2026-05-21): cold-start with WORKER role now routes to
+  // /(worker)/index (no logout). Splits the previous Case 10 — WORKER is no
+  // longer a stale-state trigger.
+  it('on WORKER tokens: re-links OneSignal and routes to /(worker)/index without logout', async () => {
     const result = await onColdStartReady({
       accessToken: 'header.payload.sig',
       refreshToken: 'refresh',
       activeRole: 'WORKER',
+    });
+
+    expect(mockedClearTokens).not.toHaveBeenCalled();
+    expect(oneSignalLogin).toHaveBeenCalledTimes(1);
+    expect(oneSignalLogin).toHaveBeenCalledWith('user-uuid-123');
+    expect(result.route).toBe('/(worker)/index');
+  });
+
+  // Case 10b (F-006b 2026-05-21): cold-start with any unsupported role
+  // (HR/OWNER) still triggers defensive logout. Splits the previous Case 10 —
+  // logout path now requires role to be neither SUPERVISOR nor WORKER.
+  it('on unsupported role tokens (HR): calls onAppLogout + routes to /(auth)/phone', async () => {
+    const result = await onColdStartReady({
+      accessToken: 'header.payload.sig',
+      refreshToken: 'refresh',
+      activeRole: 'HR',
     });
 
     expect(mockedClearTokens).toHaveBeenCalledTimes(1);
