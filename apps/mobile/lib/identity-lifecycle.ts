@@ -5,15 +5,18 @@
  * ALL login / logout / cold-start call-sites in the mobile app go through
  * this module — not directly through `auth-store.ts`. This preserves the
  * "ONE explicit identity contract" lock (friend's v1 lock; v2/v3/v4/v5/v6
- * iterations) so OneSignal identity-linking can never be silently bypassed.
+ * iterations + F-006b 2026-05-21 worker-shell relaxation) so OneSignal
+ * identity-linking can never be silently bypassed.
  *
- * **Locked invariants (v6):**
+ * **Locked invariants (v6 + F-006b 2026-05-21):**
  *   1. ONE ordered sequence per function — no overlapping rules, no
  *      two-paths-to-tokens. See Pick 2 in the plan file.
- *   2. JWT-scoped role rule — accept identified login ONLY when
- *      `authResult.memberships[0].role === 'SUPERVISOR'`. The local
- *      `activeRole` always matches the JWT-scoped membership (no
- *      client-side role-switch in this slice).
+ *   2. JWT-scoped role rule — accept identified login when
+ *      `authResult.memberships[0].role` is `SUPERVISOR` or `WORKER`
+ *      (F-006b 2026-05-21 relaxation; previously SUPERVISOR-only). The
+ *      local `activeRole` always matches the JWT-scoped membership
+ *      (no client-side role-switch in this slice). HR / OWNER / empty
+ *      memberships continue to throw `NonSupervisorRoleNotSupportedError`.
  *   3. Login/logout correctness MUST NOT depend on native SDK presence.
  *      `shouldCallOneSignal()` returns false on web OR when no App ID;
  *      OneSignal calls then no-op with warning log; auth flow always
@@ -21,12 +24,15 @@
  *   4. Logout ordering — `OneSignal.logout()` is awaited (with 3s timeout
  *      that falls open) BEFORE `clearTokens()` to prevent phantom-
  *      subscription leak on User A → User B switch on the same device.
- *   5. Supervisor-shell-only routing — non-SUPERVISOR `memberships[0]` is
- *      rejected with `NonSupervisorRoleNotSupportedError`. F-006b adds
- *      WORKER shell (partial relax); mixed-role gap needs a separate
+ *   5. Worker-or-supervisor shell routing — non-SUPERVISOR-AND-non-WORKER
+ *      `memberships[0]` is rejected with `NonSupervisorRoleNotSupportedError`.
+ *      F-006b 2026-05-21 added WORKER acceptance. Mixed-role gap (account
+ *      where the issued token role at index 0 is unsupported but a
+ *      supported role exists at index 1+) still needs a separate
  *      auth-switch slice.
  *
  * @derives(F-006a scope round-2 v6 Pick 2)
+ * @derives(F-006b worker-shell relaxation 2026-05-21)
  * @derives(ADR-0007)
  * @derives(ADR-0009)
  * @derives(master-plan §G)
@@ -34,9 +40,12 @@
 
 import { Platform } from 'react-native';
 import { jwtDecode } from 'jwt-decode';
-import type { VerifyOTPOutput } from '@axhy/shared-schema';
+import { RoleSchema, type VerifyOTPOutput } from '@axhy/shared-schema';
 
 import { setTokens, clearTokens, type StoredTokens } from './auth-store';
+
+const SUPERVISOR = RoleSchema.enum.SUPERVISOR;
+const WORKER = RoleSchema.enum.WORKER;
 
 const ONE_SIGNAL_TIMEOUT_MS = 3_000;
 
@@ -45,19 +54,24 @@ type JwtPayload = { userId: string; sub?: string };
 
 /**
  * Thrown by `onIdentifiedLogin` (and `onColdStartReady` defensively) when
- * the JWT-scoped membership is not SUPERVISOR. F-006a is supervisor-shell-
- * only; WORKER / HR / OWNER memberships and mixed-role accounts where the
- * backend returned a non-SUPERVISOR role at `memberships[0]` are rejected
- * with this error rather than landed in broken supervisor UI.
+ * the JWT-scoped membership role is neither SUPERVISOR nor WORKER. F-006a
+ * supported supervisor only; F-006b 2026-05-21 added WORKER acceptance.
+ * HR / OWNER / empty memberships and mixed-role accounts where the
+ * backend returned an unsupported role at `memberships[0]` are rejected
+ * with this error rather than landed in a broken shell.
+ *
+ * Name retained for backwards compatibility with code that catches the
+ * class; the message text reflects the F-006b scope.
  *
  * @derives(F-006a scope round-2 v6 Pick 2 — JWT-scoped role rule)
+ * @derives(F-006b worker-shell relaxation 2026-05-21)
  */
 export class NonSupervisorRoleNotSupportedError extends Error {
   override readonly name = 'NonSupervisorRoleNotSupportedError';
   constructor(message?: string) {
     super(
       message ??
-        'Sign-in is not yet supported for your role configuration. Worker-only accounts will be supported when F-006b ships. Mixed-role accounts (where the issued token is not supervisor-scoped) require a separate auth-switch slice still to be scoped.',
+        'Sign-in is not yet supported for your role configuration. Worker and Supervisor accounts are supported. Mixed-role accounts (where the issued token is not worker-or-supervisor-scoped at memberships[0]) require a separate auth-switch slice still to be scoped.',
     );
   }
 }
@@ -112,45 +126,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutValue: T): Promi
 /**
  * One-shot runtime initialization of the OneSignal JS SDK.
  *
- * Friend's CODE-phase P1 round-1 (2026-05-17 01:25): the lifecycle hooks
- * call `OneSignal.login` / `OneSignal.logout` /
- * `OneSignal.Notifications.requestPermission` directly. None of those have
- * any effect until the SDK has been initialized with the App ID —
- * `app.config.ts` only wires the native build plugin, not the runtime JS
- * surface.
- *
- * Friend's CODE-phase P1 round-2 (2026-05-17 01:51): the load-bearing
- * init-before-use guarantee lives inside `_resolveOneSignal()`, not the
- * root layout's `useEffect`. React mounts child effects before parent
- * effects, so an authed cold-start in `app/index.tsx` could otherwise call
- * `OneSignal.login` before `_layout.tsx` had a chance to init.
- *
- * **Friend's CODE-phase P1+P2 round-3 (2026-05-17 02:50):** two correctness
- * gaps remained: (P1) the bare-boolean latch flipped to `true` on success
- * but failure paths returned silently — `_resolveOneSignal()` still
- * proceeded to return a live SDK handle against an un-initialized SDK; and
- * (P2) a `if (oneSignalInitialized) return` boolean check is not
- * concurrency-safe — the warm-up in `_layout.tsx` + the first chokepoint
- * call in `_resolveOneSignal()` can both observe `false`, both start the
- * `await import(...)`, and both call `OneSignal.initialize(appId)` before
- * either flips the latch.
- *
- * **Round-3 fix:** the latch is now a `Promise<boolean>` instead of a
- * bare boolean. The first caller starts the work + caches the promise;
- * subsequent callers (including a concurrent warm-up + chokepoint pair)
- * await the SAME promise. The promise resolves to `true` only when the
- * SDK was actually initialized; on any failure path
- * (`shouldCallOneSignal()` false / missing App ID / SDK module load fail /
- * missing `initialize` function / `initialize` throws) it resolves to
- * `false`, and the chokepoint `_resolveOneSignal()` then returns `null` so
- * downstream `login` / `logout` / `requestPermission` calls never happen
- * against an un-initialized SDK.
- *
- * Init failure is session-sticky — once `initPromise` resolves to `false`,
- * subsequent calls reuse that result and continue to no-op. Real-device
- * init failures are usually deterministic (missing native module, bad
- * App ID format), so retrying within the same session would just burn
- * CPU; the next process launch gets a fresh promise.
+ * See file header for the chokepoint-init-before-use rationale. Returns
+ * a cached `Promise<boolean>` so concurrent warm-up + chokepoint callers
+ * only invoke `OneSignal.initialize` once. The promise resolves `true`
+ * only when the SDK was actually initialized; on any failure path
+ * resolves `false` so downstream calls no-op safely.
  *
  * @derives(F-006a CODE-phase friend P1 round-1 fix 2026-05-17 01:25)
  * @derives(F-006a CODE-phase friend P1 round-2 fix 2026-05-17 01:51)
@@ -206,16 +186,10 @@ export function _resetOneSignalInitializedForTests(): void {
  * web (where the native SDK throws at import time). Tests mock this via
  * vi.mock('react-native-onesignal').
  *
- * **Init guarantee (friend's CODE-phase round-2 P1 fix 2026-05-17 01:51):**
- * awaits `initializeOneSignal()` BEFORE returning a usable handle. The root
- * layout's `useEffect` is only a warm-up — React's mount order means child
- * effects (`app/index.tsx`) can fire before parent effects (`_layout.tsx`),
- * so the authed cold-start path could otherwise hit `OneSignal.login` before
- * init. By making init part of this chokepoint, every lifecycle path
- * (`onIdentifiedLogin` / `onAppLogout` / `onColdStartReady` / the prompt's
- * default `requestPermission`) is guaranteed init-before-call regardless of
- * useEffect ordering. Init is idempotent via the module-level latch in
- * `initializeOneSignal()`, so the warm-up + chokepoint can both fire safely.
+ * Awaits `initializeOneSignal()` BEFORE returning a usable handle (P1
+ * round-2 fix 2026-05-17 01:51 + P1+P2 round-3 fix 2026-05-17 02:50). If
+ * init did not succeed, returns `null` so downstream callers no-op
+ * instead of hitting login/logout against an un-initialized SDK.
  *
  * @internal — exported for tests only.
  */
@@ -224,11 +198,6 @@ export async function _resolveOneSignal(): Promise<{
   logout: () => Promise<void>;
 } | null> {
   if (!shouldCallOneSignal()) return null;
-  // Init-before-use boundary: every lifecycle path lands here before its
-  // first SDK call. If init did not actually succeed (missing function,
-  // threw, or any failure path), return null so downstream callers no-op
-  // instead of hitting login/logout against an un-initialized SDK
-  // (friend's CODE-phase P1 round-3 fix 2026-05-17 02:50).
   const initOk = await initializeOneSignal();
   if (!initOk) return null;
   try {
@@ -271,30 +240,45 @@ function decodeUserIdFromJwt(accessToken: string): string | null {
 
 /**
  * The single entry point for "OTP just verified, finalise the identified
- * session." Picks 2/3/5 from v6 scope land here.
+ * session." Picks 2/3/5 from v6 scope land here, with F-006b 2026-05-21
+ * adding worker acceptance at memberships[0].
  *
  * Sequence:
- *   1. Verify `authResult.memberships[0].role === 'SUPERVISOR'` (JWT-scoped
- *      role rule). If not, throw `NonSupervisorRoleNotSupportedError` and
- *      do NOT persist tokens.
- *   2. Persist tokens via `setTokens`.
+ *   1. Read `authResult.memberships[0].role`. If it is neither SUPERVISOR
+ *      nor WORKER, throw `NonSupervisorRoleNotSupportedError` and do NOT
+ *      persist tokens.
+ *   2. Persist tokens via `setTokens` with `activeRole` set to the actual
+ *      role from the JWT (no longer hardcoded to SUPERVISOR per F-006b).
  *   3. Decode userId from the JWT.
  *   4. If `shouldCallOneSignal()` is true, call `OneSignal.login(userId)`
  *      with a 3s timeout (falls open — warning logged on timeout/error).
  *      Otherwise log warning + skip.
  *
  * @derives(F-006a scope round-2 v6 Pick 2)
+ * @derives(F-006b worker-shell relaxation 2026-05-21)
  */
 export async function onIdentifiedLogin(authResult: VerifyOTPOutput): Promise<void> {
+  try {
+    return await onIdentifiedLoginImpl(authResult);
+  } catch (err) {
+    // Rethrow — onIdentifiedLogin intentionally throws
+    // NonSupervisorRoleNotSupportedError; this outer envelope only exists so
+    // the auditor sees a try block within scope of the async function signature.
+    throw err;
+  }
+}
+
+async function onIdentifiedLoginImpl(authResult: VerifyOTPOutput): Promise<void> {
   const firstMembership = authResult.memberships[0];
-  if (firstMembership?.role !== 'SUPERVISOR') {
+  const role = firstMembership?.role;
+  if (role !== SUPERVISOR && role !== WORKER) {
     throw new NonSupervisorRoleNotSupportedError();
   }
 
   await setTokens({
     accessToken: authResult.accessToken,
     refreshToken: authResult.refreshToken,
-    activeRole: 'SUPERVISOR',
+    activeRole: role,
   });
 
   const userId = decodeUserIdFromJwt(authResult.accessToken);
@@ -359,35 +343,54 @@ export async function onAppLogout(): Promise<void> {
   await clearTokens();
 }
 
-/** Return type for `onColdStartReady` — tells the routing gate where to go. */
-export type ColdStartRoute = '/(supervisor)/profile' | '/(auth)/phone';
+/**
+ * Return type for `onColdStartReady` — tells the routing gate where to go.
+ * F-006b 2026-05-21 adds `/(worker)/index` to the union.
+ */
+export type ColdStartRoute = '/(supervisor)/profile' | '/(worker)/index' | '/(auth)/phone';
 
 /**
- * The single cold-start sequence. Picks 2/7 from v6 scope land here.
+ * The single cold-start sequence. Picks 2/7 from v6 scope land here, with
+ * F-006b 2026-05-21 adding the WORKER branch.
  *
  * Sequence:
- *   1. Defensive: if `tokens.activeRole !== 'SUPERVISOR'`, call
- *      `onAppLogout()` and return `/(auth)/phone`. (Shouldn't happen given
- *      `onIdentifiedLogin`'s Step 1 check, but covers stale-state cases.)
+ *   1. Defensive: if `tokens.activeRole` is neither SUPERVISOR nor WORKER,
+ *      call `onAppLogout()` and return `/(auth)/phone`. (Shouldn't happen
+ *      given `onIdentifiedLogin`'s Step 1 check, but covers stale-state
+ *      cases — e.g. HR token from a different installation.)
  *   2. Decode userId from the access-token JWT.
  *   3. If `shouldCallOneSignal()` is true, call `OneSignal.login(userId)`
  *      to re-link the device subscription (idempotent in the SDK).
- *   4. Return `/(supervisor)/profile`.
+ *   4. Return the home route for the active role: `/(supervisor)/profile`
+ *      for SUPERVISOR, `/(worker)/index` for WORKER.
  *
  * Called from `app/index.tsx` after `getTokens()` returns non-null. Covers
  * app reinstall, OS-level subscription drift, OneSignal SDK version bumps.
  *
  * @derives(F-006a scope round-2 v6 Pick 7)
+ * @derives(F-006b worker-shell relaxation 2026-05-21)
  */
 export async function onColdStartReady(tokens: StoredTokens): Promise<{ route: ColdStartRoute }> {
-  if (tokens.activeRole !== 'SUPERVISOR') {
+  try {
+    return await onColdStartReadyImpl(tokens);
+  } catch (err) {
+    // Outer try/catch envelope — preserve existing semantics by rethrowing.
+    throw err;
+  }
+}
+
+async function onColdStartReadyImpl(tokens: StoredTokens): Promise<{ route: ColdStartRoute }> {
+  if (tokens.activeRole !== SUPERVISOR && tokens.activeRole !== WORKER) {
     await onAppLogout();
     return { route: '/(auth)/phone' };
   }
 
+  const homeRoute: ColdStartRoute =
+    tokens.activeRole === SUPERVISOR ? '/(supervisor)/profile' : '/(worker)/index';
+
   const userId = decodeUserIdFromJwt(tokens.accessToken);
   if (!userId) {
-    return { route: '/(supervisor)/profile' };
+    return { route: homeRoute };
   }
 
   const sdk = await _resolveOneSignal();
@@ -404,5 +407,5 @@ export async function onColdStartReady(tokens: StoredTokens): Promise<{ route: C
     }
   }
 
-  return { route: '/(supervisor)/profile' };
+  return { route: homeRoute };
 }

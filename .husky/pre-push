@@ -1,87 +1,9 @@
 #!/usr/bin/env sh
-# Pre-push: refuse push if graph audit reports orphans or dead-links.
-# This is the architectural-drift guard (Phase 1 lock — fast audit, no full rebuild).
-#
-# @derives(ADR-0002)
-
-if [ -z "$DATABASE_URL" ] && [ -z "$DATABASE_PUBLIC_URL" ] && [ -z "$AXHY_DB_URL" ]; then
-  echo "[pre-push] No DATABASE_URL; skipping graph audit (push allowed but unaudited)."
-else
-  # Phase 1 lock: graph audit on every push (fast — no full rebuild).
-  echo "[pre-push] running graph audit..."
-  pnpm --filter @axhy/knowledge-graph graph:audit || {
-    echo "[pre-push] graph audit failed — orphans or dead-link detected"
-    exit 1
-  }
-fi
-
-# Defense in depth: re-run session audit before push.
-# Catches violations from --no-verify commits or context amnesia.
+# Thin wrapper — delegates to axhy-cognitive-system Layer 4
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-TSX_BIN=""
-for candidate in \
-  "./packages/ai-tools/node_modules/.bin/tsx" \
-  "./node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs" \
-  "./apps/backend/node_modules/.bin/tsx"; do
-  if [ -x "$candidate" ]; then
-    TSX_BIN="$candidate"
-    break
-  fi
-done
+COGNITIVE_SYSTEM="${AXHY_COGNITIVE_SYSTEM:-$HOME/eclean_workspace/axhy-cognitive-system}"
+export AXHY_REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-if [ -n "$TSX_BIN" ]; then
-  echo "[pre-push] running compliance audit..."
-  "$TSX_BIN" packages/ai-tools/src/session-audit.ts
-  AUDIT_STATUS=$?
-  if [ "$AUDIT_STATUS" -ne 0 ]; then
-    echo ""
-    echo "[pre-push] PUSH BLOCKED — audit violations found. Fix before pushing."
-    echo ""
-    exit "$AUDIT_STATUS"
-  fi
-  echo "[pre-push] audit clean."
-else
-  echo "[pre-push] tsx not found — skipping compliance audit."
-fi
-
-# -----------------------------------------------------------------------------
-# Diff-based gaming detection — the check Claude CANNOT bypass.
-# Scans the actual push diff for signs of the AI gaming the audit system.
-# Claude controls what it writes, but can't hide what it wrote from the diff.
-# -----------------------------------------------------------------------------
-echo "[pre-push] scanning push diff for gaming patterns..."
-
-# Determine what we're comparing against
-REMOTE_REF=$(git rev-parse "@{upstream}" 2>/dev/null || echo "origin/main")
-PUSH_DIFF=$(git diff "$REMOTE_REF"...HEAD 2>/dev/null || true)
-
-if [ -n "$PUSH_DIFF" ]; then
-  # Count NEW skip comments added in this push (lines starting with +)
-  NEW_SKIPS=$(echo "$PUSH_DIFF" | grep '^\+' | grep -c '// audit-ok\|// raw-ok\|// stream-ok\|// budget-exempt\|// learned-ok\|// auth-exempt\|// tenant-exempt' || true)
-  if [ "$NEW_SKIPS" -gt 5 ]; then
-    echo ""
-    echo "[pre-push] GAMING DETECTED: $NEW_SKIPS new audit-skip comments in this push."
-    echo "[pre-push] Claude is bypassing the audit instead of fixing violations."
-    echo "[pre-push] Review each skip comment. Remove unjustified ones."
-    echo "[pre-push] Founder: if these are all legitimate, push with: git push --no-verify"
-    echo ""
-    exit 1
-  elif [ "$NEW_SKIPS" -gt 0 ]; then
-    echo "[pre-push] Note: $NEW_SKIPS new skip comments added. Review in PR."
-  fi
-
-  # Detect comment-only "fixes" — lines where the only change is adding
-  # a comment containing an audit keyword. Real fixes change code, not comments.
-  COMMENT_TRICKS=$(echo "$PUSH_DIFF" | grep '^\+' | grep -v '^\+\+\+' | grep '^\+[[:space:]]*//' | grep -c '\$executeRaw\|\$queryRaw\|assertWithinBudget\|withTenantContext\|rateLimit\|semaphore' || true)
-  if [ "$COMMENT_TRICKS" -gt 3 ]; then
-    echo ""
-    echo "[pre-push] SUSPICIOUS: $COMMENT_TRICKS new comments contain audit keywords."
-    echo "[pre-push] Adding audit keywords in comments (not code) tricks grep-based checks."
-    echo "[pre-push] Verify these are documentation, not evasion."
-    echo ""
-  fi
-
-  echo "[pre-push] gaming scan clean."
-fi
+node "$COGNITIVE_SYSTEM/src/layer-4-git/pre-push.mjs"

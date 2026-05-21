@@ -200,3 +200,113 @@ describe('GET /me', () => {
     expect(body.memberships).toHaveLength(1);
   });
 });
+
+/**
+ * F-006b 2026-05-21 — worker OTP activation through workerMachine.
+ *
+ * Verifies that POST /auth/otp/verify, for a Worker in PENDING_ACTIVATION,
+ * fires the OTP_VERIFIED event on workerMachine and persists DOC_PENDING.
+ * This is the first machine-driven transition wired to a real route; before
+ * F-006b the route skipped the machine entirely (inherited gap).
+ *
+ * @derives(F-006b worker-shell relaxation)
+ * @derives(.claude/rules/state-machines.md)
+ */
+describe('worker OTP activation (F-006b)', () => {
+  const WORKER_PHONE = `+9198${String(Date.now()).slice(-8)}`;
+  let workerCompanyId: string;
+  let workerUserId: string;
+  let workerId: string;
+
+  beforeAll(async () => {
+    const co = await prismaRaw.company.create({
+      data: {
+        name: TEST_PREFIX + 'WkrCo',
+        slug: TEST_PREFIX + 'wkr-co',
+        ownerPhone: '+919900000099',
+        ownerName: 'Owner Wkr',
+      },
+    });
+    workerCompanyId = co.id;
+
+    const wu = await prismaRaw.user.create({
+      data: { phone: WORKER_PHONE, locale: 'en' },
+    });
+    workerUserId = wu.id;
+
+    await prismaRaw.membership.create({
+      data: { companyId: co.id, userId: wu.id, role: 'WORKER' },
+    });
+
+    const wkr = await prismaRaw.worker.create({
+      data: {
+        companyId: co.id,
+        userId: wu.id,
+        name: 'Test Worker (F-006b)',
+        phone: WORKER_PHONE,
+        state: 'PENDING_ACTIVATION',
+      },
+    });
+    workerId = wkr.id;
+  }, 60_000);
+
+  afterAll(async () => {
+    await prismaRaw.outbox
+      .deleteMany({ where: { companyId: workerCompanyId } })
+      .catch(() => undefined);
+    await prismaRaw.auditEvent
+      .deleteMany({ where: { companyId: workerCompanyId } })
+      .catch(() => undefined);
+    await prismaRaw.worker.deleteMany({ where: { id: workerId } });
+    await prismaRaw.membership.deleteMany({ where: { companyId: workerCompanyId } });
+    await prismaRaw.user.deleteMany({ where: { id: workerUserId } });
+    await prismaRaw.$executeRawUnsafe(
+      `DELETE FROM axhy.otp_attempts WHERE phone = $1`,
+      WORKER_PHONE,
+    );
+    await prismaRaw.company.deleteMany({ where: { id: workerCompanyId } });
+  });
+
+  it('PENDING_ACTIVATION worker transitions to DOC_PENDING on OTP verify (machine event fires)', async () => {
+    await inject('POST', '/auth/otp/request', { phone: WORKER_PHONE });
+    const res = await inject('POST', '/auth/otp/verify', {
+      phone: WORKER_PHONE,
+      code: '123456',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { memberships: Array<{ role: string }> };
+    expect(body.memberships[0]?.role).toBe('WORKER');
+
+    const wkr = await prismaRaw.worker.findUnique({ where: { id: workerId } });
+    expect(wkr?.state).toBe('DOC_PENDING');
+
+    // Audit + outbox rows were written inside the transition tx.
+    const auditCount = await prismaRaw.auditEvent.count({
+      where: { companyId: workerCompanyId, kind: 'WORKER_OTP_VERIFIED', targetId: workerId },
+    });
+    expect(auditCount).toBe(1);
+
+    const outboxCount = await prismaRaw.outbox.count({
+      where: { companyId: workerCompanyId, topic: 'worker.activated' },
+    });
+    expect(outboxCount).toBe(1);
+  });
+
+  it('worker already in DOC_PENDING is unchanged on subsequent verify (idempotent NO_TRANSITION)', async () => {
+    await inject('POST', '/auth/otp/request', { phone: WORKER_PHONE });
+    const res = await inject('POST', '/auth/otp/verify', {
+      phone: WORKER_PHONE,
+      code: '123456',
+    });
+    expect(res.statusCode).toBe(200);
+
+    const wkr = await prismaRaw.worker.findUnique({ where: { id: workerId } });
+    expect(wkr?.state).toBe('DOC_PENDING');
+
+    // No additional audit row should have been written for the no-op call.
+    const auditCount = await prismaRaw.auditEvent.count({
+      where: { companyId: workerCompanyId, kind: 'WORKER_OTP_VERIFIED', targetId: workerId },
+    });
+    expect(auditCount).toBe(1);
+  });
+});

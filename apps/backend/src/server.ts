@@ -31,6 +31,9 @@ import rateLimit from '@fastify/rate-limit';
 
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
+import { registerWorkerConsentRoutes } from './routes/worker-consent.js';
+import { registerWorkerTodayRoutes } from './routes/worker-today.js';
+import { registerWorkerVisitRoutes } from './routes/worker-visit.js';
 import { registerWorkerRoutes } from './routes/workers.js';
 import { registerLeaveRequestRoutes } from './routes/leave-requests.js';
 import { registerSitesRoutes } from './routes/sites.js';
@@ -145,6 +148,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
   await registerAuthRoutes(app);
   await registerMeRoutes(app);
+  await registerWorkerConsentRoutes(app);
+  await registerWorkerTodayRoutes(app);
+  await registerWorkerVisitRoutes(app);
   await registerWorkerRoutes(app);
   await registerLeaveRequestRoutes(app);
   await registerSitesRoutes(app);

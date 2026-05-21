@@ -11,6 +11,10 @@ export const PACKAGE_NAME = '@axhy/shared-schema' as const;
 
 export * from './zod/auth.js';
 export * from './zod/me.js';
+// F-006b 2026-05-21 — worker DPDP one-page consent
+export * from './zod/worker-consent.js';
+// Slice 2a-1 2026-05-21 — worker /today + /visits/:id read endpoints
+export * from './zod/worker-today.js';
 export * from './zod/supervisor.js';
 export * from './zod/calendar.js';
 export * from './zod/assignment.js';

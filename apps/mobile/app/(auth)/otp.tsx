@@ -28,6 +28,7 @@ import { tokens } from '@axhy/ui-tokens';
 import type { VerifyOTPOutput, RequestOTPOutput } from '@axhy/shared-schema';
 
 import { apiFetch, ApiError } from '../../lib/api';
+import { API_ROUTES, NAV_ROUTES } from '../../lib/api-routes';
 import {
   onIdentifiedLogin,
   NonSupervisorRoleNotSupportedError,
@@ -56,12 +57,20 @@ export default function OtpScreen() {
     setError(null);
     setLoading(true);
     try {
-      const result = await apiFetch<VerifyOTPOutput>('/auth/otp/verify', {
+      const result = await apiFetch<VerifyOTPOutput>(API_ROUTES.authOtpVerify, {
         method: 'POST',
         body: { phone, code },
         auth: false,
       });
       await onIdentifiedLogin(result);
+      // F-006b 2026-05-21: branch on the JWT-scoped role. WORKER continues into
+      // the worker auth flow (permissions → consent → /(worker)/index). SUPERVISOR
+      // hands off to PushPermissionPrompt as before.
+      const role = result.memberships[0]?.role;
+      if (role === 'WORKER') {
+        router.replace(NAV_ROUTES.authPermissions);
+        return;
+      }
       // Hand off to PushPermissionPrompt — it owns the exactly-once nav contract.
       setIdentifiedLoginComplete(true);
     } catch (err) {
@@ -78,7 +87,7 @@ export default function OtpScreen() {
   }, [code, phone]);
 
   const handlePromptComplete = useCallback(() => {
-    router.replace('/(supervisor)/profile');
+    router.replace(NAV_ROUTES.supervisorProfile);
   }, []);
 
   async function handleResend() {
@@ -86,7 +95,7 @@ export default function OtpScreen() {
     setResending(true);
     setError(null);
     try {
-      await apiFetch<RequestOTPOutput>('/auth/otp/request', {
+      await apiFetch<RequestOTPOutput>(API_ROUTES.authOtpRequest, {
         method: 'POST',
         body: { phone },
         auth: false,
