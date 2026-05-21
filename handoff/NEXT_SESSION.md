@@ -1,4 +1,4 @@
-# Next Session — Worker MVP Slice 2a-2 (mobile half of Worker Home + Assignment Detail)
+# Next Session — Worker MVP Sub-slice 2b-1 (capture-flow scaffold)
 
 > **Read time: 3 minutes. Highest-priority file for the next session.**
 >
@@ -6,27 +6,27 @@
 
 ## Current commit baseline
 
-`af926ab feat(worker-mvp): slice 1 auth shell + slice 2a-1 today/visit backend` on `main`.
+`2e876a6` on `main` — sub-slices `worker-d1-s1-auth-shell`, `worker-d1-s2a-1-backend-today`, and `worker-d1-s2a-2-mobile-home` shipped.
 
 ## What's shipped (this commit)
 
-- **Slice 1** (`worker-d1-s1-auth-shell`, gate **L5**): F-006b worker-shell relaxation in `identity-lifecycle.ts`; first production wiring of `workerMachine.OTP_VERIFIED` in `auth.ts`; `ConsentLog` migration `20260528_018` applied on Railway; `(worker)/_layout` + 3 placeholder tabs; `(auth)/permissions` + `(auth)/consent` screens; 20/20 mobile tests + 13/13 real-DB tests; 7 screenshots captured.
-- **Slice 2a-1** (`worker-d1-s2a-1-backend-today`, gate **L3**): `GET /worker/today` + `GET /worker/visits/:id` with `worker-today-service.ts` composer; `WorkerTodayOutput` + `WorkerVisitDetailOutput` Zod; 8/8 real-DB tests on Railway sandbox.
+- **Slice 1** (gate **L5**): F-006b worker-shell, ConsentLog migration, 3-tab scaffold, 20/20 mobile tests + 13/13 real-DB tests.
+- **Sub-slice 2a-1** (gate **L3**): `GET /worker/today` + `GET /worker/visits/:id` + `worker-today-service.ts` + Zod schemas + 8/8 real-DB tests on Railway.
+- **Sub-slice 2a-2** (gate **L3+**, this commit): Worker Home rewrite, Assignment Detail screen, 4 reusable components (`StateBadge`, `AssignmentCard`, `HomeBellIcon`, `ResumeCaptureBanner`), 2 React Query hooks, Playwright capture suite with 4 screenshots + side-by-side `DELTA.html` (8 PASS / 2 LOCKED / 5 DEFER / 1 PLACEHOLDER / 0 DRIFT / 0 BROKEN).
 
-Done memos: `done-memo-worker-d1-s1-auth-shell.md`, `done-memo-worker-d1-s2a-1-backend-today.md`. Plans: `docs/personas/worker/WORKER_MVP_SPRINT_PLAN.md`, `WORKER_MVP_SLICE_2A_PLAN.md`, `DO_NOT_BUILD_MVP.md`. Design delta: `apps/mobile/screenshots-worker-d1-s1-design/DELTA.html`.
+Done memos: `done-memo-worker-d1-s1-auth-shell.md`, `done-memo-worker-d1-s2a-1-backend-today.md`, `done-memo-worker-d1-s2a-2-mobile-home.md`.
 
-## What starts next: sub-slice 2a-2 (mobile half of slice 2a)
+## What starts next: sub-slice 2b-1 (capture-flow scaffold)
 
-**Scope (from `WORKER_MVP_SLICE_2A_PLAN.md` §1 + §7):**
+**Scope (from `WORKER_MVP_SLICE_2A_PLAN.md` §7):**
 
-1. Rewrite `apps/mobile/app/(worker)/index.tsx` from placeholder to real Worker Home that consumes `GET /worker/today` via a new `use-worker-today` React Query hook.
-2. Create `apps/mobile/app/(worker)/visit/[id].tsx` (Assignment Detail) consuming `GET /worker/visits/:id`.
-3. Create 4 reusable components: `AssignmentCard`, `ResumeCaptureBanner`, `HomeBellIcon`, `StateBadge`.
-4. Add `apps/mobile/scripts/qa-worker-d1-s2a-home-detail.ts` (Playwright capture of 3 Home states + Assignment Detail).
-5. Wire `tap-to-call supervisor` (`tel:` link) on Assignment Detail. "Can't make this" button = disabled stub ("Coming with leave & swap").
-6. Resume-capture banner predicate = `visit.state IN (EN_ROUTE, ON_SITE, IN_PROGRESS, PHOTOS_PENDING)`.
+1. Install `expo-location` + `expo-sensors` + `expo-file-system` per Expo SDK 54 docs.
+2. Create capture-flow route scaffold under `apps/mobile/app/(worker)/capture/` with placeholder steps: `qr-scan`, `before-photos`, `timer`, `after-photos`, `review`, `submit`.
+3. Create `apps/mobile/lib/storage/per-user-partition.ts` — internal `documentDirectory + /captures/{workerId}/{visitId}/` layout. NO gallery access (founder lock 2026-05-21).
+4. Wire deep-link from `ResumeCaptureBanner` (currently navigates to Assignment Detail) to enter the in-progress capture step.
+5. Add `apps/mobile/scripts/qa-worker-d1-s2b-1-capture-scaffold.ts` Playwright capture (placeholder screens only).
 
-**Estimated:** ~9 files, 4–6h. No new state machines fire. No schema change.
+**Estimated:** ~8 files, ~4h. No new state machines fire. No backend route. No schema change. R2 upload + GPS/motion fraud detection land in **2b-2 / 2b-3**.
 
 ## Decisions still in force (don't re-debate)
 
@@ -48,15 +48,15 @@ Done memos: `done-memo-worker-d1-s1-auth-shell.md`, `done-memo-worker-d1-s2a-1-b
 
 ## What to skip
 
-Don't re-read the older Layer 1 / supervisor-sprint handoff chain (`README.md`, `STATUS.md` legacy sections, `ROADMAP.md`, the `2026-05-17-*` audit memos). They're carried forward but not load-bearing for slice 2a-2.
+Don't re-read the older Layer 1 / supervisor-sprint handoff chain (`README.md`, `STATUS.md` legacy sections, `ROADMAP.md`, the `2026-05-17-*` audit memos). They're carried forward but not load-bearing for slice 2b-1.
 
-## Open assumption for 2a-2
+## Open assumption for 2b-1
 
-`use-worker-today` and `use-worker-visit` React Query hooks need a `QueryClient` provider. `apps/mobile/app/_layout.tsx` already mounts `QueryClientProvider` (verified during slice 1) — no new infra. Stale time + retry policy default to React Query defaults; if mobile perf reveals re-fetch storms during pull-to-refresh, tune in a follow-up.
+`expo-location` requires the location permission flow — slice 1 already shipped `(auth)/permissions` covering camera; location permission gets a similar one-line ask before the first capture-flow tap. The exact copy and screen placement (before-first-capture toast vs upfront permissions page) lands as a 2b-1 founder decision.
 
 ## First thing to do in next session
 
 1. **Run `pnpm --filter @axhy/ai-tools run audit`** to confirm clean baseline.
-2. **Read `WORKER_MVP_SLICE_2A_PLAN.md` §1 + §7** for sub-slice 2a-2 scope.
+2. **Read `WORKER_MVP_SLICE_2A_PLAN.md` §7** for sub-slice 2b-1 scope.
 3. **Read this file's "Decisions still in force"** above so no re-debate.
-4. **Start 2a-2** with the same shape as 2a-1: Phase 1 read existing components + tokens, Phase 2 touch new files, Phase 3-N batched `check_before_edit` approvals, Phase final screenshot capture + `check_before_done` + done memo.
+4. **Start 2b-1** with the same shape as 2a-2: Phase 1 read storage + existing capture references, Phase 2 install Expo modules, Phase 3-N batched `check_before_edit` approvals, Phase final screenshot capture + `check_before_done` + done memo.
