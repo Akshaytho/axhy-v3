@@ -1,6 +1,6 @@
-# Worker MVP Slice 2a — Worker Home + Assignment Detail + `/worker/today` (DRAFT — not approved)
+# Worker MVP Slice 2a — Worker Home + Assignment Detail + `/worker/today` (sub-slice 2a-1 EXECUTED 2026-05-21)
 
-**Status:** AWAITING FOUNDER APPROVAL of first guarded slice. No code until approved.
+**Status:** Sub-slice 2a-1 (backend `/worker/today` + `/worker/visits/:id`) **EXECUTED 2026-05-21** (commit `af926ab`). Sub-slice 2a-2 (mobile Home + Assignment Detail) awaits approval.
 **Authority:** `MVP_V2_ALIGNED_PLAN.md` (canonical) + `DO_NOT_BUILD_MVP.md` (cut list) + `WORKER_MVP_SPRINT_PLAN.md §1 Day 2` (parent) + decisions registered 2026-05-21: 3-tab canonical wins, theme picker confirmed cut, capture-resume surfaces as Home banner not 4th tab.
 **Scope:** 3 mobile screens touched (Worker Home wired + new Assignment Detail + Home bell stub) • 2 backend routes (`GET /worker/today`, `GET /worker/visits/:id`) • 1 new tx-callable service • 0 new state machines • 0 schema changes.
 **Parent slice:** 2a of 3 (next: 2b capture flow + photo pipeline; then 2c leave/swap/replacement). Each sub-slice has its own check_before_done gate.
@@ -347,4 +347,12 @@ Total slice 2 (2a + 2b + 2c) ≈ 6 sub-slices, ~55 files, ~30h. Spread across mu
 
 ---
 
-**Status:** DRAFT. **Author:** Claude (session continuation 2026-05-21). **Awaits:** founder approval of `worker-d1-s2a-1-backend-today` before any code writes.
+**Status:** Sub-slice 2a-1 EXECUTED 2026-05-21 (commit `af926ab`, gate L3 Senior, 8/8 real-DB tests green on Railway). **Author:** Claude. **Awaits:** founder approval of sub-slice 2a-2 (mobile half — see §7).
+
+## Amendment 2026-05-21
+
+**What changed:** Header marked sub-slice 2a-1 EXECUTED at commit `af926ab`. Status lines (top + bottom) updated.
+
+**Why:** Sub-slice 2a-1 (backend `/worker/today` + `/worker/visits/:id`) shipped with gate L3 Senior and 8/8 real-DB tests green on Railway sandbox. Sub-slice 2a-2 (mobile half — Worker Home rewrite + Assignment Detail + 4 components) is next.
+
+**Requested by:** Founder via "commit all 2a-1 work + update plan header" directive.
