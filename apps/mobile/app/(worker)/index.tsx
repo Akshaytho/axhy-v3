@@ -59,9 +59,8 @@ function formatDateRow(iso: string): string {
 function showSoonToast(): void {
   if (Platform.OS === 'android') {
     ToastAndroid.show('Notifications coming soon', ToastAndroid.SHORT);
-  } else {
-    console.log('[toast] Notifications coming soon');
   }
+  // iOS toast lib not in the tree yet; slice 3 ships a cross-platform toast.
 }
 
 /** @derives(master-plan §G) — worker surface */

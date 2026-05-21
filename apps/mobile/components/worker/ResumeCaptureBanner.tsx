@@ -17,6 +17,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
+const ICON_WRAP_SIZE = 36;
+const ICON_GLYPH_SIZE = 18;
+const CHEVRON_SIZE = 16;
+
 type Props = {
   siteName: string;
   photosTakenSoFar: number;
@@ -37,7 +41,7 @@ export function ResumeCaptureBanner({
       style={s.card}
     >
       <View style={s.iconWrap}>
-        <Feather name="camera" size={18} color={tokens.color.surface.paper} />
+        <Feather name="camera" size={ICON_GLYPH_SIZE} color={tokens.color.surface.paper} />
       </View>
       <View style={s.body}>
         <Text style={s.title} numberOfLines={1}>
@@ -49,7 +53,7 @@ export function ResumeCaptureBanner({
       </View>
       <View style={s.cta}>
         <Text style={s.ctaText}>Continue</Text>
-        <Feather name="chevron-right" size={16} color={tokens.color.brand.accent} />
+        <Feather name="chevron-right" size={CHEVRON_SIZE} color={tokens.color.brand.accent} />
       </View>
     </Pressable>
   );
@@ -67,9 +71,9 @@ const s = StyleSheet.create({
     marginBottom: tokens.space[3],
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: ICON_WRAP_SIZE,
+    height: ICON_WRAP_SIZE,
+    borderRadius: ICON_WRAP_SIZE / 2,
     backgroundColor: tokens.color.brand.accent,
     alignItems: 'center',
     justifyContent: 'center',
