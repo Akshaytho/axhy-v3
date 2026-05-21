@@ -29,6 +29,12 @@ import { tokens } from '@axhy/ui-tokens';
 import { useWorkerVisitQuery } from '../../../lib/queries/use-worker-visit';
 import { StateBadge } from '../../../components/worker/StateBadge';
 
+const BACK_CHEVRON_SIZE = 24;
+const META_GLYPH_SIZE = 14;
+const PLACEHOLDER_GLYPH_SIZE = 20;
+const PRIMARY_GLYPH_SIZE = 18;
+const TOP_BAR_SPACER = 24;
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const h = d.getHours();
@@ -85,7 +91,11 @@ export default function AssignmentDetail(): React.JSX.Element {
             accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <Feather name="chevron-left" size={24} color={tokens.color.ink.primary} />
+            <Feather
+              name="chevron-left"
+              size={BACK_CHEVRON_SIZE}
+              color={tokens.color.ink.primary}
+            />
           </Pressable>
         </View>
         <View style={s.center}>
@@ -107,7 +117,7 @@ export default function AssignmentDetail(): React.JSX.Element {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Feather name="chevron-left" size={24} color={tokens.color.ink.primary} />
+          <Feather name="chevron-left" size={BACK_CHEVRON_SIZE} color={tokens.color.ink.primary} />
         </Pressable>
         <Text style={s.title}>Assignment</Text>
         <View style={s.spacer} />
@@ -127,17 +137,17 @@ export default function AssignmentDetail(): React.JSX.Element {
             <Text style={s.addressMuted}>Address not on file</Text>
           )}
           <View style={s.metaRow}>
-            <Feather name="calendar" size={14} color={tokens.color.ink.tertiary} />
+            <Feather name="calendar" size={META_GLYPH_SIZE} color={tokens.color.ink.tertiary} />
             <Text style={s.metaText}>{formatDateLine(data.scheduledFor)}</Text>
           </View>
           <View style={s.metaRow}>
-            <Feather name="clock" size={14} color={tokens.color.ink.tertiary} />
+            <Feather name="clock" size={META_GLYPH_SIZE} color={tokens.color.ink.tertiary} />
             <Text style={s.metaText}>{formatTime(data.scheduledFor)}</Text>
           </View>
         </View>
 
         <View style={s.placeholderCard}>
-          <Feather name="map" size={20} color={tokens.color.ink.tertiary} />
+          <Feather name="map" size={PLACEHOLDER_GLYPH_SIZE} color={tokens.color.ink.tertiary} />
           <Text style={s.placeholderText}>Map preview coming with location</Text>
         </View>
 
@@ -153,7 +163,7 @@ export default function AssignmentDetail(): React.JSX.Element {
           accessibilityLabel="Call supervisor"
           style={[s.primaryBtn, callDisabled && s.btnDisabled]}
         >
-          <Feather name="phone" size={18} color={tokens.color.surface.paper} />
+          <Feather name="phone" size={PRIMARY_GLYPH_SIZE} color={tokens.color.surface.paper} />
           <Text style={s.primaryBtnText}>
             {callDisabled ? 'No supervisor assigned — call HR' : 'Call supervisor'}
           </Text>
@@ -192,7 +202,7 @@ const s = StyleSheet.create({
     color: tokens.color.ink.primary,
   },
   spacer: {
-    width: 24,
+    width: TOP_BAR_SPACER,
   },
   body: {
     flex: 1,

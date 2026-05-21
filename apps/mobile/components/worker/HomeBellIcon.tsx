@@ -13,6 +13,10 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
+const TAP_SIZE = 28;
+const BELL_GLYPH_SIZE = 22;
+const DOT_SIZE = 8;
+
 type Props = {
   onPress: () => void;
 };
@@ -27,7 +31,7 @@ export function HomeBellIcon({ onPress }: Props): React.JSX.Element {
       accessibilityLabel="Notifications"
       style={s.wrap}
     >
-      <Feather name="bell" size={22} color={tokens.color.ink.primary} />
+      <Feather name="bell" size={BELL_GLYPH_SIZE} color={tokens.color.ink.primary} />
       <View style={s.dot} />
     </Pressable>
   );
@@ -35,8 +39,8 @@ export function HomeBellIcon({ onPress }: Props): React.JSX.Element {
 
 const s = StyleSheet.create({
   wrap: {
-    width: 28,
-    height: 28,
+    width: TAP_SIZE,
+    height: TAP_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -44,9 +48,9 @@ const s = StyleSheet.create({
     position: 'absolute',
     top: 2,
     right: 2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_SIZE / 2,
     backgroundColor: tokens.color.brand.accent,
   },
 });
