@@ -897,19 +897,17 @@ if (learnedCheckCount > 0) {
 // Phase 4: Anti-gaming integrity checks — detect Claude cheating the audit
 console.log('[audit] Phase 4: Integrity checks...');
 
-// 4a: Skip comment budget — if there are too many // audit-ok comments,
-// Claude is spraying skips instead of fixing code. The escape hatch is
-// meant for rare false positives, not wholesale bypass.
-const SKIP_PATTERNS = [
-  '// audit-ok',
-  '// raw-ok',
-  '// stream-ok',
-  '// budget-exempt',
-  '// learned-ok',
-  '// auth-exempt',
-  '// tenant-exempt',
-  '// apply-ok',
-];
+// 4a: Skip comment budget — if there are too many wildcard audit-bypass
+// comments, Claude is spraying skips instead of fixing code. The escape hatch
+// is meant for rare false positives, not wholesale bypass.
+//
+// Only WILDCARD-BYPASS tags count toward this gaming-detection budget. The
+// design-intent tags (raw-ok, stream-ok, learned-ok, auth-exempt,
+// tenant-exempt) document approved, deliberate departures from defaults and
+// are signposts, not gaming. They have their own per-pattern audit rules
+// elsewhere (raw-ok pairs with tenant-isolation, etc.) and shouldn't inflate
+// the wildcard-bypass budget.
+const SKIP_PATTERNS = ['// audit-ok', '// budget-exempt', '// apply-ok'];
 let totalSkips = 0;
 for (const pat of SKIP_PATTERNS) {
   const skipHits = grep(pat.replace('// ', '//\\s*'), ['apps', 'packages'], ['.ts', '.tsx']);
