@@ -2,15 +2,17 @@
  * Permissions screen — worker auth flow step 3 of 4.
  * (Splash/index → phone → otp → permissions → consent → (worker) home)
  *
- * Slice 1 scope: Camera permission only (capture flow needs it).
- * Location permission is requested at first checkin in slice 2 (expo-location
- * is not yet a dependency).
+ * Slice 1 + sub-slice 2b-1 scope: Camera AND Location upfront. Founder
+ * lock 2026-05-22 — the capture flow lands in 2b-2/2b-3 and needs GPS at
+ * arrival verification, so we ask once at signup rather than at first
+ * capture-tap.
  * Notifications permission is requested via OneSignal in PushPermissionPrompt
  * (existing supervisor pattern; worker flow inherits it).
  *
  * Per MVP_V2_ALIGNED_PLAN.md §13 M22: single-page only (no multi-page carousel).
  *
  * @derives(MVP_V2_ALIGNED_PLAN.md §2 + §13 M22)
+ * @derives(WORKER_MVP_SLICE_2A_PLAN.md §7)
  * @derives(F-006b — worker auth flow)
  */
 
@@ -28,6 +30,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Camera } from 'expo-camera';
+import * as Location from 'expo-location';
 import { tokens } from '@axhy/ui-tokens';
 
 type GrantState = 'unknown' | 'requesting' | 'granted' | 'denied';
@@ -36,15 +39,26 @@ type GrantState = 'unknown' | 'requesting' | 'granted' | 'denied';
 const ICON_CIRCLE_SIZE = 40;
 const ICON_CIRCLE_RADIUS = ICON_CIRCLE_SIZE / 2;
 
+function statusLabel(state: GrantState): string {
+  if (state === 'granted') return 'Granted';
+  if (state === 'denied') return 'Denied — open Settings';
+  return 'Required';
+}
+
 /** @derives(master-plan §G) */
 export default function PermissionsScreen() {
   const [camera, setCamera] = useState<GrantState>('unknown');
+  const [location, setLocation] = useState<GrantState>('unknown');
 
   useEffect(() => {
     (async () => {
-      const { status } = await Camera.getCameraPermissionsAsync();
-      if (status === 'granted') setCamera('granted');
-      else if (status === 'denied') setCamera('denied');
+      const cam = await Camera.getCameraPermissionsAsync();
+      if (cam.status === 'granted') setCamera('granted');
+      else if (cam.status === 'denied') setCamera('denied');
+
+      const loc = await Location.getForegroundPermissionsAsync();
+      if (loc.status === 'granted') setLocation('granted');
+      else if (loc.status === 'denied') setLocation('denied');
     })();
   }, []);
 
@@ -65,18 +79,37 @@ export default function PermissionsScreen() {
     }
   }
 
+  async function requestLocation() {
+    if (Platform.OS === 'web') {
+      setLocation('granted');
+      return;
+    }
+    setLocation('requesting');
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      setLocation(status === 'granted' ? 'granted' : 'denied');
+    } catch (err) {
+      if (__DEV__) {
+        console.warn('[permissions] location request threw', err);
+      }
+      setLocation('denied');
+    }
+  }
+
   function handleContinue() {
     router.push('/(auth)/consent');
   }
 
-  const canContinue = camera === 'granted';
+  const canContinue = camera === 'granted' && location === 'granted';
+  const anyDenied = camera === 'denied' || location === 'denied';
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
       <View style={s.inner}>
-        <Text style={s.heading}>Allow camera</Text>
+        <Text style={s.heading}>Allow access</Text>
         <Text style={s.sub}>
-          You need camera access to take before-and-after photos for every visit.
+          Camera is for before-and-after photos. Location confirms you're at the right site when you
+          start work.
         </Text>
 
         <View style={s.row}>
@@ -85,13 +118,7 @@ export default function PermissionsScreen() {
           </View>
           <View style={s.info}>
             <Text style={s.label}>Camera</Text>
-            <Text style={s.required}>
-              {camera === 'granted'
-                ? 'Granted'
-                : camera === 'denied'
-                  ? 'Denied — open Settings'
-                  : 'Required'}
-            </Text>
+            <Text style={s.required}>{statusLabel(camera)}</Text>
           </View>
           {camera === 'requesting' ? (
             <ActivityIndicator size="small" color={tokens.color.brand.accent} />
@@ -104,7 +131,28 @@ export default function PermissionsScreen() {
           )}
         </View>
 
-        {camera === 'denied' && (
+        <View style={s.rowSpacer} />
+
+        <View style={s.row}>
+          <View style={s.iconWrap}>
+            <Feather name="map-pin" size={20} color={tokens.color.brand.accent} />
+          </View>
+          <View style={s.info}>
+            <Text style={s.label}>Location</Text>
+            <Text style={s.required}>{statusLabel(location)}</Text>
+          </View>
+          {location === 'requesting' ? (
+            <ActivityIndicator size="small" color={tokens.color.brand.accent} />
+          ) : location === 'granted' ? (
+            <Feather name="check" size={20} color={tokens.color.semantic.ok} />
+          ) : (
+            <TouchableOpacity style={s.allowBtn} onPress={requestLocation} activeOpacity={0.8}>
+              <Text style={s.allowText}>{location === 'denied' ? 'Retry' : 'Allow'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {anyDenied && (
           <TouchableOpacity
             style={s.settingsBtn}
             onPress={() => Linking.openSettings().catch(() => {})} // audit-ok: Settings open failure is non-blocking
@@ -161,6 +209,9 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.color.surface.cardEdge,
     backgroundColor: tokens.color.surface.card,
+  },
+  rowSpacer: {
+    height: tokens.space[3],
   },
   iconWrap: {
     width: ICON_CIRCLE_SIZE,

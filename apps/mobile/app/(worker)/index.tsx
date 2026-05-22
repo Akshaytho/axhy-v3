@@ -79,7 +79,10 @@ export default function WorkerHome(): React.JSX.Element {
 
   const onResumeContinue = useCallback(() => {
     if (data?.resumeCapture) {
-      router.push(NAV_ROUTES.workerVisitDetail(data.resumeCapture.visitId));
+      // 2b-1: Resume banner deep-links into the capture entry step. Real
+      // step-resume (jump to in-progress step) lands in 2b-2 when the
+      // capture-state machine knows which step the worker is on.
+      router.push(NAV_ROUTES.workerCaptureEntry(data.resumeCapture.visitId));
     }
   }, [data]);
 

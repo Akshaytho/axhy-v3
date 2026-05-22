@@ -23,6 +23,19 @@ export const API_ROUTES = {
   workerVisit: (visitId: string): string => apiPath('worker', 'visits', visitId),
 } as const;
 
+/** Capture-flow step names, in the order the worker traverses them.
+ *  @derives(WORKER_MVP_SLICE_2A_PLAN.md §7) */
+export const CAPTURE_STEPS = [
+  'qr-scan',
+  'before-photos',
+  'timer',
+  'after-photos',
+  'review',
+  'submit',
+] as const;
+
+export type CaptureStep = (typeof CAPTURE_STEPS)[number];
+
 /** Expo Router screen paths used by `router.push` / `router.replace`.
  *  @derives(master-plan §G) */
 export const NAV_ROUTES = {
@@ -32,5 +45,9 @@ export const NAV_ROUTES = {
   authConsent: navPath('(auth)', 'consent'),
   workerHome: navPath('(worker)'),
   workerVisitDetail: (visitId: string): string => navPath('(worker)', 'visit', visitId),
+  workerCaptureStep: (visitId: string, step: CaptureStep): string =>
+    navPath('(worker)', 'capture', visitId, step),
+  workerCaptureEntry: (visitId: string): string =>
+    navPath('(worker)', 'capture', visitId, 'qr-scan'),
   supervisorProfile: navPath('(supervisor)', 'profile'),
 } as const;
