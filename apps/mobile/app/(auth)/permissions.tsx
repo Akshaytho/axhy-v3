@@ -52,13 +52,19 @@ export default function PermissionsScreen() {
 
   useEffect(() => {
     (async () => {
-      const cam = await Camera.getCameraPermissionsAsync();
-      if (cam.status === 'granted') setCamera('granted');
-      else if (cam.status === 'denied') setCamera('denied');
+      try {
+        const cam = await Camera.getCameraPermissionsAsync();
+        if (cam.status === 'granted') setCamera('granted');
+        else if (cam.status === 'denied') setCamera('denied');
 
-      const loc = await Location.getForegroundPermissionsAsync();
-      if (loc.status === 'granted') setLocation('granted');
-      else if (loc.status === 'denied') setLocation('denied');
+        const loc = await Location.getForegroundPermissionsAsync();
+        if (loc.status === 'granted') setLocation('granted');
+        else if (loc.status === 'denied') setLocation('denied');
+      } catch (err) {
+        if (__DEV__) {
+          console.warn('[permissions] initial lookup threw', err);
+        }
+      }
     })();
   }, []);
 
