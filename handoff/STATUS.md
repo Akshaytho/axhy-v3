@@ -2,22 +2,22 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-22 (sub-slice 2a-2 EXECUTED at gate L3+)
-**Active phase:** **Worker MVP sub-slice 2b-1 — pending founder approval.** Sub-slice 2a-2 (mobile Worker Home rewrite + Assignment Detail screen + 4 reusable components + Playwright capture suite) shipped 2026-05-22 with typecheck green and 4 screenshots verified side-by-side against the design HTML reference. Sub-slice 2b-1 (capture-flow scaffold + Expo location/file-system installs) is next; its plan is in `docs/personas/worker/WORKER_MVP_SLICE_2A_PLAN.md §7`.
+**Last updated:** 2026-05-22 (sub-slice 2b-1 EXECUTED at gate L3+)
+**Active phase:** **Worker MVP sub-slice 2b-2 — pending founder approval.** Sub-slice 2b-1 (capture-flow scaffold + Expo location/sensors/file-system installs + Location row on permissions + tab-bar root-fix) shipped 2026-05-22 with typecheck green and 7 Playwright screenshots verified clean. Sub-slice 2b-2 (real photo capture pipeline + R2 upload + captureMachine) is next; its plan is in `docs/personas/worker/WORKER_MVP_SLICE_2A_PLAN.md §7`.
 
 ## Worker MVP slice tracker
 
-| Sub-slice                       | Scope                                                                                   | Status               | Gate             | Commit    |
-| ------------------------------- | --------------------------------------------------------------------------------------- | -------------------- | ---------------- | --------- |
-| `worker-d1-s1-auth-shell`       | F-006b + auth flow + scaffold + ConsentLog                                              | **DONE** 2026-05-21  | L5 Distinguished | `af926ab` |
-| `worker-d1-s2a-1-backend-today` | `GET /worker/today` + `GET /worker/visits/:id`                                          | **DONE** 2026-05-21  | L3 Senior        | `af926ab` |
-| `worker-d1-s2a-2-mobile-home`   | Worker Home rewrite + Assignment Detail + 4 components + 4 screenshots + DELTA.html     | **DONE** 2026-05-22  | L3+              | `2e876a6` |
-| `worker-d1-s2b-1`               | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install | **PENDING** approval | —                | —         |
-| `worker-d1-s2b-2`               | Before/After capture pipeline + incremental R2 upload                                   | not started          | —                | —         |
-| `worker-d1-s2b-3`               | Cleaning timer + GPS + motion + Submit + Verify polling                                 | not started          | —                | —         |
-| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + integration tests                          | not started          | —                | —         |
-| `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                    | not started          | —                | —         |
-| `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                              | not started          | —                | —         |
+| Sub-slice                       | Scope                                                                                                                                    | Status               | Gate             | Commit         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------------- | -------------- |
+| `worker-d1-s1-auth-shell`       | F-006b + auth flow + scaffold + ConsentLog                                                                                               | **DONE** 2026-05-21  | L5 Distinguished | `af926ab`      |
+| `worker-d1-s2a-1-backend-today` | `GET /worker/today` + `GET /worker/visits/:id`                                                                                           | **DONE** 2026-05-21  | L3 Senior        | `af926ab`      |
+| `worker-d1-s2a-2-mobile-home`   | Worker Home rewrite + Assignment Detail + 4 components + 4 screenshots + DELTA.html                                                      | **DONE** 2026-05-22  | L3+              | `2e876a6`      |
+| `worker-d1-s2b-1`               | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install + Location row on permissions + tab-bar root-fix | **DONE** 2026-05-22  | L3+              | (pending push) |
+| `worker-d1-s2b-2`               | Before/After capture pipeline + incremental R2 upload + captureMachine                                                                   | **PENDING** approval | —                | —              |
+| `worker-d1-s2b-3`               | Cleaning timer + GPS + motion + Submit + Verify polling                                                                                  | not started          | —                | —              |
+| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + integration tests                                                                           | not started          | —                | —              |
+| `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started          | —                | —              |
+| `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started          | —                | —              |
 
 ## Production state
 
@@ -26,6 +26,8 @@
 | Mobile (Expo SDK 54) auth flow                    | F-006b shipped; worker tab shell scaffolded                                                                                      |
 | Mobile (Expo SDK 54) Worker Home                  | shipped 2a-2 (consumes `/worker/today`, renders resume banner + paused banner + assignment list + empty state + pull-to-refresh) |
 | Mobile (Expo SDK 54) Assignment Detail            | shipped 2a-2 (consumes `/worker/visits/:id`, tap-to-call supervisor live, swap stub disabled)                                    |
+| Mobile (Expo SDK 54) Capture flow scaffold        | shipped 2b-1 (6-step placeholder stack reachable via ResumeCaptureBanner deep-link; real camera/timer/upload land in 2b-2/2b-3)  |
+| Mobile (Expo SDK 54) Permissions                  | shipped 2b-1 (Camera + Location asked upfront on (auth)/permissions per founder lock 2026-05-22)                                 |
 | Backend `/auth/otp/verify`                        | fires `workerMachine.OTP_VERIFIED` on `PENDING_ACTIVATION` workers in `prisma.$transaction` (15s timeout for Railway cold-call)  |
 | Backend `/worker/consent`                         | shipped (POST, WORKER role gate, try/catch envelope)                                                                             |
 | Backend `/worker/today`                           | shipped (GET, WORKER role gate, returns visits + supervisor phone + resume-capture pointer)                                      |

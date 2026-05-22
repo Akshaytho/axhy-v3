@@ -94,6 +94,11 @@ export default function WorkerLayout() {
             tabBarLabel: tabLabel('Profile'),
           }}
         />
+        {/* Hide nested directories from the tab bar — they're reachable only via
+           NAV_ROUTES deep-links. Without href:null, Expo Router auto-registers
+           every subdirectory under (worker) as an extra tab slot. */}
+        <Tabs.Screen name="visit" options={{ href: null }} />
+        <Tabs.Screen name="capture" options={{ href: null }} />
       </Tabs>
     </View>
   );
