@@ -22,144 +22,141 @@ import { prisma } from '../lib/prisma.js';
 import { requireWorkerRole, withTenantContext } from '../middleware/tenant-context.js';
 import { submitVisit } from '../lib/services/worker-submit-service.js';
 
+const ROUTES = {
+  submit: '/worker/visits/:visitId/submit',
+  verifyStatus: '/worker/visits/:visitId/verify-status',
+} as const;
+
 /** @derives(master-plan §G) */
 export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<void> {
-  app.post(
-    '/worker/visits/:visitId/submit',
-    { preHandler: requireWorkerRole },
-    async (req, reply) => {
-      try {
-        const auth = req.auth;
-        if (!auth) {
-          reply.code(401).send({ error: 'AUTH_REQUIRED' });
-          return;
-        }
+  app.post(ROUTES.submit, { preHandler: requireWorkerRole }, async (req, reply) => {
+    try {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
+      }
 
-        const { visitId } = req.params as { visitId: string };
+      const { visitId } = req.params as { visitId: string };
 
-        const parsed = WorkerSubmitRequestSchema.safeParse(req.body);
-        if (!parsed.success) {
-          reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
-          return;
-        }
+      const parsed = WorkerSubmitRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+        return;
+      }
 
-        // Resolve the Worker DB row ID from the User ID in the JWT.
-        // visit.workerId references Worker.id, not User.id.
-        const workerRow = await prisma.worker.findFirst({
-          where: { userId: auth.userId, companyId: auth.companyId },
-          select: { id: true },
+      // Resolve the Worker DB row ID from the User ID in the JWT.
+      // visit.workerId references Worker.id, not User.id.
+      const workerRow = await prisma.worker.findFirst({
+        where: { userId: auth.userId, companyId: auth.companyId },
+        select: { id: true },
+      });
+      if (!workerRow) {
+        reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
+        return;
+      }
+
+      const result = await withTenantContext(prisma, auth.companyId, (tx) =>
+        submitVisit(tx, {
+          workerId: workerRow.id,
+          visitId,
+          companyId: auth.companyId,
+          photos: parsed.data.photos,
+        }),
+      );
+
+      if (result.kind === 'NOT_FOUND') {
+        reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
+        return;
+      }
+      if (result.kind === 'WRONG_WORKER') {
+        reply.code(403).send({
+          error: 'WRONG_WORKER',
+          message: 'This visit belongs to a different worker.',
         });
-        if (!workerRow) {
-          reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
-          return;
-        }
+        return;
+      }
+      if (result.kind === 'WRONG_STATE') {
+        reply.code(409).send({
+          error: 'WRONG_STATE',
+          message: `Visit is in ${result.currentState}, not PHOTOS_PENDING.`,
+          currentState: result.currentState,
+        });
+        return;
+      }
 
-        const result = await withTenantContext(prisma, auth.companyId, (tx) =>
-          submitVisit(tx, {
-            workerId: workerRow.id,
-            visitId,
-            companyId: auth.companyId,
-            photos: parsed.data.photos,
-          }),
-        );
-
-        if (result.kind === 'NOT_FOUND') {
-          reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
-          return;
-        }
-        if (result.kind === 'WRONG_WORKER') {
-          reply.code(403).send({
-            error: 'WRONG_WORKER',
-            message: 'This visit belongs to a different worker.',
-          });
-          return;
-        }
-        if (result.kind === 'WRONG_STATE') {
-          reply.code(409).send({
-            error: 'WRONG_STATE',
-            message: `Visit is in ${result.currentState}, not PHOTOS_PENDING.`,
-            currentState: result.currentState,
-          });
-          return;
-        }
-
-        req.log.info(
-          {
-            workerId: workerRow.id,
-            visitId,
-            photosBefore: result.photosBefore,
-            photosAfter: result.photosAfter,
-          },
-          'worker submit accepted',
-        );
-
-        reply.send({
-          visitId: result.visitId,
-          visitState: result.visitState,
+      req.log.info(
+        {
+          workerId: workerRow.id,
+          visitId,
           photosBefore: result.photosBefore,
           photosAfter: result.photosAfter,
-        });
-      } catch (err) {
-        req.log.error({ err }, 'worker submit endpoint failed');
-        reply.code(500).send({ error: 'SUBMIT_FAILED', message: 'Could not submit photos.' });
+        },
+        'worker submit accepted',
+      );
+
+      reply.send({
+        visitId: result.visitId,
+        visitState: result.visitState,
+        photosBefore: result.photosBefore,
+        photosAfter: result.photosAfter,
+      });
+    } catch (err) {
+      req.log.error({ err }, 'worker submit endpoint failed');
+      reply.code(500).send({ error: 'SUBMIT_FAILED', message: 'Could not submit photos.' });
+    }
+  });
+
+  app.get(ROUTES.verifyStatus, { preHandler: requireWorkerRole }, async (req, reply) => {
+    try {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
       }
-    },
-  );
 
-  app.get(
-    '/worker/visits/:visitId/verify-status',
-    { preHandler: requireWorkerRole },
-    async (req, reply) => {
-      try {
-        const auth = req.auth;
-        if (!auth) {
-          reply.code(401).send({ error: 'AUTH_REQUIRED' });
-          return;
-        }
+      const { visitId } = req.params as { visitId: string };
 
-        const { visitId } = req.params as { visitId: string };
+      const visit = await prisma.visit.findUnique({
+        where: { id: visitId },
+        select: { id: true, workerId: true, companyId: true, state: true },
+      });
 
-        const visit = await prisma.visit.findUnique({
-          where: { id: visitId },
-          select: { id: true, workerId: true, companyId: true, state: true },
-        });
-
-        if (!visit || visit.companyId !== auth.companyId) {
-          reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
-          return;
-        }
-        // Resolve Worker row to get the Worker.id for ownership comparison.
-        const workerRow = await prisma.worker.findFirst({
-          where: { userId: auth.userId, companyId: auth.companyId },
-          select: { id: true },
-        });
-        if (!workerRow || visit.workerId !== workerRow.id) {
-          reply.code(403).send({
-            error: 'WRONG_WORKER',
-            message: 'This visit belongs to a different worker.',
-          });
-          return;
-        }
-
-        const photos = await prisma.visitPhoto.findMany({
-          where: { visitId, companyId: auth.companyId },
-          select: { id: true, side: true, aiVerifyStatus: true },
-          orderBy: { createdAt: 'asc' },
-        });
-
-        reply.send({
-          visitId,
-          visitState: visit.state,
-          photos: photos.map((p) => ({
-            id: p.id,
-            side: p.side,
-            aiVerifyStatus: p.aiVerifyStatus,
-          })),
-        });
-      } catch (err) {
-        req.log.error({ err }, 'worker verify-status endpoint failed');
-        reply.code(500).send({ error: 'VERIFY_STATUS_FAILED', message: 'Could not fetch status.' });
+      if (!visit || visit.companyId !== auth.companyId) {
+        reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
+        return;
       }
-    },
-  );
+      // Resolve Worker row to get the Worker.id for ownership comparison.
+      const workerRow = await prisma.worker.findFirst({
+        where: { userId: auth.userId, companyId: auth.companyId },
+        select: { id: true },
+      });
+      if (!workerRow || visit.workerId !== workerRow.id) {
+        reply.code(403).send({
+          error: 'WRONG_WORKER',
+          message: 'This visit belongs to a different worker.',
+        });
+        return;
+      }
+
+      const photos = await prisma.visitPhoto.findMany({
+        where: { visitId, companyId: auth.companyId },
+        select: { id: true, side: true, aiVerifyStatus: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      reply.send({
+        visitId,
+        visitState: visit.state,
+        photos: photos.map((p) => ({
+          id: p.id,
+          side: p.side,
+          aiVerifyStatus: p.aiVerifyStatus,
+        })),
+      });
+    } catch (err) {
+      req.log.error({ err }, 'worker verify-status endpoint failed');
+      reply.code(500).send({ error: 'VERIFY_STATUS_FAILED', message: 'Could not fetch status.' });
+    }
+  });
 }
