@@ -20,6 +20,15 @@ export type { WorkerStateValue, WorkerEvent, WorkerContext, WorkerMachine } from
 export { visitMachine, BILLABLE_VISIT_STATES } from './visit.js';
 export type { VisitStateValue, VisitEvent, VisitContext, VisitMachine } from './visit.js';
 
+export { captureMachine, CAPTURE_STEP_ORDER } from './capture.js';
+export type {
+  CaptureStep,
+  CaptureStateValue,
+  CaptureEvent,
+  CaptureContext,
+  CaptureMachine,
+} from './capture.js';
+
 export * from './calendar.js';
 export * from './assignment.js';
 export * from './conflicts.js';

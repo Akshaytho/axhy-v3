@@ -1,26 +1,24 @@
 /**
- * Capture step 4 — After photos (placeholder).
+ * Capture step 4 — After photos.
  *
- * Real implementation: 3 mandatory after-photos via the camera, stored
- * under the per-user partition and uploaded incrementally to R2. Camera
- * pipeline + R2 upload land in 2b-2.
+ * Renders the shared PhasePhotoCapture surface scoped to phase='after'.
  *
- * @derives(WORKER_MVP_SLICE_2A_PLAN.md §7)
+ * @derives(WORKER_MVP_SLICE_2B_2_PLAN.md §1)
  */
 
 import { useLocalSearchParams } from 'expo-router';
 
-import { CaptureStepShell } from '../../../../components/worker/capture/CaptureStepShell';
+import { PhasePhotoCapture } from '../../../../components/worker/capture/PhasePhotoCapture';
 
 /** @derives(master-plan §G) */
 export default function AfterPhotosStep(): React.JSX.Element {
   const { visitId } = useLocalSearchParams<{ visitId: string }>();
   return (
-    <CaptureStepShell
+    <PhasePhotoCapture
       visitId={visitId ?? ''}
-      step="after-photos"
-      title="After photos"
-      body="Take 3 photos of the site after cleaning. The camera flow lands in slice 2b-2."
+      phase="after"
+      currentStep="after-photos"
+      title="Step 4 of 6 — After photos"
     />
   );
 }

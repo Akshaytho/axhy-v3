@@ -1,26 +1,24 @@
 /**
- * Capture step 2 — Before photos (placeholder).
+ * Capture step 2 — Before photos.
  *
- * Real implementation: 3 mandatory before-photos via the camera, stored
- * under the per-user partition and uploaded incrementally to R2. Camera
- * pipeline + R2 upload land in 2b-2.
+ * Renders the shared PhasePhotoCapture surface scoped to phase='before'.
  *
- * @derives(WORKER_MVP_SLICE_2A_PLAN.md §7)
+ * @derives(WORKER_MVP_SLICE_2B_2_PLAN.md §1)
  */
 
 import { useLocalSearchParams } from 'expo-router';
 
-import { CaptureStepShell } from '../../../../components/worker/capture/CaptureStepShell';
+import { PhasePhotoCapture } from '../../../../components/worker/capture/PhasePhotoCapture';
 
 /** @derives(master-plan §G) */
 export default function BeforePhotosStep(): React.JSX.Element {
   const { visitId } = useLocalSearchParams<{ visitId: string }>();
   return (
-    <CaptureStepShell
+    <PhasePhotoCapture
       visitId={visitId ?? ''}
-      step="before-photos"
-      title="Before photos"
-      body="Take 3 photos of the site before you start cleaning. The camera, photo grid, and R2 upload land in the next slice."
+      phase="before"
+      currentStep="before-photos"
+      title="Step 2 of 6 — Before photos"
     />
   );
 }

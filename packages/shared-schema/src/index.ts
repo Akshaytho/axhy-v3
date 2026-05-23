@@ -15,6 +15,8 @@ export * from './zod/me.js';
 export * from './zod/worker-consent.js';
 // Slice 2a-1 2026-05-21 — worker /today + /visits/:id read endpoints
 export * from './zod/worker-today.js';
+// Slice 2b-2 2026-05-22 — worker capture pipeline R2 presign batch
+export * from './zod/worker-captures.js';
 export * from './zod/supervisor.js';
 export * from './zod/calendar.js';
 export * from './zod/assignment.js';
