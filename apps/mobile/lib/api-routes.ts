@@ -22,6 +22,9 @@ export const API_ROUTES = {
   workerToday: apiPath('worker', 'today'),
   workerVisit: (visitId: string): string => apiPath('worker', 'visits', visitId),
   workerCapturesUploadUrls: apiPath('worker', 'captures', 'upload-urls'),
+  workerSubmit: (visitId: string): string => apiPath('worker', 'visits', visitId, 'submit'),
+  workerVerifyStatus: (visitId: string): string =>
+    apiPath('worker', 'visits', visitId, 'verify-status'),
 } as const;
 
 /** Capture-flow step names, in the order the worker traverses them.
