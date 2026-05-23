@@ -61,3 +61,5 @@ export * from './zod/replacement-invite.js';
 // Wave 4 — compliance flow: FlaggedReview Resolve/Reject + Activity Reverse/soft-flag
 // @derives(2026-05-18-supervisor-30-day-real-life-simulation-v2.md §3 Wave 4)
 export * from './zod/wave-4-compliance.js';
+// Slice 2b-3 2026-05-23 — worker submit + verify-status
+export * from './zod/worker-submit.js';
