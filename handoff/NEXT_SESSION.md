@@ -1,4 +1,4 @@
-# Next Session — Worker MVP Sub-slice 2b-2 (photo capture pipeline)
+# Next Session — Worker MVP Sub-slice 2b-3 (timer + Submit + Verify polling)
 
 > **Read time: 3 minutes. Highest-priority file for the next session.**
 >
@@ -6,34 +6,64 @@
 
 ## Current commit baseline
 
-Sub-slice `worker-d1-s2b-1-capture-scaffold` shipped on `main` 2026-05-22. Builds on `2e876a6` (2a-2 mobile Home + Assignment Detail). Done memo at `done-memo-worker-d1-s2b-1-capture-scaffold.md`.
+Sub-slice `worker-d1-s2b-2-capture-pipeline` shipped on `main` 2026-05-23. Builds on the 2b-1 capture scaffold. The 2b-2 commit also rolled in 6 bug fixes surfaced during simplify-skill code review + Playwright QA (see "Bug fixes shipped with 2b-2" below).
 
-## What's shipped (this commit)
+## What's shipped in 2b-2
 
-- **Sub-slice 2b-1 (gate L3+):**
-  - 3 Expo SDK 54 deps installed: `expo-location ~19.0.8`, `expo-sensors ~15.0.8`, `expo-file-system ~19.0.22`.
-  - `lib/storage/per-user-partition.ts` — pure path helpers for the internal `documentDirectory + /captures/{workerId}/{visitId}/` partition (no I/O this slice; no gallery access).
-  - 6-step capture-flow stack under `app/(worker)/capture/[visitId]/` — `qr-scan`, `before-photos`, `timer`, `after-photos`, `review`, `submit` — each rendered via shared `components/worker/capture/CaptureStepShell.tsx` with Back/Next/step-badge chrome.
-  - `(auth)/permissions.tsx` grew a Location row alongside Camera (founder lock 2026-05-22 Option B). Continue gated on both grants.
-  - `(worker)/index.tsx` ResumeCaptureBanner deep-link rewired from `workerVisitDetail` to `workerCaptureEntry` (qr-scan step).
-  - `lib/api-routes.ts` exports `CAPTURE_STEPS` + `NAV_ROUTES.workerCaptureStep(visitId, step)` + `NAV_ROUTES.workerCaptureEntry(visitId)`.
-  - `(worker)/_layout.tsx` Tabs gain `href:null` entries for `visit` + `capture` directories.
-  - `(worker)/visit/_layout.tsx` Stack wrapper added — also retro-fixes the pre-existing 2a-2 tab-bleed defect.
-  - `scripts/qa-worker-d1-s2b-1-capture-scaffold.ts` Playwright capture — 7 screenshots verified.
-- **Bonus fix outside slice scope:** `axhy-cognitive-system/src/layer-1-hook/pre-edit-guard.mjs` `wasFileReadRecently` rewritten to glob every `/tmp/axhy-*-read-state.json` bucket (founder-approved hash-mismatch fix; matches the read-side fanout shape of commit 727e6b8 earlier today).
+- **Backend:**
+  - `apps/backend/src/lib/r2-presign.ts` — Cloudflare R2 batch presign helper (S3-compat SDK with `requestChecksumCalculation: 'WHEN_REQUIRED'` workaround). ContentLength intentionally not signed — R2 rejects body-length mismatches at PUT time.
+  - `apps/backend/src/routes/worker-captures.ts` — `POST /worker/captures/upload-urls`, WORKER-only, tenant-exempt (workerId-keyed). Returns N presigned PUT URLs at once; backend supports `MAX_PHOTOS_PER_BATCH = 20`.
+  - `apps/backend/test/worker-captures.test.ts` — 5 real-DB + real-R2 integration tests (auth / role gate / bad input / empty files / happy path). Falls back to the 503 R2_NOT_CONFIGURED contract assertion when R2 env vars are absent.
+- **Mobile:**
+  - `apps/mobile/components/worker/capture/CameraView.tsx` — expo-camera native wrapper + web Simulate-capture stub. Logs `console.warn` if `takePictureAsync` returns no URI.
+  - `apps/mobile/components/worker/capture/PhasePhotoCapture.tsx` — shared 3-photo surface for before + after phases. Synchronous slot reservation via `reservedCountRef` (race-free). `KeepDeviceAwake` inner component conditionally mounted on native only.
+  - `apps/mobile/components/worker/capture/PhotoGridReview.tsx` — 6-tile review grid with per-tile upload status + retake.
+  - `apps/mobile/lib/r2-upload-queue.ts` — module-singleton serial upload queue with exponential backoff. **In-memory only**; persistence lands in 2b-4.
+  - `apps/mobile/lib/api-capture.ts` — typed `requestUploadUrls(visitId, files)` client.
+  - `apps/mobile/lib/storage/per-user-partition.ts` — I/O layer added (`ensureDir`, `writePhoto`, `listPhotos`, `deletePhoto`) using expo-file-system v19 class API; web no-op fallback preserved from 2b-1.
+  - `apps/mobile/app/(worker)/capture/[visitId]/{before-photos,after-photos,review}.tsx` — wired the 2b-1 scaffold step screens to the new capture components.
+- **Shared:**
+  - `packages/shared-schema/src/zod/worker-captures.ts` — `PhotoPhaseSchema`, `UploadUrlsRequestSchema`, `UploadUrlsResponseSchema`, etc. Caps: 1–3 slot index, 1B–20MB fileSize, max 20 photos/batch.
+  - `packages/state-machines/src/capture.ts` — `captureMachine` (xstate v5, IDLE → CAPTURING → SUBMITTED). Uses `assign()` for all context updates; 9 tests passing.
+- **QA:** `apps/mobile/scripts/qa-worker-d1-s2b-2-capture-pipeline.ts` Playwright capture — 9 screenshots (camera-stub / 3-photos-captured / review-grid / placeholders). See "Known QA fidelity gap" below for one screen that under-tests.
 
-## What starts next: sub-slice 2b-2 (photo capture pipeline)
+## Bug fixes shipped with 2b-2
+
+Surfaced during simplify-skill code review + Playwright QA, all bundled into this commit:
+
+1. **xstate context mutation → `assign()`** (`capture.ts`) — previous transitions mutated `context.step` directly inside arrow-fn actions, bypassing xstate v5's immutable snapshot contract. Tests passed by accident (same object ref let subscribers see the mutation). Fix: replaced all four mutation sites with `assign()`.
+2. **Slot-index race + stale closure in `PhasePhotoCapture.onCapture`** — two rapid shutter presses could read the same `captured.length` between `await writePhoto` and `setCaptured`, clobbering one slot. Fix: synchronous reservation via `reservedCountRef`; `useCallback` deps no longer include `captured.length` so the callback identity is stable. Also replaced the hardcoded `fileSize = 500_000` lie with `new File(localUri).size` (web stub keeps the default).
+3. **R2 ContentLength signature mismatch** (`r2-presign.ts`) — `PutObjectCommand` was signing `ContentLength: file.fileSize`. R2 rejects with `SignatureDoesNotMatch` when actual body bytes ≠ signed value, which would happen on every real upload because mobile cannot reliably know the post-write file size in advance. Fix: dropped ContentLength from the signed command; the 20MB cap is still enforced upstream by the Zod schema.
+4. **`INVALID_INPUT` → `BAD_INPUT`** (`worker-captures.ts` + test) — all 13 other worker routes return `{ error: 'BAD_INPUT', message: parsed.error.message }`; this route diverged. Now matches.
+5. **Silent camera no-URI failure** (`CameraView.tsx`) — `takePictureAsync` returning no URI silently reset `capturing` with no log. Worker would tap shutter, nothing happens, no signal anywhere. Fix: `console.warn` with the raw result so device logs surface the issue.
+6. **`useKeepAwake` web crash** (`PhasePhotoCapture.tsx`) — surfaced by Playwright QA: expo-keep-awake's Wake Lock acquisition is denied in headless Chromium, and Expo's RedBox renders a fullscreen dev-error overlay that intercepted pointer events for the Simulate-capture button on every capture screen. Fix: extracted a `KeepDeviceAwake` inner component (so the hook is still unconditional inside it), mounted only when `Platform.OS !== 'web'`. Production native behavior unchanged.
+
+## Deferred from code review — bring back for 2b-3 / future
+
+1. **Batch presigns** — mobile sends N single-file requests; backend already supports up to 20 per batch. Refactor in `r2-upload-queue.ts` to collect idle items per pump cycle and presign in one call.
+2. **`FileSystem.uploadAsync` streaming PUT** — current path is `fetch(localUri).blob() → fetch(PUT, body: blob)`. Loads the full file into JS heap on every retry. Switch to expo-file-system's native upload (`uploadType: BINARY_CONTENT`) for memory + background-upload support.
+3. **`objectKey` leak in presign response** — route returns `objectKey` to the client; a tampered client could claim arbitrary keys at Submit time. Either keep server-side and have Submit reconstruct by `(workerId, visitId, phase, index, contentType)` deterministically, or sign an opaque token.
+4. **Extract `CaptureStepShell` slot pattern** — `PhasePhotoCapture` and `review.tsx` each re-implement the Back / step-badge / Next chrome inline. Drift-prone. Extend the shell with a children/body slot so both can mount their body content while inheriting chrome + nav.
+5. **`PhotoPhase` case mismatch** — Zod uses lowercase `'before' | 'after'`; Prisma `VisitPhoto.side` is `BEFORE | AFTER`. Pick one at the 2b-3 Submit boundary (translate at the route handler when writing rows).
+6. **`MAX_PHOTO_BYTES` collision** — `packages/shared-schema/...zod/worker-captures.ts` exports 20MB; `apps/mobile/lib/uploads/photo-upload.ts` exports 8MB (chat). Theoretical only — no file imports both today. Rename one to disambiguate if a consumer ever needs both.
+7. **Upload-queue `emit()` churn on retry path** — `uploadOne` emits twice per retry (once with `uploading + lastError` mid-state, once after sleep with `idle`). Cosmetic; gated by the serial-by-design queue.
+
+## Known QA fidelity gap — fix before next visual verification
+
+The Playwright QA script uses `gotoRoute(page, '/(worker)/capture/.../<step>')` between every capture step. `page.goto` does a full HTTP reload and wipes the in-memory `r2UploadQueue` (module singleton). On real devices the worker SPA-navigates between before / after / review within one app session, so the queue persists; in QA it doesn't. Net effect: the review-grid screenshot shows all 6 tiles as "Not captured" even though the simulate-capture clicks did fire on the previous pages. The footer button visually obscures the bottom two tiles' status text — misleading at first glance.
+
+**Action for next session before 2b-3 visual verification:** replace `gotoRoute(page, '/...')` between capture steps with SPA navigation — `await page.getByRole('button', { name: /^Next$/ }).click()`. The qr-scan + timer scaffold screens between phases need their own Next-button locators if they don't already render one. With SPA nav the queue persists and the review screenshot will show the actual populated state.
+
+**Note:** the empty "Not captured" state IS by design until 2b-4 ships reinstall rehydration (see `r2-upload-queue.ts` header comment) — the QA just makes the limitation more visible than it would be in practice. Production native is unaffected.
+
+## What starts next: sub-slice 2b-3 (cleaning timer + Submit + Verify polling)
 
 **Scope (from `WORKER_MVP_SLICE_2A_PLAN.md §7`):**
 
-1. Wire `expo-camera` into the `before-photos` and `after-photos` step screens — 3 photos per phase, internal storage only.
-2. Implement `lib/storage/per-user-partition.ts` I/O side: `ensureDir`, `writePhoto`, `listPhotos`, `deletePhoto`. Web no-op fallback.
-3. Incremental R2 upload pipeline — kick off uploads as photos land, not on Submit. Retry policy + background-tolerant queue.
-4. Photo grid review on the `review` step with retake-per-photo affordance.
-5. Capture-state machine (new `captureMachine` in `packages/state-machines/src/`) — tracks step position so 2b-1's ResumeCaptureBanner deep-link can jump to the in-progress step (currently lands on qr-scan unconditionally).
-6. Backend route for R2 signed upload URLs (small addition; no Visit state transition yet — that's 2b-3 Submit).
-
-**Estimated:** ~10 files, ~6h. New `captureMachine` state machine + new backend route + new tests.
+1. Cleaning-timer step screen — countdown / count-up timer, GPS sample at start + end, motion check.
+2. Submit step — writes `VisitPhoto` rows from the captured slots (translates lowercase Zod phase → uppercase Prisma `side` per deferred item #5); fires `visitMachine.PHOTOS_UPLOADED`; reconstructs object keys server-side per deferred item #3.
+3. Verify polling — admin/supervisor side gets the photos for review; mobile polls a status endpoint to know when Verify completes.
+4. While we're here: fix the QA navigation per "Known QA fidelity gap" so the populated review grid screenshot becomes load-bearing again.
 
 ## Decisions still in force (don't re-debate)
 
@@ -41,7 +71,7 @@ Sub-slice `worker-d1-s2b-1-capture-scaffold` shipped on `main` 2026-05-22. Build
 | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | 3-tab canonical (Home / History / Profile); capture surfaces as Home banner                                   | `DELTA.html` divergence #1 resolved 2026-05-21      |
 | Theme picker cut at MVP                                                                                       | `DO_NOT_BUILD_MVP.md` M14                           |
-| Photo storage: app-internal only, no gallery, per-user partition, R2 incremental upload, 30-day local cleanup | Founder direction 2026-05-21 — scaffold landed 2b-1 |
+| Photo storage: app-internal only, no gallery, per-user partition, R2 incremental upload, 30-day local cleanup | Founder direction 2026-05-21 — pipeline landed 2b-2 |
 | Location permission asked upfront on (auth)/permissions screen alongside Camera                               | Founder lock 2026-05-22 (Option B)                  |
 | Sprint mode ON — no per-rev friend review, batch panel review at end of sprint                                | `feedback_supervisor_sprint_mode.md` (carried)      |
 | All commits sign with `Co-Authored-By: Claude Opus 4.7 (1M context)`                                          | Convention from existing log                        |
@@ -54,26 +84,14 @@ Sub-slice `worker-d1-s2b-1-capture-scaffold` shipped on `main` 2026-05-22. Build
 - Pre-commit eslint rule `axhy/require-derives` blocks exports without `@derives(ADR-NNNN)` or `@derives(master-plan §X.Y)` JSDoc.
 - Pre-commit `docs/personas/` changes need `AXHY_FOUNDER_APPROVED=1`.
 
-## Known caveats from 2b-1
+## Known caveats carried forward
 
-- **Brain build (pgvector) is unavailable from this laptop.** `railway run -- pnpm --filter @axhy/ai-tools brain:build` fails `ENOTFOUND postgres.railway.internal` — the Railway CLI link may need re-establishing. Until fixed, `impactCheck()` returns empty; sessions must rely on direct file Reads + grep for locked-constraint checks.
+- **Brain build (pgvector) is unavailable from this laptop.** `railway run -- pnpm --filter @axhy/ai-tools brain:build` fails `ENOTFOUND postgres.railway.internal` from the local network — Railway CLI link may need re-establishing. Until fixed, `impactCheck()` returns empty; sessions must rely on direct file Reads + grep for locked-constraint checks.
 - **Expo Web duplicate-tab quirk:** the Tabs navigator renders a faint duplicate tab row in the body area of step screens. Not present on real device per Expo Router behavior; ignore for scaffold work.
-- **NO real I/O in `per-user-partition.ts` yet** — only path string helpers. `getWorkerCaptureDir` throws on Expo Web (documentDirectory is null). Callers must `Platform.OS` guard or check `CAPTURES_ROOT` before invoking. 2b-2 owns the write/read side.
-
-## What to skip
-
-Don't re-read the older Layer 1 / supervisor-sprint handoff chain (`README.md`, `STATUS.md` legacy sections, `ROADMAP.md`, the `2026-05-17-*` audit memos). They're carried forward but not load-bearing for slice 2b-2.
-
-## Open assumptions for 2b-2
-
-- `expo-camera@~17.0.10` is already installed (slice 1). Web fallback for camera capture during Playwright runs needs a stub or skipped-test marker.
-- R2 signed-URL endpoint: backend route shape (`POST /worker/captures/upload-url`?) needs a quick founder decision on whether to make it visit-scoped vs photo-scoped. Default: visit-scoped, returns N URLs at once.
-- Capture-state machine: simplest correct shape is `idle → on_step → submitted`. Step persistence to backend or local-only? Local-only is simpler for 2b-2; backend sync lands in 2b-3 Submit.
 
 ## First thing to do in next session
 
 1. **Run `pnpm --filter @axhy/ai-tools run audit`** to confirm clean baseline.
-2. **Read `WORKER_MVP_SLICE_2A_PLAN.md` §7** for sub-slice 2b-2 scope.
-3. **Read this file's "Decisions still in force"** above so no re-debate.
-4. **Investigate the Railway brain:build DNS issue.** Either re-link with `railway link` or accept it as a deferred known-issue.
-5. **Start 2b-2** with the same shape as 2b-1: Phase 1 read existing camera + storage references, Phase 2 wire camera, Phase 3 R2 upload, Phase 4 review + state machine, Phase final screenshot capture + `check_before_done` + done memo.
+2. **Read this file's "Deferred from code review" + "Known QA fidelity gap"** so the carry-forward items don't get re-discovered.
+3. **Read `WORKER_MVP_SLICE_2A_PLAN.md` §7** for sub-slice 2b-3 scope (timer + Submit + Verify polling).
+4. **Start 2b-3** with the QA-script fix first so visual verification is honest from the start, then timer screen, then Submit + Visit state transition, then Verify polling.
