@@ -22,6 +22,8 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { RoleSchema, type Role } from '@axhy/shared-schema';
 
+const HTTP_FORBIDDEN = 403;
+
 import { verifyAccessToken } from '../lib/jwt.js';
 
 export type TenantAuth = {
@@ -76,12 +78,17 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
  * @derives(ADR-0004)
  */
 export async function requireWorkerRole(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-  await requireAuth(req, reply);
+  try {
+    await requireAuth(req, reply);
+  } catch (err) {
+    reply.code(500).send({ error: 'AUTH_FAILED', message: 'Authentication error.' });
+    return;
+  }
   if (reply.sent) return;
   const auth = req.auth;
   if (!auth || auth.role !== RoleSchema.enum.WORKER) {
     reply
-      .code(403)
+      .code(HTTP_FORBIDDEN)
       .send({ error: 'WRONG_ROLE', message: 'Only worker accounts can access this endpoint.' });
   }
 }
