@@ -20,7 +20,7 @@
  */
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { Role } from '@axhy/shared-schema';
+import { RoleSchema, type Role } from '@axhy/shared-schema';
 
 import { verifyAccessToken } from '../lib/jwt.js';
 
@@ -67,6 +67,22 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
       message: 'Token invalid or expired',
     });
     return;
+  }
+}
+
+/**
+ * preHandler hook. Throws 401 if no token; 403 if caller is not WORKER.
+ *
+ * @derives(ADR-0004)
+ */
+export async function requireWorkerRole(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  await requireAuth(req, reply);
+  if (reply.sent) return;
+  const auth = req.auth;
+  if (!auth || auth.role !== RoleSchema.enum.WORKER) {
+    reply
+      .code(403)
+      .send({ error: 'WRONG_ROLE', message: 'Only worker accounts can access this endpoint.' });
   }
 }
 
