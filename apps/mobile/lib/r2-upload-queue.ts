@@ -49,6 +49,23 @@ class R2UploadQueue {
   private listeners = new Set<Listener>();
   private running = false;
 
+  /** Restore persisted items into the queue on cold-start. Skips keys already
+   *  present so concurrent enqueues from the capture flow are not overwritten.
+   *  @derives(NEXT_SESSION.md §2b-4) */
+  hydrate(items: Map<string, QueueItem>): void {
+    let added = 0;
+    for (const [key, item] of items) {
+      if (!this.items.has(key)) {
+        this.items.set(key, item);
+        added++;
+      }
+    }
+    if (added > 0) {
+      this.emit();
+      void this.pump();
+    }
+  }
+
   enqueue(item: Omit<QueueItem, 'status' | 'attempts' | 'objectKey' | 'lastError'>): string {
     const key = keyOf(item.visitId, item.phase, item.index);
     const queued: QueueItem = {

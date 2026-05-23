@@ -119,15 +119,23 @@ export async function writePhoto(
   sourceUri: string,
 ): Promise<string> {
   if (!canPersistCaptures()) return sourceUri;
-  await ensureDir(workerId, visitId);
-  const destPath = getPhotoPath(workerId, visitId, phase, index);
-  const destFile = new File(destPath);
-  if (destFile.exists) {
-    destFile.delete();
+  try {
+    await ensureDir(workerId, visitId);
+    const destPath = getPhotoPath(workerId, visitId, phase, index);
+    const destFile = new File(destPath);
+    if (destFile.exists) {
+      destFile.delete();
+    }
+    const sourceFile = new File(sourceUri);
+    sourceFile.copy(destFile);
+    return destPath;
+  } catch (err) {
+    console.error(
+      '[per-user-partition] writePhoto failed',
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
   }
-  const sourceFile = new File(sourceUri);
-  sourceFile.copy(destFile);
-  return destPath;
 }
 
 /** List photo paths persisted for a given (workerId, visitId, phase). Returns
@@ -150,6 +158,24 @@ export async function listPhotos(
   }
   paths.sort();
   return paths;
+}
+
+/** List all visit directory URIs under the worker partition. Used by
+ *  photo-sweep (age check) and reinstall-rehydration (orphan scan).
+ *  Returns empty array on web or when the worker dir does not exist.
+ *  @derives(master-plan §G) */
+export async function listVisitDirs(workerId: string): Promise<string[]> {
+  if (!canPersistCaptures()) return [];
+  try {
+    const workerDir = new Directory(Paths.document, 'captures', workerId);
+    if (!workerDir.exists) return [];
+    const entries = workerDir.list();
+    return entries
+      .filter((entry) => entry instanceof Directory)
+      .map((entry) => (entry as Directory).uri);
+  } catch {
+    return [];
+  }
 }
 
 /** Delete one photo slot. No-op on web or when the file is absent.
