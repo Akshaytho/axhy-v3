@@ -160,7 +160,7 @@ const VALID_PHOTOS = [
 ];
 
 describe('POST /worker/visits/:visitId/submit', () => {
-  it('rejects unauthenticated requests with 401', async () => {
+  it('rejects requests without token with 401', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/worker/visits/${visitId}/submit`,
