@@ -71,8 +71,9 @@ function readR2Env(): R2Env | null {
 
 /** Build the object key for one worker/visit/phase/index slot. v3 prefix keeps
  *  workspace cleanly separated from v2's `uploads/` prefix even though the
- *  bucket is currently dedicated. */
-function buildObjectKey(workerId: string, visitId: string, file: UploadUrlFile): string {
+ *  bucket is currently dedicated.
+ * @derives(master-plan §G) */
+export function buildObjectKey(workerId: string, visitId: string, file: UploadUrlFile): string {
   const ext =
     file.contentType === 'image/png' ? 'png' : file.contentType === 'image/webp' ? 'webp' : 'jpg';
   const padded = String(file.index).padStart(2, '0');
