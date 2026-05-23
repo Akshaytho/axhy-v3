@@ -156,5 +156,27 @@ describe('impact-check-v2', () => {
       expect(source).toContain('VECTOR_WEIGHT = 0.7');
       expect(source).toContain('FTS_WEIGHT = 0.3');
     });
+
+    it('14. hybrid SQL uses ts_rank with plainto_tsquery for FTS scoring', () => {
+      const source = readFileSync(join(here, 'impact-check-v2.ts'), 'utf8');
+      expect(source).toContain('ts_rank(content_search, plainto_tsquery');
+    });
+
+    it('15. hybrid SQL references content_search tsvector column', () => {
+      const source = readFileSync(join(here, 'impact-check-v2.ts'), 'utf8');
+      expect(source).toContain('content_search');
+    });
+
+    it('16. PG_FTS_HYBRID_ENABLED flag gates hybrid search path', () => {
+      const source = readFileSync(join(here, 'impact-check-v2.ts'), 'utf8');
+      expect(source).toContain('isEnabled(FEATURE_FLAGS.PG_FTS_HYBRID_ENABLED)');
+    });
+
+    it('17. non-hybrid path uses pure vector distance without ts_rank', () => {
+      const source = readFileSync(join(here, 'impact-check-v2.ts'), 'utf8');
+      const nonHybridBlock = source.slice(source.indexOf('} else {'));
+      expect(nonHybridBlock).toContain('1 - (embedding <=> $1::vector) AS score');
+      expect(nonHybridBlock).not.toContain('ts_rank');
+    });
   });
 });
