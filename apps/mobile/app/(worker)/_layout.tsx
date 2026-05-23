@@ -13,10 +13,18 @@
  * @derives(F-006b — worker shell)
  */
 
-import { StyleSheet, View, Text } from 'react-native';
+import { useEffect } from 'react';
+import { AppState, Platform, StyleSheet, View, Text } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { jwtDecode } from 'jwt-decode';
 import { tokens } from '@axhy/ui-tokens';
+
+import { getTokens } from '../../lib/auth-store';
+import { r2UploadQueue } from '../../lib/r2-upload-queue';
+import { loadQueueState, saveQueueState } from '../../lib/storage/queue-persistence';
+import { rehydrateFromPartition } from '../../lib/storage/reinstall-rehydration';
+import { maybeSweepOldPhotos } from '../../lib/storage/photo-sweep';
 
 type TabIcon = React.ComponentProps<typeof Feather>['name'];
 
@@ -55,6 +63,49 @@ const labelS = StyleSheet.create({
 
 /** @derives(master-plan §G) — worker surface */
 export default function WorkerLayout() {
+  useEffect(() => {
+    let workerId: string | null = null;
+
+    const init = async () => {
+      try {
+        const tokens = await getTokens();
+        if (!tokens) return;
+        const payload = jwtDecode<{ userId?: string; sub?: string }>(tokens.accessToken);
+        workerId = payload.userId ?? payload.sub ?? null;
+        if (!workerId) return;
+
+        const persisted = await loadQueueState();
+        r2UploadQueue.hydrate(persisted);
+        await rehydrateFromPartition(workerId);
+        await maybeSweepOldPhotos(workerId);
+      } catch (err) {
+        console.error(
+          '[worker-layout] init failed',
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    };
+
+    void init();
+
+    const unsubQueue = r2UploadQueue.onChange((snap) => {
+      void saveQueueState(snap);
+    });
+
+    const appStateSub =
+      Platform.OS !== 'web'
+        ? AppState.addEventListener('change', (nextState) => {
+            if (nextState !== 'active' || !workerId) return;
+            void maybeSweepOldPhotos(workerId);
+          })
+        : null;
+
+    return () => {
+      unsubQueue();
+      appStateSub?.remove();
+    };
+  }, []);
+
   return (
     <View style={s.root}>
       <Tabs
