@@ -65,7 +65,7 @@ export default function TimerStep(): React.JSX.Element {
       import('expo-location').then(({ getCurrentPositionAsync }) => {
         getCurrentPositionAsync({ accuracy: 3 })
           .then((pos) => {
-            console.log('[timer] GPS start', pos.coords.latitude, pos.coords.longitude);
+            console.warn('[timer] GPS start', pos.coords.latitude, pos.coords.longitude);
           })
           .catch((e) => {
             console.warn('[timer] GPS unavailable', e);
@@ -90,7 +90,7 @@ export default function TimerStep(): React.JSX.Element {
       import('expo-location').then(({ getCurrentPositionAsync }) => {
         getCurrentPositionAsync({ accuracy: 3 })
           .then((pos) => {
-            console.log('[timer] GPS end', pos.coords.latitude, pos.coords.longitude);
+            console.warn('[timer] GPS end', pos.coords.latitude, pos.coords.longitude);
           })
           .catch((e) => {
             console.warn('[timer] GPS unavailable', e);
