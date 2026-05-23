@@ -49,9 +49,20 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
         return;
       }
 
+      // Resolve the Worker DB row ID from the User ID in the JWT.
+      // visit.workerId references Worker.id, not User.id.
+      const workerRow = await prisma.worker.findFirst({
+        where: { userId: auth.userId, companyId: auth.companyId },
+        select: { id: true },
+      });
+      if (!workerRow) {
+        reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
+        return;
+      }
+
       const result = await withTenantContext(prisma, auth.companyId, (tx) =>
         submitVisit(tx, {
-          workerId: auth.userId,
+          workerId: workerRow.id,
           visitId,
           companyId: auth.companyId,
           photos: parsed.data.photos,
@@ -80,7 +91,7 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
 
       req.log.info(
         {
-          workerId: auth.userId,
+          workerId: workerRow.id,
           visitId,
           photosBefore: result.photosBefore,
           photosAfter: result.photosAfter,
@@ -130,7 +141,12 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
           reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
           return;
         }
-        if (visit.workerId !== auth.userId) {
+        // Resolve Worker row to get the Worker.id for ownership comparison.
+        const workerRow = await prisma.worker.findFirst({
+          where: { userId: auth.userId, companyId: auth.companyId },
+          select: { id: true },
+        });
+        if (!workerRow || visit.workerId !== workerRow.id) {
           reply.code(403).send({
             error: 'WRONG_WORKER',
             message: 'This visit belongs to a different worker.',

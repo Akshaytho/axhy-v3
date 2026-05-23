@@ -2,22 +2,22 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-22 (sub-slice 2b-1 EXECUTED at gate L3+)
-**Active phase:** **Worker MVP sub-slice 2b-2 — pending founder approval.** Sub-slice 2b-1 (capture-flow scaffold + Expo location/sensors/file-system installs + Location row on permissions + tab-bar root-fix) shipped 2026-05-22 with typecheck green and 7 Playwright screenshots verified clean. Sub-slice 2b-2 (real photo capture pipeline + R2 upload + captureMachine) is next; its plan is in `docs/personas/worker/WORKER_MVP_SLICE_2A_PLAN.md §7`.
+**Last updated:** 2026-05-23 (sub-slice 2b-3 complete)
+**Active phase:** **Worker MVP sub-slice 2b-3 DONE.** Timer screen (count-up + GPS + keep-awake), submit screen (idle → submitting → polling → done/error), `POST /worker/visits/:visitId/submit`, `GET /worker/visits/:visitId/verify-status`, shared Zod schemas, 7 real-DB integration tests, and QA Playwright script with SPA-nav fix all shipped. Next: sub-slice 2b-4 (30-day local sweep + reinstall rehydration).
 
 ## Worker MVP slice tracker
 
-| Sub-slice                       | Scope                                                                                                                                    | Status               | Gate             | Commit         |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------------- | -------------- |
-| `worker-d1-s1-auth-shell`       | F-006b + auth flow + scaffold + ConsentLog                                                                                               | **DONE** 2026-05-21  | L5 Distinguished | `af926ab`      |
-| `worker-d1-s2a-1-backend-today` | `GET /worker/today` + `GET /worker/visits/:id`                                                                                           | **DONE** 2026-05-21  | L3 Senior        | `af926ab`      |
-| `worker-d1-s2a-2-mobile-home`   | Worker Home rewrite + Assignment Detail + 4 components + 4 screenshots + DELTA.html                                                      | **DONE** 2026-05-22  | L3+              | `2e876a6`      |
-| `worker-d1-s2b-1`               | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install + Location row on permissions + tab-bar root-fix | **DONE** 2026-05-22  | L3+              | (pending push) |
-| `worker-d1-s2b-2`               | Before/After capture pipeline + incremental R2 upload + captureMachine                                                                   | **PENDING** approval | —                | —              |
-| `worker-d1-s2b-3`               | Cleaning timer + GPS + motion + Submit + Verify polling                                                                                  | not started          | —                | —              |
-| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + integration tests                                                                           | not started          | —                | —              |
-| `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started          | —                | —              |
-| `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started          | —                | —              |
+| Sub-slice                       | Scope                                                                                                                                    | Status              | Gate             | Commit         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ---------------- | -------------- |
+| `worker-d1-s1-auth-shell`       | F-006b + auth flow + scaffold + ConsentLog                                                                                               | **DONE** 2026-05-21 | L5 Distinguished | `af926ab`      |
+| `worker-d1-s2a-1-backend-today` | `GET /worker/today` + `GET /worker/visits/:id`                                                                                           | **DONE** 2026-05-21 | L3 Senior        | `af926ab`      |
+| `worker-d1-s2a-2-mobile-home`   | Worker Home rewrite + Assignment Detail + 4 components + 4 screenshots + DELTA.html                                                      | **DONE** 2026-05-22 | L3+              | `2e876a6`      |
+| `worker-d1-s2b-1`               | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install + Location row on permissions + tab-bar root-fix | **DONE** 2026-05-22 | L3+              | (pending push) |
+| `worker-d1-s2b-2`               | Before/After capture pipeline + incremental R2 upload + captureMachine                                                                   | **DONE** 2026-05-23 | —                | —              |
+| `worker-d1-s2b-3`               | Cleaning timer + GPS + Submit + Verify polling                                                                                           | **DONE** 2026-05-23 | —                | —              |
+| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + integration tests                                                                           | not started         | —                | —              |
+| `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started         | —                | —              |
+| `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started         | —                | —              |
 
 ## Production state
 
@@ -33,7 +33,10 @@
 | Backend `/worker/today`                           | shipped (GET, WORKER role gate, returns visits + supervisor phone + resume-capture pointer)                                      |
 | Backend `/worker/visits/:id`                      | shipped (GET, WORKER role gate, caller-owns-visit check)                                                                         |
 | `ConsentLog` table                                | created via migration `20260528_018_worker_mvp_consentlog` and applied on Railway                                                |
-| Capture flow + photo pipeline                     | **not started** — sub-slice 2b                                                                                                   |
+| Mobile timer screen + submit + verify polling     | shipped 2b-3 (count-up timer, GPS log, keep-awake, submit → AWAITING_VERIFICATION, 3 s poll loop)                                |
+| Backend `/worker/visits/:id/submit`               | shipped 2b-3 (POST, WORKER role gate, creates VisitPhoto rows, transitions visit to AWAITING_VERIFICATION)                       |
+| Backend `/worker/visits/:id/verify-status`        | shipped 2b-3 (GET, WORKER role gate, returns visitState + photos array with aiVerifyStatus)                                      |
+| Capture flow + photo pipeline (end-to-end)        | 2b-2 + 2b-3 done; 2b-4 (sweep + rehydration) next                                                                                |
 | Notifications + bell badge data + decision banner | **not started** — slice 3                                                                                                        |
 
 ## Active discipline gates
@@ -66,4 +69,4 @@
 
 ## Where we are right now
 
-Worker MVP slice 1 + 2a-1 + 2a-2 are shipped on Railway sandbox and on `main`. Next session starts sub-slice 2b-1 (capture-flow scaffold) per the plan.
+Worker MVP slices 1 + 2a-1 + 2a-2 + 2b-1 + 2b-2 + 2b-3 are complete. The full capture pipeline (QR scan scaffold → before-photos → timer → after-photos → review → submit → verify polling) is end-to-end implemented. Next session starts sub-slice 2b-4 (30-day photo sweep + reinstall rehydration + queue persistence).
