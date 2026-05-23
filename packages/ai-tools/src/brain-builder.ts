@@ -27,6 +27,9 @@ import crypto from 'node:crypto';
 
 import pg from 'pg';
 
+import { redact } from './redaction.js';
+import { isEnabled, FEATURE_FLAGS } from './feature-flags.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, '../../..');
 
@@ -234,7 +237,10 @@ async function upsertChunks(
     const category = classifyChunk(sourcePath);
     const persona = classifyPersona(sourcePath, content);
     const language = inferLanguage(sourcePath);
-    const vec = await embed(content.slice(0, 8000));
+    const redactedContent = isEnabled(FEATURE_FLAGS.REDACTION_STRICT_MODE)
+      ? redact(content)
+      : content;
+    const vec = await embed(redactedContent.slice(0, 8000));
     await client.query(
       `INSERT INTO axhy_brain.chunks
        (source_path, start_line, end_line, content, content_hash, language,
@@ -243,7 +249,7 @@ async function upsertChunks(
       [
         sourcePath,
         lines.length,
-        content,
+        redactedContent,
         contentHash,
         language,
         JSON.stringify(vec),
