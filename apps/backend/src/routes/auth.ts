@@ -1,8 +1,12 @@
 /**
  * /auth/* routes
  *
- *   POST /auth/otp/request   — issue OTP, deliver via MSG91
+ *   POST /auth/otp/request   — issue OTP, deliver via WhatsApp Cloud API
  *   POST /auth/otp/verify    — verify OTP, return JWT(s) + memberships
+ *
+ * Channel pivoted from MSG91 SMS to WhatsApp 2026-05-25 — workers all carry
+ * smartphones with WhatsApp installed, and WhatsApp removes the DLT-registration
+ * blocker that previously delayed production OTP sends.
  *
  * @derives(ADR-0007)
  */
@@ -18,7 +22,8 @@ import { RoleSchema, type Role } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { issueOtp, verifyOtp } from '../lib/otp-store.js';
-import { sendOtpSms } from '../lib/msg91.js';
+import { sendOtpWhatsApp } from '../lib/whatsapp-otp.js';
+import { isPhoneAllowlisted } from '../lib/otp-bypass.js';
 import { issueAccessToken, issueRefreshToken } from '../lib/jwt.js';
 import { workerOtpVerifiedService } from '../lib/services/worker-otp-verified-service.js';
 
@@ -37,7 +42,13 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       const issued = await issueOtp(parsed.data.phone);
-      await sendOtpSms({ phone: parsed.data.phone, code: issued.code });
+      // Skip WhatsApp delivery for operator-allowlisted phones (founder
+      // testing in production). They authenticate with the magic code
+      // '123456' via the otp-bypass allowlist instead. Avoids spurious
+      // Meta API calls + cost during repeated test sessions.
+      if (!isPhoneAllowlisted(parsed.data.phone)) {
+        await sendOtpWhatsApp({ phone: parsed.data.phone, code: issued.code });
+      }
       const out: RequestOTPOutput = { ok: true, resendInSeconds: issued.resendInSeconds };
       reply.send(out);
     } catch (err) {
