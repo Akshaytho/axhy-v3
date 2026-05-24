@@ -31,26 +31,18 @@ export async function submitVisit(
   visitId: string,
   photos: ReadonlyArray<WorkerSubmitPhoto>,
 ): Promise<WorkerSubmitResponse> {
-  try {
-    const raw = await apiFetch<unknown>(API_ROUTES.workerSubmit(visitId), {
-      method: 'POST',
-      body: { photos },
-    });
-    return WorkerSubmitResponseSchema.parse(raw);
-  } catch (err) {
-    throw err;
-  }
+  const raw = await apiFetch<unknown>(API_ROUTES.workerSubmit(visitId), {
+    method: 'POST',
+    body: { photos },
+  });
+  return WorkerSubmitResponseSchema.parse(raw);
 }
 
 /** GET /worker/visits/:visitId/verify-status — poll for AI verification result.
  *  @derives(master-plan §G) */
 export async function fetchVerifyStatus(visitId: string): Promise<VerifyStatusResponse> {
-  try {
-    const raw = await apiFetch<unknown>(API_ROUTES.workerVerifyStatus(visitId), {
-      method: 'GET',
-    });
-    return VerifyStatusResponseSchema.parse(raw);
-  } catch (err) {
-    throw err;
-  }
+  const raw = await apiFetch<unknown>(API_ROUTES.workerVerifyStatus(visitId), {
+    method: 'GET',
+  });
+  return VerifyStatusResponseSchema.parse(raw);
 }

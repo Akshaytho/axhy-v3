@@ -258,14 +258,7 @@ function decodeUserIdFromJwt(accessToken: string): string | null {
  * @derives(F-006b worker-shell relaxation 2026-05-21)
  */
 export async function onIdentifiedLogin(authResult: VerifyOTPOutput): Promise<void> {
-  try {
-    return await onIdentifiedLoginImpl(authResult);
-  } catch (err) {
-    // Rethrow — onIdentifiedLogin intentionally throws
-    // NonSupervisorRoleNotSupportedError; this outer envelope only exists so
-    // the auditor sees a try block within scope of the async function signature.
-    throw err;
-  }
+  return onIdentifiedLoginImpl(authResult);
 }
 
 async function onIdentifiedLoginImpl(authResult: VerifyOTPOutput): Promise<void> {
@@ -371,12 +364,7 @@ export type ColdStartRoute = '/(supervisor)/profile' | '/(worker)/index' | '/(au
  * @derives(F-006b worker-shell relaxation 2026-05-21)
  */
 export async function onColdStartReady(tokens: StoredTokens): Promise<{ route: ColdStartRoute }> {
-  try {
-    return await onColdStartReadyImpl(tokens);
-  } catch (err) {
-    // Outer try/catch envelope — preserve existing semantics by rethrowing.
-    throw err;
-  }
+  return onColdStartReadyImpl(tokens);
 }
 
 async function onColdStartReadyImpl(tokens: StoredTokens): Promise<{ route: ColdStartRoute }> {

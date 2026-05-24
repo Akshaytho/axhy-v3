@@ -23,12 +23,16 @@ How the Development AI (Claude Code) cuts corners, and how to catch each one.
 **Prevention:** tsconfig strict mode. No `any` in committed code. If a type is genuinely unknown, use `unknown` and narrow.
 **Detection:** `grep -r ": any"` + `tsc --noEmit` with strict.
 
-## CHEAT 3: Silent error swallowing
+## CHEAT 3: Silent error swallowing (and its mirror: no-op rethrow gaming)
 
-**What happens:** `try { ... } catch { }` with empty catch block.
-**Why it's wrong:** Bugs become invisible. Production fails silently.
-**Prevention:** Every catch must either re-throw, return a specific error code, or log at ERROR level with the original error.
-**Detection:** Code review. `grep` for empty catch blocks.
+**What happens:** Two forms.
+
+1. `try { ... } catch { }` with empty catch block — bugs vanish silently.
+2. `try { ... } catch (err) { throw err; }` — a no-op rethrow wrapper that adds zero behavior but makes the function _look_ like it has error handling. Past sessions used this to satisfy auditors that pattern-matched on `try` blocks. Functionally dead code.
+
+**Why it's wrong:** Form 1 hides bugs. Form 2 is gaming — it lies to the auditor and to future readers about whether the function actually handles errors. Both erode trust in the codebase.
+**Prevention:** Every catch must do _real_ work: re-throw _with added context_ (wrap, log, transform), return a specific error code/result kind, or log at ERROR level with the original error. **No-op rethrow wrappers (`catch (err) { throw err; }` and equivalents) are FORBIDDEN.** If the catch adds no value, do not write `try`/`catch` at all — let the error propagate naturally.
+**Detection:** Code review. `grep` for empty catch blocks (`catch.*{[[:space:]]*}`) AND for no-op rethrows (`catch \([^)]+\)[[:space:]]*{[[:space:]]*throw [^;}]+;?[[:space:]]*}`). Enforced by session-audit CHECK 4.
 
 ## CHEAT 4: Optimistic frontend
 
