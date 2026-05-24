@@ -2,8 +2,8 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-24 (Cluster A landed, commit `7ed1e80`)
-**Active phase:** **Worker code-review Cluster A DONE** (`7ed1e80`, 2026-05-24). 8 no-op `catch (err) { throw err; }` wrappers deleted across 5 files. CHEAT 3 in `docs/locked/development-anti-cheating.md` tightened. `session-audit.ts` CHECK 4 extended. Learning written. **Previous:** Worker MVP sub-slice 2b-4 DONE (`08c65a5`, 2026-05-23) — cold-start durability layer. **Next:** Founder sequencing for clusters B-E (rate limit / submit trust / timezone / test coverage); sub-slice 2c-1 (leaveRequestMachine + swapRequestMachine) paused pending that decision.
+**Last updated:** 2026-05-25 (Cluster B landed)
+**Active phase:** **Worker code-review Cluster B DONE** (2026-05-25). All 5 /worker/\* routes unified on `requireWorkerRole` preHandler + per-user Redis rate limit (60/60/120/20/60/10 per minute, env-tunable). `resolveWorkerFromAuth` helper added to `middleware/tenant-context.ts` to codify the Worker.userId @unique lookup pattern (X6). 4 stale "same pattern as auth.ts debt" citation comments rewritten with real safety rationale (X7). 5 new 429 integration tests gated on REDIS_URL. **Previous:** Cluster A DONE (`7ed1e80`, 2026-05-24) — no-op rethrow cleanup. Worker MVP sub-slice 2b-4 DONE (`08c65a5`, 2026-05-23). **Next:** Founder sequencing for Clusters C-E + the RLS-on-Worker-tables architectural question opened in NEXT_SESSION.md; sub-slice 2c-1 paused pending that decision.
 
 ## Worker MVP slice tracker
 
@@ -66,6 +66,8 @@
 | `apps/backend/src/server.ts:63,186`                         | `unhandled_async` on bootstrap + shutdown handlers                              | tracked separately                    |
 | `apps/backend/src/routes/chat.ts`                           | per-supervisor message rate limit + 50-concurrent semaphore not enforced        | tracked in `chat-abuse-prevention.md` |
 | `apps/backend/src/dispatcher/handlers/notifications.ts:293` | raw prisma outside transaction                                                  | tracked separately                    |
+| `packages/ai-tools/src/session-audit.ts` CHECK 10           | regex `prisma\.[a-z]*\.create` misses mixed-case table names (e.g. consentLog)  | filed by Cluster B 2026-05-25         |
+| Worker / Visit / VisitPhoto tables                          | No RLS enabled — companyId filtering is app-level only                          | filed by Cluster B 2026-05-25 (RLS Q) |
 
 ## Where we are right now
 

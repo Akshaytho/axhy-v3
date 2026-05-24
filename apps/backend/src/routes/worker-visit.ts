@@ -6,43 +6,53 @@
  *                             supervisor phone (tap-to-call data source).
  *
  * Read-only. Authorization gate: caller must be the visit's owner worker
- * (verified via Worker.userId match). Cross-worker access returns 403.
+ * (verified inside the service via Worker.userId match). Cross-worker
+ * access returns generic 403 FORBIDDEN — never leaks whether the visit
+ * exists for some other worker.
  *
- * Role-gated: WORKER only. SUPERVISOR / HR / OWNER get 403 WRONG_ROLE.
+ * Auth + role: requireWorkerRole preHandler (auth + WORKER role gate).
+ *
+ * Rate limit: per-user 60 req/min (env-tunable via
+ *   RATE_LIMIT_WORKER_VISIT_PER_MIN).
+ *
+ * Tenant safety: the service's caller-owns-visit check relies on the
+ * column-level `@unique` index on Worker.userId (schema.prisma:188). At
+ * most one active Worker exists per User globally per the anonymization
+ * model (founder direction 2026-05-25), so cross-tenant leak is
+ * structurally impossible. See worker-today.ts for the full rationale on
+ * why `withTenantContext` is NOT used on worker reads.
  *
  * @derives(WORKER_MVP_SLICE_2A_PLAN.md §1)
  * @derives(F-006b worker-shell)
+ * @derives(2026-05-25 founder direction on cluster B — anonymization model)
  */
 
 import type { FastifyInstance } from 'fastify';
-import { RoleSchema } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-// requireAuth populates req.auth.userId + req.auth.role; the route gates on
-// req.auth.role !== WORKER below (handler body) and on visit-ownership via
-// the service's Worker.userId === auth.userId check — not a bare-authenticated
-// endpoint.
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireWorkerRole } from '../middleware/tenant-context.js';
+import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { getWorkerVisitDetail } from '../lib/services/worker-today-service.js';
 
 /** @derives(master-plan §G) */
 export async function registerWorkerVisitRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string } }>(
     '/worker/visits/:id',
-    { preHandler: requireAuth },
+    { preHandler: requireWorkerRole },
     async (req, reply) => {
       try {
-        const auth = req.auth;
-        if (!auth) {
-          reply.code(401).send({ error: 'AUTH_REQUIRED' });
-          return;
-        }
+        const auth = req.auth!;
 
-        if (auth.role !== RoleSchema.enum.WORKER) {
-          reply.code(403).send({
-            error: 'WRONG_ROLE',
-            message: 'Only worker accounts can read worker visit detail. Sign in as a worker.',
-          });
+        const rl = await consumeWorkerRateLimit('visit', auth.userId);
+        if (!rl.ok) {
+          reply
+            .code(429)
+            .header('Retry-After', String(Math.ceil(rl.retryAfterMs / 1000)))
+            .send({
+              error: 'RATE_LIMITED',
+              message: 'Too many requests. Please wait a moment.',
+              retryAfterMs: rl.retryAfterMs,
+            });
           return;
         }
 
@@ -52,10 +62,7 @@ export async function registerWorkerVisitRoutes(app: FastifyInstance): Promise<v
           return;
         }
 
-        // tenant-exempt: Visit lookup is by id; tenant boundary enforced by the
-        // service's caller-owns-visit check (Worker.userId === auth.userId).
         // 15s timeout covers Railway cold-call (~5-8s observed); warm calls < 1s.
-        // Same pattern as auth.ts worker OTP_VERIFIED transaction.
         const result = await prisma.$transaction(
           (tx) => getWorkerVisitDetail(tx, { visitId, callerUserId: auth.userId }),
           { timeout: 15_000, maxWait: 10_000 },

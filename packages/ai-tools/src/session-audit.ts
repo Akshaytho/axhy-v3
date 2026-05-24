@@ -506,8 +506,13 @@ function checkRouteAuth() {
     if (rel.includes('_test') || rel.includes('health')) continue;
 
     if (content.includes('app.') || content.includes('router.')) {
+      // require[A-Z]\w*Role wrappers (requireWorkerRole, requireSupervisorRole, etc.)
+      // are contractually required to call requireAuth internally — see
+      // middleware/tenant-context.ts requireWorkerRole for the canonical wrapper.
+      const hasRoleWrapper = /\brequire[A-Z]\w*Role\b/.test(content);
       if (
         !content.includes('requireAuth') &&
+        !hasRoleWrapper &&
         !content.includes('publicRoute') &&
         !content.includes('// auth-exempt')
       ) {
@@ -662,7 +667,12 @@ function checkRouteLayerCompleteness() {
     if (!content.includes('app.') && !content.includes('router.')) continue;
 
     // Standard 1: every route needs requireAuth + withTenantContext + Zod validation
-    const hasAuth = content.includes('requireAuth') || content.includes('// auth-exempt');
+    // require*Role wrappers (e.g. requireWorkerRole) call requireAuth internally
+    // and are accepted as satisfying the auth requirement — see CHECK 9.
+    const hasAuth =
+      content.includes('requireAuth') ||
+      /\brequire[A-Z]\w*Role\b/.test(content) ||
+      content.includes('// auth-exempt');
     const hasTenant = content.includes('withTenantContext') || content.includes('// tenant-exempt');
     const hasZod =
       content.includes('.parse(') || content.includes('.safeParse(') || content.includes('z.');

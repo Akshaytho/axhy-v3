@@ -94,6 +94,67 @@ export async function requireWorkerRole(req: FastifyRequest, reply: FastifyReply
 }
 
 /**
+ * Resolve the active Worker for an authenticated request.
+ *
+ * Worker.userId is `String? @unique` at the column level (verified in
+ * schema.prisma:188), so a `findUnique({ where: { userId } })` lookup
+ * returns at most ONE Worker row globally. The returned row's companyId
+ * is the authoritative tenant context for the request — every subsequent
+ * read/write in the handler MUST filter by THAT derived companyId, not by
+ * auth.companyId from the JWT (which can be stale during company switches).
+ *
+ * ## Anonymization model (founder direction 2026-05-25)
+ *
+ * When a worker leaves a company, the Worker row is anonymized: PII columns
+ * are scrubbed and `userId` is set to null. The User is then free to attach
+ * to a new Worker row in their next employing company. So a User without an
+ * active employment has ZERO matching rows; a User with an active employment
+ * has EXACTLY ONE row, in the current company. There is never an "active in
+ * two companies simultaneously" state.
+ *
+ * ## Tenant safety guarantee
+ *
+ * Cross-tenant leak is structurally impossible because the @unique constraint
+ * guarantees at most one matching row. This pattern SUPERSEDES the need for
+ * `withTenantContext` on worker READS — Worker / Visit / VisitPhoto tables
+ * do not have RLS enabled today (only `axhy_chat.turn_embeddings` does, per
+ * migration 20260527_017), so `withTenantContext` would add only a
+ * `Company.status === 'ACTIVE'` check that conflicts with the product UX
+ * of "no assignments today" when the customer's contract ends.
+ *
+ * `withTenantContext` IS still used for worker WRITES (worker-submit creates
+ * VisitPhoto + Visit rows that belong to a company; the ACTIVE check there
+ * legitimately blocks contract-ended writes).
+ *
+ * ## Audit recognition
+ *
+ * `session-audit.ts` Phase 4 recognizes calls to `resolveWorkerFromAuth(...)`
+ * inside worker route handlers as a tenant-safe pattern and does NOT flag
+ * the surrounding `prisma.*.findMany / findUnique` calls as "raw prisma
+ * outside transaction." Adding a new worker route that bypasses this helper
+ * will still trip the audit.
+ *
+ * @derives(schema.prisma:188 Worker.userId @unique)
+ * @derives(2026-05-25 founder direction on cluster B — anonymization model)
+ * @derives(ENTERPRISE_PRODUCTION_STANDARD.md E2 — tenant ownership)
+ */
+export type ResolveWorkerResult =
+  | { kind: 'OK'; workerId: string; companyId: string }
+  | { kind: 'NO_WORKER' };
+
+export async function resolveWorkerFromAuth(
+  db: import('@prisma/client').PrismaClient | import('@prisma/client').Prisma.TransactionClient,
+  auth: { userId: string },
+): Promise<ResolveWorkerResult> {
+  const worker = await db.worker.findUnique({
+    where: { userId: auth.userId },
+    select: { id: true, companyId: true },
+  });
+  if (!worker) return { kind: 'NO_WORKER' };
+  return { kind: 'OK', workerId: worker.id, companyId: worker.companyId };
+}
+
+/**
  * Returns a function that runs `fn` inside a Prisma transaction with the
  * `axhy.current_company_id` GUC set. Use this anywhere the handler queries
  * tables protected by RLS.

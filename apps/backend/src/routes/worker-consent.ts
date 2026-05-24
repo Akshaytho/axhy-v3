@@ -6,39 +6,47 @@
  * Append-only. Each call inserts a new row; the latest row by acceptedAt
  * represents the current consent state.
  *
- * Role-gated: only WORKER may submit. HR / SUPERVISOR / OWNER hit 403 —
- * they have a separate consent surface (out of scope for slice 1).
+ * Auth + role: requireWorkerRole preHandler (auth + WORKER role gate).
+ *   HR / SUPERVISOR / OWNER hit 403 — they have a separate consent surface
+ *   (out of scope for slice 1).
+ *
+ * Rate limit: per-user 10 req/min (env-tunable via
+ *   RATE_LIMIT_WORKER_CONSENT_PER_MIN). Default covers reinstalls + policy
+ *   version bumps; normal usage is once per install.
+ *
+ * Tenant safety: ConsentLog is per-User (no companyId column) — workers
+ * consent to the Axhy platform privacy policy, not a tenant company. This
+ * is the ONE worker route that is genuinely tenant-agnostic; the
+ * `resolveWorkerFromAuth` helper does not apply here.
  *
  * @derives(MVP_V2_ALIGNED_PLAN.md §6 + §13 M22)
  * @derives(F-006b worker-shell relaxation 2026-05-21)
+ * @derives(2026-05-25 founder direction on cluster B — anonymization model)
  */
 
 import type { FastifyInstance } from 'fastify';
-import { RoleSchema, SubmitConsentInput, type SubmitConsentOutput } from '@axhy/shared-schema';
+import { SubmitConsentInput, type SubmitConsentOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-// requireAuth populates req.auth.userId + req.auth.role; the route gates on
-// req.auth.role !== WORKER below (see handler body) — not a bare-authenticated
-// endpoint.
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireWorkerRole } from '../middleware/tenant-context.js';
+import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 
 /** @derives(master-plan §G) */
 export async function registerWorkerConsentRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/worker/consent', { preHandler: requireAuth }, async (req, reply) => {
+  app.post('/worker/consent', { preHandler: requireWorkerRole }, async (req, reply) => {
     try {
-      const auth = req.auth;
-      if (!auth) {
-        reply.code(401).send({ error: 'AUTH_REQUIRED' });
-        return;
-      }
+      const auth = req.auth!;
 
-      // Worker-only endpoint — DPDP consent is the worker's acceptance of the
-      // platform privacy policy. Supervisors and HR have their own onboarding.
-      if (auth.role !== RoleSchema.enum.WORKER) {
-        reply.code(403).send({
-          error: 'WRONG_ROLE',
-          message: 'Only worker accounts can submit this consent. Sign in as a worker.',
-        });
+      const rl = await consumeWorkerRateLimit('consent', auth.userId);
+      if (!rl.ok) {
+        reply
+          .code(429)
+          .header('Retry-After', String(Math.ceil(rl.retryAfterMs / 1000)))
+          .send({
+            error: 'RATE_LIMITED',
+            message: 'Too many requests. Please wait a moment.',
+            retryAfterMs: rl.retryAfterMs,
+          });
         return;
       }
 
@@ -48,10 +56,12 @@ export async function registerWorkerConsentRoutes(app: FastifyInstance): Promise
         return;
       }
 
-      // tenant-exempt: ConsentLog is per-User (no companyId) — workers consent
-      // to the Axhy platform privacy policy, not a tenant company. Matches the
-      // /me route pattern for cross-tenant entity access.
+      // tenant-exempt: ConsentLog is per-User — schema.prisma:1337 has no
+      // companyId column because DPDP consent is to the Axhy platform, not to
+      // any tenant company. withTenantContext would have nothing meaningful to
+      // GUC-scope here. // raw-ok pairs with this exemption for CHECK 10.
       const row = await prisma.consentLog.create({
+        // raw-ok: per-User write, no companyId; see tenant-exempt note above.
         data: {
           userId: auth.userId,
           policyVersion: parsed.data.policyVersion,
