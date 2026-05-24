@@ -29,6 +29,8 @@ import pg from 'pg';
 
 import { redact } from './redaction.js';
 import { isEnabled, FEATURE_FLAGS } from './feature-flags.js';
+import { autoClassify } from './auto-classifier.js';
+import { splitIntoSections } from './field-fanout.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, '../../..');
@@ -322,6 +324,121 @@ async function wireDerivedFromPaths(files: string[]): Promise<number> {
   return wired;
 }
 
+// ─── v3: Upsert to brain_entries ────────────────────────────────────────────
+//
+// Uses autoClassify (type/authority/confidence/concepts with frontmatter override)
+// and splitIntoSections (field-fanout behind FIELD_FANOUT_ENABLED flag).
+// FTS is automatic via the content_search generated column in brain_entries.
+// Supersedes old entries instead of deleting them (soft-versioning).
+
+async function upsertEntries(
+  files: string[],
+): Promise<{ inserted: number; skipped: number; superseded: number; sections: number }> {
+  let inserted = 0;
+  let skipped = 0;
+  let superseded = 0;
+  let sections = 0;
+
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    if (!content.trim()) continue;
+    const sourcePath = relative(REPO_ROOT, file);
+    const contentHash = hashOf(content);
+
+    // Skip if unchanged — same source_file + source_hash already active
+    const existing = await client.query(
+      `SELECT id FROM brain_entries WHERE source_file = $1 AND source_hash = $2 AND superseded_at_epoch IS NULL`,
+      [sourcePath, contentHash],
+    );
+    if ((existing.rowCount ?? 0) > 0) {
+      skipped++;
+      continue;
+    }
+
+    // Supersede old entries for this source file (soft-version, don't delete)
+    const supersedeResult = await client.query(
+      `UPDATE brain_entries SET superseded_at_epoch = $1 WHERE source_file = $2 AND superseded_at_epoch IS NULL`,
+      [Date.now(), sourcePath],
+    );
+    superseded += supersedeResult.rowCount ?? 0;
+
+    // Classify using auto-classifier (path-based + frontmatter override)
+    const classification = autoClassify(sourcePath, content);
+    const redactedContent = isEnabled(FEATURE_FLAGS.REDACTION_STRICT_MODE)
+      ? redact(content)
+      : content;
+
+    // Embed parent document
+    const parentVec = await embed(redactedContent.slice(0, 8000));
+    const parentResult = await client.query(
+      `INSERT INTO brain_entries
+       (kind, authority_level, confidence, type, concepts,
+        source_file, source_hash, origin, title, content,
+        field_type, embedding, metadata)
+       VALUES ($1, $2, $3, $4, $5::jsonb,
+               $6, $7, 'brain_build', $8, $9,
+               'document', $10::vector, $11::jsonb)
+       RETURNING id`,
+      [
+        classification.kind,
+        classification.authority_level,
+        classification.confidence,
+        classification.type,
+        JSON.stringify(classification.concepts),
+        sourcePath,
+        contentHash,
+        classification.title,
+        redactedContent,
+        JSON.stringify(parentVec),
+        '{}',
+      ],
+    );
+    const parentId = parentResult.rows[0].id;
+    inserted++;
+
+    // Field-fanout: split into sections for more precise retrieval
+    if (isEnabled(FEATURE_FLAGS.FIELD_FANOUT_ENABLED)) {
+      const sectionList = splitIntoSections(redactedContent);
+      // Only fanout if there are multiple sections (single-section docs are fully covered by parent)
+      if (sectionList.length > 1) {
+        for (const section of sectionList) {
+          if (!section.content.trim()) continue;
+          const sectionText = section.title
+            ? `${section.title}\n\n${section.content}`
+            : section.content;
+          const sectionVec = await embed(sectionText.slice(0, 8000));
+          await client.query(
+            `INSERT INTO brain_entries
+             (kind, authority_level, confidence, type, concepts,
+              source_file, source_hash, origin, parent_entry_id,
+              title, content, field_type, embedding, metadata)
+             VALUES ($1, $2, $3, $4, $5::jsonb,
+                     $6, $7, 'brain_build', $8,
+                     $9, $10, 'section', $11::vector, $12::jsonb)`,
+            [
+              classification.kind,
+              classification.authority_level,
+              classification.confidence,
+              classification.type,
+              JSON.stringify(classification.concepts),
+              sourcePath,
+              contentHash,
+              parentId,
+              section.title,
+              section.content,
+              JSON.stringify(sectionVec),
+              JSON.stringify({ start_line: section.startLine, end_line: section.endLine }),
+            ],
+          );
+          sections++;
+        }
+      }
+    }
+  }
+
+  return { inserted, skipped, superseded, sections };
+}
+
 // ─── Schema bootstrap ───────────────────────────────────────────────────────
 
 async function ensureSchema(): Promise<void> {
@@ -343,12 +460,34 @@ async function ensureSchema(): Promise<void> {
   console.log('[brain] Schema created.');
 }
 
+async function ensureBrainEntriesSchema(): Promise<void> {
+  const migrationPath = join(REPO_ROOT, 'scripts/migrations/0004-brain-entries-v3.sql');
+  if (!existsSync(migrationPath)) {
+    console.log(
+      '[brain] No 0004-brain-entries-v3.sql found — brain_entries table not bootstrapped.',
+    );
+    return;
+  }
+  const check = await client.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_name = 'brain_entries'`,
+  );
+  if ((check.rowCount ?? 0) > 0) {
+    console.log('[brain] Table brain_entries exists.');
+    return;
+  }
+  console.log('[brain] Bootstrapping brain_entries from 0004-brain-entries-v3.sql...');
+  const sql = readFileSync(migrationPath, 'utf8');
+  await client.query(sql);
+  console.log('[brain] brain_entries table created.');
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log('[brain] Starting brain build...');
   await client.connect();
   await ensureSchema();
+  await ensureBrainEntriesSchema();
 
   const allFiles: string[] = [];
   for (const dir of SCAN_DIRS) {
@@ -356,14 +495,47 @@ async function main() {
   }
   console.log(`[brain] Found ${allFiles.length} indexable files`);
 
-  console.log('[brain] Step 1/2: embedding chunks...');
+  // v3 path: write to brain_entries with autoClassify + field-fanout
+  console.log('[brain] Step 1/3: embedding to brain_entries (v3)...');
+  const v3 = await upsertEntries(allFiles);
+  console.log(
+    `[brain]   inserted ${v3.inserted}, unchanged ${v3.skipped}, superseded ${v3.superseded}, sections ${v3.sections}`,
+  );
+
+  // Legacy path: still write to axhy_brain.chunks for backward compat
+  console.log('[brain] Step 2/3: embedding to axhy_brain.chunks (legacy)...');
   const { inserted, skipped, staled } = await upsertChunks(allFiles);
   console.log(`[brain]   inserted ${inserted}, unchanged ${skipped}, staled ${staled}`);
 
-  console.log('[brain] Step 2/2: wiring @derives paths...');
+  console.log('[brain] Step 3/3: wiring @derives paths...');
   const wired = await wireDerivedFromPaths(allFiles);
   console.log(`[brain]   wired ${wired} derived-from relationships`);
 
+  // brain_entries summary (v3)
+  const v3Summary = await client.query(`
+    SELECT
+      type,
+      authority_level,
+      field_type,
+      COUNT(*) FILTER (WHERE superseded_at_epoch IS NULL) AS active,
+      COUNT(*) FILTER (WHERE superseded_at_epoch IS NOT NULL) AS superseded,
+      COUNT(*) AS total
+    FROM brain_entries
+    GROUP BY type, authority_level, field_type
+    ORDER BY type, authority_level
+  `);
+  console.log('\n[brain] brain_entries (v3):');
+  console.log('  Type              Authority    FieldType   Active  Superseded  Total');
+  for (const row of v3Summary.rows) {
+    const t = (row.type as string).padEnd(18);
+    const a = (row.authority_level as string).padEnd(12);
+    const f = ((row.field_type as string) || '-').padEnd(10);
+    console.log(
+      `  ${t} ${a} ${f} ${String(row.active).padStart(6)}  ${String(row.superseded).padStart(10)}  ${String(row.total).padStart(5)}`,
+    );
+  }
+
+  // Legacy chunks summary
   const summary = await client.query(`
     SELECT
       chunk_category,
@@ -375,29 +547,13 @@ async function main() {
     GROUP BY chunk_category
     ORDER BY chunk_category
   `);
-  console.log('\n[brain] By category:');
+  console.log('\n[brain] axhy_brain.chunks (legacy):');
   console.log('  Category             Locked  Unlocked  Stale  Total');
   for (const row of summary.rows) {
     const cat = (row.chunk_category as string).padEnd(20);
     console.log(
       `  ${cat} ${String(row.locked).padStart(6)}  ${String(row.unlocked).padStart(8)}  ${String(row.stale).padStart(5)}  ${String(row.total).padStart(5)}`,
     );
-  }
-
-  const personaSummary = await client.query(`
-    SELECT
-      persona,
-      COUNT(*) FILTER (WHERE is_locked) AS locked,
-      COUNT(*) AS total
-    FROM axhy_brain.chunks
-    GROUP BY persona
-    ORDER BY persona
-  `);
-  console.log('\n[brain] By persona:');
-  console.log('  Persona        Locked  Total');
-  for (const row of personaSummary.rows) {
-    const p = (row.persona as string).padEnd(14);
-    console.log(`  ${p} ${String(row.locked).padStart(6)}  ${String(row.total).padStart(5)}`);
   }
 
   console.log('\n[brain] Done.');
