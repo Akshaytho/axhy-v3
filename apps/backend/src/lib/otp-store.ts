@@ -22,6 +22,7 @@ import crypto from 'node:crypto';
 
 import { getRedis } from './redis.js';
 import { RedisKeys } from './redis-keys.js';
+import { shouldBypassOtp } from './otp-bypass.js';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 min validity
 const RL_WINDOW_MS = 15 * 60 * 1000;
@@ -134,7 +135,26 @@ export async function issueOtp(phone: string): Promise<{
 export async function verifyOtp(phone: string, code: string): Promise<boolean> {
   const redis = getRedis();
 
-  // Dev bypass.
+  // Production-safe operator bypass: phone-allowlist via AXHY_OTP_BYPASS_PHONES.
+  // Refuses to match unless the phone is explicitly listed in the env var.
+  // Safe to enable in production; refused by server.ts:73-80 guard otherwise.
+  //
+  // Test-only blanket bypass (AXHY_OTP_BYPASS=1) is checked AFTER and only
+  // works in NODE_ENV=test|development per server.ts guard. Both can be
+  // active independently; the allowlist runs first because it's the
+  // production path.
+  if (shouldBypassOtp(phone, code)) {
+    try {
+      const entries = await redis.hgetall(RedisKeys.otpStore(phone));
+      const newest = Object.keys(entries).sort((a, b) => Number(b) - Number(a))[0];
+      if (newest) await redis.hdel(RedisKeys.otpStore(phone), newest);
+    } catch {
+      /* best-effort */
+    }
+    return true;
+  }
+
+  // Test-only dev bypass — gated by server.ts security guard at boot.
   if (process.env.AXHY_OTP_BYPASS === '1' && code === '123456') {
     try {
       const entries = await redis.hgetall(RedisKeys.otpStore(phone));

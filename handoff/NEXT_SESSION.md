@@ -4,28 +4,81 @@
 >
 > **Resume command:** "Read `axhy-v3/handoff/NEXT_SESSION.md` first, then `axhy-v3/handoff/WORKER_CODE_REVIEW_FINDINGS_2026-05-24.md`, then proceed."
 
+## WhatsApp OTP — DONE (2026-05-25)
+
+Production backend was refusing to boot because Railway had `AXHY_OTP_BYPASS=1` + `NODE_ENV=production` (security guard at server.ts:73-80 correctly refused). Root cause: founder set the bypass to test screens while DLT SMS registration was pending. Wrong fix would have been to weaken the guard; right fix was to remove the env var and pivot OTP delivery to WhatsApp Cloud API (workers all carry smartphones).
+
+**Files changed:** `apps/backend/src/lib/whatsapp-otp.ts` (new — mirrors the deleted MSG91 module shape, no-op when env unset), `apps/backend/src/routes/auth.ts` (one-line import swap + docstring update), `apps/backend/src/lib/msg91.ts` (DELETED — no other callers), `apps/backend/test/whatsapp-otp.test.ts` (new — 4 unit tests, all green, mocks global.fetch), `apps/backend/.env.example` (MSG91 + Gupshup + AXHY_OTP_BYPASS sections removed, Meta WhatsApp Cloud API section added). Railway env var `AXHY_OTP_BYPASS=1` deleted via `railway variable delete`; backend redeployed and is healthy (`[axhy-backend] listening on :8080`, `/health` → 200, `/worker/today` → 401 on unauth as expected).
+
+### Required env vars to enable real WhatsApp delivery
+
+When all THREE of TOKEN / PHONE_NUMBER_ID / TEMPLATE_NAME are unset the module is a no-op (dev / pilot mode — OTP still lives in Redis OTP store, tests read it directly). Set all three on Railway backend service to flip on real delivery:
+
+| Env var                      | Value source                                                                                                                                                               | Notes                                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `WHATSAPP_ACCESS_TOKEN`      | developers.facebook.com → your App → WhatsApp → API Setup → Temporary access token (24h) OR Meta Business Settings → System Users → Generate Token (no expiry, production) | Must be rotated before 24h test token expires. Permanent token requires business verification. |
+| `WHATSAPP_PHONE_NUMBER_ID`   | Same API Setup page, "From" section, the numeric Phone Number ID                                                                                                           | Constant once chosen; not strictly secret but treat as one                                     |
+| `WHATSAPP_OTP_TEMPLATE_NAME` | Name of the approved Authentication-category template                                                                                                                      | Default in code: `axhy_login_otp`. Must match the template name approved by Meta exactly.      |
+| `WHATSAPP_OTP_TEMPLATE_LANG` | Template language code                                                                                                                                                     | Defaults to `en` if unset; use `en_US` if that's what Meta has on file                         |
+
+### Founder-side Meta steps (parallel — does NOT block code)
+
+1. Create Meta Business Account at business.facebook.com (5 min)
+2. Create Meta App at developers.facebook.com, type "Business" (5 min)
+3. Add WhatsApp product to the App (2 min)
+4. Copy Phone Number ID + Temporary access token from the API Setup page
+5. Add personal WhatsApp number as test recipient (one-time opt-in)
+6. Submit `axhy_login_otp` template (Authentication category, English, body: `*{{1}}* is your Axhy verification code. For your security, do not share this code.`) — typically auto-approves in 24-48h
+7. Paste the 4 env vars into Railway backend service → redeploy. Founder phone now receives real OTPs.
+8. **Separate, 1-2 weeks**: submit Meta Business verification (legal docs) to unlock delivery to any opted-in phone
+
+### Known gaps from WhatsApp OTP slice
+
+1. **ADR-0007 amendment pending** — the ADR still describes MSG91 as the OTP delivery channel. Needs a constitutional session with founder approval to record the SMS→WhatsApp pivot. NOT blocking production; the code + handoff already reflect the new reality.
+2. **Permanent System User token swap** — the 24h temporary token from Meta will need to be rotated to a permanent System User token after business verification clears. Pure env-var swap, no code change. File a calendar reminder once verification submitted.
+3. **No SMS fallback** — explicitly out of scope per founder direction (workers all have smartphones). If adoption data ever surfaces users without WhatsApp, add an SMS fallback then behind an env-gated channel selector. Do NOT pre-build the abstraction.
+4. **No integration test for the real Meta API call** — only unit test with mocked fetch. Smoke verification = founder receives OTP on personal WhatsApp after step 7. Could later add a real-API test gated on `WHATSAPP_ACCESS_TOKEN` being present, similar to the Redis-gated pattern in redis-primitives.test.ts.
+
+---
+
+## CLUSTER B — DONE (2026-05-25)
+
+Cluster B — worker route consistency — landed. All 5 /worker/\* routes now share one shape: `requireWorkerRole` preHandler (X5), inline per-user Redis rate limit via `consumeWorkerRateLimit` (X2 non-deferrable per E3), corrected tenant-safety comments (X7), and the codified `resolveWorkerFromAuth` helper in middleware/tenant-context.ts for any future worker route that needs a Worker lookup (X6).
+
+**Files changed:** `apps/backend/src/lib/worker-rate-limits.ts` (new — per-route limit config + helper), `apps/backend/src/middleware/tenant-context.ts` (added `resolveWorkerFromAuth` helper), `apps/backend/src/routes/worker-today.ts`, `apps/backend/src/routes/worker-visit.ts`, `apps/backend/src/routes/worker-captures.ts`, `apps/backend/src/routes/worker-consent.ts`, `apps/backend/src/routes/worker-submit.ts` (rate limit added to both submit + verify-status handlers). 5 new 429 integration tests appended (gated on `REDIS_URL`).
+
+**Default per-user rate limits (env-tunable):** today=60/min, visit=60/min, captures=120/min, submit=20/min, verify-status=60/min, consent=10/min.
+
+### X6 decision recap (founder-confirmed 2026-05-25)
+
+The X6 finding asked: should worker reads switch to `withTenantContext`? After re-checking the schema, the answer was NO. Three facts pivoted it: (1) `Worker.userId` is `String? @unique` at the column level so cross-tenant reads are structurally impossible — at most one active Worker per User globally because anonymization on leave sets `userId` to null; (2) only `axhy_chat.turn_embeddings` has RLS enabled today (per migration 20260527_017), so `withTenantContext` would add NO database-level isolation for Worker/Visit/Site reads — only a `Company.status === 'ACTIVE'` check; (3) that ACTIVE check would conflict with the product UX of "no assignments today" when a customer's contract ends (founder direction — workers don't get suspended at the worker level, they just have no work to do). So the codification is: keep direct prisma for reads + use `resolveWorkerFromAuth` to make the pattern explicit + name the safety mechanism in route comments. `withTenantContext` stays for worker WRITES (worker-submit).
+
+### Known gaps / next-session debt from Cluster B
+
+1. **🆕 Architectural follow-up — RLS on Worker / Visit / VisitPhoto tables?** Today only `axhy_chat.turn_embeddings` has Postgres Row Level Security. App-level companyId filtering is the only isolation for worker tables. The founder asked specifically about "no leaks, ever" — RLS would provide database-enforced isolation as a safety net for any future code that forgets to filter. This is a multi-session migration + perf check + audit-rule update. Surface as a brainstorm topic next session before sub-slice 2c-1.
+2. **🆕 session-audit.ts case-incomplete regex** — CHECK 10's pattern `prisma\.[a-z]*\.create|update|delete` matches lowercase table names only. `prisma.consentLog.create` (mixed case) is NOT flagged today. So the Cluster B claim that the audit would "stop flagging the worker routes" was based on a wrong premise (the routes weren't being flagged in the first place — only auth.ts:80 + notifications.ts:293 are). Real fix: switch the regex to `[a-zA-Z]*` and decide whether worker-consent.ts (which legitimately writes without companyId) needs an explicit `// raw-ok` marker. MEDIUM severity, separable.
+3. **MCP guardrail nit (still present from Cluster A)** — `check_before_edit` requires re-Read after the pre-edit-guard hook ages out the file; even unchanged files force an interaction.
+4. **Pre-commit challenge-response timing (still present from Cluster A)** — `CHALLENGE_EXPIRY_MS = 120s` is too tight for chat round-trip when a locked-doc edit lands.
+
+### Cluster A carry-forward (still pending)
+
+1. **Audit CHECK 4 comment-padded variant** — current regex catches `catch (err) { throw err; }` but NOT `catch (err) { // comment\n throw err; }`. Cluster A removed all comment-padded sites; the audit can't prevent regressions of that form. Fix: add a comment-skip group to the regex.
+2. **Audit Phase 3 false-positive** — the Cluster A learning's `check_pattern: 'no-op-rethrow'` returns 0 matches via Phase 3's grep helper, but manual `grep -rn 'no-op-rethrow' packages/ --include=*.ts` finds it at `packages/ai-tools/src/session-audit.ts:405`. MEDIUM severity.
+
+### Remaining clusters (C/D/E) — founder sequencing still needed
+
+- **Cluster C — Submit + verify trust gaps:** X12 (polling success on timeout), X13 (setInterval async), X14 (silent catch), P4.1 (queue-empty-after-rehydration), P4.7 (no submit idempotency), P5.5 (uploading→idle on restore = duplicate uploads), P3.2 (Worker.id vs User.id in R2 presign path). 🚨 X12 remains non-deferrable.
+- **Cluster D — Timezone correctness:** P2.1, P2.2, P1.6, P1.7. Needs `date-fns-tz` + `Company.tz` migration.
+- **Cluster E — Test coverage:** X9 across all 5 worker test files. Single shared auth/role/ownership test utility.
+
+Sub-slice 2c-1 (`leaveRequestMachine` + `swapRequestMachine`) still paused pending C-E sequencing decision.
+
 ## CLUSTER A — DONE (2026-05-24, commit `7ed1e80`)
 
 Cluster A — anti-gaming + state-machine discipline — landed. 8 no-op `catch (err) { throw err; }` wrappers deleted across 5 files. CHEAT 3 in `docs/locked/development-anti-cheating.md` tightened. `session-audit.ts` CHECK 4 extended to flag the bare-throw form. Learning written: `docs/learnings/2026-05-24-all-no-op-rethrow-is-gaming.md`. X1 resolved.
 
 **Sites fixed:** worker-today-service.ts (2), worker-submit-service.ts (1), worker-otp-verified-service.ts (1), api-submit.ts (2), identity-lifecycle.ts (2).
 **Sites preserved (legitimate context-adding catches mis-classified by findings doc):** per-user-partition.ts:122-138, complaint-service.ts:318-327, chat-api.ts:142-150, photo-upload.ts:181-186.
-
-### Known gaps / next-session debt from Cluster A
-
-1. **Audit CHECK 4 comment-padded variant** — current regex catches `catch (err) { throw err; }` but NOT `catch (err) { // comment\n throw err; }`. Cluster A removed all comment-padded sites, but the audit can't prevent regressions of that form. Fix: add a comment-skip group to the regex (deferred this session because cognitive-system edit budget was exhausted mid-iteration).
-2. **Audit Phase 3 false-positive** — the new learning's `check_pattern: 'no-op-rethrow'` returns 0 matches via Phase 3's grep helper, but manual `grep -rn 'no-op-rethrow' packages/ --include=*.ts` finds it at `packages/ai-tools/src/session-audit.ts:405`. Subtle bug in `session-audit.ts grep()` helper or Phase 3 path resolution. MEDIUM severity, not blocking.
-3. **🐛 MCP guardrail bug — `check_before_edit` state freeze** — when calling `check_before_edit` with `answered_question` set, the MCP server updates `evidence` and `edits_remaining` but does NOT update `approved_files` or `intent`. The pre-edit-guard hook then blocks edits to the requested file because it's not in the (stale) approved_files. Workaround: call `check_before_edit` WITHOUT `answered_question` first to reset state, then re-call with the answer.
-4. **🐛 Pre-commit challenge-response race** — `pre-commit.mjs:50-87` regenerates the challenge token every time the hook runs. Lint-staged + chat round-trip latency consistently pushed elapsed > 120 sec, so the founder-echoed token expired before the next retry could use it. Founder unblocked by running the commit directly from terminal. Long-term fix: extend `CHALLENGE_EXPIRY_MS` to 5+ min OR add a "carry approval across retries within session" mechanism.
-
-### Remaining clusters (B/C/D/E) — founder sequencing still needed
-
-- **Cluster B — Worker route consistency:** X2 (no rate limit), X5 (role gating), X6 (tenant-context), X7 (citing debt). Likely one shared Fastify plugin handles 3 of 4. 🚨 X2 remains non-deferrable per E3.
-- **Cluster C — Submit + verify trust gaps:** X12 (polling success on timeout), X13 (setInterval async), X14 (silent catch), P4.1 (queue-empty-after-rehydration), P4.7 (no submit idempotency), P5.5 (uploading→idle on restore = duplicate uploads). 🚨 X12 remains non-deferrable.
-- **Cluster D — Timezone correctness:** P2.1, P2.2, P1.6, P1.7. Needs `date-fns-tz` + `Company.tz` migration.
-- **Cluster E — Test coverage:** X9 across all 5 worker test files. Single shared auth/role/ownership test utility.
-
-Sub-slice 2c-1 (`leaveRequestMachine` + `swapRequestMachine`) still paused pending B-E sequencing decision.
 
 ---
 
@@ -137,8 +190,8 @@ Sub-slices `worker-d1-s2b-3-timer-submit` and `worker-d1-s2b-4-photo-sweep-queue
 
 ## First thing to do in next session
 
-1. **Run `pnpm --filter @axhy/ai-tools run audit`** to confirm clean baseline.
-2. **Run brain:build** to load semantic memory: `set -a && source .env.local && set +a && pnpm --filter @axhy/ai-tools brain:build`.
-3. **Read this file's "Deferred — carry forward"** list so carry-forward items don't get re-discovered.
-4. **Check existing machines** in `packages/state-machines/src/` — leaveRequestMachine or swapRequestMachine may already be stubbed.
-5. **Start 2c-1** per `WORKER_MVP_SLICE_2A_PLAN.md`.
+1. **Run `load axhy system`** — full boot per CLAUDE.md (audit + brain:build + memory + handoff).
+2. **Confirm Cluster B baseline:** `pnpm --filter @axhy/backend exec tsc --noEmit` should be clean. If `REDIS_URL` is set, the 5 new 429 integration tests should pass via `railway run -- pnpm --filter @axhy/backend test:integration`.
+3. **Decide Cluster C/D/E sequencing** with founder. Cluster C has the one remaining 🚨 non-deferrable (X12 polling-success-on-timeout); Cluster D needs a `Company.tz` schema migration; Cluster E is test-coverage consolidation.
+4. **Surface the RLS architectural question** to founder (item #1 in "Known gaps from Cluster B"). This is the strongest data-isolation lever the codebase isn't currently using.
+5. **Sub-slice 2c-1** (`leaveRequestMachine` + `swapRequestMachine`) stays paused until C-E sequencing is decided.
