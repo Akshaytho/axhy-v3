@@ -2,8 +2,8 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-23 (sub-slice 2b-3 complete)
-**Active phase:** **Worker MVP sub-slice 2b-3 DONE.** Timer screen (count-up + GPS + keep-awake), submit screen (idle → submitting → polling → done/error), `POST /worker/visits/:visitId/submit`, `GET /worker/visits/:visitId/verify-status`, shared Zod schemas, 7 real-DB integration tests, and QA Playwright script with SPA-nav fix all shipped. Next: sub-slice 2b-4 (30-day local sweep + reinstall rehydration).
+**Last updated:** 2026-05-24 (Cluster A landed, commit `7ed1e80`)
+**Active phase:** **Worker code-review Cluster A DONE** (`7ed1e80`, 2026-05-24). 8 no-op `catch (err) { throw err; }` wrappers deleted across 5 files. CHEAT 3 in `docs/locked/development-anti-cheating.md` tightened. `session-audit.ts` CHECK 4 extended. Learning written. **Previous:** Worker MVP sub-slice 2b-4 DONE (`08c65a5`, 2026-05-23) — cold-start durability layer. **Next:** Founder sequencing for clusters B-E (rate limit / submit trust / timezone / test coverage); sub-slice 2c-1 (leaveRequestMachine + swapRequestMachine) paused pending that decision.
 
 ## Worker MVP slice tracker
 
@@ -15,7 +15,7 @@
 | `worker-d1-s2b-1`               | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install + Location row on permissions + tab-bar root-fix | **DONE** 2026-05-22 | L3+              | (pending push) |
 | `worker-d1-s2b-2`               | Before/After capture pipeline + incremental R2 upload + captureMachine                                                                   | **DONE** 2026-05-23 | —                | —              |
 | `worker-d1-s2b-3`               | Cleaning timer + GPS + Submit + Verify polling                                                                                           | **DONE** 2026-05-23 | —                | —              |
-| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + integration tests                                                                           | not started         | —                | —              |
+| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + queue persistence                                                                           | **DONE** 2026-05-23 | —                | `08c65a5`      |
 | `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started         | —                | —              |
 | `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started         | —                | —              |
 
