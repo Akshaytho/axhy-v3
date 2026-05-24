@@ -147,3 +147,40 @@ describe('POST /worker/consent', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe.skipIf(!process.env.REDIS_URL)('POST /worker/consent — per-user rate limit', () => {
+  it('returns 429 RATE_LIMITED + Retry-After header after exhausting the per-user budget', async () => {
+    const { getRedis } = await import('../src/lib/redis.js');
+    const { RedisKeys } = await import('../src/lib/redis-keys.js');
+    await getRedis().del(RedisKeys.rateLimit('worker:consent', userId));
+
+    const envKey = 'RATE_LIMIT_WORKER_CONSENT_PER_MIN';
+    const prev = process.env[envKey];
+    process.env[envKey] = '2';
+    try {
+      for (let i = 0; i < 2; i++) {
+        const ok = await app.inject({
+          method: 'POST',
+          url: '/worker/consent',
+          payload: { policyVersion: '2026-05-21' },
+          headers: { authorization: `Bearer ${accessToken}` },
+        });
+        expect(ok.statusCode).not.toBe(429);
+      }
+      const limited = await app.inject({
+        method: 'POST',
+        url: '/worker/consent',
+        payload: { policyVersion: '2026-05-21' },
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      expect(limited.statusCode).toBe(429);
+      const body = limited.json() as { error: string; retryAfterMs: number };
+      expect(body.error).toBe('RATE_LIMITED');
+      expect(body.retryAfterMs).toBeGreaterThan(0);
+      expect(limited.headers['retry-after']).toBeDefined();
+    } finally {
+      if (prev === undefined) delete process.env[envKey];
+      else process.env[envKey] = prev;
+    }
+  });
+});

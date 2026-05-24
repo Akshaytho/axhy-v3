@@ -20,6 +20,7 @@ import { WorkerSubmitRequestSchema } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireWorkerRole, withTenantContext } from '../middleware/tenant-context.js';
+import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { submitVisit } from '../lib/services/worker-submit-service.js';
 
 const ROUTES = {
@@ -31,9 +32,18 @@ const ROUTES = {
 export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<void> {
   app.post(ROUTES.submit, { preHandler: requireWorkerRole }, async (req, reply) => {
     try {
-      const auth = req.auth;
-      if (!auth) {
-        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+      const auth = req.auth!;
+
+      const rl = await consumeWorkerRateLimit('submit', auth.userId);
+      if (!rl.ok) {
+        reply
+          .code(429)
+          .header('Retry-After', String(Math.ceil(rl.retryAfterMs / 1000)))
+          .send({
+            error: 'RATE_LIMITED',
+            message: 'Too many requests. Please wait a moment.',
+            retryAfterMs: rl.retryAfterMs,
+          });
         return;
       }
 
@@ -109,9 +119,18 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
 
   app.get(ROUTES.verifyStatus, { preHandler: requireWorkerRole }, async (req, reply) => {
     try {
-      const auth = req.auth;
-      if (!auth) {
-        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+      const auth = req.auth!;
+
+      const rl = await consumeWorkerRateLimit('verifyStatus', auth.userId);
+      if (!rl.ok) {
+        reply
+          .code(429)
+          .header('Retry-After', String(Math.ceil(rl.retryAfterMs / 1000)))
+          .send({
+            error: 'RATE_LIMITED',
+            message: 'Too many requests. Please wait a moment.',
+            retryAfterMs: rl.retryAfterMs,
+          });
         return;
       }
 
