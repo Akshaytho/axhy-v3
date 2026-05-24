@@ -75,14 +75,7 @@ export async function getWorkerToday(
   tx: Prisma.TransactionClient,
   input: WorkerTodayInput,
 ): Promise<WorkerTodayResult> {
-  try {
-    return await getWorkerTodayImpl(tx, input);
-  } catch (err) {
-    // Outer envelope so the auditor sees a try block within the async signature
-    // window. Rethrow preserves Prisma error propagation to the caller route's
-    // catch + 500 response.
-    throw err;
-  }
+  return getWorkerTodayImpl(tx, input);
 }
 
 async function getWorkerTodayImpl(
@@ -177,13 +170,7 @@ export async function getWorkerVisitDetail(
   tx: Prisma.TransactionClient,
   input: WorkerVisitInput,
 ): Promise<WorkerVisitResult> {
-  try {
-    return await getWorkerVisitDetailImpl(tx, input);
-  } catch (err) {
-    // Outer envelope so the auditor sees a try block within the async signature
-    // window. Rethrow preserves Prisma error propagation.
-    throw err;
-  }
+  return getWorkerVisitDetailImpl(tx, input);
 }
 
 async function getWorkerVisitDetailImpl(

@@ -55,13 +55,7 @@ export async function workerOtpVerifiedService(
   tx: Prisma.TransactionClient,
   input: WorkerOtpVerifiedInput,
 ): Promise<WorkerOtpVerifiedResult> {
-  try {
-    return await workerOtpVerifiedServiceImpl(tx, input);
-  } catch (err) {
-    // Service errors propagate to the caller's transaction so the outer
-    // route handler can decide to swallow (auth continues) or surface.
-    throw err;
-  }
+  return workerOtpVerifiedServiceImpl(tx, input);
 }
 
 async function workerOtpVerifiedServiceImpl(

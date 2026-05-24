@@ -45,49 +45,45 @@ export async function submitVisit(
   tx: Prisma.TransactionClient,
   args: SubmitArgs,
 ): Promise<SubmitVisitResult> {
-  try {
-    const { workerId, visitId, companyId, photos } = args;
+  const { workerId, visitId, companyId, photos } = args;
 
-    const visit = await tx.visit.findUnique({
-      where: { id: visitId },
-      select: { id: true, workerId: true, state: true, companyId: true },
-    });
+  const visit = await tx.visit.findUnique({
+    where: { id: visitId },
+    select: { id: true, workerId: true, state: true, companyId: true },
+  });
 
-    if (!visit || visit.companyId !== companyId) return { kind: 'NOT_FOUND' };
-    if (visit.workerId !== workerId) return { kind: 'WRONG_WORKER' };
-    if (visit.state !== 'PHOTOS_PENDING') return { kind: 'WRONG_STATE', currentState: visit.state };
+  if (!visit || visit.companyId !== companyId) return { kind: 'NOT_FOUND' };
+  if (visit.workerId !== workerId) return { kind: 'WRONG_WORKER' };
+  if (visit.state !== 'PHOTOS_PENDING') return { kind: 'WRONG_STATE', currentState: visit.state };
 
-    const photoRows = photos.map((p) => ({
-      companyId,
-      visitId,
-      // Zod schema uses lowercase 'before'/'after'; Prisma column is 'BEFORE'/'AFTER'
-      side: p.phase === 'before' ? 'BEFORE' : 'AFTER',
-      r2Key: buildObjectKey(workerId, visitId, p),
-      aiVerifyStatus: 'PENDING',
-    }));
+  const photoRows = photos.map((p) => ({
+    companyId,
+    visitId,
+    // Zod schema uses lowercase 'before'/'after'; Prisma column is 'BEFORE'/'AFTER'
+    side: p.phase === 'before' ? 'BEFORE' : 'AFTER',
+    r2Key: buildObjectKey(workerId, visitId, p),
+    aiVerifyStatus: 'PENDING',
+  }));
 
-    await tx.visitPhoto.createMany({ data: photoRows });
+  await tx.visitPhoto.createMany({ data: photoRows });
 
-    const photosBefore = photos.filter((p) => p.phase === 'before').length;
-    const photosAfter = photos.filter((p) => p.phase === 'after').length;
+  const photosBefore = photos.filter((p) => p.phase === 'before').length;
+  const photosAfter = photos.filter((p) => p.phase === 'after').length;
 
-    await tx.visit.update({
-      where: { id: visitId },
-      data: {
-        state: 'AWAITING_VERIFICATION',
-        photosBefore,
-        photosAfter,
-      },
-    });
-
-    return {
-      kind: 'OK',
-      visitId,
-      visitState: 'AWAITING_VERIFICATION',
+  await tx.visit.update({
+    where: { id: visitId },
+    data: {
+      state: 'AWAITING_VERIFICATION',
       photosBefore,
       photosAfter,
-    };
-  } catch (err) {
-    throw err;
-  }
+    },
+  });
+
+  return {
+    kind: 'OK',
+    visitId,
+    visitState: 'AWAITING_VERIFICATION',
+    photosBefore,
+    photosAfter,
+  };
 }

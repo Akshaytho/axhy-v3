@@ -342,9 +342,15 @@ function checkNoAny() {
   }
 }
 
-// ─── CHECK 4: No empty catch blocks ───────────────────────────────────────
+// ─── CHECK 4: No empty catch blocks AND no no-op rethrow wrappers ─────────
+// Enforces docs/locked/development-anti-cheating.md CHEAT 3 (both forms).
+// Form 1 (empty catch) caught by single-line grep below.
+// Form 2 (no-op rethrow: catch (err) { throw err; }) caught by a multi-line
+// JS regex over file contents, because the gaming pattern is almost always
+// spread across multiple source lines.
 
 function checkNoEmptyCatch() {
+  // Form 1: single-line empty catch
   const hits = grep(
     'catch.*{[[:space:]]*}\\|\\.catch(() => {})\\|\\.catch(()=>{})\\|\\.catch(() => { })',
     ['apps', 'packages'],
@@ -356,6 +362,49 @@ function checkNoEmptyCatch() {
     if (hit.includes('/scripts/')) continue;
     if (hit.includes('session-audit.ts')) continue;
     fail('no-empty-catch', 'HIGH', hit.replace(REPO_ROOT + '/', ''));
+  }
+
+  // Form 2: no-op rethrow wrapper. Captured ident in catch(...) must match
+  // the throw expression with no other statements between them. Multi-line.
+  function walkSourceFiles(dir: string): string[] {
+    const out: string[] = [];
+    try {
+      for (const name of readdirSync(dir)) {
+        if (name === 'node_modules' || name === 'dist' || name === '.next') continue;
+        const p = join(dir, name);
+        const st = statSync(p);
+        if (st.isDirectory()) out.push(...walkSourceFiles(p));
+        else if (
+          (name.endsWith('.ts') || name.endsWith('.tsx')) &&
+          !name.includes('.test.') &&
+          !name.includes('.spec.')
+        )
+          out.push(p);
+      }
+    } catch {
+      /* skip unreadable dirs */
+    }
+    return out;
+  }
+
+  const noOpRethrow = /catch\s*\(\s*(\w+)(?:\s*:\s*[^)]+)?\s*\)\s*\{\s*throw\s+(\w+)\s*;?\s*\}/gs;
+
+  for (const dir of ['apps', 'packages']) {
+    const absDir = join(REPO_ROOT, dir);
+    if (!existsSync(absDir)) continue;
+    for (const file of walkSourceFiles(absDir)) {
+      const rel = file.replace(REPO_ROOT + '/', '');
+      if (rel.includes('/test/') || rel.includes('/scripts/')) continue;
+      if (rel.endsWith('session-audit.ts')) continue;
+      const content = readFileSync(file, 'utf8');
+      let m: RegExpExecArray | null;
+      noOpRethrow.lastIndex = 0;
+      while ((m = noOpRethrow.exec(content)) !== null) {
+        if (m[1] !== m[2]) continue; // catch ident must equal thrown ident
+        const lineNum = content.slice(0, m.index).split('\n').length;
+        fail('no-op-rethrow', 'HIGH', `${rel}:${lineNum} no-op catch (${m[1]}) { throw ${m[2]}; }`);
+      }
+    }
   }
 }
 
