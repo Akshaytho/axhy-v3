@@ -2,22 +2,23 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-25 (Cluster B landed)
-**Active phase:** **Worker code-review Cluster B DONE** (2026-05-25). All 5 /worker/\* routes unified on `requireWorkerRole` preHandler + per-user Redis rate limit (60/60/120/20/60/10 per minute, env-tunable). `resolveWorkerFromAuth` helper added to `middleware/tenant-context.ts` to codify the Worker.userId @unique lookup pattern (X6). 4 stale "same pattern as auth.ts debt" citation comments rewritten with real safety rationale (X7). 5 new 429 integration tests gated on REDIS_URL. **Previous:** Cluster A DONE (`7ed1e80`, 2026-05-24) — no-op rethrow cleanup. Worker MVP sub-slice 2b-4 DONE (`08c65a5`, 2026-05-23). **Next:** Founder sequencing for Clusters C-E + the RLS-on-Worker-tables architectural question opened in NEXT_SESSION.md; sub-slice 2c-1 paused pending that decision.
+**Last updated:** 2026-05-25 (admin-hr-backend-wave-2-prep landed)
+**Active phase:** **admin-hr-backend-wave-2-prep DONE** (2026-05-25, autonomous run). 5 new admin/HR routes (`POST /admin/memberships`, `/admin/workers`, `/admin/workers/:id/anonymize`, `/admin/sites`, `/admin/sites/:id/bindings`) + schema migration 20260525_019 (salary fields Worker→Membership) + role-gates middleware + locked doc `hiring-hierarchy.md` (founder must commit) + ADR-0025 + ADR-0026 + 21 integration tests against Railway prod. **Commits on main, NOT pushed yet:** `f0a7026..d8edfe8` (7 commits). **Previous:** Cluster B DONE (2026-05-25). Cluster A DONE (`7ed1e80`, 2026-05-24). Worker MVP sub-slice 2b-4 DONE (`08c65a5`, 2026-05-23). **Next:** Founder pushes; commits locked doc; wave 2 cross-persona QA resumes on top of the new routes.
 
 ## Worker MVP slice tracker
 
-| Sub-slice                       | Scope                                                                                                                                    | Status              | Gate             | Commit         |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ---------------- | -------------- |
-| `worker-d1-s1-auth-shell`       | F-006b + auth flow + scaffold + ConsentLog                                                                                               | **DONE** 2026-05-21 | L5 Distinguished | `af926ab`      |
-| `worker-d1-s2a-1-backend-today` | `GET /worker/today` + `GET /worker/visits/:id`                                                                                           | **DONE** 2026-05-21 | L3 Senior        | `af926ab`      |
-| `worker-d1-s2a-2-mobile-home`   | Worker Home rewrite + Assignment Detail + 4 components + 4 screenshots + DELTA.html                                                      | **DONE** 2026-05-22 | L3+              | `2e876a6`      |
-| `worker-d1-s2b-1`               | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install + Location row on permissions + tab-bar root-fix | **DONE** 2026-05-22 | L3+              | (pending push) |
-| `worker-d1-s2b-2`               | Before/After capture pipeline + incremental R2 upload + captureMachine                                                                   | **DONE** 2026-05-23 | —                | —              |
-| `worker-d1-s2b-3`               | Cleaning timer + GPS + Submit + Verify polling                                                                                           | **DONE** 2026-05-23 | —                | —              |
-| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + queue persistence                                                                           | **DONE** 2026-05-23 | —                | `08c65a5`      |
-| `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started         | —                | —              |
-| `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started         | —                | —              |
+| Sub-slice                       | Scope                                                                                                                                    | Status              | Gate             | Commit             |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ---------------- | ------------------ |
+| `worker-d1-s1-auth-shell`       | F-006b + auth flow + scaffold + ConsentLog                                                                                               | **DONE** 2026-05-21 | L5 Distinguished | `af926ab`          |
+| `worker-d1-s2a-1-backend-today` | `GET /worker/today` + `GET /worker/visits/:id`                                                                                           | **DONE** 2026-05-21 | L3 Senior        | `af926ab`          |
+| `worker-d1-s2a-2-mobile-home`   | Worker Home rewrite + Assignment Detail + 4 components + 4 screenshots + DELTA.html                                                      | **DONE** 2026-05-22 | L3+              | `2e876a6`          |
+| `worker-d1-s2b-1`               | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install + Location row on permissions + tab-bar root-fix | **DONE** 2026-05-22 | L3+              | (pending push)     |
+| `worker-d1-s2b-2`               | Before/After capture pipeline + incremental R2 upload + captureMachine                                                                   | **DONE** 2026-05-23 | —                | —                  |
+| `worker-d1-s2b-3`               | Cleaning timer + GPS + Submit + Verify polling                                                                                           | **DONE** 2026-05-23 | —                | —                  |
+| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + queue persistence                                                                           | **DONE** 2026-05-23 | —                | `08c65a5`          |
+| `admin-hr-backend-wave-2-prep`  | Schema move (Worker salary → Membership) + 5 admin/HR routes (memberships/workers/anonymize/sites/bindings) + role-gates + 21 tests      | **DONE** 2026-05-25 | —                | `f40bfb3..d8edfe8` |
+| `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started         | —                | —                  |
+| `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started         | —                | —                  |
 
 ## Production state
 

@@ -1,10 +1,87 @@
-# Next Session — Worker code-review CLUSTER + FIX work
+# Next Session — Wave 2 QA can now run (admin/HR backend shipped)
 
 > **Read time: 5 minutes. Highest-priority file for the next session.**
 >
-> **Resume command:** "Read `axhy-v3/handoff/NEXT_SESSION.md` first, then `axhy-v3/handoff/WORKER_CODE_REVIEW_FINDINGS_2026-05-24.md`, then proceed."
+> **Resume command:** "Read `axhy-v3/handoff/NEXT_SESSION.md` first, then resume wave 2 cross-persona QA on top of the new admin/HR routes."
 
-## 🚨 PRIORITY FOR NEXT SESSION — multi-persona QA wave 2
+## ⚡ WAVE-2-PREP SLICE — DONE (2026-05-25 autonomous run)
+
+The admin/HR backend that wave 2 was blocked on is now SHIPPED. 6 commits landed on `main` (not yet pushed — see "FOUNDER ACTION ITEMS" below). 21 integration tests pass against Railway production DB.
+
+### What shipped
+
+| #   | Commit    | Content                                                                                      |
+| --- | --------- | -------------------------------------------------------------------------------------------- |
+| 1   | `f0a7026` | Spec + impl plan + ADR-0025 + mint-token.ts                                                  |
+| 2   | `f40bfb3` | Schema move: salary + bank from Worker → Membership (migration 20260525_019 applied to prod) |
+| 3   | `b730ef4` | role-gates middleware + ADR-0026 hiring-hierarchy + drift-detection test                     |
+| 4   | `f2b0b81` | 4 admin Zod schemas                                                                          |
+| 5   | `8675c2b` | R1 POST /admin/memberships (5/5 tests)                                                       |
+| 6   | `36ec049` | R2 POST /admin/workers + R3 anonymize + learning (5/5 tests)                                 |
+| 7   | `d8edfe8` | R4 POST /admin/sites + R5 bindings (6/6 tests)                                               |
+
+**5 new routes live on `main` (untested in production until founder pushes):**
+
+- `POST /admin/memberships` — OWNER creates HR; HR creates SUPERVISOR
+- `POST /admin/workers` — HR creates Worker in PENDING_ACTIVATION
+- `POST /admin/workers/:id/anonymize` — HR resigns Worker (one-way phone hash + state→TERMINATED)
+- `POST /admin/sites` — OWNER or HR creates Site
+- `POST /admin/sites/:id/bindings` — OWNER or HR binds Supervisor to Site
+
+**Authority enforcement:** every route runs `requireAuth + requireRole(...) + assertTargetRole(...)` per `docs/locked/hiring-hierarchy.md`. Drift-detection test fails CI if the const diverges from the locked doc.
+
+**Schema migration:** `Worker.baseSalaryPaise`, `Worker.bankIfsc`, `Worker.bankAcct` removed. Same fields added to `Membership`. Applied to Railway prod with backfill verification (1 worker membership backfilled). `markAbsentService` updated to read via Membership join.
+
+### 🚨 FOUNDER ACTION ITEMS (when back)
+
+1. **Commit `docs/locked/hiring-hierarchy.md`** (currently UNTRACKED on disk). The anti-gaming bash-guard correctly blocks AI-side setting of `AXHY_FOUNDER_APPROVED=1`, so this commit needs you. Sequence:
+
+   ```bash
+   cd /Users/thotaakshay/eclean_workspace/axhy-v3
+   AXHY_FOUNDER_APPROVED=1 git add docs/locked/hiring-hierarchy.md && \
+     git commit -m "lock: hiring-hierarchy.md — OWNER→HR→{SUPERVISOR,WORKER}; SUPERVISOR/WORKER→none"
+   ```
+
+   Without this commit, the `role-gates.test.ts` drift-detection test still passes (reads on-disk file), but CI on a fresh checkout would fail because the file would be missing.
+
+2. **Push 7 commits to GitHub:** `git push origin main` — Railway will auto-deploy.
+
+3. **Smoke-verify on prod after deploy:**
+
+   ```bash
+   # 401 baseline
+   curl -s -o /dev/null -w "%{http_code}\n" \
+     -X POST https://backend-production-344e1.up.railway.app/admin/memberships \
+     -H "content-type: application/json" \
+     -d '{"phone":"+919999999999","name":"smoke","role":"HR","baseSalaryPaise":1000000}'
+   # Expected: 401
+   ```
+
+4. **Truth-first learning** (`docs/learnings/2026-05-25-all-anonymize-service-was-aspirational.md`) — read once. It captures your reminder this session: "no assumptions of code is allowed, if code is not there then its not there. Truth is painful in present but it makes our future beautiful." Pattern detector now blocks future aspirational claims at commit time.
+
+### What's next — wave 2 QA proper
+
+With the admin/HR backend live, the wave-2 seed + walker can now exercise REAL cross-persona flows instead of raw Prisma fakes:
+
+1. **Rewrite `qa-seed-multi-persona.ts`** to call the 5 new routes for fixture creation. The seed becomes a smoke test of the create paths simultaneously.
+2. **Cross-persona Playwright walker** scenarios that now work end-to-end:
+   - HR creates Worker → Worker OTP-logs in → state ACTIVE (via existing `workerOtpVerifiedService`)
+   - HR creates Site + binds Supervisor → Worker home shows the new supervisor's phone
+   - HR creates Supervisor → Supervisor logs in via OTP → sees their bound sites
+   - HR resigns Worker → User.phone hashed → User free for new Worker in another company
+3. **Native-only surfaces** (camera, AI verification, push, deep-link, tap-to-call) still require real device via Expo LAN per the device-strategy decision earlier in this session.
+
+### Known gaps for wave 2
+
+- **OWNER→OWNER (co-owner) target role** intentionally deferred from R1 Zod. If you want to add a co-owner via API, widen the Zod enum + add the target-role allowance in the handler. The `HIRING_AUTHORITY` const already permits it.
+- **`POST /super-admin/companies`** still missing. QA Test Co already exists, so wave 2 is unblocked. Build when needed for second tenant.
+- **`PATCH /admin/memberships/:id/role`** (promote Worker → Supervisor) not built. Edge case.
+- **Admin UI** is out of scope; admin-web is still marketing-only. Wave 2 hits the routes directly via curl/Playwright with minted tokens (use `apps/backend/scripts/mint-token.ts`).
+- **Anonymize phone hash** is 11 hex chars (44 bits ≈ 17 trillion). Collision-safe for any realistic worker volume; if scale projections later exceed 100M anonymized workers per tenant, consider extending User.phone to VarChar(32).
+
+---
+
+## 🚨 PRIOR PRIORITY (preserved — multi-persona QA wave 2 context)
 
 The 2026-05-25 worker QA pass (commit `f57eed3`, doc `handoff/WORKER_QA_FINDINGS_2026-05-25.md`) was **scope-incomplete**. It walked ~10 worker screens via Playwright + curl-tested every worker API endpoint, but did **not** test how worker connects to other personas, and did **not** test the camera/AI flow which is the worker's daily 90%.
 
