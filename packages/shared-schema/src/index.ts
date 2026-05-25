@@ -63,3 +63,8 @@ export * from './zod/replacement-invite.js';
 export * from './zod/wave-4-compliance.js';
 // Slice 2b-3 2026-05-23 — worker submit + verify-status
 export * from './zod/worker-submit.js';
+// Wave-2-prep 2026-05-25 — admin/HR backend (ADR-0026 hiring authority)
+export * from './zod/admin-memberships.js';
+export * from './zod/admin-workers.js';
+export * from './zod/admin-sites.js';
+export * from './zod/admin-bindings.js';
