@@ -58,6 +58,7 @@ import { registerAdminPolicyRoutes } from './routes/admin-policy.js';
 import { registerChatReloadContextRoutes } from './routes/chat-reload-context.js';
 import { registerWorkerSubmitRoutes } from './routes/worker-submit.js';
 import { registerAdminMembershipRoutes } from './routes/admin-memberships.js';
+import { registerAdminWorkerRoutes } from './routes/admin-workers.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -178,6 +179,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerChatReloadContextRoutes(app);
   await registerWorkerSubmitRoutes(app);
   await registerAdminMembershipRoutes(app);
+  await registerAdminWorkerRoutes(app);
 
   return app;
 }
