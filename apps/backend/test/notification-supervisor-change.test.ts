@@ -103,7 +103,6 @@ beforeAll(async () => {
         companyId: companyA,
         name: "Mr. D'Souza",
         phone: '+91' + String(Date.now() + 2000).slice(-10),
-        baseSalaryPaise: 14000_00,
         userId: workerWithUserA_userId,
         preferredLanguage: 'te',
       },
@@ -117,7 +116,6 @@ beforeAll(async () => {
         companyId: companyA,
         name: 'Worker-NoUser',
         phone: '+91' + String(Date.now() + 2001).slice(-10),
-        baseSalaryPaise: 12000_00,
         userId: null,
         preferredLanguage: 'hi',
       },
@@ -843,7 +841,6 @@ describe('F-007 round-2 v11 — notification-supervisor-change (real-DB)', () =>
           companyId: companyA,
           name: 'Past',
           phone: '+91' + String(Date.now() + 4001).slice(-10),
-          baseSalaryPaise: 10000_00,
           userId: null,
         },
       })
@@ -854,7 +851,6 @@ describe('F-007 round-2 v11 — notification-supervisor-change (real-DB)', () =>
           companyId: companyA,
           name: 'Now',
           phone: '+91' + String(Date.now() + 4002).slice(-10),
-          baseSalaryPaise: 10000_00,
           userId: null,
         },
       })
@@ -865,7 +861,6 @@ describe('F-007 round-2 v11 — notification-supervisor-change (real-DB)', () =>
           companyId: companyA,
           name: 'Future',
           phone: '+91' + String(Date.now() + 4003).slice(-10),
-          baseSalaryPaise: 10000_00,
           userId: null,
         },
       })

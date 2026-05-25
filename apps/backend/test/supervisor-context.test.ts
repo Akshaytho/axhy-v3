@@ -124,7 +124,6 @@ beforeAll(async () => {
         name: `Happy Worker ${i + 1}`,
         phone: phone(10 + i),
         state: 'ACTIVE',
-        baseSalaryPaise: 1300000,
       },
     });
     await prismaRaw.assignment.create({
@@ -197,7 +196,6 @@ beforeAll(async () => {
         name: `Cross-A Worker ${i + 1}`,
         phone: phone(40 + i),
         state: 'ACTIVE',
-        baseSalaryPaise: 1300000,
       },
     });
     await prismaRaw.assignment.create({
@@ -221,7 +219,6 @@ beforeAll(async () => {
       name: 'Cross-B Worker 1',
       phone: phone(42),
       state: 'ACTIVE',
-      baseSalaryPaise: 1300000,
     },
   });
   await prismaRaw.assignment.create({

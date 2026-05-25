@@ -89,7 +89,6 @@ beforeAll(async () => {
       name: 'From Worker',
       phone: WORKER_FROM_PHONE,
       state: 'ACTIVE',
-      baseSalaryPaise: 1300000,
     },
   });
   fromWorkerId = wFrom.id;
@@ -99,7 +98,6 @@ beforeAll(async () => {
       name: 'To Worker',
       phone: WORKER_TO_PHONE,
       state: 'ACTIVE',
-      baseSalaryPaise: 1300000,
     },
   });
   toWorkerId = wTo.id;
@@ -109,7 +107,6 @@ beforeAll(async () => {
       name: 'Other Tenant Worker',
       phone: WORKER_OTHER_PHONE,
       state: 'ACTIVE',
-      baseSalaryPaise: 1200000,
     },
   });
   otherTenantWorkerId = wOther.id;

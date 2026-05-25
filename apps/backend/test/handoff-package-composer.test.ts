@@ -104,7 +104,6 @@ beforeAll(async () => {
       companyId,
       name: 'Suresh',
       phone: '+91999' + String(Date.now() + 5000).slice(-8),
-      baseSalaryPaise: 14000_00,
     },
   });
   workerSuresh = w.id;

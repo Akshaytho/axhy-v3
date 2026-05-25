@@ -135,7 +135,6 @@ beforeAll(async () => {
         name: `Happy Worker ${i + 1}`,
         phone: phone(10 + i),
         state: 'ACTIVE',
-        baseSalaryPaise: 1300000,
       },
     });
     happyWorkers.push({ id: w.id, siteId });

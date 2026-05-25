@@ -6,7 +6,7 @@
  *   one Prisma transaction:
  *     1. Verify worker belongs to caller's company (RLS already protects;
  *        we double-check to return clean 404)
- *     2. Compute payDeductPaise from worker.baseSalaryPaise
+ *     2. Compute payDeductPaise from Membership.baseSalaryPaise (ADR-0025)
  *     3. Upsert Attendance row by (workerId, date)
  *     4. Record AuditEvent (kind = WORKER_MARKED_ABSENT)
  *     5. Enqueue Outbox topics (hr.worker_absent + payroll.recompute)
