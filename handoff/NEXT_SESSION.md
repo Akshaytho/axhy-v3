@@ -4,6 +4,71 @@
 >
 > **Resume command:** "Read `axhy-v3/handoff/NEXT_SESSION.md` first, then `axhy-v3/handoff/WORKER_CODE_REVIEW_FINDINGS_2026-05-24.md`, then proceed."
 
+## 🚨 PRIORITY FOR NEXT SESSION — multi-persona QA wave 2
+
+The 2026-05-25 worker QA pass (commit `f57eed3`, doc `handoff/WORKER_QA_FINDINGS_2026-05-25.md`) was **scope-incomplete**. It walked ~10 worker screens via Playwright + curl-tested every worker API endpoint, but did **not** test how worker connects to other personas, and did **not** test the camera/AI flow which is the worker's daily 90%.
+
+**Before clicking anything next time, run the proper preflight:**
+
+1. `mcp__axhy-guardrail__check_before_build` with `slice_name: "qa-multi-persona-wave-2"`, `affected_personas: "worker, supervisor, HR, COMPANY_ADMIN, SUPER_ADMIN"`, `affected_platforms: "mobile, web, backend"`, `required_tests` listing every cross-persona scenario below.
+2. `mcp__axhy-guardrail__check_before_done` at the end with `flow_completeness` enumerating each scenario as `verified: true|false`.
+
+This discipline is captured as a new permanent learning: `docs/learnings/2026-05-25-all-qa-pass-is-a-slice-needs-preflight.md` — `brain:build` embeds it so `impactCheck("qa pass plan")` surfaces it on Day 1.
+
+### Worker-app gaps (single-persona, but still missed)
+
+- ❌ **Camera capture flow** — qr-scan → before-photos → timer → after-photos → review → submit. Headless browser has no camera; needs **real device via USB/LAN Expo** OR **Maestro on a simulator**.
+- ❌ **AI photo verification polling** — verify-status → VERIFIED or FLAGGED. Depends on the capture flow above + AI worker queue firing in prod.
+- ❌ **Tap-to-call supervisor** — phone number rendered but tap never tested (P2.4 in old findings warned about Linking.openURL on web).
+- ❌ **Resume capture banner deep-link tap** — the home screen had a `resumeCapture: {visitId, photosTakenSoFar: 3}` pointer for the PHOTOS_PENDING visit; never tested the tap.
+- ❌ **Logout** → confirm re-login on next session works end-to-end.
+- ❌ **Wrong OTP** typed → should show error not crash.
+- ❌ **OTP rate limit** — hammer Get OTP repeatedly, expect 429 OTP_RATE_LIMITED after 3 in 15 min.
+- ❌ **Offline mode** — airplane mode mid-capture; photos persist; queue rehydrates on reconnect.
+- ❌ **Worker state edge cases** — manually update Worker.state via SQL to ON_LEAVE / BLOCKED / TERMINATED / ARCHIVED and observe home rendering.
+- ❌ **Empty day** — a day with zero visits should render correctly.
+
+### Cross-persona scenarios (the BIG miss)
+
+The worker app is part of a multi-persona system. **Zero of these were tested** in wave 1:
+
+- ❌ **HR creates the worker** — admin-web (`apps/admin-web/`) → HR form → POST creates Worker row → invite sent → worker OTP-verifies → state transitions PENDING_ACTIVATION → ACTIVE via `workerOtpVerifiedService`.
+- ❌ **Supervisor verifies submitted photos** — worker submits → supervisor app (`apps/mobile/app/(supervisor)/`) shows verification queue card → supervisor taps OK/reject → visit transitions VERIFIED or FLAGGED → worker home reflects the change.
+- ❌ **Supervisor changes site binding** — supervisor unbinds from a site → worker home's `supervisorPhone` should update (or go null).
+- ❌ **Worker requests leave** — `leaveRequestMachine` (sub-slice 2c-1, **not yet built**). Worker → supervisor approves → worker sees ON_LEAVE.
+- ❌ **Worker requests shift swap** — `swapRequestMachine` (sub-slice 2c-1, **not yet built**). Worker A asks B → B confirms → both schedules update.
+- ❌ **HR resignation / anonymization** — worker resigns → HR triggers anonymize → Worker.userId set null → User free for new Worker row in different Company.
+- ❌ **Supervisor → worker chat** — chat surface from supervisor opens in worker mobile.
+- ❌ **Push notifications** — supervisor takes an action → OneSignal push → worker bell badge increments on home (web has no push; needs real device).
+- ❌ **Decision card** — supervisor makes a decision → worker sees outcome reflected in their UI.
+- ❌ **Complaint flow** — worker raises complaint (broken equipment, locked site) → supervisor sees → resolves.
+- ❌ **Admin creates a company** — full admin-web onboarding flow never opened.
+- ❌ **Admin role promotion** — worker promoted to supervisor.
+
+### Toolchain gaps to fix BEFORE wave 2
+
+- **JWT minting helper** — write `apps/backend/scripts/mint-token.ts` that takes `--role WORKER|SUPERVISOR|HR|COMPANY_ADMIN|SUPER_ADMIN --user-id X --company-id Y` and outputs a 15-min access token signed with `JWT_SECRET` from Railway. Wave 1 failed to mint a supervisor token because `jsonwebtoken` import failed from workspace root — fix path with `cd apps/backend && pnpm exec node` or write a proper script.
+- **Multi-persona fixture bootstrap** — `apps/backend/scripts/qa-seed-rich-fixtures.sql` that creates: 1 Company, 2 Sites, 1 HR user + membership, 1 Supervisor + 2 SiteSupervisorBindings, 3 Workers in different states (ACTIVE, PENDING_ACTIVATION, ON_LEAVE), 2 Assignments per worker, a week of historical Visits in all 12 states, 1 active LeaveRequest, 1 pending SwapRequest, 1 open Complaint, a chat thread, a decision card. Plus a cleanup script that nukes all of it.
+- **Cross-persona Playwright script** — `apps/mobile/scripts/qa-multi-persona-walk.ts` that logs in as each persona sequentially using minted tokens, walks each persona's primary screens, then runs scenario walks (Submit → Supervisor Verify → Worker sees Verified; Leave Request → Approve → Worker sees ON_LEAVE; etc.).
+
+### Existing QA test-fixtures in prod (decide: keep OR clean)
+
+From wave 1, still live in prod (see `handoff/WORKER_QA_FINDINGS_2026-05-25.md` for the cleanup SQL):
+
+- Company `2d2f1ccb-7bf8-4890-ae59-c5cb14b00289` "QA Test Co 2026-05-25"
+- Worker `64ba3df8-3b71-45ed-986f-75217836e0ff` (founder phone)
+- Supervisor user, site, assignment, binding, 3 visits
+
+Decision: probably **keep + extend** for wave 2 (cheaper than a fresh bootstrap, founder phone already allowlisted).
+
+### Real findings from wave 1 still pending fix
+
+- **Q1 🔴 CORS whitelist easy to overwrite** — restored, but consider regex pattern matching for preview URLs long-term.
+- **Q2 🟠 `<StateBadge>` crashes on unknown state** — `apps/mobile/components/worker/StateBadge.tsx:57-58` needs `?? { label: state, tone: 'neutral' }` fallback. Two-line fix.
+- **Q3 🔴 R2 key mismatch (User.id vs Worker.id)** — `apps/backend/src/routes/worker-captures.ts:67` passes `auth.userId` instead of resolved Worker.id. Every photo capture today orphans the R2 upload. **Highest-impact fix** — belongs to Cluster C.
+
+---
+
 ## WhatsApp OTP — DONE (2026-05-25)
 
 Production backend was refusing to boot because Railway had `AXHY_OTP_BYPASS=1` + `NODE_ENV=production` (security guard at server.ts:73-80 correctly refused). Root cause: founder set the bypass to test screens while DLT SMS registration was pending. Wrong fix would have been to weaken the guard; right fix was to remove the env var and pivot OTP delivery to WhatsApp Cloud API (workers all carry smartphones).
