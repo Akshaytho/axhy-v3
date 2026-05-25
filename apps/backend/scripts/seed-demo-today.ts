@@ -68,7 +68,9 @@ async function main() {
           name: dw.name,
           phone: dw.phone,
           state: 'ACTIVE',
-          baseSalaryPaise: 1300000,
+          // ADR-0025: salary moved to Membership. This demo seed creates User-less
+          // workers (sandbox only); salary stays unset = 0 deduction. Production
+          // worker create flows go through POST /admin/workers which seeds Membership.
         },
       });
       console.log(`  ✓ Created worker: ${dw.name} (${created.id})`);

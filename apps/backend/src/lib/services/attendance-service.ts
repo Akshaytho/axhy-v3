@@ -96,7 +96,21 @@ export async function markAbsentService(
     return { kind: 'NOT_SUPERVISOR', effectiveUserId: null };
   }
 
-  const payDeductPaise = computeDailyDeductPaise(worker.baseSalaryPaise, input.status);
+  // ADR-0025: salary lives on Membership now, joined by (companyId, userId, role=WORKER).
+  // Worker without a User row (PENDING_ACTIVATION pre-OTP) cannot have salary; deduct 0.
+  let baseSalaryPaise = 0;
+  if (worker.userId) {
+    const membership = await tx.membership.findFirst({
+      where: {
+        userId: worker.userId,
+        companyId: auth.companyId,
+        role: 'WORKER',
+      },
+      select: { baseSalaryPaise: true },
+    });
+    baseSalaryPaise = membership?.baseSalaryPaise ?? 0;
+  }
+  const payDeductPaise = computeDailyDeductPaise(baseSalaryPaise, input.status);
 
   const attendance = await tx.attendance.upsert({
     where: { workerId_date: { workerId: input.workerId, date: new Date(input.date) } },

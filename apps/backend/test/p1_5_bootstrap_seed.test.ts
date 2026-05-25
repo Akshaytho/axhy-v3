@@ -125,7 +125,6 @@ async function seedSwapRequests(
       name: 'fromW-' + supervisorId,
       phone: nextPhone(),
       state: 'ACTIVE',
-      baseSalaryPaise: 0,
     },
   });
   const tw = await prisma.worker.create({
@@ -134,7 +133,6 @@ async function seedSwapRequests(
       name: 'toW-' + supervisorId,
       phone: nextPhone(),
       state: 'ACTIVE',
-      baseSalaryPaise: 0,
     },
   });
   await prisma.swapRequest.createMany({

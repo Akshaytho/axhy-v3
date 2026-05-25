@@ -169,7 +169,10 @@ async function main(): Promise<void> {
               name: w.name,
               phone: w.phone,
               state: w.state,
-              baseSalaryPaise: w.baseSalaryPaise,
+              // ADR-0025: salary moved to Membership. Sandbox workers are User-less;
+              // baseSalaryPaise in WORKERS[] is preserved for future migration when
+              // this seed grows User+Membership creation. mark-absent against these
+              // workers returns 0 deduction (acceptable for smoke tests).
             },
           });
           console.log(`[seed] created Worker ${w.name}`);

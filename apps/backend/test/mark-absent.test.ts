@@ -85,26 +85,49 @@ beforeAll(async () => {
     data: { companyId: companyAId, userId: sup.id, role: 'SUPERVISOR' },
   });
 
-  // Worker in CoA — supervisor can mark this one
+  // Worker in CoA — supervisor can mark this one.
+  // ADR-0025: salary lives on Membership now; create User + Membership(WORKER) first.
+  const wAUser = await prismaRaw.user.create({
+    data: { phone: WORKER_PHONE_A, locale: 'en' },
+  });
+  await prismaRaw.membership.create({
+    data: {
+      companyId: companyAId,
+      userId: wAUser.id,
+      role: 'WORKER',
+      baseSalaryPaise: 1300000, // ₹13,000/mo → ~₹500/day
+    },
+  });
   const wA = await prismaRaw.worker.create({
     data: {
       companyId: companyAId,
+      userId: wAUser.id,
       name: 'Mukesh Yadav',
       phone: WORKER_PHONE_A,
       state: 'ACTIVE',
-      baseSalaryPaise: 1300000, // ₹13,000/mo → ~₹500/day
     },
   });
   workerAId = wA.id;
 
-  // Worker in CoB — supervisor must NOT be able to mark this one
+  // Worker in CoB — supervisor must NOT be able to mark this one.
+  const wBUser = await prismaRaw.user.create({
+    data: { phone: WORKER_PHONE_OTHER_TENANT, locale: 'en' },
+  });
+  await prismaRaw.membership.create({
+    data: {
+      companyId: companyBId,
+      userId: wBUser.id,
+      role: 'WORKER',
+      baseSalaryPaise: 1200000,
+    },
+  });
   const wB = await prismaRaw.worker.create({
     data: {
       companyId: companyBId,
+      userId: wBUser.id,
       name: 'Other Tenant Worker',
       phone: WORKER_PHONE_OTHER_TENANT,
       state: 'ACTIVE',
-      baseSalaryPaise: 1200000,
     },
   });
   workerBId = wB.id;
@@ -158,13 +181,24 @@ beforeAll(async () => {
   });
 
   // Worker in CoA with NO Assignment — used for "no derivable primary site" rejection.
+  const wUnUser = await prismaRaw.user.create({
+    data: { phone: WORKER_PHONE_UNASSIGNED, locale: 'en' },
+  });
+  await prismaRaw.membership.create({
+    data: {
+      companyId: companyAId,
+      userId: wUnUser.id,
+      role: 'WORKER',
+      baseSalaryPaise: 1300000,
+    },
+  });
   const wUnassigned = await prismaRaw.worker.create({
     data: {
       companyId: companyAId,
+      userId: wUnUser.id,
       name: 'Unassigned Worker',
       phone: WORKER_PHONE_UNASSIGNED,
       state: 'ACTIVE',
-      baseSalaryPaise: 1300000,
     },
   });
   workerUnassignedId = wUnassigned.id;
@@ -213,7 +247,19 @@ afterAll(async () => {
   await prismaRaw.worker.deleteMany({
     where: { company: { slug: { startsWith: TEST_PREFIX } } },
   });
-  await prismaRaw.user.deleteMany({ where: { phone: { in: [SUP_PHONE, SUP_B_PHONE] } } });
+  await prismaRaw.user.deleteMany({
+    where: {
+      phone: {
+        in: [
+          SUP_PHONE,
+          SUP_B_PHONE,
+          WORKER_PHONE_A,
+          WORKER_PHONE_OTHER_TENANT,
+          WORKER_PHONE_UNASSIGNED,
+        ],
+      },
+    },
+  });
   await prismaRaw.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
   await prismaRaw.$disconnect();
 });

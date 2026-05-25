@@ -132,6 +132,16 @@ model Membership {
   /// the queue partitioning + fallback semantics.
   /// @derives(workflow-design-closure §4)
   podId     String?  @db.Uuid
+  /// Monthly salary in paise (₹1 = 100 paise). 0 for unpaid roles
+  /// (SUPER_ADMIN, optional COMPANY_ADMIN). Every paid role lives here.
+  /// @derives(ADR-0025)
+  baseSalaryPaise Int @default(0)
+  /// @personal bank IFSC for payroll transfer.
+  /// @derives(ADR-0025)
+  bankIfsc  String?  @db.VarChar(16)
+  /// @personal bank account number for payroll transfer.
+  /// @derives(ADR-0025)
+  bankAcct  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -190,14 +200,8 @@ model Worker {
   name              String
   /// @personal worker phone (E.164)
   phone             String   @db.VarChar(16)
-  /// @personal optional worker bank for salary
-  bankIfsc          String?  @db.VarChar(16)
-  /// @personal optional worker bank account
-  bankAcct          String?
   /// 15-state WorkerState machine (see @axhy/state-machines)
   state             String   @default("INVITED")
-  /// monthly salary in paise (₹1 = 100 paise)
-  baseSalaryPaise   Int      @default(0)
   /// Worker's preferred notification language (ISO 639-1: hi / te / en / bn / ta / ...).
   /// Default 'hi'; tenant-configurable per workflow-design-closure §5.1 + Decision 4
   /// + Policy `worker.preferred_language_default`.
