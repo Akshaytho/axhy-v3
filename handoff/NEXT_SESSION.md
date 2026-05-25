@@ -1,12 +1,54 @@
-# Next Session — Wave 2 QA can now run (admin/HR backend shipped)
+# Next Session — Wave 2 cross-persona QA is fully unblocked
 
 > **Read time: 5 minutes. Highest-priority file for the next session.**
 >
-> **Resume command:** "Read `axhy-v3/handoff/NEXT_SESSION.md` first, then resume wave 2 cross-persona QA on top of the new admin/HR routes."
+> **Resume command:** "Read `axhy-v3/handoff/NEXT_SESSION.md` first, then resume wave 2 cross-persona QA — founder OWNER is now seated in QA Test Co."
+
+## ⚡ SUPER-ADMIN-OWNER-BOOTSTRAP — DONE + LIVE (2026-05-25 evening)
+
+The 5 wave-2 admin/HR routes all require OWNER or HR auth. Production had zero OWNER rows (verified via psql at session start), so wave-2 was structurally blocked. This slice added the SUPER_ADMIN-only endpoint that seats the first OWNER per tenant.
+
+**Commit `b7a1cbb` — pushed + Railway-auto-deployed + smoke-tested live.**
+
+### What shipped
+
+- **`POST /super-admin/memberships`** — `requireRole('SUPER_ADMIN')`, companyId in body, target role implicitly OWNER. Verifies Company exists + ACTIVE, upserts User by phone, creates Membership with role=OWNER, writes MEMBERSHIP_CREATED audit. `// tenant-exempt` by design (cross-tenant bootstrap; `withTenantContext` would 0-row).
+- **`assertTargetRole('SUPER_ADMIN', 'OWNER')`** reused — inherits the drift-detection coverage from `role-gates.test.ts`. If `HIRING_AUTHORITY` ever drops OWNER from SUPER_ADMIN, this route 403s before touching the DB.
+- **5/5 integration tests** against Railway prod DB — 401, 403 wrong role, 200 happy path, 404 COMPANY_NOT_FOUND, 409 MEMBERSHIP_ALREADY_EXISTS.
+
+### Founder OWNER live in QA Test Co
+
+| Field      | Value                                                                               |
+| ---------- | ----------------------------------------------------------------------------------- |
+| Company    | `2d2f1ccb-7bf8-4890-ae59-c5cb14b00289` (QA Test Co 2026-05-25)                      |
+| Membership | `fbb2da2f-0080-40eb-9113-fa6820caad57` (role=OWNER, status=ACTIVE)                  |
+| User       | `17285e17-9434-4522-9ac1-1cec1cbea31f` (phone `+919381378257`, name "Akshay Thota") |
+| Audit      | `MEMBERSHIP_CREATED` row recorded with `bootstrappedBy: SUPER_ADMIN`                |
+
+### What wave 2 can now do
+
+With a founder OWNER seated, the full cross-persona hierarchy chain is exercisable end-to-end via the deployed APIs:
+
+1. Mint OWNER token: `tsx scripts/mint-token.ts --user-id 17285e17-9434-4522-9ac1-1cec1cbea31f --company-id 2d2f1ccb-7bf8-4890-ae59-c5cb14b00289 --role OWNER`
+2. OWNER calls `POST /admin/memberships` → creates HR
+3. HR calls `POST /admin/memberships` → creates SUPERVISOR
+4. HR calls `POST /admin/workers` → creates Worker (PENDING_ACTIVATION)
+5. HR calls `POST /admin/sites` → creates Site
+6. OWNER or HR calls `POST /admin/sites/:id/bindings` → binds Supervisor
+7. Worker OTP-verifies (WhatsApp) → state transitions to ACTIVE via `workerOtpVerifiedService`
+8. From here, the Playwright + curl multi-persona walker per the WAVE-2-PREP section below
+
+### Known gaps from this slice
+
+- **`PATCH /super-admin/memberships/:id`** for OWNER role revocation/swap not built — only INSERT path. Add when a tenant needs an OWNER handoff.
+- **`POST /super-admin/companies`** still missing. Founder bootstrap of additional tenants currently needs psql or a Company INSERT before calling /super-admin/memberships. Build for the first paid customer.
+- **Co-OWNER (OWNER→OWNER)** intentionally not exposed in either /admin/memberships or /super-admin/memberships. `HIRING_AUTHORITY` allows it; add an explicit endpoint when a real co-owner scenario surfaces.
+
+---
 
 ## ⚡ WAVE-2-PREP SLICE — DONE (2026-05-25 autonomous run)
 
-The admin/HR backend that wave 2 was blocked on is now SHIPPED. 6 commits landed on `main` (not yet pushed — see "FOUNDER ACTION ITEMS" below). 21 integration tests pass against Railway production DB.
+The admin/HR backend that wave 2 was blocked on is now SHIPPED and pushed. Founder pushed the 7 commits earlier today; Railway redeployed; the locked doc `hiring-hierarchy.md` is committed at `4127bb0`. 21 integration tests pass against Railway production DB.
 
 ### What shipped
 
@@ -32,32 +74,12 @@ The admin/HR backend that wave 2 was blocked on is now SHIPPED. 6 commits landed
 
 **Schema migration:** `Worker.baseSalaryPaise`, `Worker.bankIfsc`, `Worker.bankAcct` removed. Same fields added to `Membership`. Applied to Railway prod with backfill verification (1 worker membership backfilled). `markAbsentService` updated to read via Membership join.
 
-### 🚨 FOUNDER ACTION ITEMS (when back)
+### ✅ FOUNDER ACTION ITEMS — all closed
 
-1. **Commit `docs/locked/hiring-hierarchy.md`** (currently UNTRACKED on disk). The anti-gaming bash-guard correctly blocks AI-side setting of `AXHY_FOUNDER_APPROVED=1`, so this commit needs you. Sequence:
-
-   ```bash
-   cd /Users/thotaakshay/eclean_workspace/axhy-v3
-   AXHY_FOUNDER_APPROVED=1 git add docs/locked/hiring-hierarchy.md && \
-     git commit -m "lock: hiring-hierarchy.md — OWNER→HR→{SUPERVISOR,WORKER}; SUPERVISOR/WORKER→none"
-   ```
-
-   Without this commit, the `role-gates.test.ts` drift-detection test still passes (reads on-disk file), but CI on a fresh checkout would fail because the file would be missing.
-
-2. **Push 7 commits to GitHub:** `git push origin main` — Railway will auto-deploy.
-
-3. **Smoke-verify on prod after deploy:**
-
-   ```bash
-   # 401 baseline
-   curl -s -o /dev/null -w "%{http_code}\n" \
-     -X POST https://backend-production-344e1.up.railway.app/admin/memberships \
-     -H "content-type: application/json" \
-     -d '{"phone":"+919999999999","name":"smoke","role":"HR","baseSalaryPaise":1000000}'
-   # Expected: 401
-   ```
-
-4. **Truth-first learning** (`docs/learnings/2026-05-25-all-anonymize-service-was-aspirational.md`) — read once. It captures your reminder this session: "no assumptions of code is allowed, if code is not there then its not there. Truth is painful in present but it makes our future beautiful." Pattern detector now blocks future aspirational claims at commit time.
+1. ~~Commit `docs/locked/hiring-hierarchy.md`~~ → done at `4127bb0`.
+2. ~~Push 7 commits to GitHub~~ → done; Railway redeployed; smoke-verified.
+3. ~~Smoke-verify on prod~~ → done. `POST /admin/memberships` baseline returns 401 unauth. Plus `POST /super-admin/memberships` from the new slice is live and bootstrapped founder OWNER in QA Test Co.
+4. **Truth-first learning** (`docs/learnings/2026-05-25-all-anonymize-service-was-aspirational.md`) — read once when revisiting. Pattern detector blocks aspirational claims at commit time.
 
 ### What's next — wave 2 QA proper
 

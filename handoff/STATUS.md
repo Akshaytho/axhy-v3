@@ -2,8 +2,8 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-25 (admin-hr-backend-wave-2-prep landed)
-**Active phase:** **admin-hr-backend-wave-2-prep DONE** (2026-05-25, autonomous run). 5 new admin/HR routes (`POST /admin/memberships`, `/admin/workers`, `/admin/workers/:id/anonymize`, `/admin/sites`, `/admin/sites/:id/bindings`) + schema migration 20260525_019 (salary fields Worker→Membership) + role-gates middleware + locked doc `hiring-hierarchy.md` (founder must commit) + ADR-0025 + ADR-0026 + 21 integration tests against Railway prod. **Commits on main, NOT pushed yet:** `f0a7026..d8edfe8` (7 commits). **Previous:** Cluster B DONE (2026-05-25). Cluster A DONE (`7ed1e80`, 2026-05-24). Worker MVP sub-slice 2b-4 DONE (`08c65a5`, 2026-05-23). **Next:** Founder pushes; commits locked doc; wave 2 cross-persona QA resumes on top of the new routes.
+**Last updated:** 2026-05-25 (super-admin-owner-bootstrap landed + live in prod)
+**Active phase:** **super-admin-owner-bootstrap DONE** (2026-05-25, commit `b7a1cbb`, pushed + Railway-deployed). New route `POST /super-admin/memberships` seats the first OWNER of a tenant — unblocks the 5 wave-2 admin/HR routes which all require OWNER or HR auth. 5/5 integration tests against Railway prod DB. Founder OWNER `fbb2da2f-0080-40eb-9113-fa6820caad57` (User `17285e17-9434-4522-9ac1-1cec1cbea31f`, phone `+919381378257`) seated in QA Test Co `2d2f1ccb-7bf8-4890-ae59-c5cb14b00289` via live curl against backend-production-344e1.up.railway.app. **Previous:** admin-hr-backend-wave-2-prep DONE (commits `f40bfb3..4127bb0`, pushed). Cluster B DONE (2026-05-25). Cluster A DONE (`7ed1e80`, 2026-05-24). Worker MVP sub-slice 2b-4 DONE (`08c65a5`, 2026-05-23). **Next:** Wave 2 cross-persona QA can now exercise the full hierarchy — founder OWNER token → creates HR → HR creates SUPERVISOR/WORKER + Sites + Bindings.
 
 ## Worker MVP slice tracker
 
@@ -17,6 +17,7 @@
 | `worker-d1-s2b-3`               | Cleaning timer + GPS + Submit + Verify polling                                                                                           | **DONE** 2026-05-23 | —                | —                  |
 | `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + queue persistence                                                                           | **DONE** 2026-05-23 | —                | `08c65a5`          |
 | `admin-hr-backend-wave-2-prep`  | Schema move (Worker salary → Membership) + 5 admin/HR routes (memberships/workers/anonymize/sites/bindings) + role-gates + 21 tests      | **DONE** 2026-05-25 | —                | `f40bfb3..d8edfe8` |
+| `super-admin-owner-bootstrap`   | `POST /super-admin/memberships` — seats first OWNER per tenant + 5 prod-DB tests + founder OWNER live in QA Test Co                      | **DONE** 2026-05-25 | —                | `b7a1cbb`          |
 | `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started         | —                | —                  |
 | `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started         | —                | —                  |
 
