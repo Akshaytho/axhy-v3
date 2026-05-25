@@ -68,3 +68,5 @@ export * from './zod/admin-memberships.js';
 export * from './zod/admin-workers.js';
 export * from './zod/admin-sites.js';
 export * from './zod/admin-bindings.js';
+// Super-admin-owner-bootstrap 2026-05-25 — POST /super-admin/memberships
+export * from './zod/super-admin-memberships.js';
