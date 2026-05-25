@@ -114,6 +114,11 @@ export const AuditEventKindSchema = z.enum([
   // ── Membership pod assignment (closure Decision 1) ─────────────────
   'MEMBERSHIP_POD_ASSIGNED',
   'MEMBERSHIP_POD_REASSIGNED',
+  // ── Admin/HR backend (ADR-0026 wave-2-prep 2026-05-25) ─────────────
+  'MEMBERSHIP_CREATED',
+  'WORKER_CREATED',
+  'WORKER_ANONYMIZED',
+  'SITE_CREATED',
 ]);
 
 /**
