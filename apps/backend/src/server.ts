@@ -60,6 +60,7 @@ import { registerWorkerSubmitRoutes } from './routes/worker-submit.js';
 import { registerAdminMembershipRoutes } from './routes/admin-memberships.js';
 import { registerAdminWorkerRoutes } from './routes/admin-workers.js';
 import { registerAdminSiteRoutes } from './routes/admin-sites.js';
+import { registerSuperAdminMembershipRoutes } from './routes/super-admin-memberships.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -182,6 +183,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerAdminMembershipRoutes(app);
   await registerAdminWorkerRoutes(app);
   await registerAdminSiteRoutes(app);
+  await registerSuperAdminMembershipRoutes(app);
 
   return app;
 }
