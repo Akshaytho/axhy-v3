@@ -139,24 +139,37 @@ async function embed(text: string): Promise<number[]> {
     return data.data[0]!.embedding;
   }
 
-  // PRNG fake fallback — produces valid 1536-dim vectors but with NO semantic
-  // meaning. Cosine similarity between any two texts ≈ 0.08 (random noise).
-  // Acceptable for unit tests only. Phase 0 discovery (2026-05-26).
-  if (process.env.BRAIN_ALLOW_FAKE_EMBEDDINGS !== 'true') {
-    console.warn(
-      '[impact-check-v2] ⚠️  OPENAI_API_KEY missing — using PRNG fake embeddings. Retrieval quality is degraded.',
-    );
+  // Live MCP use MUST have real embeddings. Fake PRNG embeddings produce
+  // random cosine similarity (~0.08) which makes retrieval useless.
+  // Only allow fake embeddings in explicit test mode.
+  if (process.env.BRAIN_ALLOW_FAKE_EMBEDDINGS === 'true') {
+    // Test mode: PRNG fake fallback — valid 1536-dim vectors but NO semantic meaning.
+    const seed = Array.from(text).reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) % 1e9, 7);
+    let x = seed;
+    const v = new Array(1536);
+    for (let i = 0; i < 1536; i++) {
+      x = (x * 1103515245 + 12345) % 2 ** 31;
+      v[i] = (x / 2 ** 31 - 0.5) * 0.1;
+    }
+    const norm = Math.sqrt(v.reduce((a: number, b: number) => a + b * b, 0));
+    for (let i = 0; i < 1536; i++) v[i] = v[i] / norm;
+    return v;
   }
-  const seed = Array.from(text).reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) % 1e9, 7);
-  let x = seed;
-  const v = new Array(1536);
-  for (let i = 0; i < 1536; i++) {
-    x = (x * 1103515245 + 12345) % 2 ** 31;
-    v[i] = (x / 2 ** 31 - 0.5) * 0.1;
-  }
-  const norm = Math.sqrt(v.reduce((a: number, b: number) => a + b * b, 0));
-  for (let i = 0; i < 1536; i++) v[i] = v[i] / norm;
-  return v;
+
+  throw new Error(
+    '[impact-check-v2] OPENAI_API_KEY required for real embeddings. ' +
+      'Set BRAIN_ALLOW_FAKE_EMBEDDINGS=true only for tests.',
+  );
+}
+
+/**
+ * Report whether embeddings are real (OpenAI) or fake (PRNG test mode).
+ * Surfaced in MCP responses so Claude can verify retrieval quality.
+ */
+export function embeddingMode(): 'real' | 'fake' {
+  if (process.env.OPENAI_API_KEY) return 'real';
+  if (process.env.BRAIN_ALLOW_FAKE_EMBEDDINGS === 'true') return 'fake';
+  return 'fake'; // would throw on actual use, but report mode for introspection
 }
 
 // ─── Layer 1: search() ─────────────────────────────────────────────────────
