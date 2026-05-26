@@ -118,7 +118,14 @@ async function embed(text: string): Promise<number[]> {
     return data.data[0]!.embedding;
   }
 
-  // Deterministic fake (same as knowledge-graph builder) — tests work without API key
+  // PRNG fake fallback — produces valid 1536-dim vectors but with NO semantic
+  // meaning. Cosine similarity between any two texts ≈ 0.08 (random noise).
+  // Acceptable for unit tests only. Phase 0 discovery (2026-05-26).
+  if (process.env.BRAIN_ALLOW_FAKE_EMBEDDINGS !== 'true') {
+    console.warn(
+      '[vector-knowledge] ⚠️  OPENAI_API_KEY missing — using PRNG fake embeddings. Retrieval quality is degraded.',
+    );
+  }
   const seed = Array.from(text).reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) % 1e9, 7);
   let x = seed;
   const v = new Array(1536);
