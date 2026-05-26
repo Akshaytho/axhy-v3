@@ -40,6 +40,12 @@ const REPO_ROOT = join(here, '../../..');
 // Code embedding is a future task for when the codebase is stable.
 const SCAN_DIRS = ['docs'];
 const SCAN_EXTS = new Set(['.md', '.prisma', '.mmd']);
+
+// Sibling workspace: axhy-cognitive-system contains enterprise production
+// standard (E1-E14), guardrail engine docs, core mind, and founder feedback
+// rules. These must be in the brain for retrieval-based boot (Book Architecture).
+const COG_ROOT = join(REPO_ROOT, '..', 'axhy-cognitive-system');
+const COG_SCAN_DIRS = ['docs', join('memory', 'base')];
 const IGNORE_DIRS = new Set([
   'node_modules',
   'dist',
@@ -493,6 +499,22 @@ async function main() {
   for (const dir of SCAN_DIRS) {
     walk(join(REPO_ROOT, dir), allFiles);
   }
+
+  // Include cognitive system docs if sibling workspace exists
+  if (existsSync(COG_ROOT)) {
+    const before = allFiles.length;
+    for (const dir of COG_SCAN_DIRS) {
+      const fullDir = join(COG_ROOT, dir);
+      if (existsSync(fullDir)) {
+        walk(fullDir, allFiles);
+      }
+    }
+    const added = allFiles.length - before;
+    if (added > 0) {
+      console.log(`[brain] Found ${added} files from axhy-cognitive-system`);
+    }
+  }
+
   console.log(`[brain] Found ${allFiles.length} indexable files`);
 
   // v3 path: write to brain_entries with autoClassify + field-fanout
