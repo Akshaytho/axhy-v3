@@ -490,7 +490,30 @@ async function ensureBrainEntriesSchema(): Promise<void> {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
+  // ── Hard guard: prevent silent fake embeddings in production ────────────
+  // Phase 0 discovery (2026-05-26): without OPENAI_API_KEY, embed() falls
+  // back to PRNG vectors — random noise that makes retrieval useless.
+  // This guard ensures brain:build NEVER runs with fake embeddings unless
+  // explicitly opted in (e.g. unit tests via BRAIN_ALLOW_FAKE_EMBEDDINGS=true).
+  if (!process.env.OPENAI_API_KEY && process.env.BRAIN_ALLOW_FAKE_EMBEDDINGS !== 'true') {
+    console.error('\n[brain] ❌ FATAL: OPENAI_API_KEY is not set.');
+    console.error('[brain] Without it, all embeddings will be PRNG fakes (random noise).');
+    console.error('[brain] The brain will APPEAR to work but retrieval is useless.');
+    console.error('[brain]');
+    console.error('[brain] Correct command:');
+    console.error('[brain]   export $(grep OPENAI_API_KEY apps/backend/.env.local) && \\');
+    console.error('[brain]     FIELD_FANOUT_ENABLED=true railway run --service Postgres -- \\');
+    console.error('[brain]     pnpm --filter @axhy/ai-tools brain:build');
+    console.error('[brain]');
+    console.error('[brain] To allow fake embeddings (tests only):');
+    console.error('[brain]   BRAIN_ALLOW_FAKE_EMBEDDINGS=true pnpm ... brain:build\n');
+    process.exit(1);
+  }
+
   console.log('[brain] Starting brain build...');
+  if (process.env.OPENAI_API_KEY) {
+    console.log('[brain] ✓ OPENAI_API_KEY present — using real OpenAI embeddings');
+  }
   await client.connect();
   await ensureSchema();
   await ensureBrainEntriesSchema();
