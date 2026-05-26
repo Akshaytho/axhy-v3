@@ -244,6 +244,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.space[1],
+    minHeight: tokens.tap.minMobile,
   },
   backText: {
     fontSize: tokens.type.bodySm.size,
