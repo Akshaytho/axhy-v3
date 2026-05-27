@@ -1,8 +1,50 @@
-# Next Session — Wave 2 cross-persona QA is fully unblocked
+# Checkpoint: Phase 7B complete — 2026-05-27 01:00 IST
 
-> **Read time: 5 minutes. Highest-priority file for the next session.**
+**Done:**
+
+- Phase 7 lean spec approved (8.7/10) with 5 founder corrections — `axhy-cognitive-system/docs/superpowers/specs/2026-05-27-axhy-lean-token-operating-discipline.md`
+- Phase 7B token measurement tool built — `pnpm --filter @axhy/ai-tools token:check` (27 tests green, commit `3e24630`)
+- Phase 6A failure fingerprint + evidence discipline deployed (commits `fbe9072`, `1e844d5`)
+
+**Token snapshot (this session):**
+
+- cost_pressure: 5.71M (orange)
+- context: 121K/turn (yellow)
+- 217 large outputs in chat, 259 full file reads
+- Session stopped per Phase 7 spec orange-cost discipline
+
+**Next step:** Fresh session. Options:
+
+1. Phase 7C — start using tool-output-to-file discipline (behavioral, no code)
+2. Phase 7D — guardrail compact mode (if 7B shows guardrail output is major source)
+3. F1/F31 — product security fixes (use as Phase 7 validation targets)
+
+**Run `pnpm --filter @axhy/ai-tools token:check` at session start** to establish baseline, and again mid-session to track.
+
+---
+
+# Next Session — Land F1 (trust model) + F31 (anonymize PII scrub) + F28 (Mumbai region)
+
+> **🚨 READ FIRST:** [`WAVE_2_QA_FINDINGS_2026-05-26.md`](./WAVE_2_QA_FINDINGS_2026-05-26.md) — Wave 2 Phase A QA walk done 2026-05-26 against Railway production. **25 findings filed (4 🚨 critical, 7 🟠 medium). Do NOT re-do the walk.**
 >
-> **Resume command:** "Read `axhy-v3/handoff/NEXT_SESSION.md` first, then resume wave 2 cross-persona QA — founder OWNER is now seated in QA Test Co."
+> **Founder-approved direction (2026-05-26 evening):**
+>
+> 1. **F1 trust-model fix** — go with option (b) Membership-backed `requireAuth` + `User.is_platform_admin` boolean for SUPER_ADMIN. Layer Stripe/Google-grade defenses: short token TTL (15min → 5min), rotating refresh tokens, token revocation table, eventually KMS-backed JWT signing. (~4-6h for base; full enterprise layer over 2-3 days before external launch.)
+> 2. **F31 anonymize PII scrub** — redefined: scrub `Worker.phone`, `Worker.name`, `Worker.bankIfsc`, `Worker.bankAcct` on anonymize (one-way hash). **KEEP** Visit / Assignment / Attendance / behavioral data tied to the (now anonymized) worker ID. Founder wants the analytics gold (Stripe/Uber pattern: keep behavioral data, scrub PII). Plus backfill SQL for the 7 existing orphan Worker rows + the founder's own empty `User.name`. (~1h + backfill.)
+> 3. **F11 X12 mobile submit** — rewrite [`apps/mobile/app/(worker)/capture/[visitId]/submit.tsx:99-104`](<../apps/mobile/app/(worker)/capture/[visitId]/submit.tsx#L99-L104>) state machine to verify actual `visitState` instead of declaring "done" on timeout or any non-AWAITING state. (~2h.)
+> 4. **F28 latency region** — migrate backend + Postgres + Redis from Railway US-West to Mumbai region. 250ms → 50ms RTT for Indian users. (~2-4h coordinated migration, off-hours.)
+> 5. **Other speed levers (queued after F1/F31):** Redis caching for `/worker/today`, pgvector index tuning, Postgres connection pool sizing, CDN for mobile assets.
+> 6. **F4 + F6 + F22** quick wins — User.name fix + handoff doc-drift cleanup + sandbox seed Company cleanup.
+>
+> **New permanent learning embedded in brain via brain:build 2026-05-27:** [`docs/learnings/2026-05-27-all-qa-walks-must-inspect-data-shape-not-just-routes.md`](../docs/learnings/2026-05-27-all-qa-walks-must-inspect-data-shape-not-just-routes.md) — every future QA walk must inspect FOUR layers (route + data shape + side-effects + latency/query plans). impactCheck will surface this on the next QA pass.
+>
+> **Sub-slice 2c-1 (leaveRequestMachine + swapRequestMachine) stays paused** until F1+F31+F11 land.
+
+---
+
+# Original wave-2-QA priority (now superseded — preserved for context only)
+
+> **Original resume command (replaced 2026-05-26):** "Read `axhy-v3/handoff/NEXT_SESSION.md` first, then resume wave 2 cross-persona QA — founder OWNER is now seated in QA Test Co."
 
 ## ⚡ SUPER-ADMIN-OWNER-BOOTSTRAP — DONE + LIVE (2026-05-25 evening)
 
