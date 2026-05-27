@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "audit": "tsx src/session-audit.ts",
+    "token:check": "tsx src/token-check.ts",
     "brain:build": "tsx src/brain-builder.ts",
     "brain:compact": "tsx src/brain-compact.ts",
     "brain:lock-seed": "tsx src/brain-lock-seed.ts",
