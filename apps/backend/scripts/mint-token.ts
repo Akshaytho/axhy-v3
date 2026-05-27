@@ -21,6 +21,16 @@ import { RoleSchema, type Role } from '@axhy/shared-schema';
 
 import { issueAccessToken } from '../src/lib/jwt.js';
 
+// F1-a guard: mint-token.ts is a dev tool. Refuse to run in production to
+// prevent accidental token issuance outside /auth/otp/verify.
+// @derives(F1 trust model 2026-05-27)
+if (process.env.NODE_ENV === 'production') {
+  process.stderr.write(
+    '[mint-token] refusing to run with NODE_ENV=production — use /auth/otp/verify in prod.\n',
+  );
+  process.exit(2);
+}
+
 type Args = {
   userId: string;
   companyId: string;
@@ -60,6 +70,16 @@ function parseArgs(argv: string[]): Args {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  // F1-a guard: SUPER_ADMIN must be bootstrapped via psql +
+  // User.is_platform_admin=true and issued through /auth/otp/verify on a
+  // platform-admin phone — never via this dev tool.
+  // @derives(F1 trust model 2026-05-27)
+  if (args.role === 'SUPER_ADMIN') {
+    process.stderr.write(
+      '[mint-token] refusing to mint SUPER_ADMIN tokens — bootstrap via psql + is_platform_admin=true.\n',
+    );
+    process.exit(3);
+  }
   const token = await issueAccessToken({
     userId: args.userId,
     companyId: args.companyId,
