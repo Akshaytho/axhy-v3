@@ -22,9 +22,10 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { RoleSchema, type Role } from '@axhy/shared-schema';
 
-const HTTP_FORBIDDEN = 403;
-
 import { verifyAccessToken } from '../lib/jwt.js';
+import { prisma } from '../lib/prisma.js';
+
+const HTTP_FORBIDDEN = 403;
 
 export type TenantAuth = {
   userId: string;
@@ -32,6 +33,10 @@ export type TenantAuth = {
   role: Role;
   availableRoles: ReadonlyArray<Role>;
   locale: string;
+  /** F1 trust model — present when token carries F1 claims. */
+  membershipId?: string;
+  /** F1 — true after SUPER_ADMIN trust verified against User.is_platform_admin. */
+  isPlatformAdmin?: boolean;
 };
 
 declare module 'fastify' {
@@ -41,9 +46,18 @@ declare module 'fastify' {
 }
 
 /**
- * preHandler hook. Throws 401 if no token; sets request.auth on success.
+ * Verify JWT and attach `req.auth`. Dual-mode during the 30-day F1 cutover:
+ *
+ *   - Legacy mode (no `epoch` claim): trust the JWT outright (pre-2026-05-27).
+ *   - Strict mode (`epoch` present):
+ *       * SUPER_ADMIN: User.is_platform_admin must be true.
+ *       * Other roles: Membership row exists, status=ACTIVE, role matches
+ *         token, token_epoch matches token, userId+companyId match.
+ *
+ * Any DB mismatch → 401. Flip to strict-only at the f1-d slice.
  *
  * @derives(ADR-0004)
+ * @derives(F1 trust model NEXT_SESSION.md 2026-05-27)
  */
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const header = req.headers.authorization;
@@ -54,8 +68,16 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
     return;
   }
   const token = header.slice(7).trim();
+  let claims;
   try {
-    const claims = await verifyAccessToken(token);
+    claims = await verifyAccessToken(token);
+  } catch {
+    reply.code(401).send({ error: 'AUTH_INVALID', message: 'Token invalid or expired' });
+    return;
+  }
+
+  // Legacy mode — no DB check; preserve pre-cutover behavior.
+  if (claims.epoch === undefined) {
     req.auth = {
       userId: claims.sub,
       companyId: claims.companyId,
@@ -63,13 +85,57 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
       availableRoles: claims.availableRoles,
       locale: claims.locale,
     };
-  } catch (err) {
-    reply.code(401).send({
-      error: 'AUTH_INVALID',
-      message: 'Token invalid or expired',
-    });
     return;
   }
+
+  // Strict mode — DB verification.
+  if (claims.role === RoleSchema.enum.SUPER_ADMIN) {
+    const user = await prisma.user.findUnique({
+      where: { id: claims.sub },
+      select: { is_platform_admin: true },
+    });
+    if (!user?.is_platform_admin) {
+      reply.code(401).send({ error: 'AUTH_INVALID', message: 'Platform admin trust failed' });
+      return;
+    }
+    req.auth = {
+      userId: claims.sub,
+      companyId: claims.companyId,
+      role: claims.role,
+      availableRoles: claims.availableRoles,
+      locale: claims.locale,
+      isPlatformAdmin: true,
+    };
+    return;
+  }
+
+  if (!claims.membershipId) {
+    reply.code(401).send({ error: 'AUTH_INVALID', message: 'Membership id missing' });
+    return;
+  }
+  const membership = await prisma.membership.findUnique({
+    where: { id: claims.membershipId },
+    select: { status: true, role: true, tokenEpoch: true, userId: true, companyId: true },
+  });
+  if (
+    !membership ||
+    membership.status !== 'ACTIVE' ||
+    membership.role !== claims.role ||
+    membership.tokenEpoch !== claims.epoch ||
+    membership.userId !== claims.sub ||
+    membership.companyId !== claims.companyId
+  ) {
+    reply.code(401).send({ error: 'AUTH_INVALID', message: 'Membership trust failed' });
+    return;
+  }
+  req.auth = {
+    userId: claims.sub,
+    companyId: claims.companyId,
+    role: claims.role,
+    availableRoles: claims.availableRoles,
+    locale: claims.locale,
+    membershipId: claims.membershipId,
+  };
 }
 
 /**
