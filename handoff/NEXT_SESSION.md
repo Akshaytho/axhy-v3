@@ -1,25 +1,46 @@
-# Checkpoint: Phase 7B complete — 2026-05-27 01:00 IST
+# Phase 7 Lean Token Discipline — ACTIVE (approved 2026-05-27)
 
-**Done:**
+**Spec:** `axhy-cognitive-system/docs/superpowers/specs/2026-05-27-axhy-lean-token-operating-discipline.md`
 
-- Phase 7 lean spec approved (8.7/10) with 5 founder corrections — `axhy-cognitive-system/docs/superpowers/specs/2026-05-27-axhy-lean-token-operating-discipline.md`
-- Phase 7B token measurement tool built — `pnpm --filter @axhy/ai-tools token:check` (27 tests green, commit `3e24630`)
-- Phase 6A failure fingerprint + evidence discipline deployed (commits `fbe9072`, `1e844d5`)
+**These rules are ACTIVE in every session. Not optional.**
 
-**Token snapshot (this session):**
+### 7C — Tool-output-to-file discipline (ALWAYS ON)
 
-- cost_pressure: 5.71M (orange)
-- context: 121K/turn (yellow)
-- 217 large outputs in chat, 259 full file reads
-- Session stopped per Phase 7 spec orange-cost discipline
+- If a tool output exceeds ~2,000 characters, save full output to `docs/evidence/YYYY-MM-DD/EVID-NNN.md`
+- Keep only a one-line reference in chat: `EVID-NNN | type | conclusion | full: path`
+- Short outputs (<2K chars), simple confirmations, single-line results: keep in chat
+- Evidence files use the Write tool — no raw Bash redirects bypassing guardrails
+- No YAML ceremony — one-line format is the default
 
-**Next step:** Fresh session. Options:
+### 7E — Short-session policy (ALWAYS ON)
 
-1. Phase 7C — start using tool-output-to-file discipline (behavioral, no code)
-2. Phase 7D — guardrail compact mode (if 7B shows guardrail output is major source)
-3. F1/F31 — product security fixes (use as Phase 7 validation targets)
+- One session = one slice (or one coherent task)
+- End session at any natural boundary: task complete, ~50 turns, cost_pressure hits Orange, context_pressure hits context_orange
+- Session-end protocol: commit code → write evidence files → update this handoff → start fresh
+- Short sessions win: 4 short sessions cost ~14,400t extra boot but keep each under Yellow. One long session saves 10,800t boot but accumulates 60M+ context growth.
 
-**Run `pnpm --filter @axhy/ai-tools token:check` at session start** to establish baseline, and again mid-session to track.
+### Token measurement (run every session)
+
+- Run `pnpm --filter @axhy/ai-tools token:check` at session start (baseline) and mid-session (track)
+- Cost thresholds: Green 0-2M, Yellow 2-4M, Orange 4-6M, Red 6-8M, Black 8M+
+- Context thresholds: green <80K/turn, yellow 80-150K, orange 150-250K, red >250K
+- If context grows fast for 10-15 consecutive turns, checkpoint even if cost is still Green
+
+### Phase 7 status
+
+| Phase      | Type                              | Status                                                          |
+| ---------- | --------------------------------- | --------------------------------------------------------------- |
+| 7A         | Spec                              | ✅ Approved (8.7/10), 5 corrections applied                     |
+| 7B         | Token measurement tool            | ✅ 27/27 tests green, commit `3e24630`                          |
+| 7C         | Behavioral — tool-output-to-file  | ✅ Active (rules above)                                         |
+| 7D         | Code — guardrail compact mode     | 🔜 Build only if 7B data shows guardrail output >20% of context |
+| 7E         | Behavioral — short-session policy | ✅ Active (rules above)                                         |
+| Validation | F1 + F31 as targets               | 🔜 Next product work                                            |
+
+### Prior session token snapshot (2026-05-27 01:00 IST)
+
+- cost_pressure: 5.71M (orange) — session stopped per discipline
+- context: 121K/turn (yellow), 217 large outputs in chat, 259 full file reads
 
 ---
 
