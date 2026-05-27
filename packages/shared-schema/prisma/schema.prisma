@@ -99,6 +99,10 @@ model User {
   /// @personal preferred locale
   locale    String   @default("en") @db.VarChar(8)
   status    String   @default("ACTIVE")
+  /// F1 trust model — platform-admin bit. True only for SUPER_ADMIN-tier
+  /// operators. Cannot live on Membership because SUPER_ADMIN carries no
+  /// tenant. @derives(F1 trust model 2026-05-27)
+  is_platform_admin Boolean @default(false) @map("is_platform_admin")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -127,6 +131,10 @@ model Membership {
   userId    String   @db.Uuid
   role      String
   status    String   @default("ACTIVE")
+  /// F1 trust model — bump on revoke / anonymize / role change to instantly
+  /// invalidate every outstanding access token tied to this membership.
+  /// @derives(F1 trust model 2026-05-27)
+  tokenEpoch Int @default(0) @map("token_epoch")
   /// HR pod assignment (per workflow-design-closure §4). Only meaningful when
   /// role = HR. NULL for all other roles. Layer 1 schema-only; Layer 2 wires
   /// the queue partitioning + fallback semantics.
