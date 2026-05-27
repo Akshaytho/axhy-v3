@@ -1,3 +1,79 @@
+# Session 2026-05-27 1:36p–~3:00p IST — F1 design brainstorm IN PROGRESS
+
+**Owner:** founder (Akshay) on standby; AI doing autonomous design work.
+**Status:** F1 spec brainstorm complete through Section 5; spec doc not yet written due to guardrail blocker (below).
+
+## New permanent rule from this session (founder direction 2026-05-27 ~2:50p IST)
+
+**Rule:** Any medium-to-major refactor or new code change at the system level (auth, schema, state machines, multi-tenant boundaries, anything under `apps/backend/src/middleware/`, schema changes on active tables) requires **enterprise-grade QA** before "done" — NOT just unit tests + one happy-path integration test.
+
+**Required for done on this tier:**
+
+1. Unit tests (every branch).
+2. Real-DB integration tests via `railway run -- pnpm --filter @axhy/backend test:integration`. No mocked Prisma.
+3. Prod-grade QA walk against Railway production with each affected persona token. Inspect data shape, side-effect tables, latency, and audit trail per the 2026-05-27 four-layer learning.
+4. Adversarial pass — explicitly attempt the failure modes the change is meant to prevent (each must 401/403/fail correctly).
+5. Cross-persona panel review (worker, supervisor, HR, COMPANY_ADMIN, SUPER_ADMIN).
+6. Findings doc `_QA_FINDINGS_<date>.md` in `axhy-v3/handoff/` (nil report acceptable).
+7. `check_before_done` runs all of the above as a structural gate.
+
+**Why:** Founder quote: "if there are big changes like this... need proper QA prod enterprise level testing." Scale of change demands proportional verification.
+
+**Saved:** `axhy-cognitive-system/memory/base/feedback_major_changes_need_enterprise_qa.md` (commit `4f289db`). Will be embedded on next brain:build.
+
+## F1 spec — decisions locked in this session
+
+The F1 trust-model arc has been brainstormed through Sections 1-5. Founder approved each section. Spec doc not yet committed pending guardrail unblock.
+
+**Locked architectural decisions:**
+
+1. **Scope:** Full F1 arc (base + enterprise layer) planned as one spec, executed across 4 slices/sessions.
+2. **Invalidation strategy:** `Membership.token_epoch` + `User.is_platform_admin` + 5-min access TTL + rotating refresh with Stripe-style family detection. Epoch bump on revoke/anonymize/fire = instant token death.
+3. **SUPER_ADMIN bootstrap:** Migration backfills founder's User row (`UPDATE User SET is_platform_admin=true WHERE id='17285e17-9434-4522-9ac1-1cec1cbea31f'`). All future platform admins added via SUPER_ADMIN-only endpoint.
+4. **mint-token.ts disposition:** Keep as dev tool, refuse if `NODE_ENV=production` OR target role is SUPER_ADMIN.
+5. **KMS-backed signing:** Deferred to post-arc slice. HS256 with rotating `JWT_SECRET` is sufficient until first paid customer / external audit.
+6. **Refresh family detection:** Postgres holds the family row, Redis holds `current_hash` per family (hot path, sub-ms reads, sliding TTL). At 2000 users + 100 supervisors: ~22k Redis SETs/day = 0.0005% of capacity. Cost negligible — founder confirmed approval.
+7. **Cutover:** 30-day compatibility window. Old tokens (no epoch claim) accepted in legacy mode. Every refresh upgrades a user to the new format. Day 30: flip `AUTH_STRICT_MODE=true`, delete legacy code.
+
+## F1 implementation map (locked)
+
+| File                                                                  | Change                                                                                                                                            |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared-schema/prisma/schema.prisma:93-157`                  | Add `User.is_platform_admin`, `Membership.token_epoch`, new `RefreshToken` model                                                                  |
+| `packages/shared-schema/src/zod/jwt-claims.ts`                        | Extend JWTClaims with optional `membershipId`, `epoch`, `isPlatformAdmin`                                                                         |
+| New migration `apps/backend/prisma/migrations/<date>_f1_trust_model/` | Schema additions + founder UUID backfill                                                                                                          |
+| `apps/backend/src/lib/jwt.ts:35-56`                                   | `issueAccessToken` takes new params                                                                                                               |
+| `apps/backend/src/middleware/tenant-context.ts:48-73`                 | `requireAuth` queries Membership (or User for SUPER_ADMIN), enforces status+role+epoch match; legacy mode if epoch missing                        |
+| `apps/backend/src/middleware/role-gates.ts:80-94`                     | Unchanged; trust flows through `requireAuth`                                                                                                      |
+| `apps/backend/src/routes/auth.ts`                                     | Login emits new-format slips + creates `RefreshToken` family; new `/auth/refresh` with rotation + family detection; new `/auth/logout-everywhere` |
+| New `apps/backend/src/lib/services/refresh-token-store.ts`            | Postgres family CRUD + Redis `current_hash` per family                                                                                            |
+| `apps/backend/src/lib/services/anonymize-worker-service.ts`           | Bump `Membership.token_epoch` + REVOKE RefreshToken families (closes Priya's 14-min zombie window)                                                |
+| `apps/backend/src/lib/services/admin-membership-service.ts`           | Bump epoch on role revoke + (bonus) fix F4 `User.name` while in this file                                                                         |
+| `apps/backend/scripts/mint-token.ts`                                  | Refuse if `NODE_ENV=production` OR target role is SUPER_ADMIN                                                                                     |
+
+## F1 slice plan (4 sessions)
+
+| Session | Slice                                | Lands                                                                                                                      | Risk                    |
+| ------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| 1       | `f1-a-schema-and-membership-backing` | Migration + `requireAuth` in compatibility mode + Membership/epoch checks for new-format tokens; old tokens still accepted | Low — additive only     |
+| 2       | `f1-b-refresh-rotation`              | `RefreshToken` table + Redis store + `/auth/refresh` rewrite + family detection + tests                                    | Medium — new code paths |
+| 3       | `f1-c-ttl-and-logout-everywhere`     | Access TTL 15→5 min, `/auth/logout-everywhere` route, anonymize-service wired to bump epoch + revoke families              | Low                     |
+| 4       | `f1-d-strict-mode-flip`              | Flip `AUTH_STRICT_MODE=true`, delete legacy code paths, final test sweep                                                   | Low — deletion          |
+
+Each slice must pass the new enterprise-QA bar (rule above) before "done."
+
+## Blockers from prior session — RESOLVED
+
+### ~~Blocker 1~~ — guardrail `reasoningEvidence` — FIXED
+
+Not a marshalling bug. The prior session was likely passing `reasoning_evidence` with insufficient structure. Subsequent session passed all 4 HIGH-risk fields (invariants_preserved, risk_if_wrong, what_would_make_me_stop, files_read) with 10+ words each containing specific file references — guardrail approved. Key: each field needs a concrete file path or function reference matching the SPECIFIC_REFERENCE regex at evidence-validator.mjs:18.
+
+### ~~Blocker 2~~ — `memory/v3/` not in brain ingestion — FIXED
+
+Fixed in commit `e8e8504`: added `join('memory', 'v3')` to COG_SCAN_DIRS in brain-builder.ts:48. Next brain:build will embed all ~40 v3 feedback files. The enterprise QA rule was also written to `memory/base/feedback_major_changes_need_enterprise_qa.md` (commit `4f289db` in axhy-cognitive-system).
+
+---
+
 # Phase 7 Lean Token Discipline — ACTIVE (approved 2026-05-27)
 
 **Spec:** `axhy-cognitive-system/docs/superpowers/specs/2026-05-27-axhy-lean-token-operating-discipline.md`
