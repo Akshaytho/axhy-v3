@@ -45,7 +45,7 @@ const SCAN_EXTS = new Set(['.md', '.prisma', '.mmd']);
 // standard (E1-E14), guardrail engine docs, core mind, and founder feedback
 // rules. These must be in the brain for retrieval-based boot (Book Architecture).
 const COG_ROOT = join(REPO_ROOT, '..', 'axhy-cognitive-system');
-const COG_SCAN_DIRS = ['docs', join('memory', 'base')];
+const COG_SCAN_DIRS = ['docs', join('memory', 'base'), join('memory', 'v3')];
 const IGNORE_DIRS = new Set([
   'node_modules',
   'dist',
