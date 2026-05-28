@@ -20,7 +20,7 @@
 
 import crypto from 'node:crypto';
 
-import type { PrismaClient, RefreshToken } from '@axhy/shared-schema';
+import type { PrismaClient, RefreshToken } from '@prisma/client';
 import pino from 'pino';
 
 import { getRedis } from '../redis.js';
