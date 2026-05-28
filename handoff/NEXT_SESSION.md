@@ -1,7 +1,7 @@
-# Next Session — Resume F1-b at Task 4
+# Next Session — Resume F1-b at Task 7
 
-**Last updated:** 2026-05-28 (F1-b Tasks 1-3 shipped, branch pushed)
-**Branch:** `feat/f1-b-refresh-rotation` (pushed to origin)
+**Last updated:** 2026-05-28 evening (F1-b Tasks 4–6 shipped, branch 1 commit ahead of origin)
+**Branch:** `feat/f1-b-refresh-rotation`
 **Plan doc:** `axhy-v3/docs/plans/2026-05-28-f1-b-refresh-rotation.md`
 
 ## What shipped 2026-05-28
@@ -23,26 +23,38 @@
 - **`e435c0f`:** Migration 021 (RefreshToken table, 14 cols, 5 indexes, 2 FKs cascade) + Prisma model
 - **`96bdf78`:** `refresh-token-store.ts` — create/validate/rotate/revokeForCompromise/revokeForLogout + 12/12 unit tests green
 
-## Resume at Task 4
+### F1-b Task 4: POST /auth/refresh route (commit `0015b2a`, NOT pushed)
 
-| Task  | Description                             | Status      |
-| ----- | --------------------------------------- | ----------- |
-| 1     | Migration + Prisma RefreshToken model   | ✅          |
-| 2     | refresh-token-store.ts implementation   | ✅          |
-| 3     | 12/12 unit tests for store              | ✅          |
-| **4** | **POST /auth/refresh route + register** | 🔜 Next     |
-| 5-6   | 7 integration tests                     | Not started |
-| 7     | Swap /auth/otp/verify to opaque tokens  | Not started |
-| 8     | Mobile interceptor + tests              | Not started |
-| 9     | Audit pattern                           | Not started |
-| 10    | Enterprise QA + PR                      | Not started |
+- `apps/backend/src/routes/auth-refresh.ts` — opaque-token rotation, 10 s grace, compromise detection, SUPER_ADMIN path
+- Wired into `server.ts` via `registerAuthRefreshRoutes`
+- `auth-exempt` + `tenant-exempt` markers — refresh-token IS the credential
+
+### F1-b Tasks 5–6: 7 integration tests (uncommitted on branch)
+
+- 7 new files under `apps/backend/test/auth-refresh-*.test.ts` covering happy / grace / compromise / legacy-reject / rate-limit / revoked / SUPER_ADMIN
+- **Result: 11/11 tests + 1 skipped (no-Redis fallback case); Test Files 7/7 green** — see `docs/evidence/2026-05-28/EVID-002.md`
+- One iteration: rate-limit bucket pollution across parallel files fixed by giving each file a unique `remoteAddress` in `app.inject()`
+
+## Resume at Task 7
+
+| Task  | Description                                | Status       |
+| ----- | ------------------------------------------ | ------------ |
+| 1     | Migration + Prisma RefreshToken model      | ✅ `e435c0f` |
+| 2     | refresh-token-store.ts implementation      | ✅ `96bdf78` |
+| 3     | 12/12 unit tests for store                 | ✅           |
+| 4     | POST /auth/refresh route + register        | ✅ `0015b2a` |
+| 5-6   | 7 integration tests (11 passed)            | ✅ EVID-002  |
+| **7** | **Swap /auth/otp/verify to opaque tokens** | 🔜 Next      |
+| 8     | Mobile interceptor + tests                 | Not started  |
+| 9     | Audit pattern                              | Not started  |
+| 10    | Enterprise QA + PR                         | Not started  |
 
 ## First thing next session
 
-1. `git checkout feat/f1-b-refresh-rotation`
-2. Read plan: `docs/plans/2026-05-28-f1-b-refresh-rotation.md` Task 4
-3. Verify: `pnpm --filter @axhy/backend vitest run src/lib/services/refresh-token-store.test.ts`
-4. Implement Task 4: `POST /auth/refresh` in `apps/backend/src/routes/auth-refresh.ts`
+1. `git checkout feat/f1-b-refresh-rotation` (already pushed to origin)
+2. Read plan: `docs/plans/2026-05-28-f1-b-refresh-rotation.md` Task 7
+3. Implement Task 7: in `apps/backend/src/routes/auth.ts` `/auth/otp/verify`, replace `issueRefreshToken(user.id)` with `refreshTokenStore.create({ userId, membershipId, userAgent, ipFirst })` then delete `issueRefreshToken` from `jwt.ts`. Run `tsc --noEmit` to find call sites.
+4. Re-run F1-a `auth-flow-new-format.test.ts` — must still pass; refresh token now starts with `axrt_`.
 
 ## Session token snapshot (2026-05-28 F1-b session)
 
