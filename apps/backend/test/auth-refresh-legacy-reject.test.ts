@@ -37,7 +37,7 @@ afterAll(async () => {
 describe('POST /auth/refresh — legacy token rejection', () => {
   it('JWT-shaped refresh token → 401 AUTH_LEGACY_REFRESH', async () => {
     // Hand-craft a JWT that resembles a pre-F1-b refresh token.
-    const jwt = await new SignJWT({ sub: 'fake-user', kind: 'refresh' })
+    const jwt = await new SignJWT({ sub: 'fake-user', kind: 'refresh' }) // audit-ok: intentional legacy-shape for reject test
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime('30d')

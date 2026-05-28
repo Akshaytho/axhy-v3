@@ -24,7 +24,8 @@ import { prisma } from '../lib/prisma.js';
 import { issueOtp, verifyOtp } from '../lib/otp-store.js';
 import { sendOtpWhatsApp } from '../lib/whatsapp-otp.js';
 import { isPhoneAllowlisted } from '../lib/otp-bypass.js';
-import { issueAccessToken, issueRefreshToken } from '../lib/jwt.js';
+import { issueAccessToken } from '../lib/jwt.js';
+import { createRefreshTokenStore } from '../lib/services/refresh-token-store.js';
 import { workerOtpVerifiedService } from '../lib/services/worker-otp-verified-service.js';
 
 /**
@@ -33,6 +34,8 @@ import { workerOtpVerifiedService } from '../lib/services/worker-otp-verified-se
  * @derives(ADR-0007)
  */
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
+  const refreshTokenStore = createRefreshTokenStore(prisma);
+
   app.post('/auth/otp/request', async (req, reply) => {
     const parsed = RequestOTPInput.safeParse(req.body);
     if (!parsed.success) {
@@ -167,7 +170,12 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       epoch: active.tokenEpoch,
       isPlatformAdmin: user.is_platform_admin === true,
     });
-    const refreshToken = await issueRefreshToken(user.id);
+    const { plainToken: refreshToken } = await refreshTokenStore.create({
+      userId: user.id,
+      membershipId: active.id,
+      userAgent: req.headers['user-agent']?.slice(0, 256),
+      ipFirst: req.ip?.slice(0, 64),
+    });
 
     const out: VerifyOTPOutput = {
       ok: true,

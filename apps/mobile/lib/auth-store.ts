@@ -80,6 +80,29 @@ export async function setTokens(tokens: StoredTokens): Promise<void> {
   ]);
 }
 
+/**
+ * Atomic swap of accessToken + refreshToken after a successful
+ * /auth/refresh rotation. Does NOT touch activeRole — that lifecycle
+ * concern stays with identity-lifecycle.ts. Owner: api.ts refresh
+ * interceptor. Safe to call from outside identity-lifecycle because
+ * rotation is neither login nor logout.
+ *
+ * @derives(F1-b trust model 2026-05-28)
+ */
+export async function replaceTokens(next: {
+  accessToken: string;
+  refreshToken: string;
+}): Promise<void> {
+  await Promise.all([
+    isWeb
+      ? webStore.setItem(KEY_ACCESS, next.accessToken)
+      : SecureStore.setItemAsync(KEY_ACCESS, next.accessToken),
+    isWeb
+      ? webStore.setItem(KEY_REFRESH, next.refreshToken)
+      : SecureStore.setItemAsync(KEY_REFRESH, next.refreshToken),
+  ]);
+}
+
 /** @derives(ADR-0007) */
 export async function clearTokens(): Promise<void> {
   await Promise.all([
