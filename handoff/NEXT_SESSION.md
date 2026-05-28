@@ -1,25 +1,63 @@
-# Session 2026-05-27 1:36p–~3:00p IST — F1 design brainstorm IN PROGRESS
+# Next Session — Resume F1-b at Task 4
 
-**Owner:** founder (Akshay) on standby; AI doing autonomous design work.
-**Status:** F1 spec brainstorm complete through Section 5; spec doc not yet written due to guardrail blocker (below).
+**Last updated:** 2026-05-28 (F1-b Tasks 1-3 shipped, branch pushed)
+**Branch:** `feat/f1-b-refresh-rotation` (pushed to origin)
+**Plan doc:** `axhy-v3/docs/plans/2026-05-28-f1-b-refresh-rotation.md`
 
-## New permanent rule from this session (founder direction 2026-05-27 ~2:50p IST)
+## What shipped 2026-05-28
 
-**Rule:** Any medium-to-major refactor or new code change at the system level (auth, schema, state machines, multi-tenant boundaries, anything under `apps/backend/src/middleware/`, schema changes on active tables) requires **enterprise-grade QA** before "done" — NOT just unit tests + one happy-path integration test.
+### Cognitive system: Compact-aware read-cache reflex (commit `8e4dbcd` on axhy-cognitive-system main)
 
-**Required for done on this tier:**
+- `wasFileReadRecently()` now checks compaction events instead of 10-min timer
+- PostCompact hook writes `last_compact_at` marker; pre-edit-guard consumes it
+- 37 tests green. Architectural doc: `axhy-cognitive-system/docs/THREE_LOOP_MODEL.md`
 
-1. Unit tests (every branch).
-2. Real-DB integration tests via `railway run -- pnpm --filter @axhy/backend test:integration`. No mocked Prisma.
-3. Prod-grade QA walk against Railway production with each affected persona token. Inspect data shape, side-effect tables, latency, and audit trail per the 2026-05-27 four-layer learning.
-4. Adversarial pass — explicitly attempt the failure modes the change is meant to prevent (each must 401/403/fail correctly).
-5. Cross-persona panel review (worker, supervisor, HR, COMPANY_ADMIN, SUPER_ADMIN).
-6. Findings doc `_QA_FINDINGS_<date>.md` in `axhy-v3/handoff/` (nil report acceptable).
-7. `check_before_done` runs all of the above as a structural gate.
+### F1-a: Trust model schema + requireAuth (PR #6 merged to main)
 
-**Why:** Founder quote: "if there are big changes like this... need proper QA prod enterprise level testing." Scale of change demands proportional verification.
+- Migration 020: `User.is_platform_admin`, `Membership.token_epoch`
+- `requireAuth` dual-mode: new-format validated against DB; legacy accepted in compat mode
+- 39/39 tests across 10 files. Enterprise QA findings committed.
 
-**Saved:** `axhy-cognitive-system/memory/base/feedback_major_changes_need_enterprise_qa.md` (commit `4f289db`). Will be embedded on next brain:build.
+### F1-b Tasks 1-3: RefreshToken store + unit tests (branch, NOT merged)
+
+- **`e435c0f`:** Migration 021 (RefreshToken table, 14 cols, 5 indexes, 2 FKs cascade) + Prisma model
+- **`96bdf78`:** `refresh-token-store.ts` — create/validate/rotate/revokeForCompromise/revokeForLogout + 12/12 unit tests green
+
+## Resume at Task 4
+
+| Task  | Description                             | Status      |
+| ----- | --------------------------------------- | ----------- |
+| 1     | Migration + Prisma RefreshToken model   | ✅          |
+| 2     | refresh-token-store.ts implementation   | ✅          |
+| 3     | 12/12 unit tests for store              | ✅          |
+| **4** | **POST /auth/refresh route + register** | 🔜 Next     |
+| 5-6   | 7 integration tests                     | Not started |
+| 7     | Swap /auth/otp/verify to opaque tokens  | Not started |
+| 8     | Mobile interceptor + tests              | Not started |
+| 9     | Audit pattern                           | Not started |
+| 10    | Enterprise QA + PR                      | Not started |
+
+## First thing next session
+
+1. `git checkout feat/f1-b-refresh-rotation`
+2. Read plan: `docs/plans/2026-05-28-f1-b-refresh-rotation.md` Task 4
+3. Verify: `pnpm --filter @axhy/backend vitest run src/lib/services/refresh-token-store.test.ts`
+4. Implement Task 4: `POST /auth/refresh` in `apps/backend/src/routes/auth-refresh.ts`
+
+## Session token snapshot (2026-05-28 F1-b session)
+
+- cost: 1.10M 🟢 | context: 217.4K/turn 🟠 context_orange (stop trigger)
+- 169 turns, 102 tool calls
+
+---
+
+## Permanent enterprise-QA rule (founder direction 2026-05-27)
+
+**Rule:** Any medium-to-major refactor or new code change at the system level requires **enterprise-grade QA** before "done."
+
+**Required:** (1) Unit tests, (2) Real-DB integration tests, (3) Prod-grade QA walk per persona, (4) Adversarial pass, (5) Cross-persona panel, (6) Findings doc, (7) `check_before_done` gate.
+
+**Saved:** `axhy-cognitive-system/memory/base/feedback_major_changes_need_enterprise_qa.md` (commit `4f289db`).
 
 ## F1 spec — decisions locked in this session
 
