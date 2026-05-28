@@ -38,6 +38,11 @@ export async function issueAccessToken(input: {
   role: Role;
   availableRoles: ReadonlyArray<Role>;
   locale: string;
+  // F1 trust model — optional during compat window. Always supplied by
+  // /auth/otp/verify going forward. @derives(F1 trust model 2026-05-27)
+  membershipId?: string;
+  epoch?: number;
+  isPlatformAdmin?: boolean;
 }): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const claims: JWTClaimsType = {
@@ -49,6 +54,9 @@ export async function issueAccessToken(input: {
     iat: now,
     exp: now + ACCESS_TTL_SECONDS,
     kind: 'access',
+    ...(input.membershipId !== undefined ? { membershipId: input.membershipId } : {}),
+    ...(input.epoch !== undefined ? { epoch: input.epoch } : {}),
+    ...(input.isPlatformAdmin !== undefined ? { isPlatformAdmin: input.isPlatformAdmin } : {}),
   };
   return await new SignJWT(claims as unknown as Record<string, unknown>)
     .setProtectedHeader({ alg: 'HS256' })
