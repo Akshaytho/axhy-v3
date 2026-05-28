@@ -46,6 +46,13 @@ const SCAN_EXTS = new Set(['.md', '.prisma', '.mmd']);
 // rules. These must be in the brain for retrieval-based boot (Book Architecture).
 const COG_ROOT = join(REPO_ROOT, '..', 'axhy-cognitive-system');
 const COG_SCAN_DIRS = ['docs', join('memory', 'base'), join('memory', 'v3')];
+
+// Auto-memory directory: Claude Code writes session memory and learnings here.
+// Path is fixed by the harness (system prompt designates it). If unset (HOME
+// unavailable) or directory missing, existsSync skips gracefully below.
+const AUTO_MEMORY_DIR = process.env.HOME
+  ? join(process.env.HOME, '.claude', 'projects', '-Users-thotaakshay-eclean-workspace', 'memory')
+  : '';
 const IGNORE_DIRS = new Set([
   'node_modules',
   'dist',
@@ -535,6 +542,17 @@ async function main() {
     const added = allFiles.length - before;
     if (added > 0) {
       console.log(`[brain] Found ${added} files from axhy-cognitive-system`);
+    }
+  }
+
+  // Include auto-memory written by Claude Code (session feedback, learnings).
+  // The path is fixed by the harness; existsSync skips gracefully when absent.
+  if (AUTO_MEMORY_DIR && existsSync(AUTO_MEMORY_DIR)) {
+    const before = allFiles.length;
+    walk(AUTO_MEMORY_DIR, allFiles);
+    const added = allFiles.length - before;
+    if (added > 0) {
+      console.log(`[brain] Found ${added} files from auto-memory (~/.claude/projects/...)`);
     }
   }
 
