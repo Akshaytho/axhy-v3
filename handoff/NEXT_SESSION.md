@@ -1,6 +1,6 @@
-# Next Session — Resume F1-b at Task 7
+# Next Session — Resume F1-b at Task 10 (Enterprise QA + PR)
 
-**Last updated:** 2026-05-28 evening (F1-b Tasks 4–6 shipped, branch 1 commit ahead of origin)
+**Last updated:** 2026-05-28 night (F1-b Tasks 7+8+9 shipped — code-complete on backend + mobile + audit guard)
 **Branch:** `feat/f1-b-refresh-rotation`
 **Plan doc:** `axhy-v3/docs/plans/2026-05-28-f1-b-refresh-rotation.md`
 
@@ -35,31 +35,43 @@
 - **Result: 11/11 tests + 1 skipped (no-Redis fallback case); Test Files 7/7 green** — see `docs/evidence/2026-05-28/EVID-002.md`
 - One iteration: rate-limit bucket pollution across parallel files fixed by giving each file a unique `remoteAddress` in `app.inject()`
 
-## Resume at Task 7
+## Resume at Task 10
 
-| Task  | Description                                | Status       |
-| ----- | ------------------------------------------ | ------------ |
-| 1     | Migration + Prisma RefreshToken model      | ✅ `e435c0f` |
-| 2     | refresh-token-store.ts implementation      | ✅ `96bdf78` |
-| 3     | 12/12 unit tests for store                 | ✅           |
-| 4     | POST /auth/refresh route + register        | ✅ `0015b2a` |
-| 5-6   | 7 integration tests (11 passed)            | ✅ EVID-002  |
-| **7** | **Swap /auth/otp/verify to opaque tokens** | 🔜 Next      |
-| 8     | Mobile interceptor + tests                 | Not started  |
-| 9     | Audit pattern                              | Not started  |
-| 10    | Enterprise QA + PR                         | Not started  |
+| Task   | Description                                          | Status                            |
+| ------ | ---------------------------------------------------- | --------------------------------- |
+| 1      | Migration + Prisma RefreshToken model                | ✅ `e435c0f`                      |
+| 2      | refresh-token-store.ts implementation                | ✅ `96bdf78`                      |
+| 3      | 12/12 unit tests for store                           | ✅                                |
+| 4      | POST /auth/refresh route + register                  | ✅ `0015b2a`                      |
+| 5-6    | 7 integration tests (11/11 passed)                   | ✅ EVID-002                       |
+| 7      | `/auth/otp/verify` swap + delete `issueRefreshToken` | ✅ this session                   |
+| 8      | Mobile interceptor + `replaceTokens` + 5/5 tests     | ✅ this session                   |
+| 9      | Audit pattern for legacy refresh tokens              | ✅ this session                   |
+| **10** | **Enterprise QA matrix + findings doc + PR**         | 🔜 **NEXT** (fresh-eyes required) |
 
-## First thing next session
+## What shipped this session (Tasks 7+8+9)
 
-1. `git checkout feat/f1-b-refresh-rotation` (already pushed to origin)
-2. Read plan: `docs/plans/2026-05-28-f1-b-refresh-rotation.md` Task 7
-3. Implement Task 7: in `apps/backend/src/routes/auth.ts` `/auth/otp/verify`, replace `issueRefreshToken(user.id)` with `refreshTokenStore.create({ userId, membershipId, userAgent, ipFirst })` then delete `issueRefreshToken` from `jwt.ts`. Run `tsc --noEmit` to find call sites.
-4. Re-run F1-a `auth-flow-new-format.test.ts` — must still pass; refresh token now starts with `axrt_`.
+- **Task 7:** `apps/backend/src/routes/auth.ts` `/auth/otp/verify` now calls `refreshTokenStore.create({ userId, membershipId, userAgent, ipFirst })`. `issueRefreshToken` deleted from `apps/backend/src/lib/jwt.ts`. F1-a regression `auth-flow-new-format.test.ts` re-ran green against Railway prod.
+- **Task 8:** `apps/mobile/lib/api.ts` wraps fetch with refresh-on-401 + per-process mutex + `AUTH_LEGACY_REFRESH` wipe path. `apps/mobile/lib/auth-store.ts` gains atomic `replaceTokens` (no `activeRole` write so identity-lifecycle invariants hold). `apps/mobile/lib/api.test.ts` covers 5 scenarios (happy retry, AUTH_LEGACY_REFRESH wipe, INVALID_REFRESH wipe, concurrent-mutex, no `/auth/*` recursion). Mobile lib sweep 81/81 green.
+- **Task 9:** `docs/learnings/2026-05-28-all-refresh-tokens-must-be-opaque.md` added with `check_pattern: 'issueRefreshToken|kind:[''"]refresh[''"]'` scoped to `apps/backend/src` + `apps/mobile/lib`. Audit now runs 15/15 learned checks, zero new violations. The single legitimate test-side hit at `apps/backend/test/auth-refresh-legacy-reject.test.ts:40` is exempted via `// audit-ok` (and `test/` is already out of `check_paths` scope).
 
-## Session token snapshot (2026-05-28 F1-b session)
+## First thing next session — Task 10
 
-- cost: 1.10M 🟢 | context: 217.4K/turn 🟠 context_orange (stop trigger)
-- 169 turns, 102 tool calls
+1. `git checkout feat/f1-b-refresh-rotation` (pushed to origin)
+2. Read plan: `docs/plans/2026-05-28-f1-b-refresh-rotation.md` Task 10
+3. Run the 5-persona walk against Railway prod (worker, supervisor, HR, COMPANY_ADMIN, SUPER_ADMIN): for each, mint a token → hit a protected route → wait for access TTL → call `/auth/refresh` → reuse old refresh after 11s → verify family revoke + epoch bump.
+4. Run the adversarial pass (token theft, rate-limit brute force, replay, 50-parallel race, cross-family).
+5. Write `handoff/F1_B_QA_FINDINGS_2026-05-28.md` with sections: scope, personas walked, adversarial scenarios, data-shape inspection (RefreshToken rows after walk), side-effects (`tokenEpoch` deltas, Redis key churn), latency profile (refresh p95 against Railway).
+6. Call `check_before_done` with `flow_completeness` enumerating every persona + adversarial scenario.
+7. Open PR against main with all F1-b commits.
+
+**Why fresh session for Task 10:** Enterprise-QA discipline rule (`feedback_major_changes_need_enterprise_qa.md`) requires fresh adversarial eyes — bundling QA with the code it must scrutinize is the failure mode the rule exists to prevent.
+
+## Session token snapshot (2026-05-28 night F1-b code-complete session)
+
+- Tasks 7+8+9 fit comfortably under context_orange thanks to lean tool-output discipline
+- Boot was full `load axhy system` — audit + brain:build + brain-first orientation
+- Major bug avoided: mobile mutex test initially failed (urlHits filter logic) — fixed with per-URL Map counter
 
 ---
 
