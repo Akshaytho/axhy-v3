@@ -49,6 +49,15 @@ export const RedisKeys = {
   // TTL: 5min (storage), 15min (rate-limit window). Owner: lib/otp-store.ts.
   otpStore: (phone: string): string => k(`otp:phone:${phone}`),
   otpRateLimit: (phone: string): string => k(`otp:rl:${phone}`),
+
+  // ── F1-b refresh-token family hot path (STRING, current SHA-256 hex) ──
+  // TTL: 31 days sliding (REFRESH_TTL + 1 day slack).
+  // Owner: lib/services/refresh-token-store.ts.
+  refreshCurrentHash: (familyId: string): string => k(`rt:cur:${familyId}`),
+
+  // ── F1-b refresh-token rate limit (sliding-window ZSET, per IP) ───────
+  // TTL: 60s window. Cap: 10/min. Owner: routes/auth-refresh.ts.
+  refreshRateLimit: (ip: string): string => k(`rl:authrefresh:${ip}`),
 } as const;
 
 /** Read the current env namespace — useful for tests + diagnostics. */
