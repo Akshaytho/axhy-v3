@@ -245,9 +245,7 @@ export interface RefreshTokenStore {
     ipFirst?: string;
   }): Promise<{ familyId: string; plainToken: string; expiresAt: Date }>;
 
-  validate(
-    plainToken: string,
-  ): Promise<
+  validate(plainToken: string): Promise<
     | { found: false }
     | {
         found: true;
@@ -310,7 +308,7 @@ Logic:
    - `found: false` → 401 `INVALID_REFRESH`
    - `revoked` → 401 `REFRESH_REVOKED`
    - `compromise` → revokeForCompromise + 401 `INVALID_REFRESH` (don't tell attacker we detected)
-   - `withinGrace` → use the family; do NOT rotate (it's a race retry — return the current token, not a new one)
+   - `withinGrace` → rotate the family and return the freshly minted token. (Amended 2026-05-28: the original spec said "return the current token, not a new one" but refresh-token-store keeps only SHA-256 hashes at rest — plaintext T2 cannot be re-produced on a retry. Re-rotating preserves the locked compromise-detection property: rotated-token reuse OUTSIDE grace still triggers family revoke + tokenEpoch++. The in-grace race is absorbed without false-positive. Rate limit caps any amplification at 10/min/IP. See apps/backend/src/routes/auth-refresh.ts:130-227.)
    - happy path → `rotate(familyId)` → re-issue access token with current Membership claims (look up Membership again to catch role/status changes since last refresh) → return `{ accessToken, refreshToken: newPlain, expiresIn: 900 }`
 
 5. For SUPER_ADMIN (membershipId null on the family row): re-issue access via the same SUPER_ADMIN code path used in `/auth/otp/verify` (companyId placeholder, role='SUPER_ADMIN', isPlatformAdmin=true). Re-verify `User.is_platform_admin` is STILL true (someone may have revoked since login).
@@ -335,7 +333,7 @@ Each test uses Magic Bypass OTP + Founder phone (per F1-a precedent in `auth-flo
 
 - [ ] **Step 1: happy path** — `verifyOtp` → use access → access TTL elapsed → refresh → use new access → refresh again. Assert new tokens differ from old. Assert old refresh no longer accepted (after grace window).
 
-- [ ] **Step 2: rotation grace** — `verifyOtp` → refresh → IMMEDIATELY refresh again with the OLD token (simulates network race) → both calls succeed (second returns the same rotated token issued by the first, NOT a third rotation). After 11 s, the old token returns 401 INVALID_REFRESH (rotated-out + grace expired).
+- [ ] **Step 2: rotation grace** — `verifyOtp` → refresh → IMMEDIATELY refresh again with the OLD token (simulates network race) → both calls succeed. Second call returns a FRESH token (T3, distinct from T2) because the store retains hashes only — see Task 4 amendment. Assert: T1, T2, T3 all distinct; both responses carry valid 200 access tokens; family row reflects T3 as `currentTokenHash` and T2 as `previousTokenHash`. After 11 s, the OLD token T1 returns 401 INVALID_REFRESH (rotated-out + grace expired).
 
 - [ ] **Step 3: compromise detect** — `verifyOtp` → refresh (legitimate user; old token rotated out) → wait 11 s → attacker presents the ROTATED-OUT old token → 401 INVALID_REFRESH → verify family is `revokedAt!=null`, `revokedReason='COMPROMISE'` → verify `Membership.tokenEpoch` bumped → verify the legitimate user's NEXT access-token-protected call returns 401 EPOCH_MISMATCH (because epoch bumped). User must re-OTP.
 
