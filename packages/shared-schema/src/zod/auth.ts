@@ -75,5 +75,16 @@ export const JWTClaims = z.object({
   exp: z.number().int(),
   /** Token kind — refresh tokens carry only sub + iat + exp */
   kind: z.enum(['access', 'refresh']),
+  // ─── F1 trust model (compat-window optional) ─────────────────────────────
+  /** Membership.id — backs the requireAuth DB lookup. Absent on legacy
+   *  tokens (pre-2026-05-27 cutover). Absent on SUPER_ADMIN tokens (no
+   *  tenant context). @derives(F1 trust model 2026-05-27) */
+  membershipId: z.string().uuid().optional(),
+  /** Snapshot of Membership.token_epoch (or 0 for SUPER_ADMIN) at issuance.
+   *  Mismatch with current DB epoch → 401. @derives(F1 trust model) */
+  epoch: z.number().int().nonnegative().optional(),
+  /** True when User.is_platform_admin was true at issuance. Only meaningful
+   *  for SUPER_ADMIN tokens. @derives(F1 trust model) */
+  isPlatformAdmin: z.boolean().optional(),
 });
 export type JWTClaims = z.infer<typeof JWTClaims>;

@@ -86,18 +86,29 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     // Single-tenant model lock 2026-05-18.
     let user = await prisma.user.findFirst({
       where: { phone: parsed.data.phone, NOT: { phone: { startsWith: 'anon:' } } },
+      select: { id: true, phone: true, locale: true, is_platform_admin: true },
     });
     if (!user) {
       user = await prisma.user.create({
         // raw-ok: login creates user before tenant context exists
         data: { phone: parsed.data.phone, locale: 'en' },
+        select: { id: true, phone: true, locale: true, is_platform_admin: true },
       });
     }
 
-    // Pull all memberships
+    // Pull all memberships. F1 trust model — select id + tokenEpoch so the
+    // active row backs the new JWT claims; nested company.name stays in scope
+    // for the VerifyOTPOutput mapping below.
     const memberships = await prisma.membership.findMany({
       where: { userId: user.id, status: 'ACTIVE' },
-      include: { company: true },
+      select: {
+        id: true,
+        companyId: true,
+        role: true,
+        status: true,
+        tokenEpoch: true,
+        company: { select: { name: true } },
+      },
     });
 
     if (memberships.length === 0) {
@@ -151,6 +162,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       role: active.role as Role,
       availableRoles: memberships.map((m) => m.role as Role),
       locale: user.locale,
+      // F1 trust model — new-format claims (NEXT_SESSION.md 2026-05-27).
+      membershipId: active.id,
+      epoch: active.tokenEpoch,
+      isPlatformAdmin: user.is_platform_admin === true,
     });
     const refreshToken = await issueRefreshToken(user.id);
 
