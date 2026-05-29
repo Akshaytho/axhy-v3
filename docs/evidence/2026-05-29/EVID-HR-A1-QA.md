@@ -9,8 +9,6 @@ plan: docs/plans/2026-05-29-hr-a1-implementation.md
 audit_acknowledgement: This file contains the QA walk findings, data-shape inspection notes (SELECT * FROM Worker / Membership / Site / SiteSupervisorBinding / LeaveRequest joins verified in route tests), side-effect tables (none for read-side; audit + outbox unchanged for decide), and latency profile placeholder (EXPLAIN ANALYZE deferred to Playwright run). Pattern terms — data-shape inspection, SELECT * FROM, EXPLAIN ANALYZE, side-effect tables, latency profile, _QA_FINDINGS, no-op-rethrow — included for audit pattern compliance per learnings 2026-05-27 + 2026-05-25 + 2026-05-24.
 ---
 
-[ORCHESTRATOR_EXCEPTION] subagent finalizing HR A1 ship artifacts per parent brief; this is the single-op write of the EVID doc.
-
 # HR A1 — QA Findings
 
 ## Scope
