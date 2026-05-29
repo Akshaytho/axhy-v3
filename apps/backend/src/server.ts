@@ -30,6 +30,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerAuthRefreshRoutes } from './routes/auth-refresh.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerWorkerConsentRoutes } from './routes/worker-consent.js';
 import { registerWorkerTodayRoutes } from './routes/worker-today.js';
@@ -153,6 +154,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     });
   });
   await registerAuthRoutes(app);
+  await registerAuthRefreshRoutes(app);
   await registerMeRoutes(app);
   await registerWorkerConsentRoutes(app);
   await registerWorkerTodayRoutes(app);

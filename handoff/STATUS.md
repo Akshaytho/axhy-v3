@@ -2,8 +2,10 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-25 (super-admin-owner-bootstrap landed + live in prod)
-**Active phase:** **super-admin-owner-bootstrap DONE** (2026-05-25, commit `b7a1cbb`, pushed + Railway-deployed). New route `POST /super-admin/memberships` seats the first OWNER of a tenant — unblocks the 5 wave-2 admin/HR routes which all require OWNER or HR auth. 5/5 integration tests against Railway prod DB. Founder OWNER `fbb2da2f-0080-40eb-9113-fa6820caad57` (User `17285e17-9434-4522-9ac1-1cec1cbea31f`, phone `+919381378257`) seated in QA Test Co `2d2f1ccb-7bf8-4890-ae59-c5cb14b00289` via live curl against backend-production-344e1.up.railway.app. **Previous:** admin-hr-backend-wave-2-prep DONE (commits `f40bfb3..4127bb0`, pushed). Cluster B DONE (2026-05-25). Cluster A DONE (`7ed1e80`, 2026-05-24). Worker MVP sub-slice 2b-4 DONE (`08c65a5`, 2026-05-23). **Next:** Wave 2 cross-persona QA can now exercise the full hierarchy — founder OWNER token → creates HR → HR creates SUPERVISOR/WORKER + Sites + Bindings.
+**Last updated:** 2026-05-28
+**Active phase:** **F1-b refresh rotation IN PROGRESS** (Tasks 1-3 done, branch `feat/f1-b-refresh-rotation` pushed). RefreshToken table live on Railway prod (migration 021). Store implementation complete with family detection + 12/12 unit tests. Next: Task 4 (POST /auth/refresh route).
+**Previous:** F1-a trust model DONE (PR #6 merged, migration 020). Cognitive system reflex shipped (commit `8e4dbcd` — compact-aware read-cache + Three-Loop Model). Wave 2 QA findings documented (25 findings). Super-admin-owner-bootstrap DONE (`b7a1cbb`). Cluster B DONE. Cluster A DONE (`7ed1e80`). Worker MVP 2b-4 DONE (`08c65a5`).
+**Next:** Resume F1-b at Task 4 → Tasks 5-10 → merge → F1-c (TTL + logout-everywhere) → F1-d (strict mode flip).
 
 ## Worker MVP slice tracker
 
