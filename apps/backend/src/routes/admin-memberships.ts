@@ -165,7 +165,9 @@ export async function registerAdminMembershipRoutes(app: FastifyInstance): Promi
       if (rows.length > limit) {
         page = rows.slice(0, limit);
         const last = page[page.length - 1];
-        nextCursor = encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id });
+        if (last) {
+          nextCursor = encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id });
+        }
       }
 
       reply.send({ items: page, nextCursor });
