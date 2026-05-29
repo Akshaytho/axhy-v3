@@ -1,7 +1,12 @@
-// [ORCHESTRATOR_EXCEPTION] Task 2 subagent execution — implementing pod-scope helpers per docs/plans/2026-05-29-hr-a1-implementation.md.
+// [ORCHESTRATOR_EXCEPTION] Task 2 subagent re-create with ADR-format JSDoc to satisfy strict axhy/require-derives regex.
 import type { PrismaClient } from '@prisma/client';
 
-/** @derives(ADR-0026) */
+/**
+ * Thrown by requirePodOwnership when the caller is neither primary nor backup
+ * owner of the target HRPod within their company.
+ *
+ * @derives(ADR-0026)
+ */
 export class PodOwnershipError extends Error {
   constructor(message = 'NOT_POD_OWNER') {
     super(message);
@@ -9,7 +14,13 @@ export class PodOwnershipError extends Error {
   }
 }
 
-/** @derives(ADR-0026) */
+/**
+ * Returns the set of HRPod ids the given user owns (primary or backup) within
+ * the caller's company. Used by HR list/detail handlers to scope queries to
+ * only the pods the caller is responsible for.
+ *
+ * @derives(ADR-0026)
+ */
 export async function getMyPodIds(
   prisma: PrismaClient,
   userId: string,
@@ -25,7 +36,13 @@ export async function getMyPodIds(
   return rows.map((r) => r.id);
 }
 
-/** @derives(ADR-0026) */
+/**
+ * Throws PodOwnershipError unless the given user is primary or backup owner of
+ * the target HRPod within the caller's company. Use at the top of any handler
+ * that mutates pod-scoped resources.
+ *
+ * @derives(ADR-0026)
+ */
 export async function requirePodOwnership(
   prisma: PrismaClient,
   podId: string,
