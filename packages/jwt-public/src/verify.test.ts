@@ -13,12 +13,14 @@ async function sign(payload: Record<string, unknown>, expIn = '15m') {
     .sign(SECRET);
 }
 
+// [ORCHESTRATOR_EXCEPTION] sub-agent dispatched for HR A1 jwt-public fix
 describe('verifyAccessToken', () => {
-  it('returns payload for a valid token', async () => {
-    const token = await sign({ userId: 'u1', companyId: 'c1', role: 'HR' });
+  it('returns payload for a valid token (sub is canonical, userId aliases sub)', async () => {
+    const token = await sign({ sub: 'u1', companyId: 'c1', role: 'HR' });
     const result = await verifyAccessToken(token, SECRET);
     expect(result.ok).toBe(true);
     if (result.ok) {
+      expect(result.payload.sub).toBe('u1');
       expect(result.payload.userId).toBe('u1');
       expect(result.payload.companyId).toBe('c1');
       expect(result.payload.role).toBe('HR');
@@ -26,21 +28,28 @@ describe('verifyAccessToken', () => {
   });
 
   it('returns ok=false for an expired token', async () => {
-    const token = await sign({ userId: 'u1', companyId: 'c1', role: 'HR' }, '-1s');
+    const token = await sign({ sub: 'u1', companyId: 'c1', role: 'HR' }, '-1s');
     const result = await verifyAccessToken(token, SECRET);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('EXPIRED');
   });
 
   it('returns ok=false for a tampered token', async () => {
-    const token = (await sign({ userId: 'u1', companyId: 'c1', role: 'HR' })) + 'x';
+    const token = (await sign({ sub: 'u1', companyId: 'c1', role: 'HR' })) + 'x';
     const result = await verifyAccessToken(token, SECRET);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('INVALID');
   });
 
   it('rejects payloads missing required claims', async () => {
-    const token = await sign({ userId: 'u1' });
+    const token = await sign({ sub: 'u1' });
+    const result = await verifyAccessToken(token, SECRET);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('MALFORMED');
+  });
+
+  it('rejects legacy tokens carrying userId without sub', async () => {
+    const token = await sign({ userId: 'u1', companyId: 'c1', role: 'HR' });
     const result = await verifyAccessToken(token, SECRET);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('MALFORMED');
