@@ -15,7 +15,6 @@ import { JWTClaims } from '@axhy/shared-schema';
 import type { JWTClaims as JWTClaimsType, Role } from '@axhy/shared-schema';
 
 const ACCESS_TTL_SECONDS = Number(process.env.JWT_ACCESS_TTL_SECONDS ?? 900);
-const REFRESH_TTL_SECONDS = Number(process.env.JWT_REFRESH_TTL_SECONDS ?? 2_592_000);
 
 function getSecret(): Uint8Array {
   const raw = process.env.JWT_SECRET;
@@ -59,23 +58,6 @@ export async function issueAccessToken(input: {
     ...(input.isPlatformAdmin !== undefined ? { isPlatformAdmin: input.isPlatformAdmin } : {}),
   };
   return await new SignJWT(claims as unknown as Record<string, unknown>)
-    .setProtectedHeader({ alg: 'HS256' })
-    .sign(getSecret());
-}
-
-/**
- * Issue a refresh token. Carries only `sub`, `iat`, `exp`, `kind: refresh`.
- *
- * @derives(ADR-0007)
- */
-export async function issueRefreshToken(userId: string): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  return await new SignJWT({
-    sub: userId,
-    kind: 'refresh',
-    iat: now,
-    exp: now + REFRESH_TTL_SECONDS,
-  })
     .setProtectedHeader({ alg: 'HS256' })
     .sign(getSecret());
 }

@@ -91,76 +91,117 @@ model Company {
 // ============================================================================
 
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
+  id                String   @id @default(uuid()) @db.Uuid
   /// @personal phone is the primary login; E.164 format
-  phone     String   @unique @db.VarChar(16)
+  phone             String   @unique @db.VarChar(16)
   /// @personal full legal name
-  name      String?
+  name              String?
   /// @personal preferred locale
-  locale    String   @default("en") @db.VarChar(8)
-  status    String   @default("ACTIVE")
+  locale            String   @default("en") @db.VarChar(8)
+  status            String   @default("ACTIVE")
   /// F1 trust model — platform-admin bit. True only for SUPER_ADMIN-tier
   /// operators. Cannot live on Membership because SUPER_ADMIN carries no
   /// tenant. @derives(F1 trust model 2026-05-27)
-  is_platform_admin Boolean @default(false) @map("is_platform_admin")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  is_platform_admin Boolean  @default(false) @map("is_platform_admin")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   memberships Membership[]
   Company     Company?     @relation(fields: [companyId], references: [id])
   companyId   String?      @db.Uuid
 
-  workerProfile      Worker?
-  devices            Device[]
+  workerProfile              Worker?
+  devices                    Device[]
   // P1.5 SiteSupervisorBinding back-relations (2026-05-15)
-  supervisorBindings SiteSupervisorBinding[] @relation("BindingSupervisor")
-  actingForBindings  SiteSupervisorBinding[] @relation("BindingActingFor")
+  supervisorBindings         SiteSupervisorBinding[] @relation("BindingSupervisor")
+  actingForBindings          SiteSupervisorBinding[] @relation("BindingActingFor")
   // F28 ReplacementInvite back-relations (2026-05-18 — Wave 1 backend)
-  sentReplacementInvites     ReplacementInvite[] @relation("ReplacementInviteFromSupervisor")
-  receivedReplacementInvites ReplacementInvite[] @relation("ReplacementInviteToWorker")
+  sentReplacementInvites     ReplacementInvite[]     @relation("ReplacementInviteFromSupervisor")
+  receivedReplacementInvites ReplacementInvite[]     @relation("ReplacementInviteToWorker")
   // F-006b 2026-05-21 — DPDP one-page consent. Append-only.
   consentLogs                ConsentLog[]
+  // F1-b 2026-05-28 — refresh-token families (opaque, rotating).
+  refreshTokens              RefreshToken[]
 
   @@index([companyId])
   @@schema("axhy")
 }
 
 model Membership {
-  id        String   @id @default(uuid()) @db.Uuid
-  companyId String   @db.Uuid
-  userId    String   @db.Uuid
-  role      String
-  status    String   @default("ACTIVE")
+  id              String   @id @default(uuid()) @db.Uuid
+  companyId       String   @db.Uuid
+  userId          String   @db.Uuid
+  role            String
+  status          String   @default("ACTIVE")
   /// F1 trust model — bump on revoke / anonymize / role change to instantly
   /// invalidate every outstanding access token tied to this membership.
   /// @derives(F1 trust model 2026-05-27)
-  tokenEpoch Int @default(0) @map("token_epoch")
+  tokenEpoch      Int      @default(0) @map("token_epoch")
   /// HR pod assignment (per workflow-design-closure §4). Only meaningful when
   /// role = HR. NULL for all other roles. Layer 1 schema-only; Layer 2 wires
   /// the queue partitioning + fallback semantics.
   /// @derives(workflow-design-closure §4)
-  podId     String?  @db.Uuid
+  podId           String?  @db.Uuid
   /// Monthly salary in paise (₹1 = 100 paise). 0 for unpaid roles
   /// (SUPER_ADMIN, optional COMPANY_ADMIN). Every paid role lives here.
   /// @derives(ADR-0025)
-  baseSalaryPaise Int @default(0)
+  baseSalaryPaise Int      @default(0)
   /// @personal bank IFSC for payroll transfer.
   /// @derives(ADR-0025)
-  bankIfsc  String?  @db.VarChar(16)
+  bankIfsc        String?  @db.VarChar(16)
   /// @personal bank account number for payroll transfer.
   /// @derives(ADR-0025)
-  bankAcct  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  bankAcct        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hrPod   HRPod?  @relation(fields: [podId], references: [id], onDelete: SetNull)
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hrPod         HRPod?         @relation(fields: [podId], references: [id], onDelete: SetNull)
+  // F1-b 2026-05-28 — refresh-token families anchored to this membership.
+  refreshTokens RefreshToken[]
 
   @@unique([companyId, userId, role])
   @@index([companyId])
   @@index([userId])
   @@index([companyId, podId])
+  @@schema("axhy")
+}
+
+/// F1-b trust model — opaque refresh-token family. One row per device-session.
+/// Reuse of a rotated token outside the 10-second grace window triggers
+/// compromise response: family revoked + Membership.token_epoch bumped
+/// (kills every outstanding access token tied to that membership too).
+///
+/// Token format: axrt_<base64url(32 random bytes)>. SHA-256 hex stored
+/// at rest (currentTokenHash, previousTokenHash). Plaintext never persists.
+///
+/// @derives(F1 trust model 2026-05-27, slice f1-b)
+model RefreshToken {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  /// NULL only for SUPER_ADMIN families (no tenant).
+  membershipId      String?   @db.Uuid
+  currentTokenHash  String    @unique @db.VarChar(64)
+  /// Held for 10 seconds after rotation to absorb mobile network races.
+  previousTokenHash String?   @db.VarChar(64)
+  previousRotatedAt DateTime? @db.Timestamptz
+  createdAt         DateTime  @default(now()) @db.Timestamptz
+  lastUsedAt        DateTime  @default(now()) @db.Timestamptz
+  expiresAt         DateTime  @db.Timestamptz
+  revokedAt         DateTime? @db.Timestamptz
+  /// LOGOUT | COMPROMISE | EXPIRED | ADMIN_REVOKE
+  revokedReason     String?   @db.VarChar(32)
+  userAgent         String?   @db.VarChar(256)
+  ipFirst           String?   @db.VarChar(64)
+  ipLast            String?   @db.VarChar(64)
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membership Membership? @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([membershipId])
+  @@index([previousTokenHash])
   @@schema("axhy")
 }
 
@@ -184,13 +225,13 @@ model Site {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company     Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  visits      Visit[]
-  complaints  Complaint[]
-  swaps       SwapRequest[]
-  assignments Assignment[]
+  company            Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  visits             Visit[]
+  complaints         Complaint[]
+  swaps              SwapRequest[]
+  assignments        Assignment[]
   // P1.5 SiteSupervisorBinding (2026-05-15)
-  bindings    SiteSupervisorBinding[]
+  bindings           SiteSupervisorBinding[]
   // F28 ReplacementInvite (2026-05-18 — Wave 1 backend)
   replacementInvites ReplacementInvite[]
 
@@ -265,10 +306,10 @@ model Visit {
   correctionReason String?
   correctionNote   String?
 
-  company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  worker  Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
-  site    Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  photos  VisitPhoto[]
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  worker             Worker              @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  site               Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  photos             VisitPhoto[]
   // F28 ReplacementInvite (2026-05-18 — Wave 1 backend; visit may be the cover target)
   replacementInvites ReplacementInvite[]
 
@@ -679,53 +720,53 @@ model Attendance {
 /// @derives(data-flow §5 — log site complaint NOTE tier)
 /// @derives(panel-2026-05-08) — Phase B.2 domain table
 model Complaint {
-  id                    String    @id @default(uuid()) @db.Uuid
-  companyId             String    @db.Uuid
-  siteId                String    @db.Uuid
+  id                   String    @id @default(uuid()) @db.Uuid
+  companyId            String    @db.Uuid
+  siteId               String    @db.Uuid
   /// User.id of the supervisor who logged the complaint (composite-keyed
   /// with companyId; NOT Membership.id). See feedback_supervisor_id_is_user_id.md.
-  supervisorId          String    @db.Uuid
+  supervisorId         String    @db.Uuid
   /// User.id of the supervisor who created the complaint via chat or the
   /// site complaint button. Equals supervisorId for now; kept as a distinct
   /// FK so chat-driven complaints attribute correctly under acting-supervisor
   /// windows where supervisorId is the bound supervisor but createdByUserId
   /// is the acting supervisor. Wave 3 chat intent classifier sets this from
   /// req.auth.userId at the moment of creation.
-  createdByUserId       String    @db.Uuid
+  createdByUserId      String    @db.Uuid
   /// short complaint text — supervisor's words via voice or button flow.
   /// Mirrored as the body of the initial ComplaintMessage row so the thread
   /// view doesn't need a UNION with the parent row.
-  text                  String
+  text                 String
   /// LOW | MEDIUM | HIGH (NOTE-tier severity)
-  severity              String    @default("LOW")
+  severity             String    @default("LOW")
   /// Complaint kind enum — drives mobile filtering, HR triage queues, and
   /// scenario reporting. One of: photo_mismatch | missed_area | attitude |
   /// theft_accusation | hygiene | noise | damage | gate_pass | other.
   /// Defaults to 'other' for back-compat with pre-Wave-3 rows; DB-level
   /// CHECK constraint enforces the enum (see migration 009).
   /// @derives(supervisor-30day-scenarios.md scenarios #26–38)
-  kind                  String    @default("other")
+  kind                 String    @default("other")
   /// Complaint lifecycle state — OPEN | IN_HR | RESOLVED | DISMISSED.
   /// Replaces the pre-Wave-3 `resolvedAt IS NULL` proxy for "is it open?".
   /// `resolvedAt` is kept as the timestamp; `state` is the discrete machine.
   /// DB-level CHECK enforces the enum (see migration 009).
-  state                 String    @default("OPEN")
+  state                String    @default("OPEN")
   /// Count of HR-authored ComplaintMessage rows the supervisor has not yet
   /// marked read. Atomically incremented inside the same tx that creates
   /// the ComplaintMessage; decremented inside the read-receipt tx.
   /// Used by the drawer Complaints badge — counter on parent beats COUNT(*)
   /// (Zendesk pattern, per supervisor-drawer-and-decisions-redesign.md §D).
-  unreadHrRepliesCount  Int       @default(0)
+  unreadHrRepliesCount Int       @default(0)
   /// Last reply timestamp (any author) — drives "Recent" sort + the
   /// drawer sub-line "HR replied 2h ago". Nullable until the first reply
   /// after the initial supervisor message.
-  lastReplyAt           DateTime?
+  lastReplyAt          DateTime?
   /// nullable until the complaint is dismissed / resolved by HR/owner
-  resolvedAt            DateTime?
+  resolvedAt           DateTime?
   /// UUID of resolver (HR / owner / supervisor)
-  resolvedBy            String?   @db.Uuid
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  resolvedBy           String?   @db.Uuid
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   company  Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   site     Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
@@ -822,7 +863,7 @@ model ComplaintMessageRead {
   // companyId. RLS / withTenantContext still isolated correctly without
   // the FK, but defense-in-depth requires the DB-level cascade.
   // See `docs/findings/2026-05-18-sprint-1-deep-review.md` Cluster G.
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@id([messageId, actorUserId])
   @@index([companyId, actorUserId])
@@ -1295,26 +1336,26 @@ model SiteSupervisorBinding {
 /// @derives(replacement-invite-feature-spec.md, 2026-05-18)
 /// @derives(supervisor-30day-scenarios.md scenarios #39–46 — swaps + emergency cover)
 model ReplacementInvite {
-  id                String    @id @default(uuid()) @db.Uuid
-  companyId         String    @db.Uuid
-  fromSupervisorId  String    @db.Uuid
-  toWorkerId        String    @db.Uuid
+  id               String    @id @default(uuid()) @db.Uuid
+  companyId        String    @db.Uuid
+  fromSupervisorId String    @db.Uuid
+  toWorkerId       String    @db.Uuid
   /// Visit this invite covers, when the supervisor is replacing for a
   /// specific visit. Nullable to support pre-shift open-slot invites.
-  visitId           String?   @db.Uuid
-  siteId            String    @db.Uuid
-  scheduledStart    DateTime
+  visitId          String?   @db.Uuid
+  siteId           String    @db.Uuid
+  scheduledStart   DateTime
   /// PENDING | ACCEPTED | DECLINED | EXPIRED | CANCELLED — DB CHECK enforced.
-  status            String    @default("PENDING")
-  sentAt            DateTime  @default(now())
+  status           String    @default("PENDING")
+  sentAt           DateTime  @default(now())
   /// Default 120s after sentAt; supervisor may pass expiresInSec on create.
-  expiresAt         DateTime
-  respondedAt       DateTime?
+  expiresAt        DateTime
+  respondedAt      DateTime?
   /// 'accept' | 'decline' | 'cron_expired' | 'supervisor_cancelled' |
   /// free-text reason on decline.
-  respondReason     String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  respondReason    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   company        Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   fromSupervisor User    @relation("ReplacementInviteFromSupervisor", fields: [fromSupervisorId], references: [id], onDelete: Cascade)
@@ -1359,4 +1400,3 @@ model ConsentLog {
   @@index([userId, acceptedAt(sort: Desc)])
   @@schema("axhy")
 }
-
