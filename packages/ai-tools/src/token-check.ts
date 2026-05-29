@@ -157,7 +157,7 @@ export function computeDeltaLast10(values: number[]): number {
   if (values.length < 2) return 0;
   const last10 = values.slice(-10);
   if (last10.length < 2) return 0;
-  return last10[last10.length - 1] - last10[0];
+  return last10[last10.length - 1]! - last10[0]!;
 }
 
 // ---------------------------------------------------------------------------
