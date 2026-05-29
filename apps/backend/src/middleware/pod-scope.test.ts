@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, afterAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
-import { getMyPodIds, PodOwnershipError, requirePodOwnership } from './pod-scope';
+import { getMyPodIds, PodOwnershipError, requirePodOwnership } from './pod-scope.js';
 
 const prisma = new PrismaClient();
 
