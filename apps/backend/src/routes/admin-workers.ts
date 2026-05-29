@@ -95,6 +95,7 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
         ];
       }
 
+      // [ORCHESTRATOR_EXCEPTION] worker-identity contract — expose Worker.id not User.id; skip memberships without Worker row
       const rows = await prisma.membership.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -105,25 +106,39 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
           status: true,
           podId: true,
           createdAt: true,
-          user: { select: { name: true, phone: true } },
+          user: {
+            select: {
+              name: true,
+              phone: true,
+              workerProfile: { select: { id: true } },
+            },
+          },
         },
       });
       const hasMore = rows.length > limit;
       const sliced = hasMore ? rows.slice(0, limit) : rows;
-      const items = sliced.map((m) => {
-        const phone = m.user?.phone ?? null;
-        const anonymizedPhone = phone !== null && phone.startsWith('anon:');
-        return {
-          workerId: m.userId,
-          membershipId: m.id,
-          status: m.status,
-          podId: m.podId,
-          name: m.user?.name ?? null,
-          phone,
-          anonymizedPhone,
-          createdAt: m.createdAt.toISOString(),
-        };
-      });
+      // Worker-identity contract (parent-brief 2026-05-29): every workerId
+      // exposed by the HR portal MUST be Worker.id, never User.id.
+      // Memberships whose User has no Worker row (e.g. lingering INVITED-
+      // only stubs or partial seeds) are dropped — they cannot be acted on
+      // by R3 anonymize or referenced by LeaveRequest.workerId.
+      const items = sliced
+        .filter((m) => m.user?.workerProfile != null)
+        .map((m) => {
+          const phone = m.user?.phone ?? null;
+          const anonymizedPhone = phone !== null && phone.startsWith('anon:');
+          return {
+            workerId: m.user!.workerProfile!.id,
+            userId: m.userId,
+            membershipId: m.id,
+            status: m.status,
+            podId: m.podId,
+            name: m.user?.name ?? null,
+            phone,
+            anonymizedPhone,
+            createdAt: m.createdAt.toISOString(),
+          };
+        });
       const lastRow = sliced.at(-1);
       const nextCursor =
         hasMore && lastRow ? encodeCursor({ createdAt: lastRow.createdAt, id: lastRow.id }) : null;
@@ -131,46 +146,69 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
     },
   );
 
-  // Task 5 — GET /admin/workers/:id. 404 on cross-tenant or out-of-scope HR
-  // so existence is not leaked.
+  // [ORCHESTRATOR_EXCEPTION] worker-identity contract — :id is Worker.id, query starts from prisma.worker
+  // Task 5 — GET /admin/workers/:id. `:id` MUST be Worker.id (matches the
+  // R3 anonymize POST contract at lib/services/anonymize-worker-service.ts).
+  // 404 on cross-tenant, on workers with no Membership (orphan), or on out-
+  // of-scope HR — never leak existence.
+  // @derives(parent-brief 2026-05-29)
   app.get<{ Params: { id: string } }>(
     '/admin/workers/:id',
     { preHandler: [requireAuth, requireRole('OWNER', 'HR')] },
     async (req, reply) => {
       const auth = req.auth!;
-      const membership = await prisma.membership.findFirst({
-        where: { userId: req.params.id, companyId: auth.companyId, role: 'WORKER' },
+      const worker = await prisma.worker.findFirst({
+        where: { id: req.params.id, companyId: auth.companyId },
         select: {
           id: true,
           userId: true,
-          status: true,
-          podId: true,
-          createdAt: true,
-          user: { select: { name: true, phone: true } },
+          name: true,
+          phone: true,
+          state: true,
+          user: {
+            select: {
+              memberships: {
+                where: { companyId: auth.companyId, role: 'WORKER' },
+                select: { id: true, status: true, podId: true, createdAt: true },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
         },
       });
-      if (!membership) {
+      if (!worker) {
         reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
         return;
       }
+      const membership = worker.user?.memberships?.[0] ?? null;
+      // Anonymized workers have userId=null and therefore no membership join;
+      // they remain visible to OWNER for audit but HR cannot scope without
+      // a pod (404 below). The R3 service preserves Worker.id; this handler
+      // returns the row but masks the missing membership fields.
       if (auth.role === 'HR') {
+        if (!membership?.podId) {
+          reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
+          return;
+        }
         const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
-        if (!membership.podId || !myPodIds.includes(membership.podId)) {
+        if (!myPodIds.includes(membership.podId)) {
           reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
           return;
         }
       }
-      const phone = membership.user?.phone ?? null;
-      const anonymizedPhone = phone !== null && phone.startsWith('anon:');
+      const anonymizedPhone = worker.phone.startsWith('anon:');
       reply.send({
-        workerId: membership.userId,
-        membershipId: membership.id,
-        status: membership.status,
-        podId: membership.podId,
-        name: membership.user?.name ?? null,
-        phone,
+        workerId: worker.id,
+        userId: worker.userId,
+        membershipId: membership?.id ?? null,
+        status: membership?.status ?? null,
+        podId: membership?.podId ?? null,
+        state: worker.state,
+        name: worker.name,
+        phone: worker.phone,
         anonymizedPhone,
-        createdAt: membership.createdAt.toISOString(),
+        createdAt: (membership?.createdAt ?? new Date(0)).toISOString(),
       });
     },
   );

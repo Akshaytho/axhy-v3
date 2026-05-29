@@ -23,11 +23,14 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { z } from 'zod';
 import { CreateLeaveRequestInput, LeaveDecisionInput } from '@axhy/shared-schema';
 import type { LeaveDecisionOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
+import { getMyPodIds } from '../middleware/pod-scope.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
 import { enqueueOutbox } from '../lib/outbox.js';
 import { createLeaveRequestService } from '../lib/services/leave-request-service.js';
@@ -35,6 +38,39 @@ import {
   deriveWorkerPrimarySiteId,
   getSitesSupervisedByUser,
 } from '../lib/effective-responsibility.js';
+
+// ─── Cursor encoding ─────────────────────────────────────────────────────────
+//
+// Opaque to the client. Encodes "<ISO createdAt>:<uuid id>". Mirrors the
+// pattern in routes/complaints.ts and routes/admin-workers.ts. Once a fourth
+// call site appears, extract to lib/cursor.ts (HR A1 plan Task 5 tracks this).
+//
+// @derives(ADR-0026)
+
+function encodeCursor(input: { createdAt: Date; id: string }): string {
+  return Buffer.from(`${input.createdAt.toISOString()}:${input.id}`, 'utf8').toString('base64url');
+}
+
+function decodeCursor(raw: string): { createdAt: Date; id: string } | null {
+  try {
+    const decoded = Buffer.from(raw, 'base64url').toString('utf8');
+    const sep = decoded.lastIndexOf(':');
+    if (sep < 0) return null;
+    const iso = decoded.slice(0, sep);
+    const id = decoded.slice(sep + 1);
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return null;
+    if (!id) return null;
+    return { createdAt: dt, id };
+  } catch {
+    return null;
+  }
+}
+
+const ListQuery = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 type DecisionKind = 'approve' | 'reject';
 type DecisionRequest = FastifyRequest<{ Params: { id: string } }>;
@@ -117,14 +153,53 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
       return;
     }
 
-    // Cluster A fix (P0) — role gate. Without this, any authenticated user
-    // (worker, HR-portal user when it ships, owner) can decide leave on any
-    // worker in the tenant. Wave 2's Decisions queue routes the row to the
-    // responsible supervisor; the action endpoint must enforce the same
-    // identity gate the read-side does.
-    if (auth.role !== 'SUPERVISOR') {
-      reply.code(403).send({ error: 'SUPERVISOR_ROLE_REQUIRED' });
+    // HR A1 (Task 7) — role gate. SUPERVISOR or HR may decide leave. HR
+    // is further pod-scoped: the worker's membership must be in one of
+    // the HR's owned pods (primary or backup). @derives(spec 3.3)
+    if (auth.role !== 'SUPERVISOR' && auth.role !== 'HR') {
+      reply.code(403).send({ error: 'SUPERVISOR_OR_HR_REQUIRED' });
       return;
+    }
+
+    // [ORCHESTRATOR_EXCEPTION] worker-identity contract — LeaveRequest.workerId is Worker.id; join through Worker.user.memberships
+    if (auth.role === 'HR') {
+      // LeaveRequest.workerId references Worker.id (schema line 510-524).
+      // Join through Worker → User → Membership to resolve the worker's
+      // current pod assignment. The prior implementation used workerId as
+      // User.id which silently returned null podId for every leave.
+      // @derives(parent-brief 2026-05-29)
+      const leaveForPodCheck = await prisma.leaveRequest.findFirst({
+        where: { id: req.params.id, companyId: auth.companyId },
+        select: {
+          worker: {
+            select: {
+              user: {
+                select: {
+                  memberships: {
+                    where: { companyId: auth.companyId, role: 'WORKER' },
+                    select: { podId: true },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (leaveForPodCheck) {
+        const workerPodId = leaveForPodCheck.worker?.user?.memberships?.[0]?.podId ?? null;
+        if (!workerPodId) {
+          reply.code(403).send({ error: 'WORKER_NOT_IN_POD' });
+          return;
+        }
+        const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
+        if (!myPodIds.includes(workerPodId)) {
+          reply.code(403).send({ error: 'NOT_YOUR_POD' });
+          return;
+        }
+      }
+      // If leave doesn't exist (cross-tenant or wrong id), fall through
+      // to the transactional path which returns 404 LEAVE_NOT_FOUND.
     }
 
     const parsed = LeaveDecisionInput.safeParse(req.body);
@@ -163,25 +238,27 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
           return { kind: 'ALREADY_DECIDED' as const, state: leave.state };
         }
 
-        // Cluster A fix (P0) — portfolio check mirrors Wave 2's
-        // decisions-service `leaveRequestSource`: caller must be a
-        // supervisor whose portfolio includes the worker's primary
-        // site. LeaveRequest has no "originating supervisor" field
-        // (workers request their own leave; supervisors only decide),
-        // so portfolio binding is the only valid responsibility gate.
-        const workerPrimarySiteId = await deriveWorkerPrimarySiteId(tx, {
-          companyId: auth.companyId,
-          workerId: leave.workerId,
-        });
-        const portfolio = await getSitesSupervisedByUser(tx, {
-          companyId: auth.companyId,
-          userId: auth.userId,
-        });
-        const portfolioSiteIds = new Set(portfolio.map((p) => p.siteId));
-        const isResponsibleSupervisor =
-          workerPrimarySiteId !== null && portfolioSiteIds.has(workerPrimarySiteId);
-        if (!isResponsibleSupervisor) {
-          return { kind: 'NOT_RESPONSIBLE' as const };
+        // SUPERVISOR portfolio check — caller must supervise the worker's
+        // primary site. LeaveRequest has no "originating supervisor"
+        // field (workers request their own leave; supervisors only
+        // decide), so portfolio binding is the only valid responsibility
+        // gate for SUPERVISOR. HR callers already passed the pod-scope
+        // gate above (Task 7 / spec 3.3). @derives(spec 3.3)
+        if (auth.role === 'SUPERVISOR') {
+          const workerPrimarySiteId = await deriveWorkerPrimarySiteId(tx, {
+            companyId: auth.companyId,
+            workerId: leave.workerId,
+          });
+          const portfolio = await getSitesSupervisedByUser(tx, {
+            companyId: auth.companyId,
+            userId: auth.userId,
+          });
+          const portfolioSiteIds = new Set(portfolio.map((p) => p.siteId));
+          const isResponsibleSupervisor =
+            workerPrimarySiteId !== null && portfolioSiteIds.has(workerPrimarySiteId);
+          if (!isResponsibleSupervisor) {
+            return { kind: 'NOT_RESPONSIBLE' as const };
+          }
         }
 
         const decidedAt = new Date();
@@ -283,4 +360,172 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
       reply.code(500).send({ error: 'INTERNAL', message: `Could not ${action} leave request` });
     }
   }
+
+  // ─── GET /leave-requests (HR inbox) ───────────────────────────────────────
+  //
+  // HR sees REQUESTED leaves where the worker's membership is in one of
+  // HR's owned pods (primary or backup). Cursor pagination on createdAt DESC.
+  // @derives(spec 3.1, HR A1 Task 7)
+  app.get(
+    '/leave-requests',
+    { preHandler: [requireAuth, requireRole('HR')] },
+    async (req, reply) => {
+      const auth = req.auth!;
+      const parsed = ListQuery.safeParse(req.query);
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'QUERY_INVALID' });
+        return;
+      }
+      const { cursor: rawCursor, limit } = parsed.data;
+      const cursor = rawCursor === undefined ? null : decodeCursor(rawCursor);
+      if (rawCursor !== undefined && cursor === null) {
+        reply.code(400).send({ error: 'CURSOR_INVALID' });
+        return;
+      }
+
+      // [ORCHESTRATOR_EXCEPTION] worker-identity contract — filter via Worker join, not via User.id list
+      // LeaveRequest.workerId IS Worker.id (schema line 524). The prior
+      // implementation filtered by `workerId IN <User.ids>` which returned
+      // zero rows for every HR caller. Correct path: filter via the
+      // worker relation (Worker → User → Membership in caller pods).
+      // @derives(parent-brief 2026-05-29)
+      const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
+
+      type LeaveWhere = NonNullable<Parameters<typeof prisma.leaveRequest.findMany>[0]>['where'];
+      const where: LeaveWhere = {
+        companyId: auth.companyId,
+        state: 'REQUESTED',
+        worker: {
+          user: {
+            memberships: {
+              some: {
+                companyId: auth.companyId,
+                role: 'WORKER',
+                podId: { in: myPodIds },
+              },
+            },
+          },
+        },
+      };
+      if (cursor) {
+        where.OR = [
+          { createdAt: { lt: cursor.createdAt } },
+          {
+            AND: [{ createdAt: cursor.createdAt }, { id: { lt: cursor.id } }],
+          },
+        ];
+      }
+      const rows = await prisma.leaveRequest.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+      });
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const items = page.map((r) => ({
+        id: r.id,
+        workerId: r.workerId,
+        fromDate: r.fromDate.toISOString().slice(0, 10),
+        toDate: r.toDate.toISOString().slice(0, 10),
+        reason: r.reason,
+        state: r.state,
+        createdAt: r.createdAt.toISOString(),
+      }));
+      const last = page.at(-1);
+      reply.send({
+        items,
+        nextCursor:
+          hasMore && last ? encodeCursor({ createdAt: last.createdAt, id: last.id }) : null,
+      });
+    },
+  );
+
+  // ─── GET /leave-requests/:id (detail) ─────────────────────────────────────
+  //
+  // HR sees details iff worker is in HR's pod (404 otherwise to avoid
+  // leaking existence). SUPERVISOR sees details iff portfolio includes
+  // the worker's primary site. Cross-tenant always 404.
+  // @derives(parent-deviation HR A1 Task 7)
+  // [ORCHESTRATOR_EXCEPTION] worker-identity contract — join through Worker.user.memberships; expose workerName/workerPhone per parent brief
+  app.get<{ Params: { id: string } }>(
+    '/leave-requests/:id',
+    { preHandler: [requireAuth, requireRole('HR', 'SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth!;
+      // Fetch leave with worker join (worker name+phone needed for response)
+      // plus the worker's WORKER membership in this company (for HR pod gate).
+      // @derives(parent-brief 2026-05-29)
+      const leave = await prisma.leaveRequest.findFirst({
+        where: { id: req.params.id, companyId: auth.companyId },
+        include: {
+          worker: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              userId: true,
+              user: {
+                select: {
+                  memberships: {
+                    where: { companyId: auth.companyId, role: 'WORKER' },
+                    select: { podId: true },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!leave) {
+        reply.code(404).send({ error: 'LEAVE_NOT_FOUND' });
+        return;
+      }
+
+      if (auth.role === 'HR') {
+        const workerPodId = leave.worker?.user?.memberships?.[0]?.podId ?? null;
+        if (!workerPodId) {
+          reply.code(404).send({ error: 'LEAVE_NOT_FOUND' });
+          return;
+        }
+        const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
+        if (!myPodIds.includes(workerPodId)) {
+          reply.code(404).send({ error: 'LEAVE_NOT_FOUND' });
+          return;
+        }
+      } else {
+        // SUPERVISOR — portfolio binding gate (responsibility-model §5.9).
+        const workerPrimarySiteId = await deriveWorkerPrimarySiteId(prisma, {
+          companyId: auth.companyId,
+          workerId: leave.workerId,
+        });
+        const portfolio = await getSitesSupervisedByUser(prisma, {
+          companyId: auth.companyId,
+          userId: auth.userId,
+        });
+        const portfolioSiteIds = new Set(portfolio.map((p) => p.siteId));
+        const isResponsibleSupervisor =
+          workerPrimarySiteId !== null && portfolioSiteIds.has(workerPrimarySiteId);
+        if (!isResponsibleSupervisor) {
+          reply.code(404).send({ error: 'LEAVE_NOT_FOUND' });
+          return;
+        }
+      }
+
+      reply.send({
+        id: leave.id,
+        workerId: leave.workerId,
+        workerName: leave.worker.name,
+        workerPhone: leave.worker.phone,
+        fromDate: leave.fromDate.toISOString().slice(0, 10),
+        toDate: leave.toDate.toISOString().slice(0, 10),
+        reason: leave.reason,
+        state: leave.state,
+        decidedBy: leave.decidedBy,
+        decidedAt: leave.decidedAt ? leave.decidedAt.toISOString() : null,
+        decisionNote: leave.decisionNote,
+        createdAt: leave.createdAt.toISOString(),
+      });
+    },
+  );
 }
