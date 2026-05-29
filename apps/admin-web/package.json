@@ -17,6 +17,7 @@
     "@axhy/api-client": "workspace:*",
     "@axhy/copy": "workspace:*",
     "@axhy/errors": "workspace:*",
+    "@axhy/jwt-public": "workspace:*",
     "@axhy/shared-schema": "workspace:*",
     "@axhy/ui-tokens": "workspace:*",
     "@axhy/ui-web": "workspace:*",
