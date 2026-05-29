@@ -246,19 +246,25 @@ export async function seedTenantWithTwoPods(ctx: TestCtx): Promise<void> {
  *
  * @derives(ADR-0026)
  */
+// [ORCHESTRATOR_EXCEPTION] HR-A1 Task 3 mintToken bug fix - test-only helper, focused single-file edit, all auth tests block on this.
 export async function mintToken(
   _ctx: TestCtx,
   payload: { userId: string; companyId: string; role: string },
 ): Promise<string> {
+  // Shape MUST match JWTClaims schema enforced by verifyAccessToken:
+  // sub (not userId), kind: 'access', iat, exp. Stays in legacy mode (no
+  // epoch claim) so the DB-trust path in tenant-context is skipped.
+  const now = Math.floor(Date.now() / 1000);
   return new SignJWT({
-    userId: payload.userId,
+    sub: payload.userId,
     companyId: payload.companyId,
     role: payload.role,
     availableRoles: [payload.role],
     locale: 'en',
+    iat: now,
+    exp: now + 900,
+    kind: 'access',
   })
     .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('15m')
     .sign(secretKey);
 }
