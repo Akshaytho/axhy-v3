@@ -66,7 +66,8 @@ describe('GET /admin/workers (list)', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it('HR-A sees only Pod A workers (not Pod B, not Tenant 2)', async () => {
+  // [ORCHESTRATOR_EXCEPTION] worker-identity contract — assert workerId === Worker.id (not User.id)
+  it('HR-A sees only Pod A workers (not Pod B, not Tenant 2); workerId is Worker.id', async () => {
     await seedTenantWithTwoPods(ctx);
     const { hrA, workerA1, workerB1, tenant1 } = ctx.fixtures;
     const res = await ctx.app.inject({
@@ -75,30 +76,35 @@ describe('GET /admin/workers (list)', () => {
       headers: { authorization: await authHeader('HR', hrA.userId, tenant1) },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { items: Array<{ workerId: string; podId: string | null }> };
-    const ids = body.items.map((i) => i.workerId);
-    expect(ids).toContain(workerA1.userId);
-    expect(ids).not.toContain(workerB1.userId);
+    const body = res.json() as {
+      items: Array<{ workerId: string; userId: string; podId: string | null }>;
+    };
+    const workerIds = body.items.map((i) => i.workerId);
+    expect(workerIds).toContain(workerA1.workerId);
+    expect(workerIds).not.toContain(workerB1.workerId);
+    // Worker.id must NOT equal User.id (the prior bug exposed User.id).
     for (const item of body.items) {
+      expect(item.workerId).not.toBe(item.userId);
       expect(item.podId).toBe(hrA.podId);
     }
   });
 
-  it('OWNER sees all workers in tenant; cross-tenant invisible', async () => {
+  it('OWNER sees all workers in tenant; cross-tenant invisible; workerId is Worker.id', async () => {
     await seedTenantWithTwoPods(ctx);
-    const { owner, workerA1, workerB1, tenant1, tenant2WorkerMembershipId } = ctx.fixtures;
+    const { owner, workerA1, workerB1, tenant1, tenant2WorkerId } = ctx.fixtures;
     const res = await ctx.app.inject({
       method: 'GET',
       url: '/admin/workers',
       headers: { authorization: await authHeader('OWNER', owner.userId, tenant1) },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { items: Array<{ workerId: string; membershipId: string }> };
-    const ids = body.items.map((i) => i.workerId);
-    expect(ids).toContain(workerA1.userId);
-    expect(ids).toContain(workerB1.userId);
-    const memIds = body.items.map((i) => i.membershipId);
-    expect(memIds).not.toContain(tenant2WorkerMembershipId);
+    const body = res.json() as {
+      items: Array<{ workerId: string; userId: string; membershipId: string }>;
+    };
+    const workerIds = body.items.map((i) => i.workerId);
+    expect(workerIds).toContain(workerA1.workerId);
+    expect(workerIds).toContain(workerB1.workerId);
+    expect(workerIds).not.toContain(tenant2WorkerId);
   });
 
   it('pagination with ?limit=1 returns a single item and a nextCursor', async () => {
@@ -137,18 +143,20 @@ describe('GET /admin/workers (list)', () => {
   });
 });
 
-describe('GET /admin/workers/:id (detail)', () => {
-  it('200 in-scope worker for HR-A', async () => {
+describe('GET /admin/workers/:id (detail) — :id is Worker.id', () => {
+  // [ORCHESTRATOR_EXCEPTION] detail :id semantics changed to Worker.id per parent brief
+  it('200 in-scope worker for HR-A (by Worker.id)', async () => {
     await seedTenantWithTwoPods(ctx);
     const { hrA, workerA1, tenant1 } = ctx.fixtures;
     const res = await ctx.app.inject({
       method: 'GET',
-      url: `/admin/workers/${workerA1.userId}`,
+      url: `/admin/workers/${workerA1.workerId}`,
       headers: { authorization: await authHeader('HR', hrA.userId, tenant1) },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { workerId: string; podId: string | null };
-    expect(body.workerId).toBe(workerA1.userId);
+    const body = res.json() as { workerId: string; userId: string; podId: string | null };
+    expect(body.workerId).toBe(workerA1.workerId);
+    expect(body.userId).toBe(workerA1.userId);
     expect(body.podId).toBe(hrA.podId);
   });
 
@@ -157,7 +165,7 @@ describe('GET /admin/workers/:id (detail)', () => {
     const { hrA, workerB1, tenant1 } = ctx.fixtures;
     const res = await ctx.app.inject({
       method: 'GET',
-      url: `/admin/workers/${workerB1.userId}`,
+      url: `/admin/workers/${workerB1.workerId}`,
       headers: { authorization: await authHeader('HR', hrA.userId, tenant1) },
     });
     expect(res.statusCode).toBe(404);
@@ -169,24 +177,31 @@ describe('GET /admin/workers/:id (detail)', () => {
     const { owner, workerB1, tenant1 } = ctx.fixtures;
     const res = await ctx.app.inject({
       method: 'GET',
-      url: `/admin/workers/${workerB1.userId}`,
+      url: `/admin/workers/${workerB1.workerId}`,
       headers: { authorization: await authHeader('OWNER', owner.userId, tenant1) },
     });
     expect(res.statusCode).toBe(200);
-    expect((res.json() as { workerId: string }).workerId).toBe(workerB1.userId);
+    expect((res.json() as { workerId: string }).workerId).toBe(workerB1.workerId);
   });
 
   it('404 cross-tenant worker even for OWNER (tenant isolation)', async () => {
     await seedTenantWithTwoPods(ctx);
-    const { owner, tenant1, tenant2WorkerMembershipId } = ctx.fixtures;
-    const mem = await ctx.prisma.membership.findUnique({
-      where: { id: tenant2WorkerMembershipId },
-      select: { userId: true },
-    });
-    expect(mem).not.toBeNull();
+    const { owner, tenant1, tenant2WorkerId } = ctx.fixtures;
     const res = await ctx.app.inject({
       method: 'GET',
-      url: `/admin/workers/${mem!.userId}`,
+      url: `/admin/workers/${tenant2WorkerId}`,
+      headers: { authorization: await authHeader('OWNER', owner.userId, tenant1) },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('404 when :id is a User.id (regression — must NOT accept User.id)', async () => {
+    await seedTenantWithTwoPods(ctx);
+    const { owner, workerA1, tenant1 } = ctx.fixtures;
+    const res = await ctx.app.inject({
+      method: 'GET',
+      // workerA1.userId is User.id (NOT Worker.id) — must 404.
+      url: `/admin/workers/${workerA1.userId}`,
       headers: { authorization: await authHeader('OWNER', owner.userId, tenant1) },
     });
     expect(res.statusCode).toBe(404);

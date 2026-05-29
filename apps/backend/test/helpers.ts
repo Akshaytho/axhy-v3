@@ -53,9 +53,15 @@ export type Fixtures = {
   hrA: { userId: string; membershipId: string; podId: string };
   hrB: { userId: string; membershipId: string; podId: string };
   supervisorA: { userId: string; membershipId: string };
-  workerA1: { userId: string; membershipId: string };
-  workerB1: { userId: string; membershipId: string };
+  // [ORCHESTRATOR_EXCEPTION] worker-identity contract fix — HR portal "workerId" MUST be Worker.id not User.id
+  /** workerId is Worker.id (distinct from userId/User.id). HR-portal contract
+   *  requires every "workerId" response/path-param to be Worker.id, never
+   *  User.id. @derives(parent-brief 2026-05-29) */
+  workerA1: { userId: string; membershipId: string; workerId: string };
+  workerB1: { userId: string; membershipId: string; workerId: string };
   tenant2WorkerMembershipId: string;
+  /** Worker.id for tenant-2 worker (parallel to workerA1.workerId). */
+  tenant2WorkerId: string;
   siteA: { id: string };
 };
 
@@ -98,9 +104,13 @@ export async function buildTestApp(): Promise<TestCtx> {
     prisma,
     fixtures,
     reset: async () => {
-      // FK-safe order: leaves first, then bindings, sites, memberships,
-      // pods, users, companies.
+      // [ORCHESTRATOR_EXCEPTION] reset must also drop Worker + Assignment now seeded by helpers
+      // FK-safe order: leaves first (FK→Worker), assignments (FK→Worker+Site),
+      // workers (FK→User+Company), bindings, sites, memberships, pods,
+      // users, companies.
       await prisma.leaveRequest.deleteMany({});
+      await prisma.assignment.deleteMany({});
+      await prisma.worker.deleteMany({});
       await prisma.siteSupervisorBinding.deleteMany({});
       await prisma.site.deleteMany({});
       await prisma.membership.deleteMany({});
@@ -215,13 +225,52 @@ export async function seedTenantWithTwoPods(ctx: TestCtx): Promise<void> {
   // SUPERVISOR in pod A.
   fixtures.supervisorA = await mkUser('SUPERVISOR', tenant1, podA);
 
-  // WORKERs — one per pod.
-  fixtures.workerA1 = await mkUser('WORKER', tenant1, podA);
-  fixtures.workerB1 = await mkUser('WORKER', tenant1, podB);
+  // [ORCHESTRATOR_EXCEPTION] worker-identity contract fix — seed Worker rows so HR portal can expose Worker.id
+  // WORKERs — one per pod. Each WORKER Membership gets a paired Worker row
+  // (Worker.userId @unique → 1:1 with User). HR portal contract says every
+  // "workerId" exposed by the API is Worker.id, NOT User.id. Seed both so
+  // tests can assert the correct contract end-to-end.
+  //
+  // Worker.state seeded as 'ACTIVE' (not the default INVITED) so anonymize
+  // transitions are unblocked.
+  // @derives(parent-brief 2026-05-29)
+  const workerA1Membership = await mkUser('WORKER', tenant1, podA);
+  const workerA1Row = await prisma.worker.create({
+    data: {
+      companyId: tenant1,
+      userId: workerA1Membership.userId,
+      name: `Worker A1 ${workerA1Membership.userId.slice(0, 6)}`,
+      phone: uniquePhone(),
+      state: 'ACTIVE',
+    },
+  });
+  fixtures.workerA1 = { ...workerA1Membership, workerId: workerA1Row.id };
 
-  // Tenant 2 worker for isolation checks.
-  const tenant2Worker = await mkUser('WORKER', tenant2);
-  fixtures.tenant2WorkerMembershipId = tenant2Worker.membershipId;
+  const workerB1Membership = await mkUser('WORKER', tenant1, podB);
+  const workerB1Row = await prisma.worker.create({
+    data: {
+      companyId: tenant1,
+      userId: workerB1Membership.userId,
+      name: `Worker B1 ${workerB1Membership.userId.slice(0, 6)}`,
+      phone: uniquePhone(),
+      state: 'ACTIVE',
+    },
+  });
+  fixtures.workerB1 = { ...workerB1Membership, workerId: workerB1Row.id };
+
+  // Tenant 2 worker for isolation checks — same Worker + Membership pairing.
+  const tenant2WorkerMembership = await mkUser('WORKER', tenant2);
+  const tenant2WorkerRow = await prisma.worker.create({
+    data: {
+      companyId: tenant2,
+      userId: tenant2WorkerMembership.userId,
+      name: `Tenant 2 Worker ${tenant2WorkerMembership.userId.slice(0, 6)}`,
+      phone: uniquePhone(),
+      state: 'ACTIVE',
+    },
+  });
+  fixtures.tenant2WorkerMembershipId = tenant2WorkerMembership.membershipId;
+  fixtures.tenant2WorkerId = tenant2WorkerRow.id;
 
   // Site on tenant 1.
   const siteId = randomUUID();
@@ -229,6 +278,41 @@ export async function seedTenantWithTwoPods(ctx: TestCtx): Promise<void> {
     data: { id: siteId, companyId: tenant1, name: 'Site A' },
   });
   fixtures.siteA = { id: siteId };
+
+  // Assignment for workerA1 → siteA so deriveWorkerPrimarySiteId resolves
+  // siteA for SUPERVISOR portfolio happy-path leave-decision regression
+  // tests (workerA1 lives in Pod A; supervisorA is bound to siteA below).
+  // @derives(parent-brief 2026-05-29)
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  await prisma.assignment.create({
+    data: {
+      id: randomUUID(),
+      companyId: tenant1,
+      workerId: workerA1Row.id,
+      siteId,
+      shiftStart: '09:00',
+      shiftEnd: '17:00',
+      dayMask: 'MTWTFS_',
+      validFrom: today,
+      state: 'ACTIVE',
+    },
+  });
+
+  // PERMANENT SiteSupervisorBinding: supervisorA → siteA. Unlocks the
+  // SUPERVISOR portfolio leave-decision regression test in
+  // leave-requests-hr-gate. @derives(parent-brief 2026-05-29)
+  await prisma.siteSupervisorBinding.create({
+    data: {
+      id: randomUUID(),
+      companyId: tenant1,
+      siteId,
+      userId: fixtures.supervisorA.userId,
+      effectiveFrom: today,
+      reason: 'permanent portfolio (test seed)',
+      createdBy: fixtures.owner.userId,
+    },
+  });
 }
 
 /**
