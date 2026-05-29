@@ -152,7 +152,9 @@ describe('Cluster A regression — leave-requests approve/reject authorization',
 
         // ── Cluster A.1 — non-supervisor caller (WORKER role) must be 403 ─
         // PRE-FIX: this would have returned 200 (no role check at all).
-        // POST-FIX: 403 SUPERVISOR_ROLE_REQUIRED.
+        // POST-FIX (HR A1): 403 SUPERVISOR_OR_HR_REQUIRED. HR A1 widened
+        // the gate from SUPERVISOR-only to SUPERVISOR+HR; the role-check
+        // error code was renamed accordingly. WORKER role is still rejected.
         {
           const leaveId = await newLeave();
           const res = await app.inject({
@@ -162,7 +164,7 @@ describe('Cluster A regression — leave-requests approve/reject authorization',
             payload: {},
           });
           expect(res.statusCode).toBe(403);
-          expect((res.json() as { error: string }).error).toBe('SUPERVISOR_ROLE_REQUIRED');
+          expect((res.json() as { error: string }).error).toBe('SUPERVISOR_OR_HR_REQUIRED');
           // DB state: leave is still REQUESTED.
           const after = await prisma.leaveRequest.findFirstOrThrow({ where: { id: leaveId } });
           expect(after.state).toBe('REQUESTED');
