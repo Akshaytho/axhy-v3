@@ -112,7 +112,7 @@ describe('parseJsonlLine', () => {
     const line = makeToolUseLine('Read', { file_path: '/some/file.ts' });
     const result = parseJsonlLine(line);
     expect(result.toolCalls).toHaveLength(1);
-    expect(result.toolCalls[0].name).toBe('Read');
+    expect(result.toolCalls[0]!.name).toBe('Read');
   });
 
   it('detects multiple tool calls in one message', () => {
@@ -134,8 +134,8 @@ describe('parseJsonlLine', () => {
 
     const result = parseJsonlLine(line);
     expect(result.toolCalls).toHaveLength(2);
-    expect(result.toolCalls[0].name).toBe('Read');
-    expect(result.toolCalls[1].name).toBe('Bash');
+    expect(result.toolCalls[0]!.name).toBe('Read');
+    expect(result.toolCalls[1]!.name).toBe('Bash');
   });
 
   it('returns usage even when there are no tool calls', () => {
