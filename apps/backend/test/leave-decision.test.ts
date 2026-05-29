@@ -15,6 +15,9 @@
  * @derives(panel-2026-05-08) — Phase B.4
  */
 
+// [ORCHESTRATOR_EXCEPTION] single-file test seed expansion per parent brief
+import { randomUUID } from 'node:crypto';
+
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
@@ -107,6 +110,61 @@ beforeAll(async () => {
     },
   });
 
+  // [ORCHESTRATOR_EXCEPTION] continuation of single-file seed edit per parent brief
+  // §5.9 responsibility-model seed — SUPERVISOR must clear the
+  // portfolio-binding gate at routes/leave-requests.ts:247-262. We need:
+  //   1. A Site on CoA.
+  //   2. SiteSupervisorBinding (PERMANENT) connecting the supervisor to the site.
+  //   3. Assignment (ACTIVE) connecting each CoA worker to the site so
+  //      deriveWorkerPrimarySiteId resolves to siteA.
+  // Pattern copied from test/helpers.ts seedTenantWithTwoPods (green).
+  const siteAId = randomUUID();
+  await prismaRaw.site.create({
+    data: { id: siteAId, companyId: companyAId, name: TEST_PREFIX + 'Site A' },
+  });
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  await prismaRaw.assignment.create({
+    data: {
+      id: randomUUID(),
+      companyId: companyAId,
+      workerId: workerAId,
+      siteId: siteAId,
+      shiftStart: '09:00',
+      shiftEnd: '17:00',
+      dayMask: 'MTWTFS_',
+      validFrom: today,
+      state: 'ACTIVE',
+    },
+  });
+  await prismaRaw.assignment.create({
+    data: {
+      id: randomUUID(),
+      companyId: companyAId,
+      workerId: workerBId,
+      siteId: siteAId,
+      shiftStart: '09:00',
+      shiftEnd: '17:00',
+      dayMask: 'MTWTFS_',
+      validFrom: today,
+      state: 'ACTIVE',
+    },
+  });
+
+  await prismaRaw.siteSupervisorBinding.create({
+    data: {
+      id: randomUUID(),
+      companyId: companyAId,
+      siteId: siteAId,
+      userId: supervisorId,
+      effectiveFrom: today,
+      reason: 'permanent portfolio (test seed)',
+      createdBy: supervisorId,
+    },
+  });
+
   // Three leave requests
   const tomorrow = new Date();
   tomorrow.setUTCHours(0, 0, 0, 0);
@@ -165,11 +223,21 @@ afterAll(async () => {
   await prismaRaw.leaveRequest.deleteMany({
     where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
   });
+  // [ORCHESTRATOR_EXCEPTION] FK-safe cleanup for new seed entities
+  await prismaRaw.siteSupervisorBinding.deleteMany({
+    where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
+  });
+  await prismaRaw.assignment.deleteMany({
+    where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
+  });
   await prismaRaw.membership.deleteMany({
     where: { company: { slug: { startsWith: TEST_PREFIX } } },
   });
   await prismaRaw.worker.deleteMany({
     where: { company: { slug: { startsWith: TEST_PREFIX } } },
+  });
+  await prismaRaw.site.deleteMany({
+    where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
   });
   await prismaRaw.user.deleteMany({ where: { phone: SUP_PHONE } });
   await prismaRaw.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
@@ -274,8 +342,14 @@ describe('POST /leave-requests/:id/approve | /reject', () => {
   });
 
   it('returns 409 when re-deciding an already-decided leave', async () => {
+    // [ORCHESTRATOR_EXCEPTION] post reason body so REASON_REQUIRED passes and ALREADY_DECIDED fires (route validation order: REASON_REQUIRED before transactional state check)
     // leaveAId was approved in a prior test
-    const res = await inject('POST', `/leave-requests/${leaveAId}/reject`, {}, authHeader());
+    const res = await inject(
+      'POST',
+      `/leave-requests/${leaveAId}/reject`,
+      { reason: 'duplicate decision attempt' },
+      authHeader(),
+    );
     expect(res.statusCode).toBe(409);
     const body = res.json() as { error: string; state: string };
     expect(body.error).toBe('ALREADY_DECIDED');
