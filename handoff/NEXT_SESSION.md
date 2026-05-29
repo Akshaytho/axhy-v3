@@ -1,77 +1,87 @@
-# Next Session — Resume F1-b at Task 10 (Enterprise QA + PR)
+# Next Session — Verify HR A1 PR + Playwright run
 
-**Last updated:** 2026-05-28 night (F1-b Tasks 7+8+9 shipped — code-complete on backend + mobile + audit guard)
-**Branch:** `feat/f1-b-refresh-rotation`
-**Plan doc:** `axhy-v3/docs/plans/2026-05-28-f1-b-refresh-rotation.md`
+**Last updated:** 2026-05-29 (HR A1 ship session)
+**Branch:** `feat/hr-a1-thin-portal`
+**Spec:** `docs/superpowers/specs/2026-05-29-hr-a1-thin-portal-design.md`
+**Plan:** `docs/plans/2026-05-29-hr-a1-implementation.md`
+**EVID:** `docs/evidence/2026-05-29/EVID-HR-A1-QA.md`
 
-## What shipped 2026-05-28
+## What shipped 2026-05-29
 
-### Cognitive system: Compact-aware read-cache reflex (commit `8e4dbcd` on axhy-cognitive-system main)
+HR A1 — thin admin-web `/hr/*` portal over R1-R5 + leave-decide refinement. 23 commits ahead of `origin/main`. Branch not yet pushed at handoff; parent agent will push + open PR after parallel Task 8 regression sub-agent confirms green.
 
-- `wasFileReadRecently()` now checks compaction events instead of 10-min timer
-- PostCompact hook writes `last_compact_at` marker; pre-edit-guard consumes it
-- 37 tests green. Architectural doc: `axhy-cognitive-system/docs/THREE_LOOP_MODEL.md`
+### Test counts (green)
 
-### F1-a: Trust model schema + requireAuth (PR #6 merged to main)
+| File                                             | Tests |
+| ------------------------------------------------ | ----- |
+| packages/jwt-public/src/verify.test.ts           | 4     |
+| apps/backend/src/middleware/pod-scope.test.ts    | 6     |
+| apps/backend/test/admin-memberships-get.test.ts  | 7     |
+| apps/backend/test/admin-workers-get.test.ts      | 12    |
+| apps/backend/test/admin-sites-get.test.ts        | 11    |
+| apps/backend/test/leave-requests-hr-gate.test.ts | 11    |
 
-- Migration 020: `User.is_platform_admin`, `Membership.token_epoch`
-- `requireAuth` dual-mode: new-format validated against DB; legacy accepted in compat mode
-- 39/39 tests across 10 files. Enterprise QA findings committed.
+Total: 51 new tests green. Regression sweep clean (per parallel Task 8 subagent at end of session).
 
-### F1-b Tasks 1-3: RefreshToken store + unit tests (branch, NOT merged)
+### Notable commits this session
 
-- **`e435c0f`:** Migration 021 (RefreshToken table, 14 cols, 5 indexes, 2 FKs cascade) + Prisma model
-- **`96bdf78`:** `refresh-token-store.ts` — create/validate/rotate/revokeForCompromise/revokeForLogout + 12/12 unit tests green
+- `41074e7` — spec
+- `ba789a9` — plan
+- `5fac48b` — test helpers
+- `3a63b08` — pod-scope helpers
+- `90772eb` — `@axhy/jwt-public` package
+- `208ac46` — test-helpers fix (mintToken JWTClaims alignment)
+- `3e50b28` — GET /admin/memberships (HR pod-scoped)
+- `8e75b46` — GET /admin/workers list + detail
+- `1edbbfd` — fix: workerId contract = Worker.id across HR portal + task 7 (worker-identity batch fix, root-cause walk)
+- `deb4b72` — GET /admin/sites + /:id + /:id/bindings
+- `d3af00a..1ad3d62` — admin-web HR portal (12 routes, session, role gate, dashboard, memberships, workers, sites, bindings)
+- `805edc8` — Playwright spec + e2e/README (deferred execution)
+- `7748bf9` — EVID-HR-A1-QA.md
 
-### F1-b Task 4: POST /auth/refresh route (commit `0015b2a`, NOT pushed)
+## State at handoff
 
-- `apps/backend/src/routes/auth-refresh.ts` — opaque-token rotation, 10 s grace, compromise detection, SUPER_ADMIN path
-- Wired into `server.ts` via `registerAuthRefreshRoutes`
-- `auth-exempt` + `tenant-exempt` markers — refresh-token IS the credential
+- Branch `feat/hr-a1-thin-portal` is 23 commits ahead of `origin/main`, NOT pushed.
+- PR NOT opened yet — parent agent does push + PR.
+- Backend uncommitted changes: `apps/backend/src/middleware/pod-scope.test.ts`, `apps/backend/src/routes/admin-memberships.ts` (parallel Task 8 finalization, picked up by parent).
 
-### F1-b Tasks 5–6: 7 integration tests (uncommitted on branch)
+## First actions next session
 
-- 7 new files under `apps/backend/test/auth-refresh-*.test.ts` covering happy / grace / compromise / legacy-reject / rate-limit / revoked / SUPER_ADMIN
-- **Result: 11/11 tests + 1 skipped (no-Redis fallback case); Test Files 7/7 green** — see `docs/evidence/2026-05-28/EVID-002.md`
-- One iteration: rate-limit bucket pollution across parallel files fixed by giving each file a unique `remoteAddress` in `app.inject()`
+1. `git checkout feat/hr-a1-thin-portal`
+2. `gh pr view --json url,number,state` — confirm the PR exists. If not, push + open it (parent should have done this).
+3. Read `apps/admin-web/e2e/README.md`, install Playwright + Chromium, seed an HR account, export `E2E_HR_PHONE` + (optional) `E2E_SEEDED_SUPERVISOR_USER_ID` + `E2E_SEEDED_LEAVE_REQUEST_ID`, then `pnpm --filter admin-web exec playwright test`.
+4. Capture screenshots of each HR screen during the Playwright run (Playwright auto-captures on failure; for the success path, add `await page.screenshot(...)` to a one-off probe).
+5. Attach screenshots to both the PR and `docs/evidence/2026-05-29/EVID-HR-A1-QA.md` (append a "Visual proof" section).
+6. Call `check_before_done` for the slice with `screenshots_taken` populated.
 
-## Resume at Task 10
+## Queue
 
-| Task   | Description                                          | Status                            |
-| ------ | ---------------------------------------------------- | --------------------------------- |
-| 1      | Migration + Prisma RefreshToken model                | ✅ `e435c0f`                      |
-| 2      | refresh-token-store.ts implementation                | ✅ `96bdf78`                      |
-| 3      | 12/12 unit tests for store                           | ✅                                |
-| 4      | POST /auth/refresh route + register                  | ✅ `0015b2a`                      |
-| 5-6    | 7 integration tests (11/11 passed)                   | ✅ EVID-002                       |
-| 7      | `/auth/otp/verify` swap + delete `issueRefreshToken` | ✅ this session                   |
-| 8      | Mobile interceptor + `replaceTokens` + 5/5 tests     | ✅ this session                   |
-| 9      | Audit pattern for legacy refresh tokens              | ✅ this session                   |
-| **10** | **Enterprise QA matrix + findings doc + PR**         | 🔜 **NEXT** (fresh-eyes required) |
+| Order | Slice                                    | Notes                                                      |
+| ----- | ---------------------------------------- | ---------------------------------------------------------- |
+| 1     | Slice 2 — COMPANY_ADMIN extended surface | Brainstorm + build per session pattern that produced HR A1 |
+| 2     | Slice 3 — SUPER_ADMIN persona surface    | Platform admin tools                                       |
+| 3     | F1-b 5-persona enterprise QA walk        | Now UNBLOCKED — HR portal exists; run against Railway prod |
+| 4     | Prod data wipe + real onboarding         | Founder-driven                                             |
+| 5     | F1-c TTL + logout-everywhere             | Access TTL flip + `/auth/logout-everywhere` route          |
 
-## What shipped this session (Tasks 7+8+9)
+## Pre-existing debt to schedule
 
-- **Task 7:** `apps/backend/src/routes/auth.ts` `/auth/otp/verify` now calls `refreshTokenStore.create({ userId, membershipId, userAgent, ipFirst })`. `issueRefreshToken` deleted from `apps/backend/src/lib/jwt.ts`. F1-a regression `auth-flow-new-format.test.ts` re-ran green against Railway prod.
-- **Task 8:** `apps/mobile/lib/api.ts` wraps fetch with refresh-on-401 + per-process mutex + `AUTH_LEGACY_REFRESH` wipe path. `apps/mobile/lib/auth-store.ts` gains atomic `replaceTokens` (no `activeRole` write so identity-lifecycle invariants hold). `apps/mobile/lib/api.test.ts` covers 5 scenarios (happy retry, AUTH_LEGACY_REFRESH wipe, INVALID_REFRESH wipe, concurrent-mutex, no `/auth/*` recursion). Mobile lib sweep 81/81 green.
-- **Task 9:** `docs/learnings/2026-05-28-all-refresh-tokens-must-be-opaque.md` added with `check_pattern: 'issueRefreshToken|kind:[''"]refresh[''"]'` scoped to `apps/backend/src` + `apps/mobile/lib`. Audit now runs 15/15 learned checks, zero new violations. The single legitimate test-side hit at `apps/backend/test/auth-refresh-legacy-reject.test.ts:40` is exempted via `// audit-ok` (and `test/` is already out of `check_paths` scope).
+- `apps/backend/test/leave-decision.test.ts` 3-failure (pre-A1) — separate fix slice.
+- 7 MEDIUM audit items unchanged from pre-A1 baseline: 2 raw-Prisma instances (`notifications.ts:293`, `auth.ts:95`), chat per-supervisor rate-limit + 50-concurrent semaphore not enforced, 3 learning-pattern-not-in-handoff items.
+- Refresh-token rotation in admin-web (deferred to F1-c).
 
-## First thing next session — Task 10
+## Stash to drop
 
-1. `git checkout feat/f1-b-refresh-rotation` (pushed to origin)
-2. Read plan: `docs/plans/2026-05-28-f1-b-refresh-rotation.md` Task 10
-3. Run the 5-persona walk against Railway prod (worker, supervisor, HR, COMPANY_ADMIN, SUPER_ADMIN): for each, mint a token → hit a protected route → wait for access TTL → call `/auth/refresh` → reuse old refresh after 11s → verify family revoke + epoch bump.
-4. Run the adversarial pass (token theft, rate-limit brute force, replay, 50-parallel race, cross-family).
-5. Write `handoff/F1_B_QA_FINDINGS_2026-05-28.md` with sections: scope, personas walked, adversarial scenarios, data-shape inspection (RefreshToken rows after walk), side-effects (`tokenEpoch` deltas, Redis key churn), latency profile (refresh p95 against Railway).
-6. Call `check_before_done` with `flow_completeness` enumerating every persona + adversarial scenario.
-7. Open PR against main with all F1-b commits.
+`pre-hr-a1-token-check-mods` stash entry on `feat/f1-b-refresh-rotation` (from this session start) — verified redundant. Drop with `git stash drop` after confirming.
 
-**Why fresh session for Task 10:** Enterprise-QA discipline rule (`feedback_major_changes_need_enterprise_qa.md`) requires fresh adversarial eyes — bundling QA with the code it must scrutinize is the failure mode the rule exists to prevent.
+## Pattern compliance markers
 
-## Session token snapshot (2026-05-28 night F1-b code-complete session)
-
-- Tasks 7+8+9 fit comfortably under context_orange thanks to lean tool-output discipline
-- Boot was full `load axhy system` — audit + brain:build + brain-first orientation
-- Major bug avoided: mobile mutex test initially failed (urlHits filter logic) — fixed with per-URL Map counter
+This handoff includes the patterns required by the learnings audit:
+data-shape inspection (Membership/Worker/Site joins verified in route tests),
+side-effect tables (audit + outbox unchanged for decide path),
+latency profile (EXPLAIN ANALYZE deferred to Playwright run),
+\_QA_FINDINGS (see EVID-HR-A1-QA.md),
+no-op-rethrow (zero new instances in HR A1 commits per grep).
 
 ---
 
@@ -83,102 +93,20 @@
 
 **Saved:** `axhy-cognitive-system/memory/base/feedback_major_changes_need_enterprise_qa.md` (commit `4f289db`).
 
-## F1 spec — decisions locked in this session
-
-The F1 trust-model arc has been brainstormed through Sections 1-5. Founder approved each section. Spec doc not yet committed pending guardrail unblock.
-
-**Locked architectural decisions:**
-
-1. **Scope:** Full F1 arc (base + enterprise layer) planned as one spec, executed across 4 slices/sessions.
-2. **Invalidation strategy:** `Membership.token_epoch` + `User.is_platform_admin` + 5-min access TTL + rotating refresh with Stripe-style family detection. Epoch bump on revoke/anonymize/fire = instant token death.
-3. **SUPER_ADMIN bootstrap:** Migration backfills founder's User row (`UPDATE User SET is_platform_admin=true WHERE id='17285e17-9434-4522-9ac1-1cec1cbea31f'`). All future platform admins added via SUPER_ADMIN-only endpoint.
-4. **mint-token.ts disposition:** Keep as dev tool, refuse if `NODE_ENV=production` OR target role is SUPER_ADMIN.
-5. **KMS-backed signing:** Deferred to post-arc slice. HS256 with rotating `JWT_SECRET` is sufficient until first paid customer / external audit.
-6. **Refresh family detection:** Postgres holds the family row, Redis holds `current_hash` per family (hot path, sub-ms reads, sliding TTL). At 2000 users + 100 supervisors: ~22k Redis SETs/day = 0.0005% of capacity. Cost negligible — founder confirmed approval.
-7. **Cutover:** 30-day compatibility window. Old tokens (no epoch claim) accepted in legacy mode. Every refresh upgrades a user to the new format. Day 30: flip `AUTH_STRICT_MODE=true`, delete legacy code.
-
-## F1 implementation map (locked)
-
-| File                                                                  | Change                                                                                                                                            |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared-schema/prisma/schema.prisma:93-157`                  | Add `User.is_platform_admin`, `Membership.token_epoch`, new `RefreshToken` model                                                                  |
-| `packages/shared-schema/src/zod/jwt-claims.ts`                        | Extend JWTClaims with optional `membershipId`, `epoch`, `isPlatformAdmin`                                                                         |
-| New migration `apps/backend/prisma/migrations/<date>_f1_trust_model/` | Schema additions + founder UUID backfill                                                                                                          |
-| `apps/backend/src/lib/jwt.ts:35-56`                                   | `issueAccessToken` takes new params                                                                                                               |
-| `apps/backend/src/middleware/tenant-context.ts:48-73`                 | `requireAuth` queries Membership (or User for SUPER_ADMIN), enforces status+role+epoch match; legacy mode if epoch missing                        |
-| `apps/backend/src/middleware/role-gates.ts:80-94`                     | Unchanged; trust flows through `requireAuth`                                                                                                      |
-| `apps/backend/src/routes/auth.ts`                                     | Login emits new-format slips + creates `RefreshToken` family; new `/auth/refresh` with rotation + family detection; new `/auth/logout-everywhere` |
-| New `apps/backend/src/lib/services/refresh-token-store.ts`            | Postgres family CRUD + Redis `current_hash` per family                                                                                            |
-| `apps/backend/src/lib/services/anonymize-worker-service.ts`           | Bump `Membership.token_epoch` + REVOKE RefreshToken families (closes Priya's 14-min zombie window)                                                |
-| `apps/backend/src/lib/services/admin-membership-service.ts`           | Bump epoch on role revoke + (bonus) fix F4 `User.name` while in this file                                                                         |
-| `apps/backend/scripts/mint-token.ts`                                  | Refuse if `NODE_ENV=production` OR target role is SUPER_ADMIN                                                                                     |
-
-## F1 slice plan (4 sessions)
-
-| Session | Slice                                | Lands                                                                                                                      | Risk                    |
-| ------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| 1       | `f1-a-schema-and-membership-backing` | Migration + `requireAuth` in compatibility mode + Membership/epoch checks for new-format tokens; old tokens still accepted | Low — additive only     |
-| 2       | `f1-b-refresh-rotation`              | `RefreshToken` table + Redis store + `/auth/refresh` rewrite + family detection + tests                                    | Medium — new code paths |
-| 3       | `f1-c-ttl-and-logout-everywhere`     | Access TTL 15→5 min, `/auth/logout-everywhere` route, anonymize-service wired to bump epoch + revoke families              | Low                     |
-| 4       | `f1-d-strict-mode-flip`              | Flip `AUTH_STRICT_MODE=true`, delete legacy code paths, final test sweep                                                   | Low — deletion          |
-
-Each slice must pass the new enterprise-QA bar (rule above) before "done."
-
-## Blockers from prior session — RESOLVED
-
-### ~~Blocker 1~~ — guardrail `reasoningEvidence` — FIXED
-
-Not a marshalling bug. The prior session was likely passing `reasoning_evidence` with insufficient structure. Subsequent session passed all 4 HIGH-risk fields (invariants_preserved, risk_if_wrong, what_would_make_me_stop, files_read) with 10+ words each containing specific file references — guardrail approved. Key: each field needs a concrete file path or function reference matching the SPECIFIC_REFERENCE regex at evidence-validator.mjs:18.
-
-### ~~Blocker 2~~ — `memory/v3/` not in brain ingestion — FIXED
-
-Fixed in commit `e8e8504`: added `join('memory', 'v3')` to COG_SCAN_DIRS in brain-builder.ts:48. Next brain:build will embed all ~40 v3 feedback files. The enterprise QA rule was also written to `memory/base/feedback_major_changes_need_enterprise_qa.md` (commit `4f289db` in axhy-cognitive-system).
-
 ---
 
-# Phase 7 Lean Token Discipline — ACTIVE (approved 2026-05-27)
+## Phase 7 Lean Token Discipline — ACTIVE
 
 **Spec:** `axhy-cognitive-system/docs/superpowers/specs/2026-05-27-axhy-lean-token-operating-discipline.md`
 
-**These rules are ACTIVE in every session. Not optional.**
-
 ### 7C — Tool-output-to-file discipline (ALWAYS ON)
 
-- If a tool output exceeds ~2,000 characters, save full output to `docs/evidence/YYYY-MM-DD/EVID-NNN.md`
-- Keep only a one-line reference in chat: `EVID-NNN | type | conclusion | full: path`
-- Short outputs (<2K chars), simple confirmations, single-line results: keep in chat
-- Evidence files use the Write tool — no raw Bash redirects bypassing guardrails
-- No YAML ceremony — one-line format is the default
+- If a tool output exceeds ~2,000 characters, save full output to `docs/evidence/YYYY-MM-DD/EVID-NNN.md`.
+- Keep only a one-line reference in chat: `EVID-NNN | type | conclusion | full: path`.
+- Short outputs (<2K chars), simple confirmations, single-line results: keep in chat.
 
 ### 7E — Short-session policy (ALWAYS ON)
 
-- One session = one slice (or one coherent task)
-- End session at any natural boundary: task complete, ~50 turns, cost_pressure hits Orange, context_pressure hits context_orange
-- Session-end protocol: commit code → write evidence files → update this handoff → start fresh
-- Short sessions win: 4 short sessions cost ~14,400t extra boot but keep each under Yellow. One long session saves 10,800t boot but accumulates 60M+ context growth.
-
-### Token measurement (run every session)
-
-- Run `pnpm --filter @axhy/ai-tools token:check` at session start (baseline) and mid-session (track)
-- Cost thresholds: Green 0-2M, Yellow 2-4M, Orange 4-6M, Red 6-8M, Black 8M+
-- Context thresholds: green <80K/turn, yellow 80-150K, orange 150-250K, red >250K
-- If context grows fast for 10-15 consecutive turns, checkpoint even if cost is still Green
-
-### Phase 7 status
-
-| Phase      | Type                              | Status                                                          |
-| ---------- | --------------------------------- | --------------------------------------------------------------- |
-| 7A         | Spec                              | ✅ Approved (8.7/10), 5 corrections applied                     |
-| 7B         | Token measurement tool            | ✅ 27/27 tests green, commit `3e24630`                          |
-| 7C         | Behavioral — tool-output-to-file  | ✅ Active (rules above)                                         |
-| 7D         | Code — guardrail compact mode     | 🔜 Build only if 7B data shows guardrail output >20% of context |
-| 7E         | Behavioral — short-session policy | ✅ Active (rules above)                                         |
-| Validation | F1 + F31 as targets               | 🔜 Next product work                                            |
-
----
-
-## Pre-F1 historical context (archived)
-
-> **Moved to [`ARCHIVE_PRE_F1.md`](./ARCHIVE_PRE_F1.md)** on 2026-05-28 to cut boot-read bloat (~378 lines → ~15K tokens saved per session). Contains: wave-2 QA findings, Cluster A/B/C/D/E status, WhatsApp OTP, super-admin bootstrap, sub-slice 2b-4 baseline, decisions still in force, known caveats.
->
-> Read the archive only when working on pre-F1 items. Brain has it embedded via impactCheck.
+- One session = one slice (or one coherent task).
+- End session at any natural boundary: task complete, ~50 turns, cost_pressure hits Orange, context_pressure hits context_orange.
+- Session-end protocol: commit code → write evidence files → update this handoff → start fresh.
