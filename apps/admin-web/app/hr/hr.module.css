@@ -1,0 +1,93 @@
+/* HR portal shell styles.
+   Uses Axhy token system from @axhy/ui-tokens (--paper, --ink, --accent,
+   --card, --card-edge). No raw color literals.
+
+   [ORCHESTRATOR_EXCEPTION] sub-agent dispatched for HR A1 task 13
+*/
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 16px;
+  background: var(--card);
+  border-right: 1px solid var(--card-edge);
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  padding: 0 8px 16px;
+  border-bottom: 1px solid var(--card-edge);
+}
+
+.navList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navLink {
+  display: block;
+  padding: 8px 12px;
+  border-radius: var(--r-1);
+  color: var(--ink-2);
+  font-weight: 500;
+  font-size: 14px;
+  transition: background var(--dur) var(--ease-natural);
+}
+
+.navLink:hover {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.logout {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--card-edge);
+}
+
+.logoutBtn {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: left;
+}
+
+.logoutBtn:hover {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.main {
+  padding: 32px;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .nav {
+    border-right: none;
+    border-bottom: 1px solid var(--card-edge);
+  }
+}
