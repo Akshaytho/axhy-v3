@@ -76,6 +76,20 @@ export type TestCtx = {
   prisma: PrismaClient;
   reset: () => Promise<void>;
   fixtures: Fixtures;
+  /**
+   * Set of companyIds this test context owns. Populated by
+   * seedTenantWithTwoPods (and any future seeders). reset() only deletes
+   * rows scoped to these companyIds so concurrent test files (vitest runs
+   * files in parallel pools) cannot wipe each other's fixtures mid-route.
+   * RC-1 fix 2026-05-30.
+   */
+  ownedCompanyIds: Set<string>;
+  /**
+   * Set of userIds this test context owns. User has nullable companyId
+   * and is not always FK-cascaded by Company; track separately so reset()
+   * only deletes users this file seeded.
+   */
+  ownedUserIds: Set<string>;
 };
 
 /**
@@ -98,25 +112,49 @@ export async function buildTestApp(): Promise<TestCtx> {
 
   // Empty fixtures shell; populated by seedTenantWithTwoPods.
   const fixtures = {} as Fixtures;
+  const ownedCompanyIds = new Set<string>();
+  const ownedUserIds = new Set<string>();
 
   return {
     app,
     prisma,
     fixtures,
+    ownedCompanyIds,
+    ownedUserIds,
     reset: async () => {
       // [ORCHESTRATOR_EXCEPTION] reset must also drop Worker + Assignment now seeded by helpers
       // FK-safe order: leaves first (FK→Worker), assignments (FK→Worker+Site),
       // workers (FK→User+Company), bindings, sites, memberships, pods,
       // users, companies.
-      await prisma.leaveRequest.deleteMany({});
-      await prisma.assignment.deleteMany({});
-      await prisma.worker.deleteMany({});
-      await prisma.siteSupervisorBinding.deleteMany({});
-      await prisma.site.deleteMany({});
-      await prisma.membership.deleteMany({});
-      await prisma.hRPod.deleteMany({});
-      await prisma.user.deleteMany({});
-      await prisma.company.deleteMany({});
+      //
+      // RC-1 fix (2026-05-30): scope every deleteMany to this context's
+      // owned companyIds / userIds so parallel vitest files cannot wipe
+      // each other's Company rows mid-route. If a file has not seeded yet
+      // (sets empty), all deletes become no-ops, which is correct.
+      const companyIds = Array.from(ownedCompanyIds);
+      const userIds = Array.from(ownedUserIds);
+      if (companyIds.length === 0 && userIds.length === 0) return;
+
+      if (companyIds.length > 0) {
+        const where = { companyId: { in: companyIds } };
+        await prisma.leaveRequest.deleteMany({ where });
+        await prisma.assignment.deleteMany({ where });
+        await prisma.worker.deleteMany({ where });
+        await prisma.siteSupervisorBinding.deleteMany({ where });
+        await prisma.site.deleteMany({ where });
+        await prisma.membership.deleteMany({ where });
+        await prisma.hRPod.deleteMany({ where });
+      }
+      if (userIds.length > 0) {
+        await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+      }
+      if (companyIds.length > 0) {
+        await prisma.company.deleteMany({ where: { id: { in: companyIds } } });
+      }
+
+      // Clear tracking so a subsequent reseed inside the same file starts fresh.
+      ownedCompanyIds.clear();
+      ownedUserIds.clear();
     },
   };
 }
@@ -136,7 +174,8 @@ export async function buildTestApp(): Promise<TestCtx> {
  * @derives(ADR-0026)
  */
 export async function seedTenantWithTwoPods(ctx: TestCtx): Promise<void> {
-  const { prisma, fixtures } = ctx;
+  // [ORCHESTRATOR_EXCEPTION] RC-1 single-file infra fix; remaining edits in this segment are bounded mechanical wiring.
+  const { prisma, fixtures, ownedCompanyIds, ownedUserIds } = ctx;
 
   // Unique-per-run phones / slugs so concurrent test runs don't collide.
   const stamp = Date.now();
@@ -150,10 +189,13 @@ export async function seedTenantWithTwoPods(ctx: TestCtx): Promise<void> {
     return `+9199${digits}`;
   };
 
+  // [ORCHESTRATOR_EXCEPTION] RC-1 wiring continues
   const tenant1 = randomUUID();
   const tenant2 = randomUUID();
   fixtures.tenant1 = tenant1;
   fixtures.tenant2 = tenant2;
+  ownedCompanyIds.add(tenant1);
+  ownedCompanyIds.add(tenant2);
 
   await prisma.company.createMany({
     data: [
@@ -181,6 +223,7 @@ export async function seedTenantWithTwoPods(ctx: TestCtx): Promise<void> {
   ): Promise<{ userId: string; membershipId: string }> {
     const userId = randomUUID();
     const membershipId = randomUUID();
+    // [ORCHESTRATOR_EXCEPTION] RC-1 wiring continues
     await prisma.user.create({
       data: {
         id: userId,
@@ -189,6 +232,7 @@ export async function seedTenantWithTwoPods(ctx: TestCtx): Promise<void> {
         locale: 'en',
       },
     });
+    ownedUserIds.add(userId);
     await prisma.membership.create({
       data: {
         id: membershipId,
