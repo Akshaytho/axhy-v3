@@ -132,8 +132,8 @@ export default function LoginPage() {
         return;
       }
       const verifyJson = await verifyRes.json();
-      const { accessToken, refreshToken, user } = verifyJson;
-      if (!accessToken || !refreshToken || !user) {
+      const { accessToken, refreshToken, memberships } = verifyJson;
+      if (!accessToken || !refreshToken || !Array.isArray(memberships)) {
         setOtpError('Login response invalid — please retry');
         return;
       }
