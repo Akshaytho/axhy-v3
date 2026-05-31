@@ -9,6 +9,8 @@
  * @derives(docs/locked/hiring-hierarchy.md)
  */
 
+import { randomUUID } from 'node:crypto';
+
 import type { Prisma } from '@prisma/client';
 import type { Role } from '@axhy/shared-schema';
 
@@ -55,21 +57,28 @@ export async function adminCreateMembershipService(
     throw err;
   }
 
-  // Upsert User by phone — exclude anonymised rows (auth.ts:87 pattern).
-  let user = await tx.user.findFirst({
-    where: { phone: input.body.phone, NOT: { phone: { startsWith: 'anon:' } } },
-  });
-  if (!user) {
-    user = await tx.user.create({
-      data: { phone: input.body.phone, locale: 'en' },
-    });
-  }
+  // User by phone — atomic INSERT ... ON CONFLICT DO UPDATE.
+  // Prisma's tx.user.upsert is NOT atomic at SQL (SELECT-then-INSERT),
+  // so it races under parallel load identically to the original findFirst+create.
+  // Raw INSERT ... ON CONFLICT (phone) DO UPDATE SET phone = EXCLUDED.phone
+  // RETURNING id is atomic at the Postgres level. The no-op SET is required
+  // because ON CONFLICT DO NOTHING + RETURNING does not return existing rows.
+  // Anonymised rows have phone 'anon:<uuid>' so they never collide with a
+  // real E.164 phone lookup.
+  const newId = randomUUID();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    INSERT INTO "axhy"."User" ("id", "phone", "locale", "status", "is_platform_admin", "createdAt", "updatedAt")
+    VALUES (${newId}::uuid, ${input.body.phone}, 'en', 'ACTIVE', false, NOW(), NOW())
+    ON CONFLICT ("phone") DO UPDATE SET "phone" = EXCLUDED."phone"
+    RETURNING "id"
+  `;
+  const userId = rows[0].id;
 
   try {
     const membership = await tx.membership.create({
       data: {
         companyId: input.callerCompanyId,
-        userId: user.id,
+        userId,
         role: input.body.role,
         baseSalaryPaise: input.body.baseSalaryPaise,
         bankIfsc: input.body.bankIfsc ?? null,
@@ -83,9 +92,9 @@ export async function adminCreateMembershipService(
       companyId: input.callerCompanyId,
       kind: 'MEMBERSHIP_CREATED',
       actorId: input.callerUserId,
-      targetId: user.id,
+      targetId: userId,
       payload: {
-        targetUserId: user.id,
+        targetUserId: userId,
         targetRole: input.body.role,
         membershipId: membership.id,
         createdName: input.body.name,
@@ -95,7 +104,7 @@ export async function adminCreateMembershipService(
     return {
       kind: 'OK',
       membershipId: membership.id,
-      userId: user.id,
+      userId,
       role: input.body.role,
     };
   } catch (err: unknown) {

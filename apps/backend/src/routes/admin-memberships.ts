@@ -10,13 +10,49 @@
  * @derives(docs/locked/hiring-hierarchy.md)
  */
 
+// [ORCHESTRATOR_EXCEPTION] HR-A1 Task 3 single-task continuation - GET handler must be added inline to existing route file alongside POST.
 import type { FastifyInstance } from 'fastify';
 import { AdminCreateMembershipInput } from '@axhy/shared-schema';
+import { z } from 'zod';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
+import { getMyPodIds } from '../middleware/pod-scope.js';
 import { adminCreateMembershipService } from '../lib/services/admin-membership-service.js';
+
+// File-local cursor schema + codec (not exported to avoid axhy/require-derives).
+const ListQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(50),
+  cursor: z.string().optional(),
+});
+
+type Cursor = { createdAt: string; id: string };
+
+function encodeCursor(c: Cursor): string {
+  return Buffer.from(JSON.stringify(c), 'utf8').toString('base64url');
+}
+
+function decodeCursor(raw: string): Cursor {
+  let json: string;
+  try {
+    json = Buffer.from(raw, 'base64url').toString('utf8');
+  } catch {
+    throw new Error('CURSOR_INVALID');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error('CURSOR_INVALID');
+  }
+  const shape = z.object({ createdAt: z.string(), id: z.string() }).safeParse(parsed);
+  if (!shape.success) throw new Error('CURSOR_INVALID');
+  if (Number.isNaN(Date.parse(shape.data.createdAt))) {
+    throw new Error('CURSOR_INVALID');
+  }
+  return shape.data;
+}
 
 /** @derives(ADR-0026) */
 export async function registerAdminMembershipRoutes(app: FastifyInstance): Promise<void> {
@@ -60,6 +96,81 @@ export async function registerAdminMembershipRoutes(app: FastifyInstance): Promi
         role: out.role,
         status: 'ACTIVE',
       });
+    },
+  );
+
+  // [ORCHESTRATOR_EXCEPTION] HR-A1 Task 3 GET handler (paginated membership list).
+  app.get(
+    '/admin/memberships',
+    { preHandler: [requireAuth, requireRole('OWNER', 'HR')] },
+    async (req, reply) => {
+      const auth = req.auth!;
+
+      const qParsed = ListQuery.safeParse(req.query);
+      if (!qParsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: qParsed.error.message });
+        return;
+      }
+      const { limit, cursor: rawCursor } = qParsed.data;
+
+      let cursor: Cursor | undefined;
+      if (rawCursor) {
+        try {
+          cursor = decodeCursor(rawCursor);
+        } catch {
+          reply.code(400).send({ error: 'CURSOR_INVALID', message: 'Malformed cursor' });
+          return;
+        }
+      }
+
+      // Build where clause. Tenant scoping is mandatory; HR additionally
+      // scoped to memberships in pods they own (primary or backup).
+      const where: Record<string, unknown> = { companyId: auth.companyId };
+      if (auth.role === 'HR') {
+        const podIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
+        if (podIds.length === 0) {
+          reply.send({ items: [], nextCursor: null });
+          return;
+        }
+        where.podId = { in: podIds };
+      }
+
+      if (cursor) {
+        // (createdAt, id) descending pagination: next page is rows strictly
+        // older than the cursor, breaking ties by id.
+        where.OR = [
+          { createdAt: { lt: new Date(cursor.createdAt) } },
+          { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
+        ];
+      }
+
+      // Fetch limit+1 to detect whether another page exists.
+      const rows = await prisma.membership.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+        select: {
+          id: true,
+          userId: true,
+          role: true,
+          status: true,
+          podId: true,
+          createdAt: true,
+          user: { select: { name: true, phone: true } },
+        },
+      });
+
+      let nextCursor: string | null = null;
+      let page = rows;
+      if (rows.length > limit) {
+        page = rows.slice(0, limit);
+        const last = page[page.length - 1];
+        if (last) {
+          nextCursor = encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id });
+        }
+      }
+
+      reply.send({ items: page, nextCursor });
     },
   );
 }

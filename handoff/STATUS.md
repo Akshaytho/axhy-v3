@@ -2,10 +2,10 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-28
-**Active phase:** **F1-b refresh rotation IN PROGRESS** (Tasks 1-3 done, branch `feat/f1-b-refresh-rotation` pushed). RefreshToken table live on Railway prod (migration 021). Store implementation complete with family detection + 12/12 unit tests. Next: Task 4 (POST /auth/refresh route).
-**Previous:** F1-a trust model DONE (PR #6 merged, migration 020). Cognitive system reflex shipped (commit `8e4dbcd` — compact-aware read-cache + Three-Loop Model). Wave 2 QA findings documented (25 findings). Super-admin-owner-bootstrap DONE (`b7a1cbb`). Cluster B DONE. Cluster A DONE (`7ed1e80`). Worker MVP 2b-4 DONE (`08c65a5`).
-**Next:** Resume F1-b at Task 4 → Tasks 5-10 → merge → F1-c (TTL + logout-everywhere) → F1-d (strict mode flip).
+**Last updated:** 2026-05-29
+**Active phase:** **HR A1 DONE on `feat/hr-a1-thin-portal` (PR pending push).** All 7 HR operations live: invite HR/SUPERVISOR, invite WORKER, anonymize, create site, bind supervisor, leave-request inbox + decide. 23 backend+frontend commits ahead of `origin/main`. Tests green (51 new + regression sweep clean). Playwright E2E spec authored, execution deferred to next session. EVID at `docs/evidence/2026-05-29/EVID-HR-A1-QA.md`.
+**Previous:** F1-b refresh rotation MERGED (PR #7). F1-a trust model DONE (PR #6, migration 020). Cognitive system reflex shipped (commit `8e4dbcd` — compact-aware read-cache + Three-Loop Model). Super-admin-owner-bootstrap DONE (`b7a1cbb`). Worker MVP 2b-4 DONE (`08c65a5`).
+**Next phase:** Slice 2 — COMPANY_ADMIN extended surfaces brainstorm + build, OR run F1-b 5-persona enterprise QA walk against HR portal (now unblocked).
 
 ## Worker MVP slice tracker
 
@@ -20,6 +20,8 @@
 | `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + queue persistence                                                                           | **DONE** 2026-05-23 | —                | `08c65a5`          |
 | `admin-hr-backend-wave-2-prep`  | Schema move (Worker salary → Membership) + 5 admin/HR routes (memberships/workers/anonymize/sites/bindings) + role-gates + 21 tests      | **DONE** 2026-05-25 | —                | `f40bfb3..d8edfe8` |
 | `super-admin-owner-bootstrap`   | `POST /super-admin/memberships` — seats first OWNER per tenant + 5 prod-DB tests + founder OWNER live in QA Test Co                      | **DONE** 2026-05-25 | —                | `b7a1cbb`          |
+| `hr-a1-thin-portal`             | Thin admin-web /app/hr/ portal over R1-R5 + leave-decide wire (7 HR ops live, 51 tests green, EVID filed)                                | **DONE** 2026-05-29 | PR pending push  | 23 commits ahead   |
+| `pre-existing-debt`             | `leave-decision.test.ts` 3-failure (pre-A1) — separate fix slice; tracked, not blocking                                                  | tracked             | —                | —                  |
 | `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started         | —                | —                  |
 | `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started         | —                | —                  |
 

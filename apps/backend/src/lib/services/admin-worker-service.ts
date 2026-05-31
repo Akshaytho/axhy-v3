@@ -10,6 +10,8 @@
  * @derives(docs/locked/hiring-hierarchy.md)
  */
 
+import { randomUUID } from 'node:crypto';
+
 import type { Prisma } from '@prisma/client';
 
 import { recordAuditEvent } from '../audit-event.js';
@@ -38,20 +40,29 @@ export async function adminCreateWorkerService(
   tx: Prisma.TransactionClient,
   input: AdminCreateWorkerServiceInput,
 ): Promise<AdminCreateWorkerServiceOutput> {
-  let user = await tx.user.findFirst({
-    where: { phone: input.body.phone, NOT: { phone: { startsWith: 'anon:' } } },
-  });
-  if (!user) {
-    user = await tx.user.create({
-      data: { phone: input.body.phone, locale: 'en' },
-    });
-  }
+  // [ORCHESTRATOR_EXCEPTION] User by phone — atomic INSERT ... ON CONFLICT DO UPDATE.
+  // Prisma's tx.user.upsert is NOT atomic at SQL (SELECT-then-INSERT), so it
+  // races identically to the original findFirst+create pattern. The earlier
+  // catch+re-query attempt fails inside a Prisma $transaction (Postgres 25P02:
+  // transaction aborted). Only raw INSERT ... ON CONFLICT (phone) DO UPDATE SET
+  // phone = EXCLUDED.phone RETURNING id is atomic at the Postgres level.
+  // The no-op SET is required because DO NOTHING + RETURNING does not return
+  // existing rows. Anonymised rows have phone 'anon:<uuid>' so they never
+  // collide with a real E.164 phone lookup.
+  const newId = randomUUID();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    INSERT INTO "axhy"."User" ("id", "phone", "locale", "status", "is_platform_admin", "createdAt", "updatedAt")
+    VALUES (${newId}::uuid, ${input.body.phone}, 'en', 'ACTIVE', false, NOW(), NOW())
+    ON CONFLICT ("phone") DO UPDATE SET "phone" = EXCLUDED."phone"
+    RETURNING "id"
+  `;
+  const userId = rows[0].id;
 
   try {
     const membership = await tx.membership.create({
       data: {
         companyId: input.callerCompanyId,
-        userId: user.id,
+        userId,
         role: 'WORKER',
         baseSalaryPaise: input.body.baseSalaryPaise,
         bankIfsc: input.body.bankIfsc ?? null,
@@ -63,7 +74,7 @@ export async function adminCreateWorkerService(
     const worker = await tx.worker.create({
       data: {
         companyId: input.callerCompanyId,
-        userId: user.id,
+        userId,
         name: input.body.name,
         phone: input.body.phone,
         preferredLanguage: input.body.preferredLanguage ?? 'hi',
@@ -78,13 +89,13 @@ export async function adminCreateWorkerService(
       targetId: worker.id,
       payload: {
         workerId: worker.id,
-        userId: user.id,
+        userId,
         membershipId: membership.id,
         name: input.body.name,
       },
     });
 
-    return { kind: 'OK', workerId: worker.id, userId: user.id, membershipId: membership.id };
+    return { kind: 'OK', workerId: worker.id, userId, membershipId: membership.id };
   } catch (err: unknown) {
     if (
       typeof err === 'object' &&
