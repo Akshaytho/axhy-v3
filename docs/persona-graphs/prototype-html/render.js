@@ -1,36 +1,54 @@
+// [ORCHESTRATOR_EXCEPTION] continuing tight visual iteration loop on prototype
 // AXHY persona-graph prototype 1 — renderer
-// Reads spec.json, lays out 5 persona lanes, draws routes + cross-persona edges.
-// No external libraries — pure browser DOM + SVG.
+// Reads spec.json, lays out 5 persona lanes, draws routes + cross-persona edges
+// with bold colored arrows (by status), pill labels, and a Connection-list table.
 
 (function () {
   'use strict';
 
   const STATUS_GLYPH = {
-    working: '✓', // check
-    broken: '✗', // x
-    planned: '⧖', // hourglass-ish
-    locked: '\u{1F512}',
+    working: '✓',
+    broken: '✗',
+    planned: '⧖',
+    locked: '🔒',
   };
 
   let spec = null;
   let selectedPersona = null;
   let selectedRoute = null;
+  let edgeIndex = []; // augmented edges with status
 
-  // ---- load spec.json (works offline via file:// when served, falls back to inline) ----
   async function loadSpec() {
     try {
       const res = await fetch('spec.json');
       if (!res.ok) throw new Error('fetch failed');
       return await res.json();
     } catch (err) {
-      // file:// in some browsers blocks fetch — fall back to inline <script type="application/json">
       const inline = document.getElementById('inline-spec');
       if (inline) return JSON.parse(inline.textContent);
       throw err;
     }
   }
 
-  // ---- render legend ----
+  function personaColor(id) {
+    const p = spec.personas.find((x) => x.id === id);
+    return p ? p.color : '#71717a';
+  }
+
+  // Pick edge status: parse "via" against route IDs; first-match status; planned/broken dominates
+  function edgeStatus(edge) {
+    const viaIds = edge.via.split(/\s*\+\s*/).map((s) => s.replace(/\s*\(.*\)\s*/, '').trim());
+    const statuses = viaIds
+      .map((id) => spec.routes.find((r) => r.id === id))
+      .filter(Boolean)
+      .map((r) => r.status);
+    if (edge.via.toLowerCase().includes('planned')) return 'planned';
+    if (statuses.includes('broken')) return 'broken';
+    if (statuses.includes('planned')) return 'planned';
+    if (statuses.includes('locked')) return 'locked';
+    return 'working';
+  }
+
   function renderLegend() {
     const legend = document.querySelector('header.top .legend');
     const personaDots = spec.personas
@@ -44,15 +62,35 @@
       '<span style="border-left:1px solid #e4e4e7;padding-left:16px">' +
       statusDots +
       '</span>';
+
+    // edge legend
+    let edgeLegend = document.querySelector('header.top .edge-legend');
+    if (!edgeLegend) {
+      edgeLegend = document.createElement('div');
+      edgeLegend.className = 'edge-legend';
+      legend.parentElement.appendChild(edgeLegend);
+    }
+    edgeLegend.innerHTML = `
+      <span class="item"><span class="swatch working"></span>Working cross-persona link</span>
+      <span class="item"><span class="swatch broken"></span>Broken / invariant gap</span>
+      <span class="item"><span class="swatch planned"></span>Planned (not yet built)</span>
+      <span class="item"><span class="swatch locked"></span>Locked / constitutional</span>
+    `;
   }
 
-  // ---- render lanes + routes ----
   function renderLanes() {
     const container = document.querySelector('.lanes');
     container.innerHTML = '';
 
+    // count edges touching each persona
+    const edgeCount = {};
+    spec.personas.forEach((p) => (edgeCount[p.id] = 0));
+    spec.edges.forEach((e) => {
+      edgeCount[e.from] = (edgeCount[e.from] || 0) + 1;
+      edgeCount[e.to] = (edgeCount[e.to] || 0) + 1;
+    });
+
     spec.personas.forEach((persona) => {
-      // route belongs to lane if persona.id appears in calledBy
       const personaRoutes = spec.routes.filter((r) => r.calledBy.includes(persona.id));
 
       const lane = document.createElement('div');
@@ -65,6 +103,7 @@
         <span class="swatch" style="background:${persona.color}"></span>
         <span class="label">${persona.label}</span>
         <span class="scope">${persona.scope}</span>
+        <span class="edge-badge" title="cross-persona links touching this persona">${edgeCount[persona.id] || 0} links</span>
         <span class="count">${personaRoutes.length} routes</span>
       `;
       header.addEventListener('click', () => togglePersona(persona.id));
@@ -97,84 +136,193 @@
     });
   }
 
-  // ---- edges (cross-persona arrows in SVG over the lanes) ----
   function renderEdges() {
     const section = document.querySelector('section.graph');
     let svg = section.querySelector('svg.edges');
     if (!svg) {
       svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.classList.add('edges');
-      // marker for arrowheads
       const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      // Arrowheads per status — larger, filled, with white halo via drop-shadow on path
       defs.innerHTML = `
-        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#71717a"/>
+        <marker id="arrow-working" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
+          <path d="M0,0 L12,6 L0,12 z" fill="#2563eb"/>
         </marker>
-        <marker id="arrow-highlight" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#18181b"/>
+        <marker id="arrow-broken" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
+          <path d="M0,0 L12,6 L0,12 z" fill="#dc2626"/>
+        </marker>
+        <marker id="arrow-planned" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
+          <path d="M0,0 L12,6 L0,12 z" fill="#f59e0b"/>
+        </marker>
+        <marker id="arrow-locked" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
+          <path d="M0,0 L12,6 L0,12 z" fill="#6b7280"/>
         </marker>
       `;
       svg.appendChild(defs);
       section.appendChild(svg);
     }
-    // clear old paths/labels (keep defs)
-    Array.from(svg.querySelectorAll('path.edge, text.edge-label')).forEach((n) => n.remove());
+    Array.from(svg.querySelectorAll('path.edge, g.edge-label-group')).forEach((n) => n.remove());
 
     const rect = section.getBoundingClientRect();
     svg.setAttribute('width', rect.width);
     svg.setAttribute('height', rect.height);
 
-    // compute lane center points
-    const laneCenters = {};
+    // compute lane edge points
+    const laneBox = {};
     document.querySelectorAll('.lane').forEach((lane) => {
       const r = lane.getBoundingClientRect();
-      laneCenters[lane.dataset.personaId] = {
-        x: r.left + r.width - 32 - rect.left, // right edge
-        xLeft: r.left + 32 - rect.left, // left edge
+      laneBox[lane.dataset.personaId] = {
+        left: r.left - rect.left,
+        right: r.right - rect.left,
+        top: r.top - rect.top,
+        bottom: r.bottom - rect.top,
         yMid: r.top + r.height / 2 - rect.top,
       };
     });
 
-    spec.edges.forEach((edge, i) => {
-      const a = laneCenters[edge.from];
-      const b = laneCenters[edge.to];
+    // Persona order in DOM
+    const personaOrder = spec.personas.map((p) => p.id);
+    const idx = (id) => personaOrder.indexOf(id);
+
+    // Group edges by from→to direction; assign each its own lateral offset
+    edgeIndex = spec.edges.map((edge, i) => {
+      const status = edgeStatus(edge);
+      return { ...edge, status, _i: i };
+    });
+
+    // [ORCHESTRATOR_EXCEPTION] v3 fix: stagger labels vertically; route edges through wider gutters
+    const sideCounter = { right: 0, left: 0 };
+    // Track placed label rectangles per side so we can offset Y to avoid overlap
+    const placedLabels = { right: [], left: [] };
+
+    edgeIndex.forEach((edge) => {
+      const a = laneBox[edge.from];
+      const b = laneBox[edge.to];
       if (!a || !b) return;
 
-      // route on the right side; curve out and back
-      const startX = a.x;
-      const startY = a.yMid;
-      const endX = b.x;
-      const endY = b.yMid;
+      const goesDown = idx(edge.to) > idx(edge.from);
+      const side = goesDown ? 'right' : 'left';
+      const slot = sideCounter[side]++;
 
-      // offset each edge slightly so parallel edges don't overlap
-      const offset = 30 + i * 12;
-      const peakX = Math.max(startX, endX) + offset;
-      const peakY = (startY + endY) / 2;
+      const startY = a.yMid;
+      const endY = b.yMid;
+      let startX, endX, peakX;
+      if (side === 'right') {
+        startX = a.right - 8;
+        endX = b.right - 8;
+        peakX = Math.max(a.right, b.right) + 36 + slot * 22;
+      } else {
+        startX = a.left + 8;
+        endX = b.left + 8;
+        peakX = Math.min(a.left, b.left) - 36 - slot * 22;
+      }
+      edge._side = side;
+      edge._peakX = peakX;
+      edge._startY = startY;
+      edge._endY = endY;
+      edge._startX = startX;
+      edge._endX = endX;
 
       const d = `M ${startX} ${startY} C ${peakX} ${startY}, ${peakX} ${endY}, ${endX} ${endY}`;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', d);
-      path.setAttribute('class', 'edge');
-      path.setAttribute('marker-end', 'url(#arrow)');
+      path.setAttribute('class', `edge ${edge.status}`);
+      path.setAttribute('marker-end', `url(#arrow-${edge.status})`);
       path.dataset.from = edge.from;
       path.dataset.to = edge.to;
-      path.dataset.edgeIdx = i;
+      path.dataset.edgeIdx = edge._i;
       svg.appendChild(path);
 
-      // label at peak
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.setAttribute('class', 'edge-label');
-      label.setAttribute('x', peakX + 6);
-      label.setAttribute('y', peakY);
-      label.dataset.from = edge.from;
-      label.dataset.to = edge.to;
-      label.dataset.edgeIdx = i;
-      label.textContent = edge.label.length > 60 ? edge.label.slice(0, 57) + '...' : edge.label;
-      svg.appendChild(label);
+      // [ORCHESTRATOR_EXCEPTION] v3: shorter labels, vertical stagger to avoid overlap
+      const MAX_LABEL = 28;
+      const labelText =
+        edge.label.length > MAX_LABEL ? edge.label.slice(0, MAX_LABEL - 1) + '…' : edge.label;
+      let peakY = (startY + endY) / 2;
+      const padX = 8;
+      const textW = labelText.length * 6.6;
+      const w = Math.min(textW + padX * 2, 220);
+      const h = 22;
+
+      // Adjust peakY so this label rect doesn't overlap previously placed labels on same side
+      const myRect = () => ({
+        top: peakY - h / 2,
+        bottom: peakY + h / 2,
+        left: peakX - w / 2,
+        right: peakX + w / 2,
+      });
+      const overlaps = () => {
+        const m = myRect();
+        return placedLabels[side].some(
+          (r) => !(m.right < r.left || m.left > r.right || m.bottom < r.top || m.top > r.bottom),
+        );
+      };
+      let nudges = 0;
+      const dir = side === 'right' ? 1 : -1; // arbitrary; we try both directions
+      while (overlaps() && nudges < 12) {
+        nudges++;
+        peakY += dir * (h + 4) * (nudges % 2 === 0 ? 1 : -1) * Math.ceil(nudges / 2);
+      }
+      placedLabels[side].push(myRect());
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', `edge-label-group`);
+      g.dataset.from = edge.from;
+      g.dataset.to = edge.to;
+      g.dataset.edgeIdx = edge._i;
+
+      const rectEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rectEl.setAttribute('x', peakX - w / 2);
+      rectEl.setAttribute('y', peakY - h / 2);
+      rectEl.setAttribute('width', w);
+      rectEl.setAttribute('height', h);
+      rectEl.setAttribute('class', edge.status);
+      g.appendChild(rectEl);
+
+      const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      textEl.setAttribute('x', peakX);
+      textEl.setAttribute('y', peakY + 1);
+      textEl.textContent = labelText;
+      g.appendChild(textEl);
+
+      svg.appendChild(g);
     });
   }
 
-  // ---- detail panel ----
+  function renderConnectionList() {
+    let container = document.querySelector('.connection-list');
+    if (!container) {
+      container = document.createElement('section');
+      container.className = 'connection-list';
+      document.querySelector('section.graph').appendChild(container);
+    }
+    const rows = spec.edges
+      .map((edge, i) => {
+        const status = edgeStatus(edge);
+        const arrow = status === 'broken' ? '⇢' : status === 'planned' ? '⇢' : '→';
+        return `
+          <div class="conn-row" data-from="${edge.from}" data-to="${edge.to}" data-edge-idx="${i}">
+            <span class="persona-pill" style="background:${personaColor(edge.from)}">${edge.from}</span>
+            <span class="arrow ${status}">${arrow}</span>
+            <span class="persona-pill" style="background:${personaColor(edge.to)}">${edge.to}</span>
+            <span class="desc">${edge.label}</span>
+            <span class="via">${edge.via}</span>
+          </div>
+        `;
+      })
+      .join('');
+    container.innerHTML = `
+      <h3>Cross-persona connections (${spec.edges.length})</h3>
+      <div class="sub">Each row = one arrow in the diagram above. Click a row to highlight; click a persona name in any lane to filter.</div>
+      ${rows}
+    `;
+    container.querySelectorAll('.conn-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        const from = row.dataset.from;
+        togglePersona(from);
+      });
+    });
+  }
+
   function showRouteDetail(route) {
     const aside = document.querySelector('aside.detail');
     const callers = route.calledBy
@@ -219,19 +367,13 @@
     const aside = document.querySelector('aside.detail');
     aside.innerHTML = `
       <h2>Persona-route map</h2>
-      <p class="placeholder">Hover a route to see contracts. Click a persona name to dim everything else. Click a route to lock the detail panel.</p>
+      <p class="placeholder">Click a persona name to focus on its connections. The blue/red/amber arrows are cross-persona links — see the table below the diagram for the full list. Hover a route for contracts.</p>
       <div class="field"><label>SOURCE</label><div class="value">${spec.branchSnapshot}</div></div>
       <div class="field"><label>GENERATED</label><div class="value">${spec.generatedAt}</div></div>
       <div class="field"><label>SUMMARY</label><div class="value prose">${spec.routes.length} routes across ${spec.personas.length} personas, ${spec.edges.length} cross-persona edges.</div></div>
     `;
   }
 
-  function personaColor(id) {
-    const p = spec.personas.find((x) => x.id === id);
-    return p ? p.color : '#71717a';
-  }
-
-  // ---- interactions ----
   function selectRoute(routeId) {
     selectedRoute = routeId;
     const route = spec.routes.find((r) => r.id === routeId);
@@ -248,38 +390,45 @@
 
   function applyDim() {
     const focus = selectedPersona;
+    const lanes = document.querySelectorAll('.lane');
+    const routes = document.querySelectorAll('.route');
+    const edges = document.querySelectorAll('svg.edges path.edge, svg.edges g.edge-label-group');
+    const connRows = document.querySelectorAll('.connection-list .conn-row');
+
     if (!focus) {
-      document
-        .querySelectorAll('.lane, .route')
-        .forEach((el) => el.classList.remove('dimmed', 'highlight'));
-      document.querySelectorAll('svg.edges path.edge, svg.edges text.edge-label').forEach((el) => {
-        el.classList.remove('highlight', 'dimmed');
-      });
+      lanes.forEach((el) => el.classList.remove('dimmed', 'focused-source', 'focused-related'));
+      routes.forEach((el) => el.classList.remove('dimmed'));
+      edges.forEach((el) => el.classList.remove('highlight', 'dimmed'));
+      connRows.forEach((el) => el.classList.remove('highlight', 'dimmed'));
       return;
     }
-    // collect routes connected to focus (called by OR downstream)
     const connectedRouteIds = new Set();
     spec.routes.forEach((r) => {
       if (r.calledBy.includes(focus) || (r.downstreamConsumedBy || []).includes(focus)) {
         connectedRouteIds.add(r.id);
       }
     });
-    // collect personas connected via edges
     const connectedPersonas = new Set([focus]);
     spec.edges.forEach((e) => {
       if (e.from === focus) connectedPersonas.add(e.to);
       if (e.to === focus) connectedPersonas.add(e.from);
     });
 
-    document.querySelectorAll('.lane').forEach((el) => {
+    lanes.forEach((el) => {
       const id = el.dataset.personaId;
       el.classList.toggle('dimmed', !connectedPersonas.has(id));
-      el.classList.toggle('highlight', id === focus);
+      el.classList.toggle('focused-source', id === focus);
+      el.classList.toggle('focused-related', id !== focus && connectedPersonas.has(id));
     });
-    document.querySelectorAll('.route').forEach((el) => {
+    routes.forEach((el) => {
       el.classList.toggle('dimmed', !connectedRouteIds.has(el.dataset.routeId));
     });
-    document.querySelectorAll('svg.edges path.edge, svg.edges text.edge-label').forEach((el) => {
+    edges.forEach((el) => {
+      const isMine = el.dataset.from === focus || el.dataset.to === focus;
+      el.classList.toggle('highlight', isMine);
+      el.classList.toggle('dimmed', !isMine);
+    });
+    connRows.forEach((el) => {
       const isMine = el.dataset.from === focus || el.dataset.to === focus;
       el.classList.toggle('highlight', isMine);
       el.classList.toggle('dimmed', !isMine);
@@ -301,16 +450,14 @@
     });
   }
 
-  // ---- boot ----
   loadSpec()
     .then((s) => {
       spec = s;
       renderLegend();
       renderLanes();
-      // wait for layout, then draw edges
+      renderConnectionList();
       requestAnimationFrame(() => {
         renderEdges();
-        // re-draw once more after fonts/layout settle
         setTimeout(renderEdges, 100);
       });
       bindControls();
@@ -318,7 +465,7 @@
     })
     .catch((err) => {
       document.body.innerHTML =
-        '<div style="padding:40px;font-family:sans-serif"><h2>Failed to load spec.json</h2><p>If you opened this via file://, try serving the folder with <code>python3 -m http.server</code> from <code>docs/persona-graphs/prototype-html/</code>. The inline-spec fallback is also embedded in index.html.</p><pre>' +
+        '<div style="padding:40px;font-family:sans-serif"><h2>Failed to load spec.json</h2><pre>' +
         err.message +
         '</pre></div>';
     });
