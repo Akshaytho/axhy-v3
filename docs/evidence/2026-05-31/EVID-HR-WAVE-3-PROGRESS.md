@@ -158,3 +158,22 @@ by design. The only changes:
 - 5 new test files (uncommitted; staged for commit when green)
 - 1-line append to apps/backend/package.json test:hr script (queued)
 - This evidence file
+
+---
+
+<!-- [ORCHESTRATOR_EXCEPTION] EVID closeout append for Wave-3 PR #10 -->
+
+## RESOLUTION 2026-05-31 (continuation)
+
+The 1 red test (hr-concurrent "POST same {phone, role} parallel") surfaced
+a real race in adminCreateMembershipService (and adminCreateWorkerService).
+Per founder direction (production-grade, no skips), fixed the race instead
+of skipping the test:
+
+- Files patched:
+  - apps/backend/src/lib/services/admin-membership-service.ts
+  - apps/backend/src/lib/services/admin-worker-service.ts
+- Pattern: catch P2002 from tx.user.create + re-query (winner already created it).
+- After fix: hr-concurrent now 3/3 green, full test:hr 112/112 green.
+
+EVID closed.

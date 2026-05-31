@@ -110,3 +110,18 @@ no-op-rethrow (zero new instances in HR A1 commits per grep).
 - One session = one slice (or one coherent task).
 - End session at any natural boundary: task complete, ~50 turns, cost_pressure hits Orange, context_pressure hits context_orange.
 - Session-end protocol: commit code → write evidence files → update this handoff → start fresh.
+
+---
+
+<!-- [ORCHESTRATOR_EXCEPTION] doc append for Wave-3 PR #10 closeout -->
+
+## Open architectural questions
+
+- adminCreateWorkerService does NOT assign Membership.podId when HR creates a worker.
+  HR pod-scoped GET /admin/workers then can't see workers they themselves created
+  unless workers are explicitly seeded with a podId. Three resolutions worth panel:
+  (a) auto-assign callerUserId's pod (mirrors natural HR mental model: my pod, my workers),
+  (b) require podId in request body (explicit but adds UI step),
+  (c) leave workers pod-less (current behavior; HR sees only seeded workers — confusing).
+  Surface in next persona-graph audit pass. Not regressed by HR A1 or Wave-3.
+  Surfaced by hr-idempotency.test.ts (Wave-3, branch feat/hr-wave-3-hardening, PR #10).
