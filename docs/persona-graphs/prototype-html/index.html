@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AXHY persona-route map (prototype 1: HTML+CSS+JS)</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>AXHY persona-route map</h1>
+    <div class="meta">Prototype 1: custom HTML + CSS + JS reading <code>spec.json</code> &middot; snapshot: <span id="snap">main @ 1c4859f</span> &middot; 2026-05-31</div>
+    <div class="controls">
+      <button id="btn-clear">Clear focus</button>
+      <span style="font-size:11px;color:#a1a1aa;margin-left:8px">Click a persona name to focus. Click a route to lock its detail.</span>
+    </div>
+    <div class="legend"></div>
+  </header>
+
+  <main class="layout">
+    <section class="graph">
+      <div class="lanes"></div>
+    </section>
+    <aside class="detail">
+      <p class="placeholder">Loading...</p>
+    </aside>
+  </main>
+
+  <footer class="bottom">
+    Built from EVID-HR-A1, EVID-OWNER-PERSONA-MAP, EVID-SUPER-ADMIN-PERSONA-MAP + backend route grep.
+    Self-contained: no CDN, no external JS, no tracking. Opens via file:// (with inline-spec fallback below) or any static server.
+  </footer>
+
+  <!-- Inline fallback for browsers that block fetch() on file:// (Chrome) -->
+  <script type="application/json" id="inline-spec">
+{
+  "$schema": "axhy-persona-graph-v1",
+  "generatedAt": "2026-05-31",
+  "branchSnapshot": "main @ 1c4859f",
+  "sources": [
+    "git show feat/slice-2-owner-brainstorm:docs/evidence/2026-05-31/EVID-OWNER-PERSONA-MAP.md",
+    "git show feat/slice-3-super-admin-brainstorm:docs/evidence/2026-05-31/EVID-SUPER-ADMIN-PERSONA-MAP.md",
+    "docs/evidence/2026-05-30/EVID-HR-A1-PLAYWRIGHT.md",
+    "grep over apps/backend/src/routes/ for requireWorkerRole + /supervisor/"
+  ],
+  "personas": [
+    {
+      "id": "HR",
+      "label": "HR (Kavitha)",
+      "scope": "pod-scoped",
+      "color": "#7c3aed"
+    },
+    {
+      "id": "OWNER",
+      "label": "OWNER (founder/CEO)",
+      "scope": "tenant-wide",
+      "color": "#0ea5e9"
+    },
+    {
+      "id": "SUPER_ADMIN",
+      "label": "SUPER_ADMIN (Akshay)",
+      "scope": "platform-wide",
+      "color": "#dc2626"
+    },
+    {
+      "id": "WORKER",
+      "label": "WORKER (Suresh)",
+      "scope": "self-only",
+      "color": "#16a34a"
+    },
+    {
+      "id": "SUPERVISOR",
+      "label": "SUPERVISOR (Lakshmi)",
+      "scope": "site-bound",
+      "color": "#f59e0b"
+    }
+  ],
+  "statusLegend": {
+    "working": "Route exists, audited this session, behaves as spec.",
+    "broken": "Route exists but has a known invariant violation or audit gap.",
+    "planned": "Route does NOT exist on main; called out as gap in EVID.",
+    "locked": "Route is panel-locked / constitutional; do not modify without founder approval."
+  },
+  "routes": [
+    {
+      "id": "post-super-admin-memberships",
+      "method": "POST",
+      "path": "/super-admin/memberships",
+      "calledBy": [
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "Company"
+      ],
+      "writes": [
+        "User",
+        "Membership",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "AuditLog kind=MEMBERSHIP_CREATED bootstrappedBy=SUPER_ADMIN"
+      ],
+      "downstreamConsumedBy": [
+        "OWNER"
+      ],
+      "status": "working",
+      "notes": "Bootstrap path. No outbox (Akshay calls OWNER by hand)."
+    },
+    {
+      "id": "post-auth-otp-request",
+      "method": "POST",
+      "path": "/auth/otp/request",
+      "calledBy": [
+        "WORKER",
+        "SUPERVISOR",
+        "HR",
+        "OWNER",
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "User"
+      ],
+      "writes": [
+        "OtpAttempt"
+      ],
+      "sideEffects": [
+        "SMS send"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "working",
+      "notes": "Public; no role differentiation at request time."
+    },
+    {
+      "id": "post-auth-otp-verify",
+      "method": "POST",
+      "path": "/auth/otp/verify",
+      "calledBy": [
+        "WORKER",
+        "SUPERVISOR",
+        "HR",
+        "OWNER",
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "User",
+        "Membership",
+        "OtpAttempt"
+      ],
+      "writes": [
+        "RefreshToken"
+      ],
+      "sideEffects": [
+        "JWT issuance; isPlatformAdmin claim if User.is_platform_admin=true"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "working",
+      "notes": "Membership.role drives JWT role claim."
+    },
+    {
+      "id": "post-auth-refresh",
+      "method": "POST",
+      "path": "/auth/refresh",
+      "calledBy": [
+        "WORKER",
+        "SUPERVISOR",
+        "HR",
+        "OWNER",
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "RefreshToken",
+        "User",
+        "Membership"
+      ],
+      "writes": [
+        "RefreshToken (rotation)"
+      ],
+      "sideEffects": [
+        "F1-b family-rotation; SUPER_ADMIN membershipId=null path"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "working",
+      "notes": "EVID-QA-F1B: SA membershipId=null path tested by unit, not Playwright."
+    },
+    {
+      "id": "get-me",
+      "method": "GET",
+      "path": "/me",
+      "calledBy": [
+        "WORKER",
+        "SUPERVISOR",
+        "HR",
+        "OWNER",
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "User",
+        "Membership"
+      ],
+      "writes": [],
+      "sideEffects": [],
+      "downstreamConsumedBy": [],
+      "status": "working",
+      "notes": "Drives every portal shell."
+    },
+    {
+      "id": "post-admin-memberships",
+      "method": "POST",
+      "path": "/admin/memberships",
+      "calledBy": [
+        "HR",
+        "OWNER"
+      ],
+      "reads": [
+        "Membership",
+        "User",
+        "Pod"
+      ],
+      "writes": [
+        "Membership",
+        "User (if first)",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "Invite outbox (worker invite)"
+      ],
+      "downstreamConsumedBy": [
+        "WORKER",
+        "SUPERVISOR",
+        "HR"
+      ],
+      "status": "working",
+      "notes": "HIRING_AUTHORITY enforced via assertTargetRole."
+    },
+    {
+      "id": "post-admin-workers",
+      "method": "POST",
+      "path": "/admin/workers",
+      "calledBy": [
+        "HR"
+      ],
+      "reads": [
+        "Pod",
+        "User"
+      ],
+      "writes": [
+        "Worker",
+        "User",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "Worker invite outbox"
+      ],
+      "downstreamConsumedBy": [
+        "WORKER"
+      ],
+      "status": "working",
+      "notes": "HR-only. OWNER excluded by gate."
+    },
+    {
+      "id": "post-admin-workers-anonymize",
+      "method": "POST",
+      "path": "/admin/workers/:id/anonymize",
+      "calledBy": [
+        "HR"
+      ],
+      "reads": [
+        "Worker"
+      ],
+      "writes": [
+        "Worker (PII redact)",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "Audit chain"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "working",
+      "notes": "HR scope; OWNER does not anonymize directly."
+    },
+    {
+      "id": "post-admin-sites",
+      "method": "POST",
+      "path": "/admin/sites",
+      "calledBy": [
+        "HR",
+        "OWNER"
+      ],
+      "reads": [
+        "Site (uniqueness)"
+      ],
+      "writes": [
+        "Site",
+        "AuditLog"
+      ],
+      "sideEffects": [],
+      "downstreamConsumedBy": [
+        "SUPERVISOR",
+        "WORKER"
+      ],
+      "status": "working",
+      "notes": "Site creation."
+    },
+    {
+      "id": "post-admin-sites-bindings",
+      "method": "POST",
+      "path": "/admin/sites/:id/bindings",
+      "calledBy": [
+        "HR",
+        "OWNER"
+      ],
+      "reads": [
+        "Site",
+        "Membership"
+      ],
+      "writes": [
+        "SiteSupervisorBinding",
+        "AuditLog"
+      ],
+      "sideEffects": [],
+      "downstreamConsumedBy": [
+        "SUPERVISOR"
+      ],
+      "status": "working",
+      "notes": "Binds SUPERVISOR to site."
+    },
+    {
+      "id": "post-admin-policy",
+      "method": "POST",
+      "path": "/admin/policy",
+      "calledBy": [
+        "HR",
+        "OWNER",
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "Policy (version chain)"
+      ],
+      "writes": [
+        "Policy (new version)",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "policy-changed outbox"
+      ],
+      "downstreamConsumedBy": [
+        "WORKER",
+        "SUPERVISOR"
+      ],
+      "status": "broken",
+      "notes": "SA bypass unaudited per EVID-SA GAP-SA-08. In-handler ACL, not gate."
+    },
+    {
+      "id": "post-leave-requests",
+      "method": "POST",
+      "path": "/leave-requests",
+      "calledBy": [
+        "WORKER"
+      ],
+      "reads": [
+        "Worker"
+      ],
+      "writes": [
+        "LeaveRequest"
+      ],
+      "sideEffects": [
+        "HR notification"
+      ],
+      "downstreamConsumedBy": [
+        "HR",
+        "SUPERVISOR"
+      ],
+      "status": "working",
+      "notes": "Worker initiates leave."
+    },
+    {
+      "id": "post-leave-approve",
+      "method": "POST",
+      "path": "/leave-requests/:id/approve",
+      "calledBy": [
+        "HR",
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "LeaveRequest",
+        "Worker"
+      ],
+      "writes": [
+        "LeaveRequest.status",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "Worker notification; schedule reflow"
+      ],
+      "downstreamConsumedBy": [
+        "WORKER",
+        "OWNER"
+      ],
+      "status": "working",
+      "notes": "SUPERVISOR has acting-window authority."
+    },
+    {
+      "id": "post-leave-reject",
+      "method": "POST",
+      "path": "/leave-requests/:id/reject",
+      "calledBy": [
+        "HR",
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "LeaveRequest"
+      ],
+      "writes": [
+        "LeaveRequest.status",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "Worker notification"
+      ],
+      "downstreamConsumedBy": [
+        "WORKER",
+        "OWNER"
+      ],
+      "status": "working",
+      "notes": "Mirrors approve."
+    },
+    {
+      "id": "get-worker-today",
+      "method": "GET",
+      "path": "/worker/today",
+      "calledBy": [
+        "WORKER"
+      ],
+      "reads": [
+        "Visit",
+        "Site",
+        "Assignment"
+      ],
+      "writes": [],
+      "sideEffects": [],
+      "downstreamConsumedBy": [],
+      "status": "working",
+      "notes": "Worker today screen."
+    },
+    {
+      "id": "post-worker-submit",
+      "method": "POST",
+      "path": "/worker/submit",
+      "calledBy": [
+        "WORKER"
+      ],
+      "reads": [
+        "Visit",
+        "Capture"
+      ],
+      "writes": [
+        "Visit.status",
+        "Submission",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "Verification pipeline trigger"
+      ],
+      "downstreamConsumedBy": [
+        "SUPERVISOR",
+        "OWNER"
+      ],
+      "status": "working",
+      "notes": "Billing unit fires here (Visit completed)."
+    },
+    {
+      "id": "post-worker-captures",
+      "method": "POST",
+      "path": "/worker/captures",
+      "calledBy": [
+        "WORKER"
+      ],
+      "reads": [
+        "Visit"
+      ],
+      "writes": [
+        "Capture",
+        "S3 object"
+      ],
+      "sideEffects": [
+        "Photo upload"
+      ],
+      "downstreamConsumedBy": [
+        "SUPERVISOR"
+      ],
+      "status": "working",
+      "notes": "Photo capture."
+    },
+    {
+      "id": "post-worker-consent",
+      "method": "POST",
+      "path": "/worker/consent",
+      "calledBy": [
+        "WORKER"
+      ],
+      "reads": [
+        "Worker"
+      ],
+      "writes": [
+        "WorkerConsent",
+        "AuditLog"
+      ],
+      "sideEffects": [],
+      "downstreamConsumedBy": [
+        "HR"
+      ],
+      "status": "working",
+      "notes": "DPDPA consent."
+    },
+    {
+      "id": "get-supervisor-today",
+      "method": "GET",
+      "path": "/supervisor/today",
+      "calledBy": [
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "Site",
+        "Visit",
+        "Worker"
+      ],
+      "writes": [],
+      "sideEffects": [],
+      "downstreamConsumedBy": [],
+      "status": "working",
+      "notes": "Supervisor portfolio of the day."
+    },
+    {
+      "id": "get-supervisor-context",
+      "method": "GET",
+      "path": "/supervisor/context",
+      "calledBy": [
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "Site",
+        "Binding"
+      ],
+      "writes": [],
+      "sideEffects": [],
+      "downstreamConsumedBy": [],
+      "status": "working",
+      "notes": "Site-bound context."
+    },
+    {
+      "id": "post-supervisor-replacement-invites",
+      "method": "POST",
+      "path": "/supervisor/replacement-invites",
+      "calledBy": [
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "Visit"
+      ],
+      "writes": [
+        "ReplacementInvite"
+      ],
+      "sideEffects": [
+        "SMS to candidate worker"
+      ],
+      "downstreamConsumedBy": [
+        "WORKER",
+        "HR"
+      ],
+      "status": "working",
+      "notes": "Same-day replacement."
+    },
+    {
+      "id": "post-swap-requests",
+      "method": "POST",
+      "path": "/swap-requests",
+      "calledBy": [
+        "WORKER",
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "Assignment"
+      ],
+      "writes": [
+        "SwapRequest"
+      ],
+      "sideEffects": [
+        "Notification"
+      ],
+      "downstreamConsumedBy": [
+        "SUPERVISOR"
+      ],
+      "status": "working",
+      "notes": "Shift swap."
+    },
+    {
+      "id": "post-visits-transition",
+      "method": "POST",
+      "path": "/visits/:id/transition",
+      "calledBy": [
+        "WORKER",
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "Visit"
+      ],
+      "writes": [
+        "Visit.status",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "State machine; billing-unit increment"
+      ],
+      "downstreamConsumedBy": [
+        "OWNER",
+        "SUPER_ADMIN"
+      ],
+      "status": "working",
+      "notes": "Visit lifecycle."
+    },
+    {
+      "id": "post-complaints-resolve",
+      "method": "POST",
+      "path": "/complaints/:id/resolve",
+      "calledBy": [
+        "SUPERVISOR",
+        "HR",
+        "OWNER"
+      ],
+      "reads": [
+        "Complaint"
+      ],
+      "writes": [
+        "Complaint.status",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "Reporter notification"
+      ],
+      "downstreamConsumedBy": [
+        "OWNER"
+      ],
+      "status": "working",
+      "notes": "Complaint resolution flows into OWNER digest."
+    },
+    {
+      "id": "post-chat-messages",
+      "method": "POST",
+      "path": "/chat/messages",
+      "calledBy": [
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "Policy",
+        "LivingDoc"
+      ],
+      "writes": [
+        "ChatMessage",
+        "AiUsage"
+      ],
+      "sideEffects": [
+        "OpenAI call; cost tracked in costInr"
+      ],
+      "downstreamConsumedBy": [
+        "OWNER",
+        "SUPER_ADMIN"
+      ],
+      "status": "working",
+      "notes": "AI cost flows into OWNER budget alerts."
+    },
+    {
+      "id": "post-chat-apply",
+      "method": "POST",
+      "path": "/chat/apply",
+      "calledBy": [
+        "SUPERVISOR"
+      ],
+      "reads": [
+        "ChatMessage"
+      ],
+      "writes": [
+        "Policy / LivingDoc edit",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "LivingDoc update"
+      ],
+      "downstreamConsumedBy": [
+        "OWNER"
+      ],
+      "status": "working",
+      "notes": "Apply chat suggestion."
+    },
+    {
+      "id": "get-api-graph",
+      "method": "GET",
+      "path": "/api/graph",
+      "calledBy": [
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "KnowledgeGraph (raw pg.Pool, cross-tenant)"
+      ],
+      "writes": [],
+      "sideEffects": [
+        "NO AuditLog (invariant violation per EVID-SA GAP-SA-05)"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "broken",
+      "notes": "Admin-web Next.js route. DPO-locked but unaudited cross-tenant read."
+    },
+    {
+      "id": "get-owner-kpi",
+      "method": "GET",
+      "path": "/owner/kpi",
+      "calledBy": [
+        "OWNER"
+      ],
+      "reads": [
+        "Visit aggregates",
+        "AiUsage aggregates"
+      ],
+      "writes": [],
+      "sideEffects": [],
+      "downstreamConsumedBy": [],
+      "status": "planned",
+      "notes": "GAP-OWN-02. Decision 10 surface 2."
+    },
+    {
+      "id": "get-owner-digest",
+      "method": "GET",
+      "path": "/owner/digest/:id",
+      "calledBy": [
+        "OWNER"
+      ],
+      "reads": [
+        "Digest"
+      ],
+      "writes": [],
+      "sideEffects": [
+        "WhatsApp send (via cron upstream)"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "planned",
+      "notes": "GAP-OWN-01. Decision 10 surface 1."
+    },
+    {
+      "id": "post-owner-settings-bank",
+      "method": "POST",
+      "path": "/owner/settings/bank",
+      "calledBy": [
+        "OWNER"
+      ],
+      "reads": [
+        "Company"
+      ],
+      "writes": [
+        "Company.bankAccount",
+        "AuditLog"
+      ],
+      "sideEffects": [
+        "2-step OTP confirm"
+      ],
+      "downstreamConsumedBy": [
+        "SUPER_ADMIN"
+      ],
+      "status": "planned",
+      "notes": "GAP-OWN-04. Decision 10 surface 4."
+    },
+    {
+      "id": "get-super-admin-audit",
+      "method": "GET",
+      "path": "/super-admin/audit",
+      "calledBy": [
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "AuditLog (cross-tenant)",
+        "SuperAdminAccessLog"
+      ],
+      "writes": [
+        "SuperAdminAccessLog"
+      ],
+      "sideEffects": [
+        "Per-tenant access audit"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "planned",
+      "notes": "GAP-SA-01. Cross-tenant audit lookup."
+    },
+    {
+      "id": "post-super-admin-hard-delete",
+      "method": "POST",
+      "path": "/super-admin/hard-delete/:type/:id",
+      "calledBy": [
+        "SUPER_ADMIN"
+      ],
+      "reads": [
+        "target row"
+      ],
+      "writes": [
+        "delete + AuditLog + SuperAdminAccessLog"
+      ],
+      "sideEffects": [
+        "Irreversible"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "planned",
+      "notes": "GAP-SA-04. SUPER_ADMIN-only authority."
+    },
+    {
+      "id": "locked-hiring-hierarchy",
+      "method": "DOC",
+      "path": "docs/locked/hiring-hierarchy.md",
+      "calledBy": [
+        "HR",
+        "OWNER",
+        "SUPER_ADMIN"
+      ],
+      "reads": [],
+      "writes": [],
+      "sideEffects": [
+        "Constitutional table; drift-tested by role-gates.test.ts"
+      ],
+      "downstreamConsumedBy": [],
+      "status": "locked",
+      "notes": "Single source of truth for HIRING_AUTHORITY."
+    }
+  ],
+  "edges": [
+    {
+      "from": "SUPER_ADMIN",
+      "to": "OWNER",
+      "via": "post-super-admin-memberships",
+      "label": "SA bootstraps OWNER row for new tenant"
+    },
+    {
+      "from": "OWNER",
+      "to": "HR",
+      "via": "post-admin-memberships",
+      "label": "OWNER hires HR (HIRING_AUTHORITY)"
+    },
+    {
+      "from": "HR",
+      "to": "SUPERVISOR",
+      "via": "post-admin-memberships + post-admin-sites-bindings",
+      "label": "HR hires SUPERVISOR and binds to site"
+    },
+    {
+      "from": "HR",
+      "to": "WORKER",
+      "via": "post-admin-workers",
+      "label": "HR onboards WORKER; invite outbox -> auth/otp/verify"
+    },
+    {
+      "from": "WORKER",
+      "to": "SUPERVISOR",
+      "via": "post-worker-submit + post-worker-captures",
+      "label": "Worker submission becomes supervisor's review queue"
+    },
+    {
+      "from": "WORKER",
+      "to": "HR",
+      "via": "post-leave-requests",
+      "label": "Worker leave-request lands in HR queue"
+    },
+    {
+      "from": "SUPERVISOR",
+      "to": "OWNER",
+      "via": "post-chat-messages",
+      "label": "AI cost (costInr) aggregates into OWNER budget alerts"
+    },
+    {
+      "from": "HR",
+      "to": "OWNER",
+      "via": "post-leave-approve + post-complaints-resolve",
+      "label": "HR decisions feed OWNER monthly digest"
+    },
+    {
+      "from": "SUPERVISOR",
+      "to": "WORKER",
+      "via": "post-supervisor-replacement-invites",
+      "label": "Same-day replacement invite -> new worker"
+    },
+    {
+      "from": "OWNER",
+      "to": "SUPER_ADMIN",
+      "via": "post-owner-settings-bank (planned)",
+      "label": "Bank/tenant-settings edits trigger SA compliance review"
+    },
+    {
+      "from": "WORKER",
+      "to": "OWNER",
+      "via": "post-visits-transition",
+      "label": "Visit completion = billing unit (Rs8/visit) for OWNER KPI"
+    },
+    {
+      "from": "SUPER_ADMIN",
+      "to": "HR",
+      "via": "post-admin-policy (SA bypass)",
+      "label": "SA cross-tenant policy write (unaudited - GAP-SA-08)"
+    }
+  ]
+}
+  </script>
+  <script src="render.js"></script>
+</body>
+</html>
