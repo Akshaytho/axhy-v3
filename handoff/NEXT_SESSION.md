@@ -1,81 +1,221 @@
-# Next Session — Resume F1-b at Task 10 (Enterprise QA + PR)
+# Next Session — Late 2026-05-31 addendum (post-PR #14 work)
 
-**Last updated:** 2026-05-28 night (F1-b Tasks 7+8+9 shipped — code-complete on backend + mobile + audit guard)
-**Branch:** `feat/f1-b-refresh-rotation`
-**Plan doc:** `axhy-v3/docs/plans/2026-05-28-f1-b-refresh-rotation.md`
+**Last updated:** 2026-05-31 late evening IST
+**Branch state:** `main` is at `1347dbc` (PR #8 merged). 7 feature branches open as PRs awaiting founder review. Cognitive-system trial branch `axhy/self-improvements-trial-2026-05-31` exists LOCAL-ONLY (never pushed) in `/Users/thotaakshay/eclean_workspace/axhy-cognitive-system`.
+**Active phase:** End-of-session housekeeping CLOSE-OUT. Two distinct review queues for next session: (a) merge the 7 v3 PRs, (b) review and decide on the 5 local cognitive-system trial changes.
 
-## What shipped 2026-05-28
-
-### Cognitive system: Compact-aware read-cache reflex (commit `8e4dbcd` on axhy-cognitive-system main)
-
-- `wasFileReadRecently()` now checks compaction events instead of 10-min timer
-- PostCompact hook writes `last_compact_at` marker; pre-edit-guard consumes it
-- 37 tests green. Architectural doc: `axhy-cognitive-system/docs/THREE_LOOP_MODEL.md`
-
-### F1-a: Trust model schema + requireAuth (PR #6 merged to main)
-
-- Migration 020: `User.is_platform_admin`, `Membership.token_epoch`
-- `requireAuth` dual-mode: new-format validated against DB; legacy accepted in compat mode
-- 39/39 tests across 10 files. Enterprise QA findings committed.
-
-### F1-b Tasks 1-3: RefreshToken store + unit tests (branch, NOT merged)
-
-- **`e435c0f`:** Migration 021 (RefreshToken table, 14 cols, 5 indexes, 2 FKs cascade) + Prisma model
-- **`96bdf78`:** `refresh-token-store.ts` — create/validate/rotate/revokeForCompromise/revokeForLogout + 12/12 unit tests green
-
-### F1-b Task 4: POST /auth/refresh route (commit `0015b2a`, NOT pushed)
-
-- `apps/backend/src/routes/auth-refresh.ts` — opaque-token rotation, 10 s grace, compromise detection, SUPER_ADMIN path
-- Wired into `server.ts` via `registerAuthRefreshRoutes`
-- `auth-exempt` + `tenant-exempt` markers — refresh-token IS the credential
-
-### F1-b Tasks 5–6: 7 integration tests (uncommitted on branch)
-
-- 7 new files under `apps/backend/test/auth-refresh-*.test.ts` covering happy / grace / compromise / legacy-reject / rate-limit / revoked / SUPER_ADMIN
-- **Result: 11/11 tests + 1 skipped (no-Redis fallback case); Test Files 7/7 green** — see `docs/evidence/2026-05-28/EVID-002.md`
-- One iteration: rate-limit bucket pollution across parallel files fixed by giving each file a unique `remoteAddress` in `app.inject()`
-
-## Resume at Task 10
-
-| Task   | Description                                          | Status                            |
-| ------ | ---------------------------------------------------- | --------------------------------- |
-| 1      | Migration + Prisma RefreshToken model                | ✅ `e435c0f`                      |
-| 2      | refresh-token-store.ts implementation                | ✅ `96bdf78`                      |
-| 3      | 12/12 unit tests for store                           | ✅                                |
-| 4      | POST /auth/refresh route + register                  | ✅ `0015b2a`                      |
-| 5-6    | 7 integration tests (11/11 passed)                   | ✅ EVID-002                       |
-| 7      | `/auth/otp/verify` swap + delete `issueRefreshToken` | ✅ this session                   |
-| 8      | Mobile interceptor + `replaceTokens` + 5/5 tests     | ✅ this session                   |
-| 9      | Audit pattern for legacy refresh tokens              | ✅ this session                   |
-| **10** | **Enterprise QA matrix + findings doc + PR**         | 🔜 **NEXT** (fresh-eyes required) |
-
-## What shipped this session (Tasks 7+8+9)
-
-- **Task 7:** `apps/backend/src/routes/auth.ts` `/auth/otp/verify` now calls `refreshTokenStore.create({ userId, membershipId, userAgent, ipFirst })`. `issueRefreshToken` deleted from `apps/backend/src/lib/jwt.ts`. F1-a regression `auth-flow-new-format.test.ts` re-ran green against Railway prod.
-- **Task 8:** `apps/mobile/lib/api.ts` wraps fetch with refresh-on-401 + per-process mutex + `AUTH_LEGACY_REFRESH` wipe path. `apps/mobile/lib/auth-store.ts` gains atomic `replaceTokens` (no `activeRole` write so identity-lifecycle invariants hold). `apps/mobile/lib/api.test.ts` covers 5 scenarios (happy retry, AUTH_LEGACY_REFRESH wipe, INVALID_REFRESH wipe, concurrent-mutex, no `/auth/*` recursion). Mobile lib sweep 81/81 green.
-- **Task 9:** `docs/learnings/2026-05-28-all-refresh-tokens-must-be-opaque.md` added with `check_pattern: 'issueRefreshToken|kind:[''"]refresh[''"]'` scoped to `apps/backend/src` + `apps/mobile/lib`. Audit now runs 15/15 learned checks, zero new violations. The single legitimate test-side hit at `apps/backend/test/auth-refresh-legacy-reject.test.ts:40` is exempted via `// audit-ok` (and `test/` is already out of `check_paths` scope).
-
-## First thing next session — Task 10
-
-1. `git checkout feat/f1-b-refresh-rotation` (pushed to origin)
-2. Read plan: `docs/plans/2026-05-28-f1-b-refresh-rotation.md` Task 10
-3. Run the 5-persona walk against Railway prod (worker, supervisor, HR, COMPANY_ADMIN, SUPER_ADMIN): for each, mint a token → hit a protected route → wait for access TTL → call `/auth/refresh` → reuse old refresh after 11s → verify family revoke + epoch bump.
-4. Run the adversarial pass (token theft, rate-limit brute force, replay, 50-parallel race, cross-family).
-5. Write `handoff/F1_B_QA_FINDINGS_2026-05-28.md` with sections: scope, personas walked, adversarial scenarios, data-shape inspection (RefreshToken rows after walk), side-effects (`tokenEpoch` deltas, Redis key churn), latency profile (refresh p95 against Railway).
-6. Call `check_before_done` with `flow_completeness` enumerating every persona + adversarial scenario.
-7. Open PR against main with all F1-b commits.
-
-**Why fresh session for Task 10:** Enterprise-QA discipline rule (`feedback_major_changes_need_enterprise_qa.md`) requires fresh adversarial eyes — bundling QA with the code it must scrutinize is the failure mode the rule exists to prevent.
-
-## Session token snapshot (2026-05-28 night F1-b code-complete session)
-
-- Tasks 7+8+9 fit comfortably under context_orange thanks to lean tool-output discipline
-- Boot was full `load axhy system` — audit + brain:build + brain-first orientation
-- Major bug avoided: mobile mutex test initially failed (urlHits filter logic) — fixed with per-URL Map counter
+> **Note on stacking:** This file's body below assumes [PR #14](https://github.com/Akshaytho/axhy-v3/pull/14) lands first (it's the morning EOD snapshot through 12:42 IST). If this PR merges before #14, expect a textual conflict in the "What shipped today" block — resolve by taking PR #14's morning content and keeping this addendum on top.
 
 ---
 
-## Permanent enterprise-QA rule (founder direction 2026-05-27)
+## Late 2026-05-31 addendum (post-PR #14, post-12:42 IST)
+
+> **Reality check:** [PR #14](https://github.com/Akshaytho/axhy-v3/pull/14) captured state through 12:42 IST. The section below covers 12:42 → session close. The "What shipped today" section further down is verbatim from PR #14 and remains valid for the morning's work.
+
+### Product addendum — axhy-v3
+
+#### PR #15 — Persona-graph prototypes (DECISION NEEDED — pick a format)
+
+- Branch: `feat/persona-graph-prototypes`
+- URL: [PR #15](https://github.com/Akshaytho/axhy-v3/pull/15)
+- Two prototypes built side-by-side:
+  - HTML + CSS + JS + JSON at [`docs/persona-graphs/prototype-html/`](../docs/persona-graphs/prototype-html/) — interactive, zoom/pan, click-through routes
+  - Mermaid at [`docs/persona-graphs/prototype-mermaid/system.md`](../docs/persona-graphs/prototype-mermaid/system.md) — declarative, render-in-GitHub, version-controllable as text
+- 3 visual iterations via Playwright. **14 cross-persona arrows now visible** after iteration 3 (previously hidden by layout).
+- **Founder decision needed:** which format becomes the canonical persona-graph viewer? Both prototypes are kept until decision lands; whichever loses gets archived.
+
+#### Gap: HR persona-map file never actually committed
+
+- During PR #9 work, the HR persona-map underwent the persona-graph route-audit methodology and findings were produced — but **3 successive guardrail blocks prevented the file from landing in the repo**.
+- The findings exist only in chat history of the PR #9 session.
+- **Follow-up:** reproduce the HR persona-map from the OWNER + SUPER_ADMIN map shape (PR #11 / #12 files at `docs/personas/owner/EVID-OWNER-PERSONA-MAP.md` + `docs/personas/super-admin/EVID-SUPER-ADMIN-PERSONA-MAP.md`) and commit it alongside them as `docs/personas/hr/EVID-HR-PERSONA-MAP.md` in a small follow-up PR.
+
+### Cognitive-system addendum — axhy-cognitive-system
+
+#### Trial branch (LOCAL ONLY — NEVER push without founder approval)
+
+- Repo: `/Users/thotaakshay/eclean_workspace/axhy-cognitive-system`
+- Branch: `axhy/self-improvements-trial-2026-05-31`
+- **Trial index:** [`_trial/TRIAL_INDEX.md`](../../axhy-cognitive-system/_trial/TRIAL_INDEX.md) — read this first.
+- **Meta-audit:** [`_trial/meta-audit/EVID-COGNITIVE-SYSTEM-PERSONA-GRAPH.md`](../../axhy-cognitive-system/_trial/meta-audit/EVID-COGNITIVE-SYSTEM-PERSONA-GRAPH.md) — 234 LOC, 41 file:line citations, 22 gaps ranked (0 blockers, 6 HIGH, 11 MEDIUM, 5 LOW).
+- **5 trial changes built. 39/40 unit tests pass. NONE committed.** All sit in worktree only.
+
+| #   | Change                                                                                                                                                                 | Unit tests | Session validation | Notes                                                                                                            |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| 1   | [`_trial/change-1-session-retro-hook/`](../../axhy-cognitive-system/_trial/change-1-session-retro-hook/) — SessionEnd hook stub writer                                 | 8/8        | 1/5                | Manual fire tonight worked                                                                                       |
+| 2   | [`_trial/change-2-working-memory/`](../../axhy-cognitive-system/_trial/change-2-working-memory/) — persistent cwd-scoped working-memory.md                             | 8/8        | 1/5                | In active use this session                                                                                       |
+| 3   | [`_trial/change-3-memory-firewall-block/`](../../axhy-cognitive-system/_trial/change-3-memory-firewall-block/) — PreToolUse WARN → BLOCK                               | 7/8        | 0/5                | T6 blocked on `classifier.mjs:222` missing `EXTERNAL_INDICATORS` export — coupled change required for graduation |
+| 4   | [`_trial/change-4-self-protection-git-hooks/`](../../axhy-cognitive-system/_trial/change-4-self-protection-git-hooks/) — install guard hooks into cog-sys `.git/hooks` | 8/8        | 0/5                | Wires 2 orphan checks (memory-dates + vision-anchor); idempotent `install.sh`                                    |
+| 5   | [`_trial/change-5-compact-aware-readcache/`](../../axhy-cognitive-system/_trial/change-5-compact-aware-readcache/) — Reflex 1, mtime+size+sha256 fingerprint           | 8/8        | 0/5                | **Saves ~48k tokens per compacting session, ~1.4M tokens/month**                                                 |
+
+- **Change-6 deferred** — MY_PRINCIPLES update + brain dedupe. Can be built in trial safely; founder paused parent agent to confirm trial format first.
+- **Live working-memory file:** `/Users/thotaakshay/eclean_workspace/.claude/session-scratch/working-memory.md` — 4346 bytes, 6 keys, includes `session-end-summary` key with the full inventory. Read this for the live state mid-session.
+
+#### 5-session validation plan per trial change
+
+Each change must observe behavior across 5 real sessions before graduating to `main`. See each change's `docs/graduation.md` or `README.md` for specifics. General template:
+
+1. **Session 1 (built):** unit tests pass + 1 live trigger observed.
+2. **Sessions 2-4:** behavior fires naturally during regular work; record outcome in `_trial/change-N-*/docs/observations.md`.
+3. **Session 5:** if 0 regressions + 4+ positive triggers → graduate (move out of `_trial/`, write learning, ship in a dedicated PR). If regressions → debug or discard.
+
+### First action next session (REVISED — parent agent's recommendation)
+
+> **Review the trial BEFORE building more.** Founder picks which trial format / approach is right before any more changes get built. Sequence:
+
+```bash
+cd /Users/thotaakshay/eclean_workspace/axhy-cognitive-system
+git checkout axhy/self-improvements-trial-2026-05-31
+```
+
+Then scan, in this order:
+
+1. [`_trial/TRIAL_INDEX.md`](../../axhy-cognitive-system/_trial/TRIAL_INDEX.md) — single index of all 5 trial dirs.
+2. [`_trial/meta-audit/EVID-COGNITIVE-SYSTEM-PERSONA-GRAPH.md`](../../axhy-cognitive-system/_trial/meta-audit/EVID-COGNITIVE-SYSTEM-PERSONA-GRAPH.md) — the audit that justified the 5 changes.
+3. Each of the 5 `_trial/change-N-*/README.md` files.
+4. **Founder decision needed:** trial format right? Graduation criteria right? Any change to discard? Any change to graduate now?
+
+After the trial review lands, return to the v3 PR queue (PR #9 → #10 → #13 → #15 + answers to #11/#12 questions — see "What shipped today" section below).
+
+### Live working-memory pointer
+
+Mid-session live state is kept at `/Users/thotaakshay/eclean_workspace/.claude/session-scratch/working-memory.md`. Read it at boot if it exists — it survives compaction but is purged at session end by change-1's stub writer.
+
+---
+
+## What shipped today (2026-05-30 evening + 2026-05-31 morning IST)
+
+5 PRs open against `main`. Order they should be reviewed/merged:
+
+### PR #9 — HR A1 thin admin-web portal (READY TO MERGE)
+
+- Branch: `feat/hr-a1-thin-portal`, 30 commits ahead of main
+- URL: https://github.com/Akshaytho/axhy-v3/pull/9
+- 7 HR ops live: invite HR/SUPERVISOR, invite WORKER, anonymize, create site, bind supervisor, leave inbox + leave decide
+- Backend `test:hr` 77/77 green standalone (when run alongside Wave-3 = 112/112)
+- Playwright 1/1 green + 14 screen screenshots at `docs/evidence/2026-05-30/`
+- 2 pre-existing bugs fixed in passing: admin-web login destructure + jwt-public sub-vs-userId
+- First application of `feedback_persona_graph_route_audit.md` (founder's persona-graph methodology, committed to brain at axhy-cognitive-system `bcc754e`)
+
+### PR #10 — Wave-3 HR hardening matrix (READY TO MERGE after #9)
+
+- Branch: `feat/hr-wave-3-hardening`, 4 commits
+- URL: https://github.com/Akshaytho/axhy-v3/pull/10
+- 35 new tests filling 5 coverage gaps: expired-token, idempotency, concurrent, malformed, empty-list
+- 1 production fix: `User.phone` parallel race in `admin-membership-service` + `admin-worker-service` — raw SQL `INSERT ... ON CONFLICT (phone) DO UPDATE SET phone = EXCLUDED.phone RETURNING id` (Prisma upsert is NOT atomic at SQL level; raw is)
+- Architectural finding surfaced (see Open architectural questions below): `adminCreateWorkerService` doesn't auto-assign `Membership.podId` → HR pod-scoped `GET /admin/workers` can't see workers they themselves created
+- `test:hr` 112/112 green
+
+### PR #11 — Slice 2 OWNER brainstorm + persona-graph audit (DOCS-ONLY)
+
+- Branch: `feat/slice-2-owner-brainstorm`
+- URL: https://github.com/Akshaytho/axhy-v3/pull/11
+- `EVID-OWNER-PERSONA-MAP.md` + Slice 2 design spec
+- 10 GAP candidates surfaced
+- 5 founder questions inline in PR body (Decision-10 scope, AI cap override, bank edit OTP, co-OWNER invite, tenant-wide reads)
+
+### PR #12 — Slice 3 SUPER_ADMIN brainstorm + persona-graph audit (DOCS-ONLY)
+
+- Branch: `feat/slice-3-super-admin-brainstorm`
+- URL: https://github.com/Akshaytho/axhy-v3/pull/12
+- `EVID-SUPER-ADMIN-PERSONA-MAP.md` + Slice 3 design spec
+- 11 GAP candidates surfaced
+- 5 founder questions inline (`intent_reason` enforcement, hard-delete allowlist, tenant-not-found semantics, AI cap-raise authority, platform-admin sign-in flow)
+
+### PR #13 — F1-b 5-persona enterprise QA walk findings (DOCS-ONLY)
+
+- Branch: `feat/f1b-5-persona-qa`
+- URL: https://github.com/Akshaytho/axhy-v3/pull/13
+- `EVID-F1B-5-PERSONA-QA.md`
+- 5 personas × ~9 scenarios + 6 adversarial = 51 scenarios, ALL PASS
+- 11 contracts confirmed, 0 production bugs found
+- 3 recommendations for follow-up (GET listing surfaces, lock 10s grace window, schema-aware anonymization)
+
+### Other work this session
+
+- Persona-graph rule authored + brain-embedded (`axhy-cognitive-system` commit `bcc754e`)
+- Test infra fixed: RC-1 (helpers.ts scoped deletes) + RC-4 (DATABASE_PUBLIC_URL routing)
+- Cross-route water-flow test (persona-graph rule's keystone) at `apps/backend/test/hr-water-flow.test.ts`
+- RC-A leave-decision pre-existing failures RESOLVED via seed expansion (commit `3232aef`)
+
+---
+
+## First actions next session
+
+1. **Review the cognitive-system trial FIRST** (see addendum above). Founder picks trial format before more changes get built.
+2. **Founder reviews + merges v3 PRs in order:**
+   - PR #9 first (HR A1 thin portal) — code+tests, biggest surface
+   - PR #10 next (Wave-3 hardening) — depends on #9 merging first
+   - PR #13 (F1-b QA findings) — docs-only, mergeable any time
+   - PR #14 (EOD handoff, morning slice) — docs-only
+   - PR #15 (persona-graph prototypes) — pick HTML or Mermaid format first
+3. **Founder answers founder-questions:**
+   - 5 questions inline in PR #11 (OWNER scope)
+   - 5 questions inline in PR #12 (SUPER_ADMIN scope)
+   - Slice 2 + Slice 3 BUILD work is blocked until these are answered.
+4. **Once PR #9 merges → unblock Q3 rename slice:**
+   - Q3 rename (`Membership.status` INACTIVE → ANONYMIZED) is blocked on HR A1 merge — it conflicts with `anonymize-worker-service`.
+   - First action post-merge: rebase Q3 rename branch onto main, re-run `test:hr` matrix, ship.
+5. **F1-c TTL + logout-everywhere** — separate slice, not blocked but not started. Pick up after Slice 2/3 questions answered or in parallel if founder prioritizes.
+6. **Reproduce + commit HR persona-map file** (gap from PR #9 — see addendum).
+
+---
+
+## Open architectural questions
+
+### From Wave-3 (PR #10)
+
+- **`Membership.podId` auto-assignment on worker create:** `adminCreateWorkerService` does not auto-bind newly-created workers to the HR creator's pod. Effect: HR creates a worker, then their own pod-scoped `GET /admin/workers` listing doesn't include that worker. Two valid resolutions — (a) auto-bind to creator's pod on create, (b) make HR listing tenant-wide. Founder decision needed.
+
+### From F1-b 5-persona QA (PR #13)
+
+- **GET listing surfaces:** Several admin/HR routes have POST/PATCH but no symmetric GET listing — surfaces a UX gap once frontends mature. Recommendation file lists which routes.
+- **Lock 10s refresh-token grace window:** Hardcoded constant should be promoted to env var + locked-doc constant so it can't drift in future refactors.
+- **Schema-aware anonymization:** Anonymize routine relies on hand-maintained column list; if a future migration adds a PII column, the routine won't know. Recommendation: derive from Prisma metadata or annotation.
+
+### Carried from prior session (still open)
+
+- **`as Role` casts in `apps/backend/src/routes/auth.ts:133-146`** — tracked separately per founder.
+- **`prisma.user.findFirst` + `prisma.membership.findMany` (intentional pre-tenant)** at `auth.ts:76-87` — tracked separately.
+- **`unhandled_async` on bootstrap + shutdown** at `server.ts:63,186` — tracked separately.
+- **Chat per-supervisor message rate limit + 50-concurrent semaphore not enforced** — tracked in `chat-abuse-prevention.md`.
+- **Raw prisma outside transaction** at `notifications.ts:293` — tracked separately.
+- **Worker / Visit / VisitPhoto tables: no RLS** — app-level companyId filter only. Filed by Cluster B 2026-05-25.
+
+---
+
+## What's blocked or queued
+
+- **Q3 rename** (`Membership.status` INACTIVE → ANONYMIZED) — blocked on PR #9 merge; conflicts with `anonymize-worker-service`.
+- **Slice 2 BUILD** — blocked on founder answering 5 questions in PR #11.
+- **Slice 3 BUILD** — blocked on founder answering 5 questions in PR #12.
+- **F1-c TTL + logout-everywhere** — separate slice, not blocked but not started.
+- **Cognitive-system trial graduation** — blocked on founder review (see addendum).
+- **HR persona-map commit** — blocked on next session reproducing the findings from chat history.
+
+---
+
+## Pre-existing debt unchanged
+
+| File:line                                                   | Item                                                                             | Status                                |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
+| `apps/backend/src/routes/auth.ts:133-146`                   | `as Role` cast x3 on `m.role`                                                    | tracked separately per founder        |
+| `apps/backend/src/routes/auth.ts:76-87`                     | `prisma.user.findFirst` + `prisma.membership.findMany` (intentional pre-tenant)  | tracked separately                    |
+| `apps/backend/src/server.ts:63,186`                         | `unhandled_async` on bootstrap + shutdown handlers                               | tracked separately                    |
+| `apps/backend/src/routes/chat.ts`                           | per-supervisor message rate limit + 50-concurrent semaphore not enforced         | tracked in `chat-abuse-prevention.md` |
+| `apps/backend/src/dispatcher/handlers/notifications.ts:293` | raw prisma outside transaction                                                   | tracked separately                    |
+| `packages/ai-tools/src/session-audit.ts` CHECK 10           | regex `prisma\.[a-z]*\.create` misses mixed-case table names (e.g. `consentLog`) | filed by Cluster B 2026-05-25         |
+| Worker / Visit / VisitPhoto tables                          | No RLS enabled — companyId filtering is app-level only                           | filed by Cluster B 2026-05-25 (RLS Q) |
+
+(All items verified still pending — no fixes shipped today on this list.)
+
+---
+
+## Recent prior session context (F1-b code-complete, 2026-05-28)
+
+The F1-b code (refresh-rotation backend + mobile interceptor + audit guard) was code-complete on 2026-05-28 via PR #7 (merged to main 2026-05-29). The 5-persona enterprise QA walk that the rule required ran today and is captured in PR #13 — that closes F1-b.
+
+### Permanent enterprise-QA rule (founder direction 2026-05-27)
 
 **Rule:** Any medium-to-major refactor or new code change at the system level requires **enterprise-grade QA** before "done."
 
@@ -83,9 +223,9 @@
 
 **Saved:** `axhy-cognitive-system/memory/base/feedback_major_changes_need_enterprise_qa.md` (commit `4f289db`).
 
-## F1 spec — decisions locked in this session
+### F1 spec — decisions locked
 
-The F1 trust-model arc has been brainstormed through Sections 1-5. Founder approved each section. Spec doc not yet committed pending guardrail unblock.
+The F1 trust-model arc has been brainstormed through Sections 1-5. Founder approved each section.
 
 **Locked architectural decisions:**
 
@@ -97,42 +237,14 @@ The F1 trust-model arc has been brainstormed through Sections 1-5. Founder appro
 6. **Refresh family detection:** Postgres holds the family row, Redis holds `current_hash` per family (hot path, sub-ms reads, sliding TTL). At 2000 users + 100 supervisors: ~22k Redis SETs/day = 0.0005% of capacity. Cost negligible — founder confirmed approval.
 7. **Cutover:** 30-day compatibility window. Old tokens (no epoch claim) accepted in legacy mode. Every refresh upgrades a user to the new format. Day 30: flip `AUTH_STRICT_MODE=true`, delete legacy code.
 
-## F1 implementation map (locked)
+### F1 slice plan (4 sessions)
 
-| File                                                                  | Change                                                                                                                                            |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared-schema/prisma/schema.prisma:93-157`                  | Add `User.is_platform_admin`, `Membership.token_epoch`, new `RefreshToken` model                                                                  |
-| `packages/shared-schema/src/zod/jwt-claims.ts`                        | Extend JWTClaims with optional `membershipId`, `epoch`, `isPlatformAdmin`                                                                         |
-| New migration `apps/backend/prisma/migrations/<date>_f1_trust_model/` | Schema additions + founder UUID backfill                                                                                                          |
-| `apps/backend/src/lib/jwt.ts:35-56`                                   | `issueAccessToken` takes new params                                                                                                               |
-| `apps/backend/src/middleware/tenant-context.ts:48-73`                 | `requireAuth` queries Membership (or User for SUPER_ADMIN), enforces status+role+epoch match; legacy mode if epoch missing                        |
-| `apps/backend/src/middleware/role-gates.ts:80-94`                     | Unchanged; trust flows through `requireAuth`                                                                                                      |
-| `apps/backend/src/routes/auth.ts`                                     | Login emits new-format slips + creates `RefreshToken` family; new `/auth/refresh` with rotation + family detection; new `/auth/logout-everywhere` |
-| New `apps/backend/src/lib/services/refresh-token-store.ts`            | Postgres family CRUD + Redis `current_hash` per family                                                                                            |
-| `apps/backend/src/lib/services/anonymize-worker-service.ts`           | Bump `Membership.token_epoch` + REVOKE RefreshToken families (closes Priya's 14-min zombie window)                                                |
-| `apps/backend/src/lib/services/admin-membership-service.ts`           | Bump epoch on role revoke + (bonus) fix F4 `User.name` while in this file                                                                         |
-| `apps/backend/scripts/mint-token.ts`                                  | Refuse if `NODE_ENV=production` OR target role is SUPER_ADMIN                                                                                     |
-
-## F1 slice plan (4 sessions)
-
-| Session | Slice                                | Lands                                                                                                                      | Risk                    |
-| ------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| 1       | `f1-a-schema-and-membership-backing` | Migration + `requireAuth` in compatibility mode + Membership/epoch checks for new-format tokens; old tokens still accepted | Low — additive only     |
-| 2       | `f1-b-refresh-rotation`              | `RefreshToken` table + Redis store + `/auth/refresh` rewrite + family detection + tests                                    | Medium — new code paths |
-| 3       | `f1-c-ttl-and-logout-everywhere`     | Access TTL 15→5 min, `/auth/logout-everywhere` route, anonymize-service wired to bump epoch + revoke families              | Low                     |
-| 4       | `f1-d-strict-mode-flip`              | Flip `AUTH_STRICT_MODE=true`, delete legacy code paths, final test sweep                                                   | Low — deletion          |
-
-Each slice must pass the new enterprise-QA bar (rule above) before "done."
-
-## Blockers from prior session — RESOLVED
-
-### ~~Blocker 1~~ — guardrail `reasoningEvidence` — FIXED
-
-Not a marshalling bug. The prior session was likely passing `reasoning_evidence` with insufficient structure. Subsequent session passed all 4 HIGH-risk fields (invariants_preserved, risk_if_wrong, what_would_make_me_stop, files_read) with 10+ words each containing specific file references — guardrail approved. Key: each field needs a concrete file path or function reference matching the SPECIFIC_REFERENCE regex at evidence-validator.mjs:18.
-
-### ~~Blocker 2~~ — `memory/v3/` not in brain ingestion — FIXED
-
-Fixed in commit `e8e8504`: added `join('memory', 'v3')` to COG_SCAN_DIRS in brain-builder.ts:48. Next brain:build will embed all ~40 v3 feedback files. The enterprise QA rule was also written to `memory/base/feedback_major_changes_need_enterprise_qa.md` (commit `4f289db` in axhy-cognitive-system).
+| Session | Slice                                | Lands                                                                                                          | Status                                |
+| ------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| 1       | `f1-a-schema-and-membership-backing` | Migration + `requireAuth` compatibility mode + Membership/epoch checks                                         | DONE (PR #6)                          |
+| 2       | `f1-b-refresh-rotation`              | `RefreshToken` table + Redis store + `/auth/refresh` rewrite + family detection + tests + 5-persona QA         | DONE (PR #7 merged + #13 QA findings) |
+| 3       | `f1-c-ttl-and-logout-everywhere`     | Access TTL 15->5 min, `/auth/logout-everywhere` route, anonymize-service wired to bump epoch + revoke families | not started, not blocked              |
+| 4       | `f1-d-strict-mode-flip`              | Flip `AUTH_STRICT_MODE=true`, delete legacy code paths, final test sweep                                       | after F1-c                            |
 
 ---
 
@@ -166,14 +278,14 @@ Fixed in commit `e8e8504`: added `join('memory', 'v3')` to COG_SCAN_DIRS in brai
 
 ### Phase 7 status
 
-| Phase      | Type                              | Status                                                          |
-| ---------- | --------------------------------- | --------------------------------------------------------------- |
-| 7A         | Spec                              | ✅ Approved (8.7/10), 5 corrections applied                     |
-| 7B         | Token measurement tool            | ✅ 27/27 tests green, commit `3e24630`                          |
-| 7C         | Behavioral — tool-output-to-file  | ✅ Active (rules above)                                         |
-| 7D         | Code — guardrail compact mode     | 🔜 Build only if 7B data shows guardrail output >20% of context |
-| 7E         | Behavioral — short-session policy | ✅ Active (rules above)                                         |
-| Validation | F1 + F31 as targets               | 🔜 Next product work                                            |
+| Phase      | Type                              | Status                                                       |
+| ---------- | --------------------------------- | ------------------------------------------------------------ |
+| 7A         | Spec                              | Approved (8.7/10), 5 corrections applied                     |
+| 7B         | Token measurement tool            | 27/27 tests green, commit `3e24630`                          |
+| 7C         | Behavioral — tool-output-to-file  | Active (rules above)                                         |
+| 7D         | Code — guardrail compact mode     | Build only if 7B data shows guardrail output >20% of context |
+| 7E         | Behavioral — short-session policy | Active (rules above)                                         |
+| Validation | F1 + F31 as targets               | F1-a + F1-b validated; F31 ahead                             |
 
 ---
 
