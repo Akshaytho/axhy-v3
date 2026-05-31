@@ -2,26 +2,31 @@
 
 > **Living document.** Update at every major phase shift.
 
-**Last updated:** 2026-05-28
-**Active phase:** **F1-b refresh rotation IN PROGRESS** (Tasks 1-3 done, branch `feat/f1-b-refresh-rotation` pushed). RefreshToken table live on Railway prod (migration 021). Store implementation complete with family detection + 12/12 unit tests. Next: Task 4 (POST /auth/refresh route).
-**Previous:** F1-a trust model DONE (PR #6 merged, migration 020). Cognitive system reflex shipped (commit `8e4dbcd` — compact-aware read-cache + Three-Loop Model). Wave 2 QA findings documented (25 findings). Super-admin-owner-bootstrap DONE (`b7a1cbb`). Cluster B DONE. Cluster A DONE (`7ed1e80`). Worker MVP 2b-4 DONE (`08c65a5`).
-**Next:** Resume F1-b at Task 4 → Tasks 5-10 → merge → F1-c (TTL + logout-everywhere) → F1-d (strict mode flip).
+**Last updated:** 2026-05-31
+**Active phase:** **HR A1 + Wave-3 + brainstorms shipped — 5 PRs open, F1-b verified.** PRs #9 (HR A1 thin admin-web portal, code+tests), #10 (Wave-3 hardening, 35 new tests), #11 (Slice 2 OWNER brainstorm, docs-only), #12 (Slice 3 SUPER_ADMIN brainstorm, docs-only), #13 (F1-b 5-persona enterprise QA, docs-only) all open against `main`.
+**Previous:** F1-b code-complete merged via PR #7 (`0596493`). F1-a trust model DONE (PR #6, migration 020). Cognitive system reflex shipped (commit `8e4dbcd`). Wave 2 QA findings documented (25 findings). Super-admin-owner-bootstrap DONE (`b7a1cbb`). Cluster B DONE. Cluster A DONE (`7ed1e80`). Worker MVP 2b-4 DONE (`08c65a5`).
+**Next:** Founder reviews PRs #9 → #10 → #13 (#10 depends on #9 merging first), answers 5 questions in #11 + 5 in #12 to unblock Slice 2/3 BUILD. Once #9 merges, unblock Q3 rename slice. F1-c TTL + logout-everywhere not blocked; pick up next.
 
 ## Worker MVP slice tracker
 
-| Sub-slice                       | Scope                                                                                                                                    | Status              | Gate             | Commit             |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ---------------- | ------------------ |
-| `worker-d1-s1-auth-shell`       | F-006b + auth flow + scaffold + ConsentLog                                                                                               | **DONE** 2026-05-21 | L5 Distinguished | `af926ab`          |
-| `worker-d1-s2a-1-backend-today` | `GET /worker/today` + `GET /worker/visits/:id`                                                                                           | **DONE** 2026-05-21 | L3 Senior        | `af926ab`          |
-| `worker-d1-s2a-2-mobile-home`   | Worker Home rewrite + Assignment Detail + 4 components + 4 screenshots + DELTA.html                                                      | **DONE** 2026-05-22 | L3+              | `2e876a6`          |
-| `worker-d1-s2b-1`               | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install + Location row on permissions + tab-bar root-fix | **DONE** 2026-05-22 | L3+              | (pending push)     |
-| `worker-d1-s2b-2`               | Before/After capture pipeline + incremental R2 upload + captureMachine                                                                   | **DONE** 2026-05-23 | —                | —                  |
-| `worker-d1-s2b-3`               | Cleaning timer + GPS + Submit + Verify polling                                                                                           | **DONE** 2026-05-23 | —                | —                  |
-| `worker-d1-s2b-4`               | 30-day local sweep + reinstall rehydration + queue persistence                                                                           | **DONE** 2026-05-23 | —                | `08c65a5`          |
-| `admin-hr-backend-wave-2-prep`  | Schema move (Worker salary → Membership) + 5 admin/HR routes (memberships/workers/anonymize/sites/bindings) + role-gates + 21 tests      | **DONE** 2026-05-25 | —                | `f40bfb3..d8edfe8` |
-| `super-admin-owner-bootstrap`   | `POST /super-admin/memberships` — seats first OWNER per tenant + 5 prod-DB tests + founder OWNER live in QA Test Co                      | **DONE** 2026-05-25 | —                | `b7a1cbb`          |
-| `worker-d1-s2c-1`               | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started         | —                | —                  |
-| `worker-d1-s2c-2`               | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started         | —                | —                  |
+| Sub-slice                        | Scope                                                                                                                                    | Status                 | Gate             | Commit                                                 |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ---------------- | ------------------------------------------------------ |
+| `worker-d1-s1-auth-shell`        | F-006b + auth flow + scaffold + ConsentLog                                                                                               | **DONE** 2026-05-21    | L5 Distinguished | `af926ab`                                              |
+| `worker-d1-s2a-1-backend-today`  | `GET /worker/today` + `GET /worker/visits/:id`                                                                                           | **DONE** 2026-05-21    | L3 Senior        | `af926ab`                                              |
+| `worker-d1-s2a-2-mobile-home`    | Worker Home rewrite + Assignment Detail + 4 components + 4 screenshots + DELTA.html                                                      | **DONE** 2026-05-22    | L3+              | `2e876a6`                                              |
+| `worker-d1-s2b-1`                | Capture-flow scaffold + `expo-file-system` per-user partition + `expo-location` install + Location row on permissions + tab-bar root-fix | **DONE** 2026-05-22    | L3+              | (pending push)                                         |
+| `worker-d1-s2b-2`                | Before/After capture pipeline + incremental R2 upload + captureMachine                                                                   | **DONE** 2026-05-23    | —                | —                                                      |
+| `worker-d1-s2b-3`                | Cleaning timer + GPS + Submit + Verify polling                                                                                           | **DONE** 2026-05-23    | —                | —                                                      |
+| `worker-d1-s2b-4`                | 30-day local sweep + reinstall rehydration + queue persistence                                                                           | **DONE** 2026-05-23    | —                | `08c65a5`                                              |
+| `admin-hr-backend-wave-2-prep`   | Schema move (Worker salary → Membership) + 5 admin/HR routes (memberships/workers/anonymize/sites/bindings) + role-gates + 21 tests      | **DONE** 2026-05-25    | —                | `f40bfb3..d8edfe8`                                     |
+| `super-admin-owner-bootstrap`    | `POST /super-admin/memberships` — seats first OWNER per tenant + 5 prod-DB tests + founder OWNER live in QA Test Co                      | **DONE** 2026-05-25    | —                | `b7a1cbb`                                              |
+| `hr-a1-thin-portal`              | 7 HR ops admin-web portal + persona-graph audit + test infra hardening + 14 Playwright screens + 2 pre-existing bug fixes                | **DONE** 2026-05-31    | —                | [PR #9](https://github.com/Akshaytho/axhy-v3/pull/9)   |
+| `hr-wave-3-hardening`            | 35 new tests filling 5 coverage gaps + raw-SQL phone-race fix in admin-membership-service + admin-worker-service                         | **DONE** 2026-05-31    | —                | [PR #10](https://github.com/Akshaytho/axhy-v3/pull/10) |
+| `slice-2-owner-brainstorm`       | EVID-OWNER-PERSONA-MAP + Slice 2 design spec + 10 GAP candidates + 5 founder questions inline                                            | **DOCS** 2026-05-31    | —                | [PR #11](https://github.com/Akshaytho/axhy-v3/pull/11) |
+| `slice-3-super-admin-brainstorm` | EVID-SUPER-ADMIN-PERSONA-MAP + Slice 3 design spec + 11 GAP candidates + 5 founder questions inline                                      | **DOCS** 2026-05-31    | —                | [PR #12](https://github.com/Akshaytho/axhy-v3/pull/12) |
+| `f1b-5-persona-qa`               | F1-b 5-persona enterprise QA walk — 51 scenarios ALL PASS, 11 contracts confirmed, 0 prod bugs, 3 follow-up recs                         | **QA-DONE** 2026-05-31 | —                | [PR #13](https://github.com/Akshaytho/axhy-v3/pull/13) |
+| `worker-d1-s2c-1`                | `leaveRequestMachine` + `swapRequestMachine` + tests                                                                                     | not started            | —                | —                                                      |
+| `worker-d1-s2c-2`                | Leave sheet + Swap sheet + 2 endpoints + integration tests                                                                               | not started            | —                | —                                                      |
 
 ## Production state
 
@@ -72,7 +77,8 @@
 | `apps/backend/src/dispatcher/handlers/notifications.ts:293` | raw prisma outside transaction                                                  | tracked separately                    |
 | `packages/ai-tools/src/session-audit.ts` CHECK 10           | regex `prisma\.[a-z]*\.create` misses mixed-case table names (e.g. consentLog)  | filed by Cluster B 2026-05-25         |
 | Worker / Visit / VisitPhoto tables                          | No RLS enabled — companyId filtering is app-level only                          | filed by Cluster B 2026-05-25 (RLS Q) |
+| RC-A leave-decision pre-existing failures                   | seed expansion landed                                                           | **RESOLVED** 2026-05-31 (`3232aef`)   |
 
 ## Where we are right now
 
-Worker MVP slices 1 + 2a-1 + 2a-2 + 2b-1 + 2b-2 + 2b-3 are complete. The full capture pipeline (QR scan scaffold → before-photos → timer → after-photos → review → submit → verify polling) is end-to-end implemented. Next session starts sub-slice 2b-4 (30-day photo sweep + reinstall rehydration + queue persistence).
+HR A1 thin admin-web portal + Wave-3 hardening matrix + Slice 2 OWNER brainstorm + Slice 3 SUPER_ADMIN brainstorm + F1-b 5-persona enterprise QA all shipped today as 5 PRs against `main`. F1-b is now QA-verified (51/51 scenarios pass, 0 prod bugs). Next session: founder reviews + merges PRs in order (#9 → #10 → #13 docs-only; #11/#12 await founder answers to inline questions). Q3 rename slice waits on #9 merge. F1-c TTL + logout-everywhere is unblocked and queued.
