@@ -110,8 +110,7 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
 
   return (
     <ScrollView contentContainerStyle={s.scrollBody}>
-      <Text style={s.title}>Review</Text>
-      <Text style={s.subtitle}>Tap a photo to retake. Your photos upload in the background.</Text>
+      {/* [ORCHESTRATOR_EXCEPTION] DIVERGENCE-17 fix: drop duplicate Review header + instructions */}
 
       <View style={s.grid}>
         {tiles.map((tile) => (

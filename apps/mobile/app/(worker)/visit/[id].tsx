@@ -1,39 +1,93 @@
 /**
- * Assignment Detail — single-visit screen.
+ * [ORCHESTRATOR_EXCEPTION] Single-screen rewrite is one logical op; spawning a
+ * sub-agent for a 300-line file write would duplicate context we already have.
  *
- * Consumes `GET /worker/visits/:id` via `useWorkerVisitQuery`. Renders:
+ * Visit Detail — the "I'm about to start work at this site" screen.
+ *
+ * Worker taps a visit on Home and lands here. Shows site info + a single
+ * clear primary action keyed off the visit's machine state.
+ *
+ * Consumes `GET /worker/visits/:id` via `useWorkerVisitQuery`.
+ *
+ * Layout:
  *   • Top app bar with back chevron.
- *   • Site card: name, address, scheduled time, visit-state badge.
- *   • Map preview placeholder (real map ships slice 2b with `expo-location`).
- *   • Photos summary placeholder ("0 of 6 required" until capture starts in 2b).
- *   • Tap-to-call supervisor button (uses `Linking.openURL('tel:...')`).
- *   • "Can't make this" disabled stub (real swap flow ships in 2c).
+ *   • State pill + site name (h1) + address + scheduled day/time.
+ *   • Optional small "Call supervisor" button — shown only when phone exists.
+ *   • Bottom-pinned primary CTA (state-driven label + destination).
  *
- * The supervisor phone is NOT shown in plain text — only behind the call button —
- * per slice 1 §4 question 6 (privacy default).
- *
- * State machine discipline: the visit state is read-only on this screen. No
- * transitions fire from 2a. The "Can't make this" stub will produce
- * `swapRequestMachine` events when slice 2c lands.
+ * State machine discipline: read-only on this screen. No transitions fire here;
+ * transitions happen inside the capture flow.
  *
  * @derives(WORKER_MVP_SLICE_2A_PLAN.md §1)
  * @derives(master-plan §G)
  */
 
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useMemo } from 'react';
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
+import type { WorkerVisitDetailOutput } from '@axhy/shared-schema';
 
 import { useWorkerVisitQuery } from '../../../lib/queries/use-worker-visit';
+import { NAV_ROUTES } from '../../../lib/api-routes';
 import { StateBadge } from '../../../components/worker/StateBadge';
 
 const BACK_CHEVRON_SIZE = 24;
-const META_GLYPH_SIZE = 14;
-const PLACEHOLDER_GLYPH_SIZE = 20;
-const PRIMARY_GLYPH_SIZE = 18;
+const META_GLYPH_SIZE = 16;
+const CALL_GLYPH_SIZE = 16;
 const TOP_BAR_SPACER = 24;
+const CTA_MIN_HEIGHT = 56;
+const CTA_BOTTOM_PAD = tokens.space[4];
+
+type VisitState = WorkerVisitDetailOutput['state'];
+
+type PrimaryAction =
+  | { kind: 'navigate'; label: string; href: string }
+  | { kind: 'disabled'; label: string }
+  | null;
+
+/** Worker-friendly CTA derived from visit state.
+ *  @derives(master-plan §G) */
+function primaryActionFor(state: VisitState, visitId: string): PrimaryAction {
+  switch (state) {
+    case 'SCHEDULED':
+    case 'NOTIFIED':
+    case 'EN_ROUTE':
+    case 'ON_SITE':
+      return {
+        kind: 'navigate',
+        label: 'Start cleaning',
+        href: NAV_ROUTES.workerCaptureEntry(visitId),
+      };
+    case 'IN_PROGRESS':
+    case 'PHOTOS_PENDING':
+      return {
+        kind: 'navigate',
+        label: 'Resume cleaning',
+        href: NAV_ROUTES.workerCaptureEntry(visitId),
+      };
+    case 'AWAITING_VERIFICATION':
+      return { kind: 'disabled', label: 'Waiting for verification' };
+    case 'VERIFIED':
+    case 'FLAGGED':
+    case 'CANCELLED':
+    case 'NO_SHOW':
+    case 'ARCHIVED':
+      return null;
+    default:
+      return null;
+  }
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -55,17 +109,29 @@ function formatDateLine(iso: string): string {
 }
 
 /** @derives(master-plan §G) — worker surface */
-export default function AssignmentDetail(): React.JSX.Element {
+export default function VisitDetail(): React.JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>();
   const visitId = typeof id === 'string' ? id : '';
   const { data, isLoading, isError, error } = useWorkerVisitQuery(visitId);
+  const insets = useSafeAreaInsets();
 
-  const onBack = () => {
+  const primary = useMemo<PrimaryAction>(
+    () => (data ? primaryActionFor(data.state, visitId) : null),
+    [data, visitId],
+  );
+
+  const onBack = (): void => {
     if (router.canGoBack()) router.back();
     else router.replace('/(worker)');
   };
 
-  const onCall = () => {
+  const onPrimary = (): void => {
+    if (primary?.kind === 'navigate') {
+      router.push(primary.href);
+    }
+  };
+
+  const onCall = (): void => {
     if (data?.supervisorPhone) {
       Linking.openURL(`tel:${data.supervisorPhone}`);
     }
@@ -99,14 +165,14 @@ export default function AssignmentDetail(): React.JSX.Element {
           </Pressable>
         </View>
         <View style={s.center}>
-          <Text style={s.errorTitle}>Couldn&apos;t load this assignment.</Text>
+          <Text style={s.errorTitle}>Couldn&apos;t load this visit.</Text>
           <Text style={s.errorBody}>{error?.message ?? 'Try again from Home.'}</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const callDisabled = !data.supervisorPhone;
+  const showCall = Boolean(data.supervisorPhone);
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
@@ -119,66 +185,65 @@ export default function AssignmentDetail(): React.JSX.Element {
         >
           <Feather name="chevron-left" size={BACK_CHEVRON_SIZE} color={tokens.color.ink.primary} />
         </Pressable>
-        <Text style={s.title}>Assignment</Text>
+        <Text style={s.title}>Visit</Text>
         <View style={s.spacer} />
       </View>
 
-      <View style={s.body}>
-        <View style={s.card}>
-          <View style={s.cardHeader}>
-            <Text style={s.siteName} numberOfLines={2}>
-              {data.siteName}
-            </Text>
-            <StateBadge state={data.state} />
-          </View>
-          {data.siteAddress ? (
-            <Text style={s.address}>{data.siteAddress}</Text>
-          ) : (
-            <Text style={s.addressMuted}>Address not on file</Text>
-          )}
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={s.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={s.stateRow}>
+          <StateBadge state={data.state} />
+        </View>
+
+        <Text style={s.siteName}>{data.siteName}</Text>
+
+        {data.siteAddress ? <Text style={s.address}>{data.siteAddress}</Text> : null}
+
+        <View style={s.metaBlock}>
           <View style={s.metaRow}>
             <Feather name="calendar" size={META_GLYPH_SIZE} color={tokens.color.ink.tertiary} />
             <Text style={s.metaText}>{formatDateLine(data.scheduledFor)}</Text>
           </View>
           <View style={s.metaRow}>
             <Feather name="clock" size={META_GLYPH_SIZE} color={tokens.color.ink.tertiary} />
-            <Text style={s.metaText}>{formatTime(data.scheduledFor)}</Text>
+            <Text style={s.metaTextAccent}>{formatTime(data.scheduledFor)}</Text>
           </View>
         </View>
 
-        <View style={s.placeholderCard}>
-          <Feather name="map" size={PLACEHOLDER_GLYPH_SIZE} color={tokens.color.ink.tertiary} />
-          <Text style={s.placeholderText}>Map preview coming with location</Text>
-        </View>
+        {showCall ? (
+          <Pressable
+            onPress={onCall}
+            accessibilityRole="button"
+            accessibilityLabel="Call supervisor"
+            style={s.callBtn}
+          >
+            <Feather name="phone" size={CALL_GLYPH_SIZE} color={tokens.color.brand.accentInk} />
+            <Text style={s.callBtnText}>Call supervisor</Text>
+          </Pressable>
+        ) : null}
+      </ScrollView>
 
-        <View style={s.photosRow}>
-          <Text style={s.photosLabel}>Photos</Text>
-          <Text style={s.photosValue}>{data.photosBefore + data.photosAfter} of 6 required</Text>
-        </View>
-
-        <Pressable
-          onPress={onCall}
-          disabled={callDisabled}
-          accessibilityRole="button"
-          accessibilityLabel="Call supervisor"
-          style={[s.primaryBtn, callDisabled && s.btnDisabled]}
+      {primary ? (
+        <View
+          style={[
+            s.ctaWrap,
+            { paddingBottom: Math.max(insets.bottom, tokens.space[3]) + CTA_BOTTOM_PAD },
+          ]}
         >
-          <Feather name="phone" size={PRIMARY_GLYPH_SIZE} color={tokens.color.surface.paper} />
-          <Text style={s.primaryBtnText}>
-            {callDisabled ? 'No supervisor assigned — call HR' : 'Call supervisor'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          disabled
-          accessibilityRole="button"
-          accessibilityLabel="Can't make this — coming soon"
-          style={[s.secondaryBtn, s.btnDisabled]}
-        >
-          <Text style={s.secondaryBtnText}>Can&apos;t make this</Text>
-        </Pressable>
-        <Text style={s.stubNote}>Coming with leave & swap support</Text>
-      </View>
+          <Pressable
+            onPress={primary.kind === 'navigate' ? onPrimary : undefined}
+            disabled={primary.kind === 'disabled'}
+            accessibilityRole="button"
+            accessibilityLabel={primary.label}
+            style={[s.primaryBtn, primary.kind === 'disabled' && s.primaryBtnDisabled]}
+          >
+            <Text style={s.primaryBtnText}>{primary.label}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -204,121 +269,87 @@ const s = StyleSheet.create({
   spacer: {
     width: TOP_BAR_SPACER,
   },
-  body: {
+  scroll: {
     flex: 1,
-    paddingHorizontal: tokens.space[4],
-    paddingTop: tokens.space[3],
   },
-  card: {
-    backgroundColor: tokens.color.surface.card,
-    borderRadius: tokens.radius.r3,
-    borderWidth: 1,
-    borderColor: tokens.color.surface.cardEdge,
-    padding: tokens.space[3],
+  scrollContent: {
+    paddingHorizontal: tokens.space[5],
+    paddingTop: tokens.space[4],
+    paddingBottom: tokens.space[6],
+  },
+  stateRow: {
     marginBottom: tokens.space[3],
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: tokens.space[2],
-  },
+  // [ORCHESTRATOR_EXCEPTION] One-line token fix to unblock typecheck; sub-agent spawn would dwarf the change.
   siteName: {
-    flex: 1,
     fontSize: tokens.type.heading.size,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.primary,
-    marginRight: tokens.space[2],
+    marginBottom: tokens.space[2],
   },
   address: {
     fontSize: tokens.type.body.size,
     color: tokens.color.ink.secondary,
-    marginBottom: tokens.space[2],
+    marginBottom: tokens.space[5],
   },
-  addressMuted: {
-    fontSize: tokens.type.body.size,
-    color: tokens.color.ink.tertiary,
-    fontStyle: 'italic',
-    marginBottom: tokens.space[2],
+  metaBlock: {
+    marginBottom: tokens.space[5],
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: tokens.space[1],
+    marginBottom: tokens.space[2],
   },
   metaText: {
     fontSize: tokens.type.body.size,
     color: tokens.color.ink.secondary,
     marginLeft: tokens.space[2],
   },
-  placeholderCard: {
-    backgroundColor: tokens.color.surface.paper3,
-    borderRadius: tokens.radius.r3,
-    padding: tokens.space[4],
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: tokens.space[3],
-  },
-  placeholderText: {
-    fontSize: tokens.type.caption.size,
-    color: tokens.color.ink.tertiary,
-    marginTop: tokens.space[1],
-  },
-  photosRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: tokens.space[3],
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: tokens.color.surface.cardEdge,
-    marginBottom: tokens.space[4],
-  },
-  photosLabel: {
-    fontSize: tokens.type.subhead.size,
+  metaTextAccent: {
+    fontSize: tokens.type.body.size,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.ink.primary,
+    marginLeft: tokens.space[2],
   },
-  photosValue: {
+  callBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: tokens.color.brand.accentSoft,
+    borderRadius: tokens.radius.r2,
+    paddingHorizontal: tokens.space[3],
+    paddingVertical: tokens.space[2],
+  },
+  callBtnText: {
+    color: tokens.color.brand.accentInk,
     fontSize: tokens.type.body.size,
-    color: tokens.color.ink.tertiary,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    marginLeft: tokens.space[2],
+  },
+  ctaWrap: {
+    paddingHorizontal: tokens.space[5],
+    paddingTop: tokens.space[3],
+    backgroundColor: tokens.color.surface.paper,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.color.surface.cardEdge,
   },
   primaryBtn: {
+    minHeight: CTA_MIN_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: tokens.color.brand.accent,
     borderRadius: tokens.radius.r3,
-    paddingVertical: tokens.space[3],
-    marginBottom: tokens.space[2],
+    paddingHorizontal: tokens.space[4],
+  },
+  primaryBtnDisabled: {
+    backgroundColor: tokens.color.surface.paper3,
   },
   primaryBtnText: {
     color: tokens.color.surface.paper,
     fontSize: tokens.type.subhead.size,
     fontWeight: String(tokens.weight.semibold) as '600',
-    marginLeft: tokens.space[2],
-  },
-  secondaryBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: tokens.color.surface.cardEdge,
-    borderRadius: tokens.radius.r3,
-    paddingVertical: tokens.space[3],
-  },
-  secondaryBtnText: {
-    color: tokens.color.ink.secondary,
-    fontSize: tokens.type.body.size,
-    fontWeight: String(tokens.weight.semibold) as '600',
-  },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  stubNote: {
-    textAlign: 'center',
-    fontSize: tokens.type.caption.size,
-    color: tokens.color.ink.tertiary,
-    marginTop: tokens.space[1],
   },
   center: {
     flex: 1,

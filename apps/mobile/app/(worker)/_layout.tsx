@@ -1,20 +1,23 @@
+// [ORCHESTRATOR_EXCEPTION] canon redesign — worker shell
+
 /**
- * Worker tab shell — 3-tab bottom navigator with Feather icons.
+ * Worker tab shell — 3-tab bottom navigator wrapped in WorkerDrawerProvider.
  *
- * Per MVP_V2_ALIGNED_PLAN.md §2: Home / History / Profile.
+ * Tabs: Home / History / Profile (per MVP_V2_ALIGNED_PLAN.md §2). Drawer is
+ * a left slide-in providing access to worker-extra screens not in canon
+ * (Leave, Swap, Help, Sign out).
  *
- * Drops MicFAB and Drawer (supervisor-only surfaces). Workers do not have
- * chat or memory surfaces in MVP (DO_NOT_BUILD_MVP.md: chat tab cut; pay tab
- * folds into History; theme picker cut).
- *
- * Tokens: @axhy/ui-tokens terracotta-paper, panel-locked 2026-05-07.
+ * Canon (docs/design/worker-app-canon/) keeps the bottom-tab bar but introduces
+ * a hamburger in each tab's header. This shell exposes WorkerDrawerContext via
+ * WorkerDrawerProvider; screens read it via useWorkerDrawer().
  *
  * @derives(MVP_V2_ALIGNED_PLAN.md §2)
+ * @derives(docs/design/worker-app-canon/GAP_ANALYSIS.md)
  * @derives(F-006b — worker shell)
  */
 
 import { useEffect } from 'react';
-import { AppState, Platform, StyleSheet, View, Text } from 'react-native';
+import { AppState, Platform, StyleSheet, Text, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { jwtDecode } from 'jwt-decode';
@@ -25,6 +28,9 @@ import { r2UploadQueue } from '../../lib/r2-upload-queue';
 import { loadQueueState, saveQueueState } from '../../lib/storage/queue-persistence';
 import { rehydrateFromPartition } from '../../lib/storage/reinstall-rehydration';
 import { maybeSweepOldPhotos } from '../../lib/storage/photo-sweep';
+import { WorkerDrawerProvider } from '../../components/worker/WorkerDrawer';
+// [ORCHESTRATOR_EXCEPTION] DEV-only screenshot debug FAB import
+// import { SendToClaudeButton } from '../../components/dev/SendToClaudeButton';
 
 type TabIcon = React.ComponentProps<typeof Feather>['name'];
 
@@ -107,51 +113,53 @@ export default function WorkerLayout() {
   }, []);
 
   return (
-    <View style={s.root}>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: {
-            backgroundColor: tokens.color.surface.paper,
-            borderTopColor: tokens.color.surface.cardEdge,
-            borderTopWidth: 1,
-            height: tokens.tap.minMobile + tokens.space[3],
-            paddingTop: tokens.space[2],
-            paddingBottom: tokens.space[3],
-          },
-        }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'Home',
-            tabBarIcon: tabIcon('home'),
-            tabBarLabel: tabLabel('Home'),
+    <WorkerDrawerProvider>
+      <View style={s.root}>
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarStyle: {
+              backgroundColor: tokens.color.surface.card,
+              borderTopColor: tokens.color.surface.paper3,
+              borderTopWidth: 1,
+              height: tokens.tap.minMobile + tokens.space[3],
+              paddingTop: tokens.space[2],
+              paddingBottom: tokens.space[3],
+            },
           }}
-        />
-        <Tabs.Screen
-          name="history"
-          options={{
-            title: 'History',
-            tabBarIcon: tabIcon('clock'),
-            tabBarLabel: tabLabel('History'),
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: 'Profile',
-            tabBarIcon: tabIcon('user'),
-            tabBarLabel: tabLabel('Profile'),
-          }}
-        />
-        {/* Hide nested directories from the tab bar — they're reachable only via
-           NAV_ROUTES deep-links. Without href:null, Expo Router auto-registers
-           every subdirectory under (worker) as an extra tab slot. */}
-        <Tabs.Screen name="visit" options={{ href: null }} />
-        <Tabs.Screen name="capture" options={{ href: null }} />
-      </Tabs>
-    </View>
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: 'Today',
+              tabBarIcon: tabIcon('home'),
+              tabBarLabel: tabLabel('Today'),
+            }}
+          />
+          <Tabs.Screen
+            name="history"
+            options={{
+              title: 'History',
+              tabBarIcon: tabIcon('clock'),
+              tabBarLabel: tabLabel('History'),
+            }}
+          />
+          <Tabs.Screen
+            name="profile"
+            options={{
+              title: 'You',
+              tabBarIcon: tabIcon('user'),
+              tabBarLabel: tabLabel('You'),
+            }}
+          />
+          {/* [ORCHESTRATOR_EXCEPTION] DIVERGENCE-10 fix: hide tab bar during full-flow capture + visit detail */}
+          <Tabs.Screen name="visit" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+          <Tabs.Screen name="capture" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        </Tabs>
+        {/* [ORCHESTRATOR_EXCEPTION] DEV-only: tap-to-send-screenshot debug FAB. Renders null in production. */}
+        {/* {__DEV__ ? <SendToClaudeButton /> : null} */}
+      </View>
+    </WorkerDrawerProvider>
   );
 }
 

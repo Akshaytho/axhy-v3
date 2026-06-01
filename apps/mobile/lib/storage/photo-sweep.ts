@@ -8,7 +8,7 @@
  * @derives(NEXT_SESSION.md §2b-4)
  */
 
-import * as FileSystem from 'expo-file-system';
+import { Directory } from 'expo-file-system';
 
 import { canPersistCaptures, listVisitDirs } from './per-user-partition';
 import { getKvItem, setKvItem } from './local-kv';
@@ -34,15 +34,13 @@ export async function maybeSweepOldPhotos(workerId: string): Promise<void> {
 
     for (const dirUri of visitDirs) {
       try {
-        const info = await FileSystem.getInfoAsync(dirUri);
-        if (!info.exists) continue;
-        // modificationTime is seconds since epoch in expo-file-system
-        const modMs =
-          'modificationTime' in info && typeof info.modificationTime === 'number'
-            ? info.modificationTime * 1000
-            : 0;
+        const dir = new Directory(dirUri);
+        if (!dir.exists) continue;
+        // Modern expo-file-system Directory.info().modificationTime is in milliseconds.
+        const info = dir.info();
+        const modMs = typeof info.modificationTime === 'number' ? info.modificationTime : 0;
         if (modMs > 0 && modMs < cutoffMs) {
-          await FileSystem.deleteAsync(dirUri, { idempotent: true });
+          dir.delete();
         }
       } catch (err) {
         console.error(

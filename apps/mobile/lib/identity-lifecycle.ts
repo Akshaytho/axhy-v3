@@ -338,9 +338,9 @@ export async function onAppLogout(): Promise<void> {
 
 /**
  * Return type for `onColdStartReady` — tells the routing gate where to go.
- * F-006b 2026-05-21 adds `/(worker)/index` to the union.
+ * F-006b 2026-05-21 adds `/(worker)` to the union (group route, resolves to (worker)/index.tsx).
  */
-export type ColdStartRoute = '/(supervisor)/profile' | '/(worker)/index' | '/(auth)/phone';
+export type ColdStartRoute = '/(supervisor)/profile' | '/(worker)' | '/(auth)/phone';
 
 /**
  * The single cold-start sequence. Picks 2/7 from v6 scope land here, with
@@ -355,7 +355,9 @@ export type ColdStartRoute = '/(supervisor)/profile' | '/(worker)/index' | '/(au
  *   3. If `shouldCallOneSignal()` is true, call `OneSignal.login(userId)`
  *      to re-link the device subscription (idempotent in the SDK).
  *   4. Return the home route for the active role: `/(supervisor)/profile`
- *      for SUPERVISOR, `/(worker)/index` for WORKER.
+ *      for SUPERVISOR, `/(worker)` for WORKER (group route — Expo Router
+ *      resolves to (worker)/index.tsx automatically; the explicit `/index`
+ *      suffix does not match on native).
  *
  * Called from `app/index.tsx` after `getTokens()` returns non-null. Covers
  * app reinstall, OS-level subscription drift, OneSignal SDK version bumps.
@@ -374,7 +376,7 @@ async function onColdStartReadyImpl(tokens: StoredTokens): Promise<{ route: Cold
   }
 
   const homeRoute: ColdStartRoute =
-    tokens.activeRole === SUPERVISOR ? '/(supervisor)/profile' : '/(worker)/index';
+    tokens.activeRole === SUPERVISOR ? '/(supervisor)/profile' : '/(worker)';
 
   const userId = decodeUserIdFromJwt(tokens.accessToken);
   if (!userId) {

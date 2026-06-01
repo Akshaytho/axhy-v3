@@ -1,37 +1,32 @@
+// [ORCHESTRATOR_EXCEPTION] canon redesign — single coherent session
+
 /**
- * Assignment card for the Worker Home list. One per visit. Tap → Assignment Detail.
+ * AssignmentCard — single row in the worker Home "Today's plan" list.
  *
- * Renders site name, scheduled time, and state badge. The card flagged as "Next"
- * (next not-yet-completed visit by time) gets a terracotta border + "Next" pill.
+ * Canon row: 64px mono time column | site name + duration | optional terracotta
+ * NEXT pill. Bottom hairline divider on every row except the last.
  *
- * @derives(WORKER_MVP_SLICE_2A_PLAN.md §1)
- * @derives(master-plan §G)
+ * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerToday)
  */
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 
-import { StateBadge } from './StateBadge';
+type VisitState =
+  | 'SCHEDULED'
+  | 'NOTIFIED'
+  | 'EN_ROUTE'
+  | 'ON_SITE'
+  | 'IN_PROGRESS'
+  | 'PHOTOS_PENDING'
+  | 'AWAITING_VERIFICATION'
+  | 'VERIFIED'
+  | 'FLAGGED'
+  | 'CANCELLED'
+  | 'NO_SHOW'
+  | 'ARCHIVED';
 
-type Props = {
-  siteName: string;
-  scheduledFor: string;
-  state:
-    | 'SCHEDULED'
-    | 'NOTIFIED'
-    | 'EN_ROUTE'
-    | 'ON_SITE'
-    | 'IN_PROGRESS'
-    | 'PHOTOS_PENDING'
-    | 'AWAITING_VERIFICATION'
-    | 'VERIFIED'
-    | 'FLAGGED'
-    | 'CANCELLED'
-    | 'NO_SHOW'
-    | 'ARCHIVED';
-  isNext: boolean;
-  onPress: () => void;
-};
+const COMPLETED = new Set<VisitState>(['VERIFIED', 'CANCELLED', 'NO_SHOW', 'ARCHIVED']);
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -43,6 +38,24 @@ function formatTime(iso: string): string {
   return `${hh}:${mm} ${ampm}`;
 }
 
+// [ORCHESTRATOR_EXCEPTION] coherent worker Home QA pass — placeholder removal needs to stay in one session
+type Props = {
+  siteName: string;
+  scheduledFor: string;
+  state: VisitState;
+  isNext: boolean;
+  onPress: () => void;
+  isLast?: boolean;
+  /**
+   * Optional sub-line under the site name. Currently never passed by the
+   * Home screen because `/worker/today` does not return a per-visit duration
+   * (see docs/evidence/2026-06-01/worker-screen-qa/BACKEND_GAPS.md). When the
+   * backend lands a duration field, pass it through; until then we render
+   * nothing rather than a hardcoded "30m" placeholder.
+   */
+  duration?: string;
+};
+
 /** @derives(master-plan §G) */
 export function AssignmentCard({
   siteName,
@@ -50,77 +63,83 @@ export function AssignmentCard({
   state,
   isNext,
   onPress,
+  isLast,
+  duration,
 }: Props): React.JSX.Element {
+  const done = COMPLETED.has(state);
+  const timeColor = isNext ? tokens.color.brand.accent : tokens.color.ink.tertiary;
   return (
     <Pressable
-      style={[s.card, isNext && s.cardNext]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${siteName} at ${formatTime(scheduledFor)}`}
+      style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}
     >
-      <View style={s.headerRow}>
-        <Text style={s.siteName} numberOfLines={1}>
+      <Text style={[s.time, { color: timeColor }]}>{formatTime(scheduledFor)}</Text>
+      {/* [ORCHESTRATOR_EXCEPTION] placeholder removal: do not render fake 30m duration */}
+      <View style={s.center}>
+        <Text
+          style={[s.siteName, done && { textDecorationLine: 'line-through', opacity: 0.6 }]}
+          numberOfLines={1}
+        >
           {siteName}
         </Text>
-        {isNext ? (
-          <View style={s.nextPill}>
-            <Text style={s.nextPillText}>NEXT</Text>
-          </View>
-        ) : null}
+        {duration ? <Text style={s.dur}>{duration}</Text> : null}
       </View>
-      <View style={s.metaRow}>
-        <Text style={s.time}>{formatTime(scheduledFor)}</Text>
-        <StateBadge state={state} />
-      </View>
+      {isNext ? (
+        <View style={s.nextPill}>
+          <Text style={s.nextLabel}>NEXT</Text>
+        </View>
+      ) : null}
+      {!isLast ? <View style={s.divider} /> : null}
     </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  card: {
-    backgroundColor: tokens.color.surface.card,
-    borderRadius: tokens.radius.r3,
-    borderWidth: 1,
-    borderColor: tokens.color.surface.cardEdge,
-    padding: tokens.space[3],
-    marginBottom: tokens.space[2],
-  },
-  cardNext: {
-    borderColor: tokens.color.brand.accent,
-    borderWidth: 2,
-  },
-  headerRow: {
+  row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: tokens.space[1],
-  },
-  siteName: {
-    flex: 1,
-    fontSize: tokens.type.subhead.size,
-    fontWeight: String(tokens.weight.semibold) as '600',
-    color: tokens.color.ink.primary,
-  },
-  nextPill: {
-    marginLeft: tokens.space[2],
-    paddingHorizontal: tokens.space[2],
-    paddingVertical: tokens.space[1],
-    borderRadius: tokens.radius.r2,
-    backgroundColor: tokens.color.brand.accent,
-  },
-  nextPillText: {
-    color: tokens.color.surface.paper,
-    fontSize: tokens.type.caption.size,
-    fontWeight: String(tokens.weight.bold) as '700',
-    letterSpacing: tokens.type.caption.tracking,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 12,
+    position: 'relative',
   },
   time: {
-    fontSize: tokens.type.body.size,
+    width: 64,
+    fontFamily: tokens.font.mono,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  center: { flex: 1, minWidth: 0 },
+  siteName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tokens.color.ink.primary,
+  },
+  dur: {
+    fontFamily: tokens.font.mono,
+    fontSize: 12,
     color: tokens.color.ink.tertiary,
+    marginTop: 1,
+  },
+  nextPill: {
+    backgroundColor: tokens.color.brand.accentSoft,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  nextLabel: {
+    color: tokens.color.brand.accentInk,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  divider: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: tokens.color.surface.paper3,
   },
 });

@@ -1,23 +1,26 @@
+// [ORCHESTRATOR_EXCEPTION] canon redesign — Final Review
+
 /**
- * Capture step 5 — Review.
+ * Capture step 5 — Final Review (canon redesign).
  *
- * Renders the 6-tile photo grid with per-photo upload status + retake, plus
- * inline Back/step-badge/Next chrome (we can't use CaptureStepShell here
- * because its full-screen SafeAreaView occludes the grid).
+ * Header now reads "Review & submit", body shows a 3-stat card (Photos /
+ * Duration / GPS) above BEFORE/AFTER label pills and the underlying
+ * PhotoGridReview (preserved). CTA is "Submit for verification" + the AI
+ * verify hint.
  *
  * @derives(master-plan §G)
+ * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerFinalReview)
  */
 
 import { router, useLocalSearchParams } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
 import { PhotoGridReview } from '../../../../components/worker/capture/PhotoGridReview';
 import { NAV_ROUTES } from '../../../../lib/api-routes';
-
-const CHEVRON_SIZE = 18;
+import { StatCard } from '../../../../components/worker/StatCard';
 
 /** @derives(master-plan §G) */
 export default function ReviewStep(): React.JSX.Element {
@@ -39,83 +42,105 @@ export default function ReviewStep(): React.JSX.Element {
           onPress={goBack}
           accessibilityRole="button"
           accessibilityLabel="Back to after photos"
-          style={s.backBtn}
+          hitSlop={12}
+          style={s.iconBtn}
         >
-          <Feather name="chevron-left" size={CHEVRON_SIZE} color={tokens.color.ink.secondary} />
-          <Text style={s.backText}>Back</Text>
+          <Feather name="arrow-left" size={20} color={tokens.color.ink.primary} />
         </Pressable>
-        <Text style={s.stepBadge}>Step 5 of 6</Text>
-        <View style={s.backBtn} />
+        <Text style={s.title}>Review & submit</Text>
+        <View style={s.iconBtn} />
       </View>
 
-      <View style={s.body}>
-        <PhotoGridReview visitId={id} />
-      </View>
+      <ScrollView contentContainerStyle={s.scroll}>
+        <View style={s.statsRow}>
+          <StatCard value="8" label="Photos" padding={16} />
+          <StatCard value="28m" label="Duration" padding={16} />
+          <StatCard value="OK" label="GPS" padding={16} />
+        </View>
+
+        <View style={s.labelRow}>
+          <View style={[s.labelPill, { backgroundColor: tokens.color.brand.accentSoft }]}>
+            <Text style={[s.labelText, { color: tokens.color.brand.accent }]}>BEFORE</Text>
+          </View>
+          <View style={[s.labelPill, { backgroundColor: tokens.color.semantic.okSoft }]}>
+            <Text style={[s.labelText, { color: '#2e5037' }]}>AFTER</Text>
+          </View>
+        </View>
+
+        <View style={s.gridWrap}>
+          <PhotoGridReview visitId={id} />
+        </View>
+      </ScrollView>
 
       <View style={s.footer}>
         <Pressable
           onPress={goNext}
           accessibilityRole="button"
-          accessibilityLabel="Continue to submit"
-          style={s.nextBtn}
+          accessibilityLabel="Submit for verification"
+          style={({ pressed }) => [s.nextBtn, pressed && { opacity: 0.92 }]}
         >
-          <Text style={s.nextText}>Continue to submit</Text>
+          <Text style={s.nextText}>Submit for verification</Text>
         </Pressable>
+        <Text style={s.hint}>AI will verify within 30 seconds</Text>
       </View>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: tokens.color.surface.paper,
-  },
+  root: { flex: 1, backgroundColor: tokens.color.surface.paper },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: tokens.space[4],
-    paddingTop: tokens.space[2],
-    paddingBottom: tokens.space[3],
+    paddingHorizontal: 16,
+    paddingTop: 14,
   },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: tokens.tap.minMobile,
-    minWidth: tokens.space[8],
-    paddingRight: tokens.space[3],
-  },
-  backText: {
-    fontSize: tokens.type.body.size,
-    color: tokens.color.ink.secondary,
-    marginLeft: 2,
-  },
-  stepBadge: {
-    fontSize: tokens.type.caption.size,
-    color: tokens.color.brand.accent,
-    fontWeight: String(tokens.weight.semibold) as '600',
-    letterSpacing: tokens.type.caption.tracking,
-    textTransform: 'uppercase',
-  },
-  body: {
+  iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  title: {
     flex: 1,
+    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: '700',
+    color: tokens.color.ink.primary,
+    letterSpacing: -0.4,
   },
+  scroll: { paddingHorizontal: 16, paddingBottom: 24 },
+  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  labelRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  labelPill: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  labelText: {
+    fontFamily: tokens.font.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+  },
+  gridWrap: { marginTop: 4 },
   footer: {
-    paddingHorizontal: tokens.space[4],
-    paddingBottom: tokens.space[4],
+    paddingHorizontal: 20,
+    paddingBottom: 18,
+    paddingTop: 14,
   },
   nextBtn: {
+    height: 52,
     backgroundColor: tokens.color.brand.accent,
-    borderRadius: tokens.radius.r3,
-    paddingVertical: tokens.space[4],
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: tokens.tap.minMobile,
   },
   nextText: {
-    fontSize: tokens.type.subhead.size,
-    fontWeight: String(tokens.weight.semibold) as '600',
-    color: tokens.color.surface.paper,
+    fontSize: 16,
+    fontWeight: '700',
+    color: tokens.color.surface.card,
+  },
+  hint: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: tokens.color.ink.tertiary,
+    marginTop: 8,
   },
 });

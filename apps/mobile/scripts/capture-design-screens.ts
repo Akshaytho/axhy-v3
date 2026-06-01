@@ -7,8 +7,20 @@ import { chromium } from '@playwright/test';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const HTML = 'file:///Users/thotaakshay/Downloads/Axhy%20Worker%20App%20_standalone_.html';
-const OUT_DIR = path.resolve(__dirname, '..', 'screenshots-worker-d1-s1-design');
+const HTML =
+  'file:///Users/thotaakshay/eclean_workspace/axhy-v3/docs/design/worker-app-canon/project/Axhy%20Worker%20App%20(standalone).html';
+const OUT_DIR = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'docs',
+  'evidence',
+  '2026-06-01',
+  'worker-design-impl',
+  'iter-2',
+  'canon-screens',
+);
 
 async function main(): Promise<void> {
   await fs.mkdir(OUT_DIR, { recursive: true });

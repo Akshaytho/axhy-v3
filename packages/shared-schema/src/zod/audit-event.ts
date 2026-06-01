@@ -46,6 +46,10 @@ export const AuditEventKindSchema = z.enum([
   'CALENDAR_ENTRY_PROMOTED',
   // ── Visit ──────────────────────────────────────────────────────────
   'VISIT_ENDED',
+  // Worker visit lifecycle (2026-06-01 F-HIGH-3 audit completeness)
+  'VISIT_STARTED',
+  'VISIT_SUBMITTED',
+  'VISIT_VERIFIED',
   // ── Wave 4 compliance flow (2026-05-18) — flagged-visit review ─────
   'VISIT_RESOLVED',
   'VISIT_REJECTED',

@@ -70,3 +70,4 @@ scripts/devtools-capture/
 
 # bootstrap-seed + ad-hoc script outputs (P1.5b — 2026-05-17)
 tmp/
+SETUP_ENV.template

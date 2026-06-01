@@ -1,51 +1,76 @@
+// [ORCHESTRATOR_EXCEPTION] worker Home canon panel-fix pass (BLOCKER + HIGH from 4 reviewers)
+
 /**
- * Worker Home — primary daily-loop screen.
+ * Worker Home (Today) — canon layout from docs/design/worker-app-canon.
  *
- * Consumes `GET /worker/today` via `useWorkerTodayQuery`. Renders:
- *   • Top bar: greeting + bell (static dot in 2a; real notif count in slice 3).
- *   • Date row: today's date in worker company tz + site count.
- *   • Resume-capture sticky banner when any visit is `EN_ROUTE`/`ON_SITE`/`IN_PROGRESS`/`PHOTOS_PENDING`.
- *   • Account-paused red banner when `worker.state` is `ON_SUSPENSION` or `BLOCKED`.
- *   • Assignment list (time-ordered) with "Next" badge on first not-completed visit.
- *   • Empty state when 0 visits today.
- *   • Pull-to-refresh via React Query `refetch`.
+ * Layout (rebuilt per 4-panel REJECT verdict 2026-06-01):
+ *   1. Header: hamburger (left, opens drawer) + greeting/date + sync pill (right)
+ *   2. NextSiteCard hero (ink) with terracotta CTA — restored from canon. The
+ *      card was previously deleted on the (now-rejected) reasoning that it
+ *      duplicated the NEXT pill in the list. Per panel UI/UX F-01 and
+ *      worker-persona R1, the hero IS the screen's primary action.
+ *   3. 2-stat strip (Done / Planned) — Avg score remains removed per prior
+ *      decision (worker has no acted-on history yet).
+ *   4. ResumeCaptureBanner (when server-flagged) above the plan.
+ *   5. "Today's plan · N sites" list — grouped into In progress / Upcoming /
+ *      Completed sections, each shown only when non-empty (panel UI/UX F-03).
  *
- * State machine discipline: this screen NEVER simulates state. Every badge and
- * banner predicate is driven by backend response values (visit.state, worker.state,
- * resumeCapture). The visit lifecycle lives in `visitMachine` server-side.
+ * Behavior fixes landed:
+ *   - Pluralization built as a single string (no split text nodes) — R-01.
+ *   - 401 UNAUTHORIZED → router.replace('/(auth)/phone') after a brief banner
+ *     so worker isn't stranded on the error card — A-04.
+ *   - Empty state: helpful sub-line; doesn't render stat card chrome — F-13.
+ *   - Greeting falls back to "Good morning/afternoon/evening" without a fake
+ *     name (JWT has no `name` claim today; today/output has no first name) —
+ *     F-07 path-of-least-fakery.
  *
- * Bell tap shows a toast ("Notifications coming soon") — real list ships slice 3.
- * Resume banner tap navigates to Assignment Detail in 2a; will deep-link into
- * the capture step in slice 2b.
+ * Data: `useWorkerTodayQuery` (unchanged). Sync state derives from the
+ * r2UploadQueue snapshot — any non-terminal item keeps the pill in "Syncing…"
+ * mode. Failed uploads are treated as terminal (not in-flight) per R-02 / A-31.
  *
  * @derives(WORKER_MVP_SLICE_2A_PLAN.md §1)
- * @derives(MVP_V2_ALIGNED_PLAN.md §2)
- * @derives(master-plan §G)
+ * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerToday)
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
+  Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
-  ToastAndroid,
   View,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
 import { NAV_ROUTES } from '../../lib/api-routes';
+import { ApiError } from '../../lib/api';
+import { r2UploadQueue } from '../../lib/r2-upload-queue';
 import { useWorkerTodayQuery } from '../../lib/queries/use-worker-today';
 import { AssignmentCard } from '../../components/worker/AssignmentCard';
-import { HomeBellIcon } from '../../components/worker/HomeBellIcon';
+import { NextSiteCard } from '../../components/worker/NextSiteCard';
 import { ResumeCaptureBanner } from '../../components/worker/ResumeCaptureBanner';
+import { StatCard } from '../../components/worker/StatCard';
+import { SyncPill, type SyncState } from '../../components/worker/SyncPill';
+import { useWorkerDrawer } from '../../components/worker/WorkerDrawer';
 
 const PAUSED_STATES = new Set(['ON_SUSPENSION', 'BLOCKED']);
-const COMPLETED_STATES = new Set(['VERIFIED', 'CANCELLED', 'NO_SHOW', 'ARCHIVED']);
+
+// Visual grouping buckets for the "Today's plan" list — panel F-03.
+const IN_PROGRESS_STATES = new Set(['IN_PROGRESS']);
+const UPCOMING_STATES = new Set(['SCHEDULED', 'NOTIFIED', 'EN_ROUTE', 'ON_SITE', 'PHOTOS_PENDING']);
+const COMPLETED_STATES = new Set([
+  'VERIFIED',
+  'AWAITING_VERIFICATION',
+  'CANCELLED',
+  'NO_SHOW',
+  'ARCHIVED',
+  'FLAGGED',
+]);
 
 function formatDateRow(iso: string): string {
   const d = new Date(iso + 'T00:00:00');
@@ -56,35 +81,122 @@ function formatDateRow(iso: string): string {
   });
 }
 
-function showSoonToast(): void {
-  if (Platform.OS === 'android') {
-    ToastAndroid.show('Notifications coming soon', ToastAndroid.SHORT);
-  }
-  // iOS toast lib not in the tree yet; slice 3 ships a cross-platform toast.
+function formatTimeShort(iso: string): string {
+  const d = new Date(iso);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const hh = h % 12 === 0 ? 12 : h % 12;
+  const mm = String(m).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${hh}:${mm} ${ampm}`;
+}
+
+function useSyncState(): SyncState {
+  const [state, setState] = useState<SyncState>('synced');
+  useEffect(() => {
+    const unsub = r2UploadQueue.onChange((snap) => {
+      let inFlight = 0;
+      snap.forEach((item) => {
+        // Treat 'done' AND 'failed' as terminal so a permanently failed upload
+        // does not pin the pill on "Syncing…" forever (panel A-31 / R-02).
+        if (item.status !== 'done' && item.status !== 'failed') inFlight += 1;
+      });
+      setState(inFlight > 0 ? 'syncing' : 'synced');
+    });
+    return unsub;
+  }, []);
+  return state;
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function pluralize(n: number, singular: string, plural?: string): string {
+  return `${n} ${n === 1 ? singular : (plural ?? singular + 's')}`;
 }
 
 /** @derives(master-plan §G) — worker surface */
 export default function WorkerHome(): React.JSX.Element {
   const { data, isLoading, isError, error, refetch, isRefetching } = useWorkerTodayQuery();
+  const { openDrawer } = useWorkerDrawer();
+  const syncState = useSyncState();
 
+  // Auth recovery on 401 (panel A-04). When the query returns UNAUTHORIZED we
+  // show a short "Session ended" banner and replace the route. The replace is
+  // delayed so the worker sees what happened — abrupt redirects on cold-launch
+  // are disorienting.
+  const isUnauthorized = isError && error instanceof ApiError && error.code === 'UNAUTHORIZED';
+  useEffect(() => {
+    if (!isUnauthorized) return;
+    const t = setTimeout(() => {
+      router.replace(NAV_ROUTES.authPhone);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [isUnauthorized]);
+
+  // NEXT picker — pick the SCHEDULED with earliest scheduledStart ≥ now.
+  // Fallback per panel A-11: if no SCHEDULED ahead, pick earliest SCHEDULED
+  // today regardless of now (clock skew / late start). Else IN_PROGRESS with
+  // most-recent scheduledStart. Else null (hide hero).
   const nextVisitId = useMemo(() => {
     if (!data) return null;
-    const next = data.visits.find((v) => !COMPLETED_STATES.has(v.state));
-    return next?.id ?? null;
+    const now = Date.now();
+    const scheduled = data.visits
+      .filter((v) => v.state === 'SCHEDULED')
+      .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime());
+    const scheduledAhead = scheduled.filter((v) => new Date(v.scheduledFor).getTime() >= now);
+    if (scheduledAhead.length > 0) return scheduledAhead[0]!.id;
+    if (scheduled.length > 0) return scheduled[0]!.id;
+    const inProgress = data.visits
+      .filter((v) => v.state === 'IN_PROGRESS')
+      .sort((a, b) => new Date(b.scheduledFor).getTime() - new Date(a.scheduledFor).getTime());
+    if (inProgress.length > 0) return inProgress[0]!.id;
+    return null;
+  }, [data]);
+
+  const nextVisit = useMemo(() => {
+    if (!data || !nextVisitId) return null;
+    return data.visits.find((v) => v.id === nextVisitId) ?? null;
+  }, [data, nextVisitId]);
+
+  const stats = useMemo(() => {
+    const visits = data?.visits ?? [];
+    const done = visits.filter((v) => v.state === 'VERIFIED').length;
+    const planned = visits.length;
+    return { done, planned };
+  }, [data]);
+
+  // Group visits for the plan list (panel F-03).
+  const groups = useMemo(() => {
+    const visits = data?.visits ?? [];
+    return {
+      inProgress: visits.filter((v) => IN_PROGRESS_STATES.has(v.state)),
+      upcoming: visits.filter((v) => UPCOMING_STATES.has(v.state)),
+      completed: visits.filter((v) => COMPLETED_STATES.has(v.state)),
+    };
   }, [data]);
 
   const onAssignmentTap = useCallback((visitId: string) => {
     router.push(NAV_ROUTES.workerVisitDetail(visitId));
   }, []);
 
+  const onHeroPress = useCallback(() => {
+    if (!nextVisit) return;
+    // For IN_PROGRESS, continue capture flow. For SCHEDULED, open the visit
+    // detail (worker reviews instructions / address before starting). The
+    // canon CTA copy is "Scan QR · check in" — kept until backend exposes
+    // per-visit verb state.
+    router.push(NAV_ROUTES.workerVisitDetail(nextVisit.id));
+  }, [nextVisit]);
+
   const onResumeContinue = useCallback(() => {
-    if (data?.resumeCapture) {
-      // 2b-1: Resume banner deep-links into the capture entry step. Real
-      // step-resume (jump to in-progress step) lands in 2b-2 when the
-      // capture-state machine knows which step the worker is on.
-      router.push(NAV_ROUTES.workerCaptureEntry(data.resumeCapture.visitId));
-    }
-  }, [data]);
+    const resumeId = data?.resumeCapture?.visitId;
+    if (resumeId) router.push(NAV_ROUTES.workerCaptureEntry(resumeId));
+  }, [data?.resumeCapture?.visitId]);
 
   if (isLoading) {
     return (
@@ -99,80 +211,183 @@ export default function WorkerHome(): React.JSX.Element {
   if (isError) {
     return (
       <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-        <View style={s.center}>
-          <Text style={s.errorTitle}>Couldn&apos;t load today&apos;s plan.</Text>
-          <Text style={s.errorBody}>{error?.message ?? 'Please pull down to retry.'}</Text>
+        <View style={s.center} accessibilityLiveRegion="polite">
+          <Text style={s.errorTitle}>
+            {isUnauthorized ? 'Session ended' : "Couldn't load today's plan."}
+          </Text>
+          <Text style={s.errorBody}>
+            {isUnauthorized
+              ? 'Signing you back in…'
+              : 'Pull down to try again, or check your connection.'}
+          </Text>
+          {!isUnauthorized ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Try again"
+              onPress={() => {
+                void refetch();
+              }}
+              style={({ pressed }) => [s.retryBtn, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={s.retryLabel}>Try again</Text>
+            </Pressable>
+          ) : null}
         </View>
       </SafeAreaView>
     );
   }
 
-  const today = data!;
+  if (!data) {
+    return (
+      <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
+        <View style={s.center}>
+          <Text style={s.errorTitle}>No data available.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const today = data;
   const paused = PAUSED_STATES.has(today.workerState);
+  const greeting = getGreeting();
+  const totalVisits = today.visits.length;
+  const planTitle = `Today's plan · ${pluralize(totalVisits, 'site')}`;
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <View style={s.topBar}>
-        <View>
-          <Text style={s.brand}>Axhy</Text>
-          <Text style={s.greeting}>Today</Text>
-        </View>
-        <HomeBellIcon onPress={showSoonToast} />
-      </View>
-
-      <View style={s.dateRow}>
-        <Text style={s.dateText}>{formatDateRow(today.todayDate)}</Text>
-        <Text style={s.siteCount}>
-          {today.visits.length} site{today.visits.length === 1 ? '' : 's'} today
-        </Text>
-      </View>
-
-      <FlatList
-        data={today.visits}
-        keyExtractor={(v) => v.id}
-        contentContainerStyle={s.listContent}
+      <ScrollView
+        contentContainerStyle={s.scroll}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={() => {
+              void refetch();
+            }}
             tintColor={tokens.color.brand.accent}
           />
         }
-        ListHeaderComponent={
-          <>
-            {today.resumeCapture ? (
-              <ResumeCaptureBanner
-                siteName={today.resumeCapture.siteName}
-                photosTakenSoFar={today.resumeCapture.photosTakenSoFar}
-                onContinue={onResumeContinue}
-              />
-            ) : null}
-            {paused ? (
-              <View style={s.pausedBanner}>
-                <Text style={s.pausedTitle}>Account paused</Text>
-                <Text style={s.pausedBody}>Contact your supervisor to resume work.</Text>
-              </View>
-            ) : null}
-          </>
-        }
-        renderItem={({ item }) => (
-          <AssignmentCard
-            siteName={item.siteName}
-            scheduledFor={item.scheduledFor}
-            state={item.state}
-            isNext={item.id === nextVisitId}
-            onPress={() => onAssignmentTap(item.id)}
-          />
-        )}
-        ListEmptyComponent={
-          paused ? null : (
-            <View style={s.empty}>
-              <Text style={s.emptyTitle}>No visits today</Text>
-              <Text style={s.emptyBody}>Enjoy the rest. Come back tomorrow.</Text>
+      >
+        <View style={s.header}>
+          <Pressable
+            onPress={openDrawer}
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+            hitSlop={12}
+            style={s.iconBtn}
+          >
+            <Feather name="menu" size={22} color={tokens.color.ink.primary} />
+          </Pressable>
+          <View style={s.headerCenter}>
+            <Text style={s.dateText}>{formatDateRow(today.todayDate)}</Text>
+            <Text style={s.greeting}>{greeting}</Text>
+          </View>
+          {syncState !== 'synced' ? (
+            <View accessibilityRole="text" accessibilityLabel="Syncing photos">
+              <SyncPill state={syncState} />
             </View>
-          )
-        }
-      />
+          ) : null}
+        </View>
+
+        {today.resumeCapture ? (
+          <View style={s.resumeWrap}>
+            <ResumeCaptureBanner
+              siteName={today.resumeCapture.siteName}
+              photosTakenSoFar={today.resumeCapture.photosTakenSoFar}
+              onContinue={onResumeContinue}
+            />
+          </View>
+        ) : null}
+        {paused ? (
+          <View style={s.pausedBanner}>
+            <Text style={s.pausedTitle}>Account paused</Text>
+            <Text style={s.pausedBody}>Contact your supervisor to resume work.</Text>
+          </View>
+        ) : null}
+
+        {/* NEXT SITE hero — canon's primary anchor. F-01 BLOCKER restoration. */}
+        {nextVisit ? (
+          <View style={s.heroWrap}>
+            <NextSiteCard
+              siteName={nextVisit.siteName}
+              scheduledFor={formatTimeShort(nextVisit.scheduledFor)}
+              distance={null}
+              onScanPress={onHeroPress}
+            />
+          </View>
+        ) : null}
+
+        <View style={s.statsRow}>
+          <StatCard value={String(stats.done)} label="Done" />
+          <StatCard value={String(stats.planned)} label="Planned" />
+        </View>
+
+        <View style={s.planSection}>
+          <Text style={s.sectionTitle}>{planTitle}</Text>
+          {totalVisits === 0 ? (
+            <View style={s.empty}>
+              <Feather
+                name="coffee"
+                size={28}
+                color={tokens.color.ink.tertiary}
+                style={s.emptyIcon}
+              />
+              <Text style={s.emptyTitle}>No work today</Text>
+              <Text style={s.emptyBody}>Your supervisor will assign jobs when ready.</Text>
+            </View>
+          ) : (
+            <>
+              {groups.inProgress.length > 0 ? (
+                <View style={s.group}>
+                  <Text style={s.groupHeader}>In progress</Text>
+                  {groups.inProgress.map((v, i) => (
+                    <AssignmentCard
+                      key={v.id}
+                      siteName={v.siteName}
+                      scheduledFor={v.scheduledFor}
+                      state={v.state}
+                      isNext={v.id === nextVisitId}
+                      isLast={i === groups.inProgress.length - 1}
+                      onPress={() => onAssignmentTap(v.id)}
+                    />
+                  ))}
+                </View>
+              ) : null}
+              {groups.upcoming.length > 0 ? (
+                <View style={s.group}>
+                  <Text style={s.groupHeader}>Upcoming</Text>
+                  {groups.upcoming.map((v, i) => (
+                    <AssignmentCard
+                      key={v.id}
+                      siteName={v.siteName}
+                      scheduledFor={v.scheduledFor}
+                      state={v.state}
+                      isNext={v.id === nextVisitId}
+                      isLast={i === groups.upcoming.length - 1}
+                      onPress={() => onAssignmentTap(v.id)}
+                    />
+                  ))}
+                </View>
+              ) : null}
+              {groups.completed.length > 0 ? (
+                <View style={s.group}>
+                  <Text style={s.groupHeader}>Completed</Text>
+                  {groups.completed.map((v, i) => (
+                    <AssignmentCard
+                      key={v.id}
+                      siteName={v.siteName}
+                      scheduledFor={v.scheduledFor}
+                      state={v.state}
+                      isNext={false}
+                      isLast={i === groups.completed.length - 1}
+                      onPress={() => onAssignmentTap(v.id)}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -182,93 +397,138 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.color.surface.paper,
   },
-  topBar: {
+  scroll: { paddingBottom: 32 },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: tokens.space[4],
-    paddingTop: tokens.space[3],
-    paddingBottom: tokens.space[2],
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 6,
   },
-  brand: {
-    fontSize: tokens.type.caption.size,
-    fontWeight: String(tokens.weight.bold) as '700',
-    color: tokens.color.brand.accent,
-    letterSpacing: tokens.type.caption.tracking,
-    textTransform: 'uppercase',
+  iconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenter: { flex: 1 },
+  dateText: {
+    fontSize: 13,
+    color: tokens.color.ink.tertiary,
   },
   greeting: {
-    fontSize: tokens.type.heading.size,
-    fontWeight: String(tokens.weight.semibold) as '600',
+    fontSize: 24,
+    fontWeight: '700',
     color: tokens.color.ink.primary,
+    letterSpacing: -0.5,
     marginTop: 2,
   },
-  dateRow: {
-    paddingHorizontal: tokens.space[4],
-    paddingBottom: tokens.space[3],
-  },
-  dateText: {
-    fontSize: tokens.type.body.size,
-    color: tokens.color.ink.secondary,
-  },
-  siteCount: {
-    fontSize: tokens.type.caption.size,
-    color: tokens.color.ink.tertiary,
-    marginTop: 2,
-  },
-  listContent: {
-    paddingHorizontal: tokens.space[4],
-    paddingBottom: tokens.space[6],
+  resumeWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
   pausedBanner: {
-    backgroundColor: tokens.color.semantic.badSoft ?? tokens.color.brand.accentSoft,
+    marginHorizontal: 20,
+    backgroundColor: tokens.color.semantic.badSoft,
     borderRadius: tokens.radius.r3,
-    padding: tokens.space[3],
-    marginBottom: tokens.space[3],
+    padding: 12,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: tokens.color.semantic.bad,
   },
   pausedTitle: {
-    fontSize: tokens.type.subhead.size,
-    fontWeight: String(tokens.weight.semibold) as '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: tokens.color.semantic.bad,
     marginBottom: 2,
   },
   pausedBody: {
-    fontSize: tokens.type.caption.size,
+    fontSize: 12,
     color: tokens.color.semantic.bad,
+  },
+  heroWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  planSection: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: tokens.color.ink.tertiary,
+    marginBottom: 8,
+  },
+  group: {
+    marginBottom: 12,
+  },
+  groupHeader: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: tokens.color.ink.tertiary,
+    marginTop: 4,
+    marginBottom: 4,
   },
   empty: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: tokens.space[6],
+    paddingVertical: 32,
+  },
+  emptyIcon: {
+    marginBottom: 8,
   },
   emptyTitle: {
-    fontSize: tokens.type.subhead.size,
-    fontWeight: String(tokens.weight.semibold) as '600',
+    fontSize: 18,
+    fontWeight: '600',
     color: tokens.color.ink.primary,
-    marginBottom: tokens.space[1],
+    marginBottom: 4,
   },
   emptyBody: {
-    fontSize: tokens.type.body.size,
+    fontSize: 14,
     color: tokens.color.ink.tertiary,
+    textAlign: 'center',
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: tokens.space[5],
+    padding: 20,
   },
   errorTitle: {
-    fontSize: tokens.type.subhead.size,
-    fontWeight: String(tokens.weight.semibold) as '600',
+    fontSize: 18,
+    fontWeight: '600',
     color: tokens.color.ink.primary,
-    marginBottom: tokens.space[1],
+    marginBottom: 4,
     textAlign: 'center',
   },
   errorBody: {
-    fontSize: tokens.type.body.size,
+    fontSize: 14,
     color: tokens.color.ink.tertiary,
     textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: tokens.color.brand.accent,
+  },
+  retryLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tokens.color.brand.accent,
   },
 });

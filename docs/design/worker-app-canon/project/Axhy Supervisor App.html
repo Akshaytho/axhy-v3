@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Axhy v3 — Supervisor App</title>
+<link rel="stylesheet" href="tokens.css"/>
+<style>
+  /* Cover sheet at top of canvas */
+  .cover {
+    width: 1080px;
+    padding: 60px 80px;
+    background:
+      radial-gradient(circle at 100% 0%, rgba(192,73,42,0.08), transparent 60%),
+      radial-gradient(circle at 0% 100%, rgba(40,30,20,0.06), transparent 50%),
+      var(--paper);
+    border-radius: 12px;
+    border: 1px solid var(--card-edge);
+    box-shadow: var(--sh-2);
+    font-family: var(--font-sans);
+  }
+  .cover .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.16em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .cover h1 {
+    font-size: 56px; font-weight: 600; letter-spacing: -1.4px;
+    margin: 14px 0 8px; color: var(--ink); line-height: 1.05;
+    text-wrap: pretty;
+  }
+  .cover .lede {
+    font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 760px;
+    margin: 8px 0 0;
+  }
+  .cover .meta {
+    margin-top: 36px; padding-top: 24px;
+    border-top: 1px solid var(--paper-3);
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;
+  }
+  .cover .meta .k { font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3); }
+  .cover .meta .v { font-size: 14px; color: var(--ink-2); margin-top: 6px; line-height: 1.4; }
+
+  .reasoning {
+    width: 1080px; padding: 32px 80px 0;
+    font-family: var(--font-sans); color: var(--ink-2);
+  }
+  .reasoning .pill {
+    display: inline-block; padding: 4px 10px; border-radius: 4px;
+    background: var(--paper-3); color: var(--ink-2); font-weight: 600;
+    font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; margin-right: 6px;
+  }
+  .reasoning p { font-size: 14px; line-height: 1.6; margin: 8px 0; max-width: 780px; }
+  .reasoning b { color: var(--ink); }
+
+  .legend-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; font-size: 13px; color: var(--ink-2); }
+  .legend-row > div { display: flex; align-items: center; gap: 6px; }
+  .legend-row .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--card-edge); }
+</style>
+
+<!-- Inline thumbnail (used by super_inline_html if ever bundled) -->
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#f6f1e8"/>
+    <rect x="36" y="22" width="28" height="56" rx="6" fill="#1a1612"/>
+    <rect x="38" y="24" width="24" height="52" rx="4" fill="#fdfaf3"/>
+    <circle cx="50" cy="50" r="8" fill="#c0492a"/>
+  </svg>
+</template>
+
+<!-- React + Babel pinned -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="phone-atoms.jsx"></script>
+<script type="text/babel" src="variation-a.jsx"></script>
+<script type="text/babel" src="variation-b.jsx"></script>
+<script type="text/babel" src="variation-c.jsx"></script>
+<script type="text/babel" src="flow-screens.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState } = React;
+
+const TWEAKS_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#c0492a",
+  "density": "comfortable",
+  "showFlows": true
+}/*EDITMODE-END*/;
+
+function Cover() {
+  return (
+    <div className="cover">
+      <div style={{display:'flex', alignItems:'center', gap:14, marginBottom:6}}>
+        <div style={{
+          fontFamily:'var(--font-sans)', fontWeight:800, fontSize:34, letterSpacing:-1,
+          color:'var(--ink)', lineHeight:1, display:'flex', alignItems:'baseline', gap:1,
+        }}>A<span style={{color:'var(--accent)'}}>·</span></div>
+        <div style={{fontFamily:'var(--font-sans)', fontWeight:600, fontSize:17,
+          letterSpacing:'0.02em', color:'var(--ink-2)'}}>AXHY</div>
+      </div>
+      <div className="eyebrow">v3 · Supervisor mobile · locked 2026-05-07</div>
+      <h1>Three ways the supervisor's day could feel.</h1>
+      <p className="lede">
+        Three home-screen variations grounded in the v3 architecture doc — each maps the same
+        15-action catalog (§5) to a different mental model, then threads through the canonical
+        "mark Mukesh absent" journey (§6) and the supporting flows. Pick what reads as
+        most-Axhy and we'll commit; the rest live as references for HR/Owner surfaces later.
+      </p>
+      <div className="meta">
+        <div>
+          <div className="k">User</div>
+          <div className="v">Suresh, supervisor at Reddy Cleaning Services. 23 workers, 11 sites, code-switches Hindi/English.</div>
+        </div>
+        <div>
+          <div className="k">Primary device</div>
+          <div className="v">Android phone, often outdoors, sometimes weak signal. App is online-preferred (§9).</div>
+        </div>
+        <div>
+          <div className="k">Visual system</div>
+          <div className="v">Paper &amp; ink, terracotta accent, tabular numerals for time/money. India-grounded; no SaaS-blue.</div>
+        </div>
+        <div>
+          <div className="k">AI presence</div>
+          <div className="v">Background → ambient → primary, across A → B → C. Voice handles code-switched Hindi/English.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReasoningStrip() {
+  return (
+    <div className="reasoning">
+      <div>
+        <span className="pill">A</span> <b>Action grid</b> — buttons primary. AI is a corner FAB.
+        Most conservative; mirrors §5 1:1. Best for supervisors who already know their workflow.
+      </div>
+      <div style={{height:8}}/>
+      <div>
+        <span className="pill">B</span> <b>Pulse stream</b> — the day reads as a vertical timeline of facts.
+        Each fact is tappable and turns into an action. Visible audit-event stream from §4 surfaces as the home.
+      </div>
+      <div style={{height:8}}/>
+      <div>
+        <span className="pill">C</span> <b>AI chat first</b> — chat IS the home, voice the primary input.
+        Most opinionated; assumes the AI's daily 3:30 AM context-load (§8) is reliable enough to anchor the experience.
+      </div>
+      <div className="legend-row">
+        <div><span className="sw" style={{background:'var(--paper-3)'}}/> NOTE</div>
+        <div><span className="sw" style={{background:'var(--info-soft)'}}/> OPERATIONAL</div>
+        <div><span className="sw" style={{background:'var(--accent-soft)', borderColor:'var(--accent)'}}/> PERSONNEL</div>
+        <div><span className="sw" style={{background:'var(--bad-soft)', borderColor:'var(--bad)'}}/> EMPLOYMENT</div>
+        <div><span className="sw" style={{background:'var(--bad-soft)'}}/> Needs attention</div>
+        <div><span className="sw" style={{background:'var(--ok-soft)'}}/> On track</div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [t, setTweak] = window.useTweaks
+    ? window.useTweaks(TWEAKS_DEFAULTS)
+    : [TWEAKS_DEFAULTS, () => {}];
+
+  React.useEffect(() => {
+    document.documentElement.style.setProperty('--accent', t.accent);
+    document.documentElement.style.setProperty('--accent-2', t.accent);
+  }, [t.accent]);
+
+  return (
+    <>
+      <DesignCanvas minScale={0.15} maxScale={3}>
+        <DCSection id="cover" title="Axhy v3 · Supervisor mobile" subtitle="Architecture-grounded design exploration">
+          <DCArtboard id="cover" label="Brief" width={1080} height={420}>
+            <Cover/>
+          </DCArtboard>
+          <DCArtboard id="reasoning" label="Reading the variations" width={1080} height={420}>
+            <ReasoningStrip/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="homes" title="Home screen — three variations"
+          subtitle="Same data, three mental models. Click any to focus.">
+          <DCArtboard id="A" label="A · Action grid · buttons primary, AI as FAB" width={412} height={892}>
+            <VariationA/>
+          </DCArtboard>
+          <DCArtboard id="B" label="B · Pulse stream · day as a feed" width={412} height={892}>
+            <VariationB/>
+          </DCArtboard>
+          <DCArtboard id="C" label="C · AI chat first · voice primary" width={412} height={892}>
+            <VariationC/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="journey" title="Journey of one action"
+          subtitle="Suresh marks Mukesh absent at 9:18 AM — doc §6 traced through the UI.">
+          <DCArtboard id="J0" label="0 · Voice capture (code-switched)" width={412} height={892}>
+            <ScreenVoice/>
+          </DCArtboard>
+          <DCArtboard id="J1" label="1 · Confirm sheet (PERSONNEL tier)" width={412} height={892}>
+            <ScreenMarkAbsent/>
+          </DCArtboard>
+          <DCArtboard id="J2" label="2 · Swap-in cover" width={412} height={892}>
+            <ScreenSwap/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="adjacent" title="Adjacent flows"
+          subtitle="Other §5 actions, same vocabulary.">
+          <DCArtboard id="L" label="Approve leave (PERSONNEL)" width={412} height={892}>
+            <ScreenApproveLeave/>
+          </DCArtboard>
+          <DCArtboard id="P" label="Today's plan (read-only)" width={412} height={892}>
+            <ScreenTodayPlan/>
+          </DCArtboard>
+          <DCArtboard id="W" label="Wrap up · end of day" width={412} height={892}>
+            <ScreenWrapUp/>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      {/* Tweaks: a focused, opinionated panel */}
+      {window.TweaksPanel && (
+        <window.TweaksPanel>
+          <window.TweakColor
+            label="Accent"
+            value={t.accent}
+            onChange={(v) => setTweak('accent', v)}
+            options={['#c0492a', '#d83a1e']}
+          />
+        </window.TweaksPanel>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

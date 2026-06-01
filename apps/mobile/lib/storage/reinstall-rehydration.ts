@@ -11,7 +11,7 @@
  * @derives(NEXT_SESSION.md §2b-4)
  */
 
-import * as FileSystem from 'expo-file-system';
+import { Directory, File } from 'expo-file-system';
 
 import { r2UploadQueue } from '../r2-upload-queue';
 
@@ -31,11 +31,14 @@ export async function rehydrateFromPartition(workerId: string): Promise<void> {
       if (!visitId) continue;
 
       try {
-        const info = await FileSystem.getInfoAsync(dirUri);
-        if (!info.exists || !info.isDirectory) continue;
+        const dir = new Directory(dirUri);
+        if (!dir.exists) continue;
 
-        const filenames = await FileSystem.readDirectoryAsync(dirUri);
-        for (const filename of filenames) {
+        const entries = dir.list();
+        for (const entry of entries) {
+          // Only photo files (skip subdirectories).
+          if (!(entry instanceof File)) continue;
+          const filename = entry.name;
           const match = PHOTO_PATTERN.exec(filename);
           if (!match) continue;
 
@@ -46,12 +49,10 @@ export async function rehydrateFromPartition(workerId: string): Promise<void> {
 
           if (existing !== null) continue;
 
-          const photoUri = dirUri.endsWith('/') ? `${dirUri}${filename}` : `${dirUri}/${filename}`;
+          const photoUri = entry.uri;
           try {
-            const fileInfo = await FileSystem.getInfoAsync(photoUri);
-            if (!fileInfo.exists) continue;
-            const fileSize =
-              'size' in fileInfo && typeof fileInfo.size === 'number' ? fileInfo.size : 0;
+            if (!entry.exists) continue;
+            const fileSize = typeof entry.size === 'number' ? entry.size : 0;
 
             r2UploadQueue.enqueue({
               visitId,
