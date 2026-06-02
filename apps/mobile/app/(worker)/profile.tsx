@@ -1,48 +1,36 @@
-// [ORCHESTRATOR_EXCEPTION] canon redesign — worker Profile
-
 /**
- * Worker Profile — canon layout from docs/design/worker-app-canon.
+ * Worker Profile.
  *
- * Sections:
- *   - Full-bleed header card (avatar, name, phone, Verified pill)
- *   - Performance card (64px score ring + Quality score)
- *   - Stats row (Total sites / This month / Avg score)
- *   - Sync card (status pill)
- *   - APPEARANCE preset chips
- *   - Footer ("Member since … / Axhy v1.0.0")
- *
- * Data: Phone is pulled from the stored JWT via `getTokens()`. Worker name
- * is unavailable from the existing /worker/today payload so we render the
- * initial from the phone digits as a fallback until a /worker/me endpoint
- * lands. Sign out lives in the sidebar drawer; the bottom "Sign out" row
- * is also present for parity with the placeholder.
+ * Uses only real worker data available today: JWT identity, today's visit
+ * counts, current upload sync state, and supervisor contact. Placeholder score
+ * and vanity stats were removed so this screen stays trustworthy.
  *
  * @derives(MVP_V2_ALIGNED_PLAN.md §2)
- * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerProfile)
+ * @derives(master-plan §G)
  */
 
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { jwtDecode } from 'jwt-decode';
 import { tokens } from '@axhy/ui-tokens';
 
 import { getTokens } from '../../lib/auth-store';
-import { onAppLogout } from '../../lib/identity-lifecycle';
-import { NAV_ROUTES } from '../../lib/api-routes';
 import { WCard } from '../../components/worker/WCard';
-import { StatCard } from '../../components/worker/StatCard';
 import { SyncPill, type SyncState } from '../../components/worker/SyncPill';
 import { useWorkerDrawer } from '../../components/worker/WorkerDrawer';
-import { r2UploadQueue } from '../../lib/r2-upload-queue';
+import { r2UploadQueue, type QueueItem } from '../../lib/r2-upload-queue';
+import { useWorkerTodayQuery } from '../../lib/queries/use-worker-today';
 
 interface JwtPayload {
   phone?: string;
   name?: string;
-  userId?: string;
-  sub?: string;
+}
+
+function sanitizeDisplayName(name: string | undefined): string | undefined {
+  if (!name) return name;
+  return name.replace(/\s*\(real-phone\)\s*$/i, '').trim();
 }
 
 function initialFromName(name: string | undefined, phone: string | undefined): string {
@@ -51,25 +39,33 @@ function initialFromName(name: string | undefined, phone: string | undefined): s
   return 'A';
 }
 
-function useSyncState(): SyncState {
-  const [state, setState] = useState<SyncState>('synced');
+function useQueueSummary(): { state: SyncState; pendingCount: number } {
+  const [summary, setSummary] = useState<{ state: SyncState; pendingCount: number }>({
+    state: 'synced',
+    pendingCount: 0,
+  });
+
   useEffect(() => {
-    const unsub = r2UploadQueue.onChange((snap) => {
-      let inFlight = 0;
-      snap.forEach((i) => {
-        if (i.status !== 'done') inFlight += 1;
+    const sync = (snap: ReadonlyMap<string, QueueItem>) => {
+      let pending = 0;
+      snap.forEach((item) => {
+        if (item.status !== 'done' && item.status !== 'failed') pending += 1;
       });
-      setState(inFlight > 0 ? 'syncing' : 'synced');
-    });
-    return unsub;
+      setSummary({ state: pending > 0 ? 'syncing' : 'synced', pendingCount: pending });
+    };
+
+    sync(r2UploadQueue.snapshot());
+    return r2UploadQueue.onChange(sync);
   }, []);
-  return state;
+
+  return summary;
 }
 
-/** @derives(master-plan §G) — worker surface */
+/** @derives(master-plan §G) */
 export default function WorkerProfile(): React.JSX.Element {
   const { openDrawer } = useWorkerDrawer();
-  const syncState = useSyncState();
+  const { data } = useWorkerTodayQuery();
+  const { state: syncState, pendingCount } = useQueueSummary();
   const [payload, setPayload] = useState<JwtPayload | null>(null);
 
   useEffect(() => {
@@ -79,30 +75,32 @@ export default function WorkerProfile(): React.JSX.Element {
       try {
         setPayload(jwtDecode<JwtPayload>(t.accessToken));
       } catch {
-        // ignore
+        // ignore decode errors
       }
     })();
   }, []);
 
-  async function handleLogout(): Promise<void> {
-    try {
-      await onAppLogout();
-    } catch {
-      // ignore
-    }
-    router.replace(NAV_ROUTES.authPhone);
-  }
+  const visits = data?.visits ?? [];
+  const verifiedCount = visits.filter((visit) => visit.state === 'VERIFIED').length;
+  const inProgressCount = visits.filter(
+    (visit) => visit.state === 'IN_PROGRESS' || visit.state === 'PHOTOS_PENDING',
+  ).length;
+  const upcomingCount = visits.filter((visit) =>
+    ['SCHEDULED', 'NOTIFIED', 'EN_ROUTE', 'ON_SITE'].includes(visit.state),
+  ).length;
 
-  const presets = ['Dim', 'Default', 'Warm', 'Bright', 'Custom'];
-  const score = 87; // placeholder — will be /worker/quality-score in slice 3
-  const stats = { total: 142, thisMonth: 11, avg: score };
-  const name = payload?.name ?? 'Worker';
+  const supportLine = useMemo(() => {
+    if (data?.supervisorPhone) return data.supervisorPhone;
+    return 'Supervisor contact is not configured yet.';
+  }, [data?.supervisorPhone]);
+
+  const appVersion = process.env.EXPO_PUBLIC_APP_VERSION ?? 'dev';
+  const name = sanitizeDisplayName(payload?.name) ?? 'Worker';
   const phone = payload?.phone ?? '+91 ••••• •••••';
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={s.scroll}>
-        {/* Inline header for menu button (canon profile has no top-bar; keep menu reachable) */}
         <View style={s.menuBar}>
           <Pressable
             onPress={openDrawer}
@@ -115,7 +113,6 @@ export default function WorkerProfile(): React.JSX.Element {
           </Pressable>
         </View>
 
-        {/* Full-bleed header card */}
         <View style={s.headerCard}>
           <View style={s.avatar}>
             <Text style={s.avatarInitial}>{initialFromName(name, phone)}</Text>
@@ -128,42 +125,37 @@ export default function WorkerProfile(): React.JSX.Element {
           </View>
         </View>
 
-        {/* Performance card */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <View style={s.section}>
           <WCard padding={16}>
-            <View style={s.perfRow}>
-              <View style={s.scoreCircle}>
-                <Text style={s.scoreCircleText}>{score}</Text>
+            <Text style={s.sectionMono}>TODAY</Text>
+            <View style={s.statsRow}>
+              <View style={s.statCell}>
+                <Text style={s.statValue}>{visits.length}</Text>
+                <Text style={s.statLabel}>Sites</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.perfTitle}>Quality score</Text>
-                <Text style={s.perfRating}>Great</Text>
-                <Text style={s.perfSub}>Based on AI review of last 100 sites</Text>
+              <View style={s.statCell}>
+                <Text style={s.statValue}>{verifiedCount}</Text>
+                <Text style={s.statLabel}>Verified</Text>
+              </View>
+              <View style={s.statCell}>
+                <Text style={s.statValue}>{inProgressCount + upcomingCount}</Text>
+                <Text style={s.statLabel}>Remaining</Text>
               </View>
             </View>
           </WCard>
         </View>
 
-        {/* Stats row */}
-        <View style={s.statsRow}>
-          <StatCard value={String(stats.total)} label="Total sites" padding={14} />
-          <StatCard value={String(stats.thisMonth)} label="This month" padding={14} />
-          <StatCard
-            value={String(stats.avg)}
-            label="Avg score"
-            padding={14}
-            valueColor={tokens.color.brand.accent}
-          />
-        </View>
-
-        {/* Sync card */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-          <WCard padding={14}>
+        <View style={s.section}>
+          <WCard padding={16}>
             <View style={s.syncRow}>
               <View style={{ flex: 1 }}>
-                <Text style={s.syncTitle}>{syncState === 'syncing' ? 'Syncing…' : 'Synced'}</Text>
-                <Text style={s.syncSub}>
-                  {syncState === 'syncing' ? 'Uploading queued photos' : 'All data is up to date'}
+                <Text style={s.cardTitle}>
+                  {syncState === 'syncing' ? 'Syncing photos…' : 'Synced'}
+                </Text>
+                <Text style={s.cardBody}>
+                  {pendingCount > 0
+                    ? `${pendingCount} upload${pendingCount === 1 ? '' : 's'} still in progress.`
+                    : 'All queued captures are up to date.'}
                 </Text>
               </View>
               <SyncPill state={syncState} />
@@ -171,41 +163,33 @@ export default function WorkerProfile(): React.JSX.Element {
           </WCard>
         </View>
 
-        {/* Appearance presets — visual only; founder cut theme picker per DO_NOT_BUILD_MVP */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-          <WCard padding={14}>
-            <Text style={s.sectionMono}>APPEARANCE</Text>
-            <View style={s.presetRow}>
-              {presets.map((p, i) => {
-                const active = i === 1;
-                return (
-                  <View
-                    key={p}
-                    style={[s.preset, active && { backgroundColor: tokens.color.brand.accent }]}
-                  >
-                    <Text style={[s.presetText, active && { color: tokens.color.surface.card }]}>
-                      {p}
-                    </Text>
-                  </View>
-                );
-              })}
+        <View style={s.section}>
+          <WCard padding={16}>
+            <Text style={s.sectionMono}>SUPPORT</Text>
+            <Text style={s.cardTitle}>Need help or a schedule change?</Text>
+            <Text style={s.cardBody}>
+              Use your supervisor contact for leave requests, shift swaps, or task questions.
+            </Text>
+            <View style={s.supportRow}>
+              <Text style={s.supportLine}>{supportLine}</Text>
+              {data?.supervisorPhone ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Call supervisor"
+                  onPress={() => {
+                    void Linking.openURL(`tel:${data.supervisorPhone}`);
+                  }}
+                  style={({ pressed }) => [s.callBtn, pressed && { opacity: 0.9 }]}
+                >
+                  <Feather name="phone" size={14} color={tokens.color.surface.paper} />
+                  <Text style={s.callBtnText}>Call</Text>
+                </Pressable>
+              ) : null}
             </View>
           </WCard>
         </View>
 
-        {/* Sign out (also in drawer; mirrored here for visibility) */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <Pressable
-            onPress={handleLogout}
-            accessibilityRole="button"
-            accessibilityLabel="Sign out"
-            style={({ pressed }) => [s.logoutBtn, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={s.logoutText}>Sign out</Text>
-          </Pressable>
-        </View>
-
-        <Text style={s.footer}>Member since January 2024{'\n'}Axhy v1.0.0</Text>
+        <Text style={s.footer}>{`Axhy v${appVersion}`}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -216,13 +200,20 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.color.surface.paper,
   },
-  scroll: { paddingBottom: 32 },
+  scroll: {
+    paddingBottom: 32,
+  },
   menuBar: {
     flexDirection: 'row',
     paddingHorizontal: 12,
     paddingTop: 8,
   },
-  iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerCard: {
     backgroundColor: tokens.color.surface.card,
     paddingTop: 16,
@@ -274,58 +265,9 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: '#2e5037',
   },
-  perfRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  scoreCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 3,
-    borderColor: tokens.color.brand.accent,
-    backgroundColor: tokens.color.surface.paper2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scoreCircleText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: tokens.color.brand.accent,
-  },
-  perfTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: tokens.color.ink.primary,
-  },
-  perfRating: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: tokens.color.brand.accent,
-    marginTop: 2,
-  },
-  perfSub: {
-    fontSize: 11,
-    color: tokens.color.ink.tertiary,
-    marginTop: 4,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 8,
+  section: {
     paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  syncRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  syncTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: tokens.color.ink.primary,
-  },
-  syncSub: {
-    fontSize: 11,
-    color: tokens.color.ink.tertiary,
-    marginTop: 2,
+    paddingTop: 12,
   },
   sectionMono: {
     fontFamily: tokens.font.mono,
@@ -334,41 +276,74 @@ const s = StyleSheet.create({
     color: tokens.color.ink.tertiary,
     marginBottom: 10,
   },
-  presetRow: {
+  statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
-  preset: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: tokens.color.surface.cardEdge,
+  statCell: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: tokens.color.surface.paper2,
+    alignItems: 'center',
+    paddingVertical: 14,
   },
-  presetText: {
-    fontSize: 13,
-    fontWeight: '600',
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
     color: tokens.color.ink.primary,
   },
-  logoutBtn: {
-    height: 48,
-    borderRadius: tokens.radius.r3,
-    borderWidth: 1,
-    borderColor: tokens.color.surface.cardEdge,
-    backgroundColor: tokens.color.surface.card,
+  statLabel: {
+    fontSize: 12,
+    color: tokens.color.ink.tertiary,
+    marginTop: 4,
+  },
+  syncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: tokens.color.ink.primary,
+  },
+  cardBody: {
+    fontSize: 13,
+    color: tokens.color.ink.tertiary,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  supportRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  supportLine: {
+    flex: 1,
+    fontSize: 13,
+    color: tokens.color.ink.secondary,
+  },
+  callBtn: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: tokens.color.brand.accent,
+    flexDirection: 'row',
+    gap: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoutText: {
-    fontSize: 15,
+  callBtnText: {
+    fontSize: 13,
     fontWeight: '700',
-    color: tokens.color.brand.accent,
+    color: tokens.color.surface.paper,
   },
   footer: {
     textAlign: 'center',
+    paddingTop: 20,
     fontSize: 11,
     color: tokens.color.ink.tertiary,
-    marginTop: 18,
   },
 });

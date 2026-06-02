@@ -1,92 +1,44 @@
-// [ORCHESTRATOR_EXCEPTION] canon redesign — worker History
-
 /**
- * Worker History — canon layout: week selector + summary card + vertical timeline.
+ * Worker History.
  *
- * No backend wiring yet (slice-2a placeholder used dummy data; canon design's
- * full data shape — score, duration, time per visit — also lacks a backend
- * endpoint). This screen renders mock data structured to match what
- * `/worker/history?week=...` will return in slice 3. Replacing the mock with
- * the real query is a one-line swap.
+ * Avoids fake multi-day history data. Until the dedicated history endpoint
+ * exists, this screen shows an honest summary of today's real completed work.
  *
  * @derives(MVP_V2_ALIGNED_PLAN.md §2)
- * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerHistory)
+ * @derives(master-plan §G)
  */
 
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
 import { WCard } from '../../components/worker/WCard';
-import { TimelineRow } from '../../components/worker/TimelineRow';
 import { useWorkerDrawer } from '../../components/worker/WorkerDrawer';
+import { useWorkerTodayQuery } from '../../lib/queries/use-worker-today';
 
-interface Day {
-  label: string;
-  date: number;
-  today?: boolean;
+function formatTimeShort(iso: string): string {
+  const d = new Date(iso);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const hh = h % 12 === 0 ? 12 : h % 12;
+  const mm = String(m).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${hh}:${mm} ${ampm}`;
 }
 
-interface HistoryVisit {
-  id: string;
-  name: string;
-  time: string;
-  dur: string;
-  score: number;
-}
-
-const MOCK_VISITS: HistoryVisit[] = [
-  { id: 'h1', name: 'Phoenix Mall — B1', time: '6:42 AM', dur: '32m', score: 92 },
-  { id: 'h2', name: 'Brigade Tower 3', time: '8:10 AM', dur: '28m', score: 84 },
-  { id: 'h3', name: 'Lulu Mall — Tower A', time: '9:55 AM', dur: '34m', score: 78 },
-  { id: 'h4', name: 'Manyata Block 4', time: '11:30 AM', dur: '26m', score: 88 },
-];
-
-function getWeek(anchor: Date): Day[] {
-  const start = new Date(anchor);
-  start.setDate(anchor.getDate() - anchor.getDay());
-  const labels = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-  const today = new Date();
-  return labels.map((label, i) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    return {
-      label,
-      date: d.getDate(),
-      today: d.toDateString() === today.toDateString(),
-    };
-  });
-}
-
-function monthLabel(d: Date): string {
-  return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }).toUpperCase();
-}
-
-/** @derives(master-plan §G) — worker surface */
+/** @derives(master-plan §G) */
 export default function WorkerHistory(): React.JSX.Element {
-  const [anchor, setAnchor] = useState(() => new Date());
-  const [selectedIndex, setSelectedIndex] = useState(() => new Date().getDay());
   const { openDrawer } = useWorkerDrawer();
+  const { data, isLoading, isError, refetch, isRefetching } = useWorkerTodayQuery();
 
-  const week = useMemo(() => getWeek(anchor), [anchor]);
-
-  function shiftWeek(deltaDays: number) {
-    const next = new Date(anchor);
-    next.setDate(anchor.getDate() + deltaDays);
-    setAnchor(next);
-  }
-
-  const totalCount = MOCK_VISITS.length;
-  const avgScore = Math.round(
-    MOCK_VISITS.reduce((sum, v) => sum + v.score, 0) / Math.max(1, MOCK_VISITS.length),
-  );
+  const visits = data?.visits ?? [];
+  const verified = visits.filter((visit) => visit.state === 'VERIFIED');
+  const awaiting = visits.filter((visit) => visit.state === 'AWAITING_VERIFICATION');
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={s.scroll}>
-        {/* Header */}
         <View style={s.header}>
           <Pressable
             onPress={openDrawer}
@@ -99,96 +51,84 @@ export default function WorkerHistory(): React.JSX.Element {
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>History</Text>
-            <Text style={s.monthLabel}>{monthLabel(anchor)}</Text>
+            <Text style={s.subtitle}>Real completed work only</Text>
           </View>
         </View>
 
-        {/* Week selector */}
-        <View style={s.weekRow}>
-          <Pressable
-            onPress={() => shiftWeek(-7)}
-            accessibilityRole="button"
-            accessibilityLabel="Previous week"
-            hitSlop={12}
-            style={s.weekNav}
-          >
-            <Feather name="chevron-left" size={18} color={tokens.color.ink.tertiary} />
-          </Pressable>
-          <View style={s.weekGrid}>
-            {week.map((d, i) => {
-              const selected = i === selectedIndex;
-              return (
-                <Pressable
-                  key={i}
-                  onPress={() => setSelectedIndex(i)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${d.label} ${d.date}`}
-                  style={[
-                    s.weekCell,
-                    selected && s.weekCellSelected,
-                    !selected && d.today && s.weekCellToday,
-                  ]}
-                >
-                  <Text style={[s.weekLabel, selected && s.weekTextOnAccent]}>{d.label}</Text>
-                  <Text
-                    style={[
-                      s.weekDate,
-                      selected
-                        ? s.weekTextOnAccent
-                        : d.today
-                          ? { color: tokens.color.brand.accent }
-                          : null,
-                    ]}
-                  >
-                    {d.date}
-                  </Text>
-                </Pressable>
-              );
-            })}
+        {isLoading ? (
+          <View style={s.center}>
+            <ActivityIndicator color={tokens.color.brand.accent} />
+            <Text style={s.bodyText}>Loading your work summary…</Text>
           </View>
-          <Pressable
-            onPress={() => shiftWeek(7)}
-            accessibilityRole="button"
-            accessibilityLabel="Next week"
-            hitSlop={12}
-            style={s.weekNav}
-          >
-            <Feather name="chevron-right" size={18} color={tokens.color.ink.tertiary} />
-          </Pressable>
-        </View>
-
-        {/* Summary card */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-          <WCard padding={20}>
-            <View style={s.summaryRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.summaryBigNumber}>{totalCount}</Text>
-                <Text style={s.summaryLabel}>sites completed</Text>
-                <Text style={s.summaryMono}>2H 0M TOTAL</Text>
-              </View>
-              <View style={s.summaryDivider} />
-              <View style={{ alignItems: 'center' }}>
-                <Text style={s.summaryMonoSmall}>AVG SCORE</Text>
-                <Text style={s.summaryScore}>{avgScore}</Text>
-              </View>
+        ) : isError || !data ? (
+          <View style={s.center}>
+            <Text style={s.errorTitle}>Couldn&apos;t load history.</Text>
+            <Text style={s.bodyText}>Pull to retry or check your connection.</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Try again"
+              onPress={() => {
+                void refetch();
+              }}
+              style={({ pressed }) => [s.retryBtn, pressed && { opacity: 0.9 }]}
+            >
+              <Text style={s.retryText}>{isRefetching ? 'Retrying…' : 'Try again'}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <View style={s.cardWrap}>
+              <WCard padding={18}>
+                <Text style={s.sectionMono}>TODAY</Text>
+                <View style={s.statsRow}>
+                  <View style={s.statCell}>
+                    <Text style={s.statValue}>{verified.length}</Text>
+                    <Text style={s.statLabel}>Verified</Text>
+                  </View>
+                  <View style={s.statCell}>
+                    <Text style={s.statValue}>{awaiting.length}</Text>
+                    <Text style={s.statLabel}>Waiting</Text>
+                  </View>
+                  <View style={s.statCell}>
+                    <Text style={s.statValue}>{visits.length}</Text>
+                    <Text style={s.statLabel}>Total</Text>
+                  </View>
+                </View>
+                <Text style={s.helperText}>Today&apos;s verified work and active visit count.</Text>
+              </WCard>
             </View>
-          </WCard>
-        </View>
 
-        {/* Timeline */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}>
-          {MOCK_VISITS.map((v, i) => (
-            <TimelineRow
-              key={v.id}
-              siteName={v.name}
-              time={v.time}
-              duration={v.dur}
-              score={v.score}
-              isFirst={i === 0}
-              isLast={i === MOCK_VISITS.length - 1}
-            />
-          ))}
-        </View>
+            <View style={s.cardWrap}>
+              <Text style={s.listTitle}>Completed today</Text>
+              {verified.length === 0 ? (
+                <WCard padding={18}>
+                  <Text style={s.emptyTitle}>No completed sites yet</Text>
+                  <Text style={s.bodyText}>
+                    Finished visits will appear here after they reach verified state.
+                  </Text>
+                </WCard>
+              ) : (
+                verified.map((visit) => (
+                  <WCard key={visit.id} padding={16} style={s.listCard}>
+                    <View style={s.rowTop}>
+                      <Text style={s.siteName}>{visit.siteName}</Text>
+                      <Text style={s.timeText}>{formatTimeShort(visit.scheduledFor)}</Text>
+                    </View>
+                    {visit.siteAddress ? (
+                      <Text style={s.siteAddress} numberOfLines={2}>
+                        {visit.siteAddress}
+                      </Text>
+                    ) : null}
+                    <View style={s.verifiedPill}>
+                      <Feather name="check-circle" size={12} color="#2e5037" />
+                      <Text style={s.verifiedText}>Verified</Text>
+                    </View>
+                  </WCard>
+                ))
+              )}
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -199,7 +139,9 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.color.surface.paper,
   },
-  scroll: { paddingBottom: 16 },
+  scroll: {
+    paddingBottom: 24,
+  },
   header: {
     backgroundColor: tokens.color.surface.card,
     flexDirection: 'row',
@@ -211,7 +153,12 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: tokens.color.surface.paper3,
   },
-  iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: {
     fontSize: 28,
     fontWeight: '700',
@@ -219,92 +166,139 @@ const s = StyleSheet.create({
     color: tokens.color.ink.primary,
     lineHeight: 30,
   },
-  monthLabel: {
+  subtitle: {
     fontFamily: tokens.font.mono,
     fontSize: 11,
     letterSpacing: 1.1,
     color: tokens.color.ink.tertiary,
     marginTop: 4,
   },
-  weekRow: {
-    backgroundColor: tokens.color.surface.card,
-    paddingHorizontal: 8,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.color.surface.paper3,
-  },
-  weekNav: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  weekGrid: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 2,
-    backgroundColor: tokens.color.surface.paper2,
-    padding: 4,
-    borderRadius: 12,
-  },
-  weekCell: {
+  center: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: 'center',
+    gap: tokens.space[3],
+    paddingHorizontal: tokens.space[5],
+    paddingTop: 40,
   },
-  weekCellSelected: { backgroundColor: tokens.color.brand.accent },
-  weekCellToday: {
-    borderWidth: 1,
-    borderColor: tokens.color.brand.accent,
+  cardWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
-  weekLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: tokens.color.ink.tertiary,
-  },
-  weekDate: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: tokens.color.ink.secondary,
-    marginTop: 1,
-  },
-  weekTextOnAccent: { color: tokens.color.surface.card },
-  summaryRow: { flexDirection: 'row', alignItems: 'center' },
-  summaryBigNumber: {
-    fontSize: 36,
-    fontWeight: '800',
-    lineHeight: 38,
-    letterSpacing: -1,
-    color: tokens.color.ink.primary,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: tokens.color.ink.secondary,
-    marginTop: 4,
-  },
-  summaryMono: {
-    fontFamily: tokens.font.mono,
-    fontSize: 11,
-    letterSpacing: 0.9,
-    color: tokens.color.ink.tertiary,
-    marginTop: 8,
-  },
-  summaryDivider: {
-    width: 1,
-    height: 56,
-    backgroundColor: tokens.color.surface.paper3,
-    marginHorizontal: 18,
-  },
-  summaryMonoSmall: {
+  sectionMono: {
     fontFamily: tokens.font.mono,
     fontSize: 10,
     letterSpacing: 1,
     color: tokens.color.ink.tertiary,
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  summaryScore: {
-    fontSize: 32,
-    fontWeight: '800',
-    lineHeight: 32,
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statCell: {
+    flex: 1,
+    backgroundColor: tokens.color.surface.paper2,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: tokens.color.ink.primary,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: tokens.color.ink.tertiary,
+    marginTop: 4,
+  },
+  helperText: {
+    fontSize: 12,
+    color: tokens.color.ink.tertiary,
+    lineHeight: 18,
+    marginTop: 12,
+  },
+  listTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: tokens.color.ink.primary,
+    marginBottom: 10,
+  },
+  listCard: {
+    marginBottom: 10,
+  },
+  rowTop: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  siteName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: tokens.color.ink.primary,
+  },
+  timeText: {
+    fontFamily: tokens.font.mono,
+    fontSize: 11,
     color: tokens.color.brand.accent,
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+  siteAddress: {
+    fontSize: 13,
+    color: tokens.color.ink.tertiary,
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  verifiedPill: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: tokens.color.semantic.okSoft,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  verifiedText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2e5037',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: tokens.color.ink.primary,
+    marginBottom: 6,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: tokens.color.ink.primary,
+    textAlign: 'center',
+  },
+  bodyText: {
+    fontSize: 14,
+    color: tokens.color.ink.tertiary,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    minHeight: tokens.tap.minMobile,
+    paddingHorizontal: tokens.space[5],
+    paddingVertical: tokens.space[3],
+    borderRadius: tokens.radius.r3,
+    backgroundColor: tokens.color.brand.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tokens.color.surface.paper,
   },
 });

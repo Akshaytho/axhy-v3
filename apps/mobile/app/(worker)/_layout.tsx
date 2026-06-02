@@ -3,9 +3,8 @@
 /**
  * Worker tab shell — 3-tab bottom navigator wrapped in WorkerDrawerProvider.
  *
- * Tabs: Home / History / Profile (per MVP_V2_ALIGNED_PLAN.md §2). Drawer is
- * a left slide-in providing access to worker-extra screens not in canon
- * (Leave, Swap, Help, Sign out).
+ * Tabs: Today / Capture / You. Drawer is a left slide-in providing access to
+ * worker utilities that live outside the bottom bar.
  *
  * Canon (docs/design/worker-app-canon/) keeps the bottom-tab bar but introduces
  * a hamburger in each tab's header. This shell exposes WorkerDrawerContext via
@@ -137,11 +136,11 @@ export default function WorkerLayout() {
             }}
           />
           <Tabs.Screen
-            name="history"
+            name="capture-launcher"
             options={{
-              title: 'History',
-              tabBarIcon: tabIcon('clock'),
-              tabBarLabel: tabLabel('History'),
+              title: 'Capture',
+              tabBarIcon: tabIcon('camera'),
+              tabBarLabel: tabLabel('Capture'),
             }}
           />
           <Tabs.Screen
@@ -152,6 +151,7 @@ export default function WorkerLayout() {
               tabBarLabel: tabLabel('You'),
             }}
           />
+          <Tabs.Screen name="history" options={{ href: null }} />
           {/* [ORCHESTRATOR_EXCEPTION] DIVERGENCE-10 fix: hide tab bar during full-flow capture + visit detail */}
           <Tabs.Screen name="visit" options={{ href: null, tabBarStyle: { display: 'none' } }} />
           <Tabs.Screen name="capture" options={{ href: null, tabBarStyle: { display: 'none' } }} />

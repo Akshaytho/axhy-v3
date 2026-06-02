@@ -5,8 +5,9 @@
  * never SQLite, never Zustand persisted state.
  *
  * On web (Playwright / browser dev), expo-secure-store is a stub so we
- * fall back to localStorage. This only affects web builds — iOS/Android
- * always use the native secure enclave path.
+ * fall back to sessionStorage. This keeps QA sessions working without
+ * persisting auth across browser restarts. iOS/Android still use the native
+ * secure enclave path.
  *
  * **F-006a discipline lock:** `setTokens` / `clearTokens` are narrow
  * storage primitives. Do NOT call them directly from identified-login or
@@ -24,19 +25,38 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-// Web fallback — localStorage is acceptable for Playwright screenshot runs.
+// Web fallback — sessionStorage keeps the QA session inside the current tab.
 // On native, SecureStore.setItemAsync is always defined.
 const isWeb = Platform.OS === 'web';
+const webMemoryStore = new Map<string, string>();
+
+function webSessionStore(): Storage | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  return sessionStorage;
+}
 
 const webStore = {
-  getItem: (key: string) =>
-    Promise.resolve(typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null),
+  getItem: (key: string) => {
+    const session = webSessionStore();
+    if (session) return Promise.resolve(session.getItem(key));
+    return Promise.resolve(webMemoryStore.get(key) ?? null);
+  },
   setItem: (key: string, value: string) => {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+    const session = webSessionStore();
+    if (session) {
+      session.setItem(key, value);
+    } else {
+      webMemoryStore.set(key, value);
+    }
     return Promise.resolve();
   },
   deleteItem: (key: string) => {
-    if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+    const session = webSessionStore();
+    if (session) {
+      session.removeItem(key);
+    } else {
+      webMemoryStore.delete(key);
+    }
     return Promise.resolve();
   },
 };

@@ -16,7 +16,11 @@ import { tokens } from '@axhy/ui-tokens';
 import type { PhotoPhase } from '@axhy/shared-schema';
 
 import { useWorkerTodayQuery } from '../../../lib/queries/use-worker-today';
-import { deletePhoto, listPhotos } from '../../../lib/storage/per-user-partition';
+import {
+  canPersistCaptures,
+  deletePhoto,
+  listPhotos,
+} from '../../../lib/storage/per-user-partition';
 import { r2UploadQueue, type QueueItem, type UploadStatus } from '../../../lib/r2-upload-queue';
 import { NAV_ROUTES } from '../../../lib/api-routes';
 
@@ -63,7 +67,21 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
   );
 
   const refresh = useCallback(async () => {
-    if (!workerId) return;
+    if (!workerId || !canPersistCaptures()) {
+      const queueSnapshot = r2UploadQueue.snapshot();
+      setTiles((prev) =>
+        prev.map((tile) => {
+          const queued = queueSnapshot.get(`${visitId}:${tile.phase}:${tile.index}`);
+          return {
+            ...tile,
+            localUri: queued?.localUri ?? null,
+            status: queued?.status ?? null,
+          };
+        }),
+      );
+      return;
+    }
+
     const [beforePaths, afterPaths] = await Promise.all([
       listPhotos(workerId, visitId, 'before'),
       listPhotos(workerId, visitId, 'after'),
@@ -89,7 +107,11 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
         prev.map((tile) => {
           const key = `${visitId}:${tile.phase}:${tile.index}`;
           const item = snapshot.get(key);
-          return { ...tile, status: item ? item.status : tile.status };
+          return {
+            ...tile,
+            localUri: item?.localUri ?? tile.localUri,
+            status: item ? item.status : tile.status,
+          };
         }),
       );
     }
@@ -99,8 +121,9 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
 
   const retake = useCallback(
     async (phase: PhotoPhase, index: number) => {
-      if (!workerId) return;
-      await deletePhoto(workerId, visitId, phase, index);
+      if (workerId && canPersistCaptures()) {
+        await deletePhoto(workerId, visitId, phase, index);
+      }
       r2UploadQueue.remove(`${visitId}:${phase}:${index}`);
       const step = phase === 'before' ? 'before-photos' : 'after-photos';
       router.push(NAV_ROUTES.workerCaptureStep(visitId, step));

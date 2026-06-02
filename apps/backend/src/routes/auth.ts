@@ -25,7 +25,7 @@ import { issueOtp, verifyOtp } from '../lib/otp-store.js';
 import { sendOtpWhatsApp } from '../lib/whatsapp-otp.js';
 import { isPhoneAllowlisted } from '../lib/otp-bypass.js';
 import { issueAccessToken } from '../lib/jwt.js';
-import { createRefreshTokenStore } from '../lib/services/refresh-token-store.js';
+import { createRefreshTokenStore, isLegacyToken } from '../lib/services/refresh-token-store.js';
 import { workerOtpVerifiedService } from '../lib/services/worker-otp-verified-service.js';
 
 /**
@@ -188,5 +188,27 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       })),
     };
     reply.send(out);
+  });
+
+  app.post('/auth/sign-out', async (req, reply) => {
+    const body = req.body as { refreshToken?: unknown } | null;
+    const refreshToken = body && typeof body.refreshToken === 'string' ? body.refreshToken : '';
+    if (!refreshToken || isLegacyToken(refreshToken)) {
+      reply.send({ ok: true });
+      return;
+    }
+    try {
+      const result = await refreshTokenStore.validate(refreshToken);
+      if (result.found && !result.revoked) {
+        if (result.compromise) {
+          await refreshTokenStore.revokeForCompromise(result.family.id);
+        } else {
+          await refreshTokenStore.revokeForLogout(result.family.id);
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err }, 'sign-out revoke failed; returning ok');
+    }
+    reply.send({ ok: true });
   });
 }

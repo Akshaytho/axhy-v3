@@ -20,7 +20,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Platform } from 'react-native';
 import { jwtDecode } from 'jwt-decode';
 
-import { setTokens, clearTokens } from './auth-store';
+import { setTokens, clearTokens, getTokens } from './auth-store';
 import {
   onIdentifiedLogin,
   onAppLogout,
@@ -40,6 +40,11 @@ vi.mock('react-native', () => ({
 vi.mock('./auth-store', () => ({
   setTokens: vi.fn(async () => {}),
   clearTokens: vi.fn(async () => {}),
+  getTokens: vi.fn(async () => ({
+    accessToken: 'header.payload.sig',
+    refreshToken: 'axrt_stored_refresh',
+    activeRole: 'SUPERVISOR',
+  })),
 }));
 
 // Mock jwt-decode — return a fixed payload by default.
@@ -62,7 +67,10 @@ vi.mock('react-native-onesignal', () => ({
 
 const mockedSetTokens = setTokens as unknown as ReturnType<typeof vi.fn>;
 const mockedClearTokens = clearTokens as unknown as ReturnType<typeof vi.fn>;
+const mockedGetTokens = getTokens as unknown as ReturnType<typeof vi.fn>;
 const mockedJwtDecode = jwtDecode as unknown as ReturnType<typeof vi.fn>;
+const mockedFetch = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+(globalThis as unknown as { fetch: typeof fetch }).fetch = mockedFetch as unknown as typeof fetch;
 
 function makeAuthResult(memberships: Array<{ role: string; companyId?: string }>) {
   return {
@@ -78,6 +86,14 @@ function makeAuthResult(memberships: Array<{ role: string; companyId?: string }>
 beforeEach(() => {
   mockedSetTokens.mockClear();
   mockedClearTokens.mockClear();
+  mockedGetTokens.mockReset();
+  mockedGetTokens.mockResolvedValue({
+    accessToken: 'header.payload.sig',
+    refreshToken: 'axrt_stored_refresh',
+    activeRole: 'SUPERVISOR',
+  });
+  mockedFetch.mockReset();
+  mockedFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
   mockedJwtDecode.mockReset();
   mockedJwtDecode.mockReturnValue({ userId: 'user-uuid-123' });
   oneSignalInitialize.mockReset();
@@ -214,11 +230,17 @@ describe('identity-lifecycle — onIdentifiedLogin', () => {
 });
 
 describe('identity-lifecycle — onAppLogout', () => {
-  // Case 2: logout ordering
-  it('calls OneSignal.logout() BEFORE clearTokens()', async () => {
+  // Case 2: logout ordering — OneSignal.logout → POST /auth/sign-out → clearTokens
+  it('calls OneSignal.logout() → POST /auth/sign-out → clearTokens() in that order', async () => {
     const callOrder: string[] = [];
     oneSignalLogout.mockImplementation(async () => {
       callOrder.push('OneSignal.logout');
+    });
+    mockedFetch.mockImplementation(async (input: unknown) => {
+      callOrder.push('fetch');
+      const url = typeof input === 'string' ? input : (input as { url: string }).url;
+      expect(url.endsWith('/auth/sign-out')).toBe(true);
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
     });
     mockedClearTokens.mockImplementation(async () => {
       callOrder.push('clearTokens');
@@ -226,7 +248,31 @@ describe('identity-lifecycle — onAppLogout', () => {
 
     await onAppLogout();
 
-    expect(callOrder).toEqual(['OneSignal.logout', 'clearTokens']);
+    expect(callOrder).toEqual(['OneSignal.logout', 'fetch', 'clearTokens']);
+    const fetchArgs = mockedFetch.mock.calls[0];
+    const body = JSON.parse((fetchArgs?.[1] as { body: string }).body);
+    expect(body.refreshToken).toBe('axrt_stored_refresh');
+  });
+
+  // sign-out failure: clearTokens still runs
+  it('still calls clearTokens when /auth/sign-out throws', async () => {
+    mockedFetch.mockRejectedValue(new Error('network down'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await onAppLogout();
+
+    expect(mockedClearTokens).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
+  // no stored refresh token: sign-out skipped; clearTokens still runs
+  it('skips /auth/sign-out and still calls clearTokens when no refresh token is stored', async () => {
+    mockedGetTokens.mockResolvedValue(null);
+
+    await onAppLogout();
+
+    expect(mockedFetch).not.toHaveBeenCalled();
+    expect(mockedClearTokens).toHaveBeenCalledTimes(1);
   });
 
   // Case 4: logout timeout falls open
@@ -260,13 +306,13 @@ describe('identity-lifecycle — onColdStartReady', () => {
 
     expect(oneSignalLogin).toHaveBeenCalledTimes(1);
     expect(oneSignalLogin).toHaveBeenCalledWith('user-uuid-123');
-    expect(result.route).toBe('/(supervisor)/profile');
+    expect(result.route).toBe('/(supervisor)/me');
   });
 
   // Case 10a (F-006b 2026-05-21): cold-start with WORKER role now routes to
-  // /(worker)/index (no logout). Splits the previous Case 10 — WORKER is no
+  // /(worker) (no logout). Splits the previous Case 10 — WORKER is no
   // longer a stale-state trigger.
-  it('on WORKER tokens: re-links OneSignal and routes to /(worker)/index without logout', async () => {
+  it('on WORKER tokens: re-links OneSignal and routes to /(worker) without logout', async () => {
     const result = await onColdStartReady({
       accessToken: 'header.payload.sig',
       refreshToken: 'refresh',
@@ -276,7 +322,7 @@ describe('identity-lifecycle — onColdStartReady', () => {
     expect(mockedClearTokens).not.toHaveBeenCalled();
     expect(oneSignalLogin).toHaveBeenCalledTimes(1);
     expect(oneSignalLogin).toHaveBeenCalledWith('user-uuid-123');
-    expect(result.route).toBe('/(worker)/index');
+    expect(result.route).toBe('/(worker)');
   });
 
   // Case 10b (F-006b 2026-05-21): cold-start with any unsupported role

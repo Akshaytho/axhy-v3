@@ -53,5 +53,5 @@ export const NAV_ROUTES = {
     navPath('(worker)', 'capture', visitId, step),
   workerCaptureEntry: (visitId: string): string =>
     navPath('(worker)', 'capture', visitId, 'qr-scan'),
-  supervisorProfile: navPath('(supervisor)', 'profile'),
+  supervisorMe: navPath('(supervisor)', 'me'),
 } as const;

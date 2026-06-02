@@ -12,6 +12,7 @@
  * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerFinalReview)
  */
 
+import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,11 +22,33 @@ import { tokens } from '@axhy/ui-tokens';
 import { PhotoGridReview } from '../../../../components/worker/capture/PhotoGridReview';
 import { NAV_ROUTES } from '../../../../lib/api-routes';
 import { StatCard } from '../../../../components/worker/StatCard';
+import { r2UploadQueue } from '../../../../lib/r2-upload-queue';
 
 /** @derives(master-plan §G) */
 export default function ReviewStep(): React.JSX.Element {
   const { visitId } = useLocalSearchParams<{ visitId: string }>();
   const id = visitId ?? '';
+  const [counts, setCounts] = useState({ before: 0, after: 0, uploaded: 0 });
+  const totalCaptured = counts.before + counts.after;
+  const uploadsReady = totalCaptured > 0 && counts.uploaded === totalCaptured;
+
+  useEffect(() => {
+    function syncCounts(snapshot: ReturnType<typeof r2UploadQueue.snapshot>): void {
+      let before = 0;
+      let after = 0;
+      let uploaded = 0;
+      snapshot.forEach((item) => {
+        if (item.visitId !== id) return;
+        if (item.phase === 'before') before += 1;
+        if (item.phase === 'after') after += 1;
+        if (item.status === 'done') uploaded += 1;
+      });
+      setCounts({ before, after, uploaded });
+    }
+
+    syncCounts(r2UploadQueue.snapshot());
+    return r2UploadQueue.onChange(syncCounts);
+  }, [id]);
 
   function goBack(): void {
     router.replace(NAV_ROUTES.workerCaptureStep(id, 'after-photos'));
@@ -53,9 +76,9 @@ export default function ReviewStep(): React.JSX.Element {
 
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.statsRow}>
-          <StatCard value="8" label="Photos" padding={16} />
-          <StatCard value="28m" label="Duration" padding={16} />
-          <StatCard value="OK" label="GPS" padding={16} />
+          <StatCard value={String(counts.before)} label="Before" padding={16} />
+          <StatCard value={String(counts.after)} label="After" padding={16} />
+          <StatCard value={String(counts.uploaded)} label="Uploaded" padding={16} />
         </View>
 
         <View style={s.labelRow}>
@@ -74,14 +97,25 @@ export default function ReviewStep(): React.JSX.Element {
 
       <View style={s.footer}>
         <Pressable
-          onPress={goNext}
+          onPress={uploadsReady ? goNext : undefined}
           accessibilityRole="button"
           accessibilityLabel="Submit for verification"
-          style={({ pressed }) => [s.nextBtn, pressed && { opacity: 0.92 }]}
+          disabled={!uploadsReady}
+          style={({ pressed }) => [
+            s.nextBtn,
+            !uploadsReady && s.nextBtnDisabled,
+            pressed && uploadsReady && { opacity: 0.92 },
+          ]}
         >
           <Text style={s.nextText}>Submit for verification</Text>
         </Pressable>
-        <Text style={s.hint}>AI will verify within 30 seconds</Text>
+        <Text style={s.hint}>
+          {uploadsReady
+            ? 'AI will verify within 30 seconds'
+            : totalCaptured === 0
+              ? 'Take your required photos before you submit.'
+              : `Wait for all uploads to finish (${counts.uploaded}/${totalCaptured} ready).`}
+        </Text>
       </View>
     </SafeAreaView>
   );
@@ -131,6 +165,9 @@ const s = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  nextBtnDisabled: {
+    opacity: 0.45,
   },
   nextText: {
     fontSize: 16,

@@ -31,6 +31,7 @@ import { DismissDecisionInput, DecisionsQueryInput, decisionSpecByKind } from '@
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import { buildDecisionsForSupervisor } from '../lib/services/decisions-service.js';
 import { dismissProposedDecision, LifecycleError } from '../lib/supervisor-decision-writer.js';
 
@@ -44,54 +45,58 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
   // -------------------------------------------------------------------------
   // GET /supervisor/decisions — pending decision queue
   // -------------------------------------------------------------------------
-  app.get('/supervisor/decisions', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
-      return;
-    }
+  app.get(
+    '/supervisor/decisions',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+        return;
+      }
 
-    // Parse pagination query params. Wave 2: limit 50, cursor-by-(priority,
-    // proposedAt, id) — see decisions-service.ts.
-    const parsedQuery = DecisionsQueryInput.safeParse(req.query ?? {});
-    if (!parsedQuery.success) {
-      reply.code(400).send({ error: 'BAD_INPUT', message: parsedQuery.error.message });
-      return;
-    }
+      // Parse pagination query params. Wave 2: limit 50, cursor-by-(priority,
+      // proposedAt, id) — see decisions-service.ts.
+      const parsedQuery = DecisionsQueryInput.safeParse(req.query ?? {});
+      if (!parsedQuery.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsedQuery.error.message });
+        return;
+      }
 
-    const startedAt = Date.now();
-    try {
-      // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
-      const out = await buildDecisionsForSupervisor(prisma, {
-        companyId: auth.companyId,
-        userId: auth.userId,
-        cursor: parsedQuery.data.cursor,
-        limit: parsedQuery.data.limit,
-      });
-      req.log.info(
-        {
+      const startedAt = Date.now();
+      try {
+        // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
+        const out = await buildDecisionsForSupervisor(prisma, {
           companyId: auth.companyId,
           userId: auth.userId,
-          rows: out.rows.length,
-          totalAcrossPages: out.pageInfo.totalAcrossPages,
-          hasMore: out.pageInfo.hasMore,
-          ms: Date.now() - startedAt,
-        },
-        'GET /supervisor/decisions ok',
-      );
-      reply.code(200).send(out);
-    } catch (err) {
-      req.log.error({ err, ms: Date.now() - startedAt }, 'GET /supervisor/decisions failed');
-      reply.code(500).send({ error: 'INTERNAL', message: 'Could not build decisions queue' });
-    }
-  });
+          cursor: parsedQuery.data.cursor,
+          limit: parsedQuery.data.limit,
+        });
+        req.log.info(
+          {
+            companyId: auth.companyId,
+            userId: auth.userId,
+            rows: out.rows.length,
+            totalAcrossPages: out.pageInfo.totalAcrossPages,
+            hasMore: out.pageInfo.hasMore,
+            ms: Date.now() - startedAt,
+          },
+          'GET /supervisor/decisions ok',
+        );
+        reply.code(200).send(out);
+      } catch (err) {
+        req.log.error({ err, ms: Date.now() - startedAt }, 'GET /supervisor/decisions failed');
+        reply.code(500).send({ error: 'INTERNAL', message: 'Could not build decisions queue' });
+      }
+    },
+  );
 
   // -------------------------------------------------------------------------
   // POST /supervisor/decisions/:id/dismiss — dismiss a PROPOSED decision
   // -------------------------------------------------------------------------
   app.post<{ Params: { id: string } }>(
     '/supervisor/decisions/:id/dismiss',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
     async (req, reply) => {
       const auth = req.auth;
       if (!auth) {
@@ -164,89 +169,93 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
   // already battle-tested + covered by chat-apply-* tests. Production-grade
   // rule: don't duplicate critical paths.
   // -------------------------------------------------------------------------
-  app.post('/decisions/:id/apply', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
-      return;
-    }
-    const { id } = req.params as { id: string };
+  app.post(
+    '/decisions/:id/apply',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+        return;
+      }
+      const { id } = req.params as { id: string };
 
-    const row = await prisma.supervisorDecision.findFirst({
-      where: { id, companyId: auth.companyId },
-      select: { id: true, kind: true, payload: true, appliedAt: true, dismissedAt: true },
-    });
-    if (!row) {
-      reply.code(404).send({ error: 'NOT_FOUND', message: 'Decision not found' });
-      return;
-    }
-    if (row.appliedAt !== null) {
-      reply.code(409).send({ error: 'ALREADY_APPLIED' });
-      return;
-    }
-    if (row.dismissedAt !== null) {
-      reply.code(409).send({ error: 'ALREADY_DISMISSED' });
-      return;
-    }
-
-    const spec = decisionSpecByKind.get(row.kind);
-    if (!spec || spec.toolName === undefined) {
-      reply.code(422).send({
-        error: 'KIND_NOT_APPLYABLE',
-        message: `Decision kind "${row.kind}" has no apply tool wired`,
+      const row = await prisma.supervisorDecision.findFirst({
+        where: { id, companyId: auth.companyId },
+        select: { id: true, kind: true, payload: true, appliedAt: true, dismissedAt: true },
       });
-      return;
-    }
+      if (!row) {
+        reply.code(404).send({ error: 'NOT_FOUND', message: 'Decision not found' });
+        return;
+      }
+      if (row.appliedAt !== null) {
+        reply.code(409).send({ error: 'ALREADY_APPLIED' });
+        return;
+      }
+      if (row.dismissedAt !== null) {
+        reply.code(409).send({ error: 'ALREADY_DISMISSED' });
+        return;
+      }
 
-    // QA-water-flow audit P0-2 (2026-05-18): mandate idempotency-key from
-    // the caller. The previous fallback to crypto.randomUUID() created a
-    // fresh key on every mobile retry, defeating the /chat/apply dedup
-    // cache. A user-visible retry then surfaced ALREADY_APPLIED 409 (state
-    // safe, UX broken). Mobile must generate one key per Apply tap and
-    // resend it on retry.
-    const idempotencyKey = req.headers['idempotency-key'];
-    if (typeof idempotencyKey !== 'string' || idempotencyKey.length === 0) {
-      reply.code(400).send({
-        error: 'IDEMPOTENCY_KEY_REQUIRED',
-        message: 'Idempotency-Key header is required for /decisions/:id/apply',
+      const spec = decisionSpecByKind.get(row.kind);
+      if (!spec || spec.toolName === undefined) {
+        reply.code(422).send({
+          error: 'KIND_NOT_APPLYABLE',
+          message: `Decision kind "${row.kind}" has no apply tool wired`,
+        });
+        return;
+      }
+
+      // QA-water-flow audit P0-2 (2026-05-18): mandate idempotency-key from
+      // the caller. The previous fallback to crypto.randomUUID() created a
+      // fresh key on every mobile retry, defeating the /chat/apply dedup
+      // cache. A user-visible retry then surfaced ALREADY_APPLIED 409 (state
+      // safe, UX broken). Mobile must generate one key per Apply tap and
+      // resend it on retry.
+      const idempotencyKey = req.headers['idempotency-key'];
+      if (typeof idempotencyKey !== 'string' || idempotencyKey.length === 0) {
+        reply.code(400).send({
+          error: 'IDEMPOTENCY_KEY_REQUIRED',
+          message: 'Idempotency-Key header is required for /decisions/:id/apply',
+        });
+        return;
+      }
+
+      // Audit P1 finding (2026-05-18): forward observability headers so the
+      // downstream /chat/apply log line carries the inbound request
+      // correlation (x-request-id, traceparent, user-agent).
+      const forwarded: Record<string, string> = {
+        'idempotency-key': idempotencyKey,
+        'content-type': 'application/json',
+      };
+      const authorization = req.headers.authorization;
+      if (authorization) forwarded.authorization = authorization;
+      for (const h of ['x-request-id', 'traceparent', 'tracestate', 'user-agent'] as const) {
+        const v = req.headers[h];
+        if (typeof v === 'string') forwarded[h] = v;
+      }
+
+      const inner = await app.inject({
+        method: 'POST',
+        url: '/chat/apply',
+        headers: forwarded,
+        payload: {
+          toolName: spec.toolName,
+          toolInput: (row.payload ?? {}) as Record<string, unknown>,
+          decisionId: row.id,
+        },
       });
-      return;
-    }
 
-    // Audit P1 finding (2026-05-18): forward observability headers so the
-    // downstream /chat/apply log line carries the inbound request
-    // correlation (x-request-id, traceparent, user-agent).
-    const forwarded: Record<string, string> = {
-      'idempotency-key': idempotencyKey,
-      'content-type': 'application/json',
-    };
-    const authorization = req.headers.authorization;
-    if (authorization) forwarded.authorization = authorization;
-    for (const h of ['x-request-id', 'traceparent', 'tracestate', 'user-agent'] as const) {
-      const v = req.headers[h];
-      if (typeof v === 'string') forwarded[h] = v;
-    }
-
-    const inner = await app.inject({
-      method: 'POST',
-      url: '/chat/apply',
-      headers: forwarded,
-      payload: {
-        toolName: spec.toolName,
-        toolInput: (row.payload ?? {}) as Record<string, unknown>,
-        decisionId: row.id,
-      },
-    });
-
-    // Audit P2 finding (2026-05-18): inner.json() throws on non-JSON
-    // bodies (e.g. a downstream 500 with no payload). Falls back to the
-    // raw body string so the inbound caller still sees the status.
-    let body: unknown;
-    try {
-      body = inner.json();
-    } catch {
-      body = { error: 'UPSTREAM_NON_JSON', body: inner.body };
-    }
-    reply.code(inner.statusCode).send(body);
-  });
+      // Audit P2 finding (2026-05-18): inner.json() throws on non-JSON
+      // bodies (e.g. a downstream 500 with no payload). Falls back to the
+      // raw body string so the inbound caller still sees the status.
+      let body: unknown;
+      try {
+        body = inner.json();
+      } catch {
+        body = { error: 'UPSTREAM_NON_JSON', body: inner.body };
+      }
+      reply.code(inner.statusCode).send(body);
+    },
+  );
 }

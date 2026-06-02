@@ -55,12 +55,39 @@ export function isAIBudgetExceededError(err: unknown): err is AIBudgetExceededEr
   return err instanceof ApiError && err.code === 'AI_BUDGET_EXCEEDED';
 }
 
+/* [ORCHESTRATOR_EXCEPTION] Focused 3-file bug-fix assigned directly to this agent;
+   surgical in-context edits, splitting to a sub-agent would lose per-bug context. */
+
+/**
+ * Default per-request timeout. A stalled request on a dead/patchy network
+ * otherwise hangs screens in a loading spinner forever (reads as "app frozen").
+ * On expiry the fetch is aborted and a typed TIMEOUT ApiError is thrown so it
+ * flows into the existing error-mapping path and TanStack's retry + the
+ * screens' error+retry UI engage. Per-call override via RequestOptions.timeoutMs.
+ */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+/** Typed timeout error (status 0 — no HTTP response). Mapped like any ApiError. */
+export class TimeoutError extends ApiError {
+  constructor(message = 'Request timed out') {
+    super(0, 'TIMEOUT', message);
+    this.name = 'TimeoutError';
+  }
+}
+
+/** True when `err` is a request-timeout error. */
+export function isTimeoutError(err: unknown): err is TimeoutError {
+  return err instanceof ApiError && err.code === 'TIMEOUT';
+}
+
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   auth?: boolean;
   /** Extra headers to merge with defaults (Authorization + Content-Type). */
   headers?: Record<string, string>;
+  /** Per-request timeout in ms. Defaults to DEFAULT_TIMEOUT_MS. */
+  timeoutMs?: number;
 };
 
 // Module-level mutex so 50 concurrent 401s share ONE in-flight refresh.
@@ -121,7 +148,8 @@ async function handleUnauthorized(): Promise<never> {
 
 /** @derives(ADR-0007) @derives(ADR-0011) */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, auth = true } = options;
+  // [ORCHESTRATOR_EXCEPTION] surgical bug-fix edit, kept in-context per above rationale.
+  const { method = 'GET', body, auth = true, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
   // Set Content-Type only when there's an actual body. Fastify rejects
   // POSTs with Content-Type: application/json but no body
@@ -140,12 +168,33 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     return h;
   };
 
-  const doFetch = async (): Promise<Response> =>
-    fetch(`${API_BASE}${path}`, {
-      method,
-      headers: await buildHeaders(),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+  // [ORCHESTRATOR_EXCEPTION] surgical bug-fix edit, kept in-context per above rationale.
+  // Wrap each fetch in an AbortController timeout. A stalled request would
+  // otherwise hang the calling screen's spinner forever. On expiry we abort and
+  // throw a typed TimeoutError so it lands in the same error path as any other
+  // failure (TanStack retry + screen error UI). The timer is always cleared.
+  const doFetch = async (): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(`${API_BASE}${path}`, {
+        method,
+        headers: await buildHeaders(),
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      // AbortError is the only thing the timer turns a pending fetch into;
+      // re-throw it as a typed TimeoutError. Any other fetch reject (genuine
+      // network error) propagates unchanged so existing handling still applies.
+      if (controller.signal.aborted) {
+        throw new TimeoutError();
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
   let res = await doFetch();
 
@@ -160,15 +209,17 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
         await handleUnauthorized();
       }
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'AUTH_LEGACY_REFRESH') {
-        await handleUnauthorized();
+      // [ORCHESTRATOR_EXCEPTION] surgical bug-fix edit, kept in-context per above rationale.
+      // Only a GENUINE auth failure on /auth/refresh should wipe tokens +
+      // redirect: a real 401 (expired/invalid/reused refresh token) or the
+      // AUTH_LEGACY_REFRESH force-logout (founder decision 2026-05-28).
+      if (err instanceof ApiError && (err.code === 'AUTH_LEGACY_REFRESH' || err.status === 401)) {
+        await handleUnauthorized(); // throws — never returns
       }
-      if (err instanceof ApiError && err.status === 401) {
-        await handleUnauthorized();
-      }
-      // Network / server error on refresh — surface the original 401 to the
-      // caller without wiping. Next attempt will try refresh again.
-      await handleUnauthorized();
+      // Network / server error on refresh (timeout, 5xx, fetch reject) — surface
+      // the original error WITHOUT wiping tokens. A later request will retry
+      // refresh, so a momentary blip can't log a worker out mid-shift.
+      throw err;
     }
   }
 

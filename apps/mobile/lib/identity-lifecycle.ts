@@ -42,7 +42,10 @@ import { Platform } from 'react-native';
 import { jwtDecode } from 'jwt-decode';
 import { RoleSchema, type VerifyOTPOutput } from '@axhy/shared-schema';
 
-import { setTokens, clearTokens, type StoredTokens } from './auth-store';
+import { setTokens, clearTokens, getTokens, type StoredTokens } from './auth-store';
+import { API_ROUTES } from './api-routes';
+
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
 
 const SUPERVISOR = RoleSchema.enum.SUPERVISOR;
 const WORKER = RoleSchema.enum.WORKER;
@@ -333,6 +336,23 @@ export async function onAppLogout(): Promise<void> {
       }
     }
   }
+
+  try {
+    const tokens = await getTokens();
+    const refreshToken = tokens?.refreshToken;
+    if (refreshToken) {
+      await fetch(`${API_BASE}${API_ROUTES.authSignOut}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+    }
+  } catch (err) {
+    if (__DEV__) {
+      console.warn('[identity-lifecycle] sign-out best-effort call failed; proceeding', err);
+    }
+  }
+
   await clearTokens();
 }
 
@@ -340,7 +360,7 @@ export async function onAppLogout(): Promise<void> {
  * Return type for `onColdStartReady` — tells the routing gate where to go.
  * F-006b 2026-05-21 adds `/(worker)` to the union (group route, resolves to (worker)/index.tsx).
  */
-export type ColdStartRoute = '/(supervisor)/profile' | '/(worker)' | '/(auth)/phone';
+export type ColdStartRoute = '/(supervisor)/me' | '/(worker)' | '/(auth)/phone';
 
 /**
  * The single cold-start sequence. Picks 2/7 from v6 scope land here, with
@@ -354,7 +374,7 @@ export type ColdStartRoute = '/(supervisor)/profile' | '/(worker)' | '/(auth)/ph
  *   2. Decode userId from the access-token JWT.
  *   3. If `shouldCallOneSignal()` is true, call `OneSignal.login(userId)`
  *      to re-link the device subscription (idempotent in the SDK).
- *   4. Return the home route for the active role: `/(supervisor)/profile`
+ *   4. Return the home route for the active role: `/(supervisor)/me`
  *      for SUPERVISOR, `/(worker)` for WORKER (group route — Expo Router
  *      resolves to (worker)/index.tsx automatically; the explicit `/index`
  *      suffix does not match on native).
@@ -376,7 +396,7 @@ async function onColdStartReadyImpl(tokens: StoredTokens): Promise<{ route: Cold
   }
 
   const homeRoute: ColdStartRoute =
-    tokens.activeRole === SUPERVISOR ? '/(supervisor)/profile' : '/(worker)';
+    tokens.activeRole === SUPERVISOR ? '/(supervisor)/me' : '/(worker)';
 
   const userId = decodeUserIdFromJwt(tokens.accessToken);
   if (!userId) {

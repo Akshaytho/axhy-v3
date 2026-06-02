@@ -8,11 +8,11 @@
  * redirects to `/(auth)/phone`.
  *
  * Each item is wired per R6 spec (lines 928-1023):
- *   - My profile      → /(supervisor)/profile
+ *   - My profile      → /(supervisor)/me
  *   - Memory & rules  → /(supervisor)/memory
  *   - My sites        → /(supervisor)/sites
- *   - Language        → /(supervisor)/profile (Language row is there)
- *   - Notifications   → /(supervisor)/profile (Notifications section is there)
+ *   - Language        → /(supervisor)/me (Language row is there)
+ *   - Notifications   → /(supervisor)/me (Notifications section is there)
  *   - How to use Axhy → Linking.openURL('https://axhy.app/help')
  *                       (help page does not exist yet; deeplink is real)
  *   - Temporary mode  → inline confirm modal; writes axhy_ai_paused_until to
@@ -260,7 +260,7 @@ export function Drawer({ open, onClose }: DrawerProps) {
         void handleSignOut();
         return;
       case 'My profile':
-        router.push('/(supervisor)/profile');
+        router.push('/(supervisor)/me');
         onClose();
         return;
       case 'Memory & rules':
@@ -277,12 +277,12 @@ export function Drawer({ open, onClose }: DrawerProps) {
         return;
       case 'Language':
         // Language picker lives in the Profile screen.
-        router.push('/(supervisor)/profile');
+        router.push('/(supervisor)/me');
         onClose();
         return;
       case 'Notifications':
         // Notification toggles live in the Profile screen.
-        router.push('/(supervisor)/profile');
+        router.push('/(supervisor)/me');
         onClose();
         return;
       case 'How to use Axhy':
