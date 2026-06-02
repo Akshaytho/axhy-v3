@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] coherent multi-file canon implementation must stay in single session
-
 /**
  * StatCard — small centered card with a big number + uppercase mono caption.
  *
@@ -15,7 +13,6 @@ import { tokens } from '@axhy/ui-tokens';
 import { WCard } from './WCard';
 
 /** @derives(master-plan §G) — worker surface */
-// [ORCHESTRATOR_EXCEPTION] add-@derives JSDoc
 export function StatCard({
   value,
   label,

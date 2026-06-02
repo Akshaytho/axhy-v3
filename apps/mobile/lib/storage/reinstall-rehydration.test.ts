@@ -9,10 +9,55 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
+// Hoisted mock module: defined before vi.mock factory runs, exposed to tests.
+const fsMock = vi.hoisted(() => {
+  const directoryRegistry = new Map<string, any>();
+
+  class FileMock {
+    uri: string;
+    name: string;
+    exists = true;
+    size = 1024;
+    constructor(parent: { uri: string } | string, name: string) {
+      const parentUri = typeof parent === 'string' ? parent : parent.uri;
+      const base = parentUri.endsWith('/') ? parentUri : `${parentUri}/`;
+      this.uri = `${base}${name}`;
+      this.name = name;
+    }
+  }
+
+  class DirectoryMock {
+    uri: string;
+    exists = true;
+    entries: any[] = [];
+    constructor(uri: string) {
+      this.uri = uri;
+      const existing = directoryRegistry.get(uri);
+      if (existing) {
+        this.exists = existing.exists;
+        this.entries = existing.entries;
+        return;
+      }
+      directoryRegistry.set(uri, this);
+    }
+    list(): any[] {
+      return this.entries;
+    }
+    setEntries(entries: any[]): void {
+      this.entries = entries;
+    }
+    setExists(value: boolean): void {
+      this.exists = value;
+    }
+  }
+
+  return { FileMock, DirectoryMock, directoryRegistry };
+});
+
 vi.mock('expo-file-system', () => ({
   documentDirectory: 'file:///data/documents/',
-  getInfoAsync: vi.fn(),
-  readDirectoryAsync: vi.fn(),
+  File: fsMock.FileMock,
+  Directory: fsMock.DirectoryMock,
 }));
 
 vi.mock('./per-user-partition', () => ({
@@ -27,8 +72,6 @@ vi.mock('../r2-upload-queue', () => ({
   },
 }));
 
-import * as FileSystem from 'expo-file-system';
-
 import { r2UploadQueue } from '../r2-upload-queue';
 
 import { canPersistCaptures, listVisitDirs } from './per-user-partition';
@@ -36,21 +79,26 @@ import { rehydrateFromPartition } from './reinstall-rehydration';
 
 const DIR = 'file:///data/documents/captures/worker-1/visit-1/';
 
+/** Helper: register a DirectoryMock at uri with the given file entries. */
+function setupDir(uri: string, fileNames: string[]): any {
+  const dir = new fsMock.DirectoryMock(uri);
+  dir.setExists(true);
+  const files = fileNames.map((name) => new fsMock.FileMock(uri.replace(/\/$/, ''), name));
+  dir.setEntries(files);
+  return dir;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  fsMock.directoryRegistry.clear();
   vi.mocked(listVisitDirs).mockResolvedValue([DIR]);
-  vi.mocked(FileSystem.getInfoAsync).mockImplementation(async (uri) => {
-    if (uri.endsWith('/')) return { exists: true, isDirectory: true, uri } as any;
-    return { exists: true, isDirectory: false, size: 123_456, uri } as any;
-  });
-  vi.mocked(FileSystem.readDirectoryAsync).mockResolvedValue([]);
   vi.mocked(r2UploadQueue.getStatus).mockReturnValue(null);
   vi.mocked(r2UploadQueue.enqueue).mockReturnValue('key');
 });
 
 describe('rehydrateFromPartition', () => {
   it('re-enqueues orphaned photo files not in the queue', async () => {
-    vi.mocked(FileSystem.readDirectoryAsync).mockResolvedValue(['before-01.jpg', 'before-02.jpg']);
+    setupDir(DIR, ['before-01.jpg', 'before-02.jpg']);
 
     await rehydrateFromPartition('worker-1');
 
@@ -64,7 +112,7 @@ describe('rehydrateFromPartition', () => {
   });
 
   it('skips photos already tracked in the queue', async () => {
-    vi.mocked(FileSystem.readDirectoryAsync).mockResolvedValue(['after-01.jpg']);
+    setupDir(DIR, ['after-01.jpg']);
     vi.mocked(r2UploadQueue.getStatus).mockReturnValue({ status: 'done' } as any);
 
     await rehydrateFromPartition('worker-1');
@@ -73,11 +121,7 @@ describe('rehydrateFromPartition', () => {
   });
 
   it('skips non-photo files (metadata, thumbnails)', async () => {
-    vi.mocked(FileSystem.readDirectoryAsync).mockResolvedValue([
-      '_meta.json',
-      'thumb.png',
-      '.DS_Store',
-    ]);
+    setupDir(DIR, ['_meta.json', 'thumb.png', '.DS_Store']);
 
     await rehydrateFromPartition('worker-1');
 
@@ -85,10 +129,14 @@ describe('rehydrateFromPartition', () => {
   });
 
   it('continues if one visit dir fails to read', async () => {
-    vi.mocked(listVisitDirs).mockResolvedValue([DIR, 'file:///bad/']);
-    vi.mocked(FileSystem.readDirectoryAsync)
-      .mockResolvedValueOnce(['before-01.jpg'])
-      .mockRejectedValueOnce(new Error('read failed'));
+    const badDir = 'file:///bad/';
+    vi.mocked(listVisitDirs).mockResolvedValue([DIR, badDir]);
+    setupDir(DIR, ['before-01.jpg']);
+    // Register a directory whose list() throws to simulate read failure.
+    const broken = new fsMock.DirectoryMock(badDir);
+    broken.list = () => {
+      throw new Error('read failed');
+    };
 
     await rehydrateFromPartition('worker-1');
 

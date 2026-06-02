@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] coherent multi-file canon implementation must stay in single session
-
 /**
  * TimelineRow — single row on the Worker History vertical timeline.
  *
@@ -24,7 +22,6 @@ interface Props {
 }
 
 /** @derives(master-plan §G) — worker surface */
-// [ORCHESTRATOR_EXCEPTION] add-@derives JSDoc
 export function TimelineRow({ siteName, time, duration, score, isFirst, isLast }: Props) {
   const good = score >= 80;
   return (

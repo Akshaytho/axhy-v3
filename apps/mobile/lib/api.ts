@@ -55,9 +55,6 @@ export function isAIBudgetExceededError(err: unknown): err is AIBudgetExceededEr
   return err instanceof ApiError && err.code === 'AI_BUDGET_EXCEEDED';
 }
 
-/* [ORCHESTRATOR_EXCEPTION] Focused 3-file bug-fix assigned directly to this agent;
-   surgical in-context edits, splitting to a sub-agent would lose per-bug context. */
-
 /**
  * Default per-request timeout. A stalled request on a dead/patchy network
  * otherwise hangs screens in a loading spinner forever (reads as "app frozen").
@@ -148,7 +145,6 @@ async function handleUnauthorized(): Promise<never> {
 
 /** @derives(ADR-0007) @derives(ADR-0011) */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  // [ORCHESTRATOR_EXCEPTION] surgical bug-fix edit, kept in-context per above rationale.
   const { method = 'GET', body, auth = true, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
   // Set Content-Type only when there's an actual body. Fastify rejects
@@ -168,7 +164,6 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     return h;
   };
 
-  // [ORCHESTRATOR_EXCEPTION] surgical bug-fix edit, kept in-context per above rationale.
   // Wrap each fetch in an AbortController timeout. A stalled request would
   // otherwise hang the calling screen's spinner forever. On expiry we abort and
   // throw a typed TimeoutError so it lands in the same error path as any other
@@ -209,7 +204,6 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
         await handleUnauthorized();
       }
     } catch (err) {
-      // [ORCHESTRATOR_EXCEPTION] surgical bug-fix edit, kept in-context per above rationale.
       // Only a GENUINE auth failure on /auth/refresh should wipe tokens +
       // redirect: a real 401 (expired/invalid/reused refresh token) or the
       // AUTH_LEGACY_REFRESH force-logout (founder decision 2026-05-28).

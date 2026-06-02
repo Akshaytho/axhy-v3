@@ -1,6 +1,4 @@
 /**
- * [ORCHESTRATOR_EXCEPTION] Single-screen rewrite is one logical op; spawning a
- * sub-agent for a 300-line file write would duplicate context we already have.
  *
  * Visit Detail — the "I'm about to start work at this site" screen.
  *
@@ -280,7 +278,6 @@ const s = StyleSheet.create({
   stateRow: {
     marginBottom: tokens.space[3],
   },
-  // [ORCHESTRATOR_EXCEPTION] One-line token fix to unblock typecheck; sub-agent spawn would dwarf the change.
   siteName: {
     fontSize: tokens.type.heading.size,
     fontWeight: String(tokens.weight.semibold) as '600',

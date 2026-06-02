@@ -1,21 +1,39 @@
-// [ORCHESTRATOR_EXCEPTION] canon redesign — Submit / Success
-
 /**
  * Capture step 6 — Submit + Verify polling (canon redesign).
  *
- * Existing submit + polling logic is preserved (collect uploaded photos,
- * POST /submit, poll /verify-status). The success state stays close to the
- * canon visual, but avoids inventing a quality score the backend does not
- * return yet.
+ * Submit collects uploaded photos, POSTs /submit, polls /verify-status,
+ * then renders an OUTCOME-SPECIFIC screen — never a blanket "Site verified."
+ *
+ * State machine outcomes the worker actually sees:
+ *   - VERIFIED        → green check, "Site verified"
+ *   - FLAGGED         → amber alert, "Flagged for supervisor review"
+ *   - timeout         → blue info, "Still processing" (no lie about done)
+ *   - CANCELLED /
+ *     NO_SHOW /
+ *     ARCHIVED        → neutral closure, "Visit closed"
+ *
+ * Back-navigation is LOCKED once submitting begins and stays locked through
+ * every terminal outcome (Android hardware-back + iOS swipe-gesture). A
+ * worker cannot re-enter /review or re-submit after the AI has answered.
  *
  * @derives(WORKER_MVP_SLICE_2B_3_PLAN.md §T8)
  * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerSuccess)
+ * @derives(master-plan §G)
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  BackHandler,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
@@ -34,7 +52,33 @@ const STEP_INDEX = CAPTURE_STEPS.indexOf(STEP) + 1;
 const POLL_INTERVAL_MS = 3_000;
 const POLL_MAX = 40;
 
-type ScreenState = 'idle' | 'submitting' | 'polling' | 'done' | 'error';
+type ScreenState =
+  | 'idle'
+  | 'submitting'
+  | 'polling'
+  | 'verified'
+  | 'flagged'
+  | 'closed'
+  | 'timeout'
+  | 'error';
+
+type VerifyOutcome = { visitState: string; reason: string | null };
+
+const TERMINAL_STATES: ReadonlySet<ScreenState> = new Set([
+  'verified',
+  'flagged',
+  'closed',
+  'timeout',
+]);
+
+const NON_IDLE_STATES: ReadonlySet<ScreenState> = new Set([
+  'submitting',
+  'polling',
+  'verified',
+  'flagged',
+  'closed',
+  'timeout',
+]);
 
 const ACCENT = tokens.color.brand.accent;
 
@@ -48,11 +92,13 @@ export default function SubmitStep(): React.JSX.Element {
   const [errorMsg, setErrorMsg] = useState('');
   const [pollCount, setPollCount] = useState(0);
   const [uploadSummary, setUploadSummary] = useState({ total: 0, uploaded: 0 });
+  const [outcome, setOutcome] = useState<VerifyOutcome | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
   const visit = findWorkerTodayVisit(data, vid);
   const visitLabel = formatWorkerVisitLocation(visit);
   const uploadsReady = uploadSummary.total > 0 && uploadSummary.uploaded === uploadSummary.total;
+  const backLocked = NON_IDLE_STATES.has(state);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -61,6 +107,16 @@ export default function SubmitStep(): React.JSX.Element {
       if (pollRef.current !== null) clearInterval(pollRef.current);
     };
   }, []);
+
+  // Android hardware-back lock during submit + every terminal outcome. iOS
+  // swipe-gesture lock is enforced via Stack.Screen `gestureEnabled` below.
+  useFocusEffect(
+    useCallback(() => {
+      if (!backLocked || Platform.OS !== 'android') return undefined;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+      return () => sub.remove();
+    }, [backLocked]),
+  );
 
   useEffect(() => {
     function syncUploadSummary(snapshot: ReturnType<typeof r2UploadQueue.snapshot>): void {
@@ -124,20 +180,36 @@ export default function SubmitStep(): React.JSX.Element {
 
       try {
         const status = await fetchVerifyStatus(vid);
-        if (status.visitState !== 'AWAITING_VERIFICATION') {
-          stopPolling();
-          if (mountedRef.current) setState('done');
-        } else if (count >= POLL_MAX) {
-          stopPolling();
-          if (mountedRef.current) setState('done');
+        const vs = status.visitState;
+
+        if (vs === 'AWAITING_VERIFICATION') {
+          if (count >= POLL_MAX) {
+            stopPolling();
+            if (mountedRef.current) setState('timeout');
+          }
+          return;
         }
+
+        stopPolling();
+        if (!mountedRef.current) return;
+        setOutcome({
+          visitState: vs,
+          reason: (status as { verificationText?: string | null }).verificationText ?? null,
+        });
+        if (vs === 'VERIFIED') setState('verified');
+        else if (vs === 'FLAGGED') setState('flagged');
+        else setState('closed');
       } catch {
-        // transient network error — keep polling
+        if (count >= POLL_MAX) {
+          stopPolling();
+          if (mountedRef.current) setState('timeout');
+        }
       }
     }, POLL_INTERVAL_MS);
   }
 
   function goBack(): void {
+    if (backLocked) return;
     const prevStep = CAPTURE_STEPS[STEP_INDEX - 2];
     if (prevStep !== undefined) {
       router.replace(NAV_ROUTES.workerCaptureStep(vid, prevStep));
@@ -148,9 +220,20 @@ export default function SubmitStep(): React.JSX.Element {
     router.replace(NAV_ROUTES.workerHome);
   }
 
+  const showTopBar = state === 'idle' || state === 'error';
+  const showSpinnerView = state === 'submitting' || state === 'polling';
+  const isTerminal = TERMINAL_STATES.has(state);
+
   return (
     <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
-      {state !== 'done' && (
+      <Stack.Screen
+        options={{
+          gestureEnabled: !backLocked,
+          headerShown: false,
+        }}
+      />
+
+      {showTopBar && (
         <View style={s.topBar}>
           {state === 'idle' || state === 'error' ? (
             <Pressable
@@ -185,32 +268,31 @@ export default function SubmitStep(): React.JSX.Element {
           </View>
         )}
 
-        {state === 'submitting' && (
+        {showSpinnerView && (
           <View style={s.center}>
             <ActivityIndicator size="large" color={ACCENT} />
-            <Text style={s.idleTitle}>Submitting photos…</Text>
-          </View>
-        )}
-
-        {state === 'polling' && (
-          <View style={s.center}>
-            <ActivityIndicator size="large" color={ACCENT} />
-            <Text style={s.idleTitle}>Verifying photos…</Text>
-            <Text style={s.idleHint}>This usually takes under a minute.</Text>
-            {pollCount > 0 ? (
-              <Text style={s.pollCount}>
-                Check {pollCount} of {POLL_MAX}
-              </Text>
+            <Text style={s.idleTitle}>
+              {state === 'submitting' ? 'Submitting photos…' : 'Verifying photos…'}
+            </Text>
+            {state === 'polling' ? (
+              <>
+                <Text style={s.idleHint}>This usually takes under a minute.</Text>
+                {pollCount > 0 ? (
+                  <Text style={s.pollCount}>
+                    Check {pollCount} of {POLL_MAX}
+                  </Text>
+                ) : null}
+              </>
             ) : null}
           </View>
         )}
 
-        {state === 'done' && (
+        {state === 'verified' && (
           <View style={s.successWrap}>
             <View style={s.successRings}>
               <View style={s.successRingOuter} />
               <View style={s.successRingMid} />
-              <View style={s.successCheckCircle}>
+              <View style={[s.successCheckCircle, { backgroundColor: ACCENT }]}>
                 <Feather name="check" size={28} color={tokens.color.surface.card} />
               </View>
             </View>
@@ -220,7 +302,7 @@ export default function SubmitStep(): React.JSX.Element {
 
             <WCard padding={20} style={s.scoreCard}>
               <Text style={s.scoreEyebrow}>AI VERIFICATION</Text>
-              <Text style={s.statusValue}>Completed</Text>
+              <Text style={[s.statusValue, { color: ACCENT }]}>Completed</Text>
               <Text style={s.scoreRating}>Photos accepted and work logged.</Text>
               <View style={s.scoreDivider} />
               <View style={s.scoreStatsRow}>
@@ -237,10 +319,96 @@ export default function SubmitStep(): React.JSX.Element {
               </View>
             </WCard>
 
-            <View style={s.completedStrip}>
+            <View style={[s.completedStrip, { backgroundColor: ACCENT }]}>
               <Text style={s.completedMono}>SITE COMPLETED</Text>
               <Text style={s.completedHeavy}>WORK LOGGED</Text>
             </View>
+          </View>
+        )}
+
+        {state === 'flagged' && (
+          <View style={s.successWrap}>
+            <View style={s.successRings}>
+              <View style={[s.successRingOuter, { borderColor: tokens.color.semantic.warnSoft }]} />
+              <View style={[s.successRingMid, { borderColor: tokens.color.semantic.warn }]} />
+              <View style={[s.successCheckCircle, { backgroundColor: tokens.color.semantic.warn }]}>
+                <Feather name="alert-triangle" size={28} color={tokens.color.surface.card} />
+              </View>
+            </View>
+
+            <Text style={s.successTitle}>Flagged for review</Text>
+            <Text style={s.successSubtitle}>{visitLabel}</Text>
+
+            <WCard padding={20} style={s.scoreCard}>
+              <Text style={s.scoreEyebrow}>AI VERIFICATION</Text>
+              <Text style={[s.statusValue, { color: tokens.color.semantic.warn }]}>
+                Needs supervisor review
+              </Text>
+              <Text style={s.scoreRating}>
+                {outcome?.reason
+                  ? outcome.reason
+                  : 'Your supervisor will review the photos and reach out if anything needs to be redone. No action needed from you right now.'}
+              </Text>
+            </WCard>
+
+            <View style={[s.completedStrip, { backgroundColor: tokens.color.semantic.warn }]}>
+              <Text style={s.completedMono}>VISIT SUBMITTED</Text>
+              <Text style={s.completedHeavy}>AWAITING REVIEW</Text>
+            </View>
+          </View>
+        )}
+
+        {state === 'closed' && (
+          <View style={s.successWrap}>
+            <View style={s.successRings}>
+              <View style={[s.successRingOuter, { borderColor: tokens.color.surface.paper3 }]} />
+              <View style={[s.successRingMid, { borderColor: tokens.color.ink.tertiary }]} />
+              <View style={[s.successCheckCircle, { backgroundColor: tokens.color.ink.tertiary }]}>
+                <Feather name="x" size={28} color={tokens.color.surface.card} />
+              </View>
+            </View>
+
+            <Text style={s.successTitle}>Visit closed</Text>
+            <Text style={s.successSubtitle}>{visitLabel}</Text>
+
+            <WCard padding={20} style={s.scoreCard}>
+              <Text style={s.scoreEyebrow}>VISIT STATUS</Text>
+              <Text style={[s.statusValue, { color: tokens.color.ink.primary }]}>
+                {outcomeStateLabel(outcome?.visitState)}
+              </Text>
+              <Text style={s.scoreRating}>
+                This visit was closed by your supervisor or HR. If this looks wrong, talk to your
+                supervisor.
+              </Text>
+            </WCard>
+          </View>
+        )}
+
+        {state === 'timeout' && (
+          <View style={s.successWrap}>
+            <View style={s.successRings}>
+              <View style={[s.successRingOuter, { borderColor: tokens.color.semantic.infoSoft }]} />
+              <View style={[s.successRingMid, { borderColor: tokens.color.semantic.infoInk }]} />
+              <View
+                style={[s.successCheckCircle, { backgroundColor: tokens.color.semantic.infoInk }]}
+              >
+                <Feather name="clock" size={28} color={tokens.color.surface.card} />
+              </View>
+            </View>
+
+            <Text style={s.successTitle}>Still processing</Text>
+            <Text style={s.successSubtitle}>{visitLabel}</Text>
+
+            <WCard padding={20} style={s.scoreCard}>
+              <Text style={s.scoreEyebrow}>AI VERIFICATION</Text>
+              <Text style={[s.statusValue, { color: tokens.color.semantic.infoInk }]}>
+                Taking longer than usual
+              </Text>
+              <Text style={s.scoreRating}>
+                Your photos were submitted. The verification is still running. You can head home —
+                we&apos;ll notify you when it&apos;s done.
+              </Text>
+            </WCard>
           </View>
         )}
 
@@ -281,7 +449,7 @@ export default function SubmitStep(): React.JSX.Element {
           </Pressable>
         )}
 
-        {state === 'done' && (
+        {isTerminal && (
           <Pressable
             onPress={goHome}
             accessibilityRole="button"
@@ -294,6 +462,19 @@ export default function SubmitStep(): React.JSX.Element {
       </View>
     </SafeAreaView>
   );
+}
+
+function outcomeStateLabel(visitState: string | undefined): string {
+  switch (visitState) {
+    case 'CANCELLED':
+      return 'Cancelled';
+    case 'NO_SHOW':
+      return 'Marked no-show';
+    case 'ARCHIVED':
+      return 'Archived';
+    default:
+      return 'Closed';
+  }
 }
 
 const s = StyleSheet.create({
@@ -331,7 +512,6 @@ const s = StyleSheet.create({
     color: tokens.color.ink.tertiary,
     textAlign: 'center',
   },
-
   successWrap: { alignItems: 'center', paddingTop: 24 },
   successRings: {
     width: 104,
@@ -360,7 +540,6 @@ const s = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -391,13 +570,12 @@ const s = StyleSheet.create({
     fontWeight: '800',
     fontSize: 28,
     letterSpacing: -0.8,
-    color: ACCENT,
   },
   scoreRating: {
     textAlign: 'center',
     fontSize: 13,
-    fontWeight: '700',
-    color: '#2e5037',
+    fontWeight: '600',
+    color: tokens.color.ink.secondary,
     marginTop: 8,
     marginBottom: 16,
   },
@@ -423,7 +601,6 @@ const s = StyleSheet.create({
   },
   completedStrip: {
     width: '100%',
-    backgroundColor: ACCENT,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -444,7 +621,6 @@ const s = StyleSheet.create({
     letterSpacing: -0.3,
     color: tokens.color.surface.card,
   },
-
   footer: {
     paddingHorizontal: 20,
     paddingBottom: 18,

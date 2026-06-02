@@ -47,7 +47,6 @@ export function ResumeCaptureBanner({
         <Text style={s.title} numberOfLines={1}>
           {siteName}
         </Text>
-        {/* [ORCHESTRATOR_EXCEPTION] R-01 fix: build full string to avoid text fragment split */}
         <Text style={s.meta}>
           {`${photosTakenSoFar} ${photosTakenSoFar === 1 ? 'photo' : 'photos'} taken`}
         </Text>

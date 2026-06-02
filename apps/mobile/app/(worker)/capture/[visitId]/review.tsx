@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] canon redesign — Final Review
-
 /**
  * Capture step 5 — Final Review (canon redesign).
  *

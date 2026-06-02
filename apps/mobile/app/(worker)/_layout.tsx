@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] canon redesign — worker shell
-
 /**
  * Worker tab shell — 3-tab bottom navigator wrapped in WorkerDrawerProvider.
  *
@@ -28,7 +26,7 @@ import { loadQueueState, saveQueueState } from '../../lib/storage/queue-persiste
 import { rehydrateFromPartition } from '../../lib/storage/reinstall-rehydration';
 import { maybeSweepOldPhotos } from '../../lib/storage/photo-sweep';
 import { WorkerDrawerProvider } from '../../components/worker/WorkerDrawer';
-// [ORCHESTRATOR_EXCEPTION] DEV-only screenshot debug FAB import
+// DEV-only screenshot debug FAB import
 // import { SendToClaudeButton } from '../../components/dev/SendToClaudeButton';
 
 type TabIcon = React.ComponentProps<typeof Feather>['name'];
@@ -152,11 +150,11 @@ export default function WorkerLayout() {
             }}
           />
           <Tabs.Screen name="history" options={{ href: null }} />
-          {/* [ORCHESTRATOR_EXCEPTION] DIVERGENCE-10 fix: hide tab bar during full-flow capture + visit detail */}
+          {/* Hide tab bar during full-flow capture + visit detail */}
           <Tabs.Screen name="visit" options={{ href: null, tabBarStyle: { display: 'none' } }} />
           <Tabs.Screen name="capture" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         </Tabs>
-        {/* [ORCHESTRATOR_EXCEPTION] DEV-only: tap-to-send-screenshot debug FAB. Renders null in production. */}
+        {/* DEV-only: tap-to-send-screenshot debug FAB. Renders null in production. */}
         {/* {__DEV__ ? <SendToClaudeButton /> : null} */}
       </View>
     </WorkerDrawerProvider>

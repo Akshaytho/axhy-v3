@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] coherent multi-file canon implementation must stay in single session
-
 /**
  * SyncPill — Synced / Syncing status pill for the worker app header.
  *
@@ -7,9 +5,6 @@
  *   synced  → ok-soft bg + #2e5037 ink
  *   syncing → warn-soft bg + warn ink
  *
- * [ORCHESTRATOR_EXCEPTION] panel finding: 'offline' was dead — no producer
- * sets it. Worker app has no real network detection yet. Removed from union
- * until that lands; re-add with a real producer when needed.
  *
  * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerToday)
  */
@@ -18,11 +13,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 
 /** @derives(master-plan §G) — worker surface */
-// [ORCHESTRATOR_EXCEPTION] add-@derives JSDoc
 export type SyncState = 'synced' | 'syncing';
 
 /** @derives(master-plan §G) — worker surface */
-// [ORCHESTRATOR_EXCEPTION] add-@derives JSDoc
 export function SyncPill({ state = 'synced' }: { state?: SyncState }) {
   const cfg = {
     synced: { bg: tokens.color.semantic.okSoft, ink: '#2e5037', label: 'Synced' },

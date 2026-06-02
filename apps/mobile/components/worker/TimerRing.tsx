@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] coherent multi-file canon implementation must stay in single session
-
 /**
  * TimerRing — terracotta progress ring for the Cleaning Timer screen.
  *
@@ -23,7 +21,6 @@ interface Props {
 }
 
 /** @derives(master-plan §G) — worker surface */
-/* [ORCHESTRATOR_EXCEPTION] add-@derives JSDoc */
 export function TimerRing({
   size = 240,
   stroke = 10,

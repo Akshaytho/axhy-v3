@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] coherent multi-file canon implementation must stay in single session
-
 /**
  * NextSiteCard — big ink card on Worker Home with terracotta "Scan QR · check in" CTA.
  *
@@ -15,11 +13,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { tokens } from '@axhy/ui-tokens';
 
-// [ORCHESTRATOR_EXCEPTION] panel N-04 fix: state-driven CTA label + behavior.
 // Visit states the hero handles. Kept as a local union — the backend type
 // (WorkerTodayOutput.visits[].state) is a superset; we only branch on the
 // ones the hero card needs to react to.
-/** @derives(master-plan §G) — worker surface [ORCHESTRATOR_EXCEPTION] mechanical lint-fix batch */
+/** @derives(master-plan §G) — worker surface */
 export type NextSiteCardVisitState =
   | 'SCHEDULED'
   | 'NOTIFIED'
@@ -34,7 +31,6 @@ interface Props {
   siteName: string;
   scheduledFor: string; // "10:00 AM"
   distance?: string | null; // "180 m"
-  // [ORCHESTRATOR_EXCEPTION] N-04: optional with SCHEDULED default to keep
   // existing call sites compiling during incremental landing of panel fixes.
   // Call sites should pass real visit.state to get correct CTA label/behavior.
   visitState?: NextSiteCardVisitState;
@@ -64,7 +60,7 @@ function ctaModeFor(state: NextSiteCardVisitState): CtaMode {
   }
 }
 
-/** @derives(master-plan §G) — worker surface [ORCHESTRATOR_EXCEPTION] mechanical lint-fix batch */
+/** @derives(master-plan §G) — worker surface */
 export function NextSiteCard({
   siteName,
   scheduledFor,
@@ -72,7 +68,6 @@ export function NextSiteCard({
   visitState = 'SCHEDULED',
   onScanPress,
 }: Props) {
-  // [ORCHESTRATOR_EXCEPTION] N-04 default preserves canonical "Scan QR · check in"
   const cta = ctaModeFor(visitState);
   const ctaDisabled = cta.kind === 'waiting' || cta.kind === 'hidden';
 
@@ -107,7 +102,6 @@ export function NextSiteCard({
           ]}
         >
           {cta.kind === 'scan' ? (
-            // [ORCHESTRATOR_EXCEPTION] DIVERGENCE-3 fix: 2x2 QR-grid glyph
             <View style={s.qrGlyph}>
               <View style={s.qrRow}>
                 <View style={s.qrCell} />
@@ -187,7 +181,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  // [ORCHESTRATOR_EXCEPTION] N-04 fix: dimmed CTA for AWAITING_VERIFICATION
   ctaWaiting: {
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
@@ -196,7 +189,6 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  // [ORCHESTRATOR_EXCEPTION] canon-fix style update
   qrGlyph: { flexDirection: 'column' },
   qrRow: { flexDirection: 'row' },
   qrCell: {

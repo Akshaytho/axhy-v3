@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] canon redesign — Cleaning Timer
-
 /**
  * Capture step 3 — Cleaning timer (canon redesign).
  *
@@ -21,7 +19,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
-// [ORCHESTRATOR_EXCEPTION] DIVERGENCE-16: add CLEANING AT site label
 import { CAPTURE_STEPS, NAV_ROUTES } from '../../../../lib/api-routes';
 import { TimerRing } from '../../../../components/worker/TimerRing';
 import { WCard } from '../../../../components/worker/WCard';
@@ -60,7 +57,6 @@ export default function TimerStep(): React.JSX.Element {
   const { visitId } = useLocalSearchParams<{ visitId: string }>();
   const vid = visitId ?? '';
 
-  // [ORCHESTRATOR_EXCEPTION] DIVERGENCE-16 fix: resolve siteName for CLEANING AT label
   const todayQuery = useWorkerTodayQuery();
   const siteName = todayQuery.data?.visits.find((v) => v.id === vid)?.siteName ?? '';
 
@@ -78,7 +74,9 @@ export default function TimerStep(): React.JSX.Element {
         getCurrentPositionAsync({ accuracy: 3 })
           .then((pos) => {
             setGpsPoints(1);
-            console.warn('[timer] GPS start', pos.coords.latitude, pos.coords.longitude);
+            if (__DEV__) {
+              console.warn('[timer] GPS start', pos.coords.latitude, pos.coords.longitude);
+            }
           })
           .catch((e) => {
             console.warn('[timer] GPS unavailable', e);
@@ -103,7 +101,10 @@ export default function TimerStep(): React.JSX.Element {
       import('expo-location').then(({ getCurrentPositionAsync }) => {
         getCurrentPositionAsync({ accuracy: 3 })
           .then((pos) => {
-            console.warn('[timer] GPS end', pos.coords.latitude, pos.coords.longitude);
+            // Privacy: GPS coords are dev-only — production logs see no lat/lng.
+            if (__DEV__) {
+              console.warn('[timer] GPS end', pos.coords.latitude, pos.coords.longitude);
+            }
           })
           .catch((e) => {
             console.warn('[timer] GPS unavailable', e);
@@ -162,7 +163,6 @@ export default function TimerStep(): React.JSX.Element {
           </Text>
         </WCard>
 
-        {/* [ORCHESTRATOR_EXCEPTION] DIVERGENCE-16 fix: site label between GPS card and CTA */}
         {siteName ? (
           <View style={s.siteLabelWrap}>
             <Text style={s.siteLabelEyebrow}>CLEANING AT</Text>
@@ -250,7 +250,6 @@ const s = StyleSheet.create({
     letterSpacing: 0.9,
     color: tokens.color.ink.tertiary,
   },
-  // [ORCHESTRATOR_EXCEPTION] DIVERGENCE-16 site label styles
   siteLabelWrap: { alignItems: 'center', marginTop: 18 },
   siteLabelEyebrow: {
     fontSize: 11,

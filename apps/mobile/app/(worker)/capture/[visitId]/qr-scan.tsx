@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] canon redesign — QR Scan
-
 /**
  * Capture step 1 — QR Scan (canon visual).
  *

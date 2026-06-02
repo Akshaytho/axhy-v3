@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] worker Home canon panel-fix pass (BLOCKER + HIGH from 4 reviewers)
-
 /**
  * Worker Home (Today) — canon layout from docs/design/worker-app-canon.
  *
@@ -12,8 +10,10 @@
  *   3. 2-stat strip (Done / Planned) — Avg score remains removed per prior
  *      decision (worker has no acted-on history yet).
  *   4. ResumeCaptureBanner (when server-flagged) above the plan.
- *   5. "Today's plan · N sites" list — grouped into In progress / Upcoming /
- *      Completed sections, each shown only when non-empty (panel UI/UX F-03).
+ *   5. "Today's plan · N sites" list — grouped into Needs attention /
+ *      In progress / Upcoming / Completed sections, each shown only when
+ *      non-empty (panel UI/UX F-03). FLAGGED visits live in Needs attention
+ *      so the worker can see them, separate from VERIFIED completions.
  *
  * Behavior fixes landed:
  *   - Pluralization built as a single string (no split text nodes) — R-01.
@@ -57,6 +57,7 @@ import { ResumeCaptureBanner } from '../../components/worker/ResumeCaptureBanner
 import { StatCard } from '../../components/worker/StatCard';
 import { SyncPill, type SyncState } from '../../components/worker/SyncPill';
 import { useWorkerDrawer } from '../../components/worker/WorkerDrawer';
+import { pickWorkerCaptureVisit } from '../../lib/worker-today-helpers';
 
 const PAUSED_STATES = new Set(['ON_SUSPENSION', 'BLOCKED']);
 
@@ -69,8 +70,8 @@ const COMPLETED_STATES = new Set([
   'CANCELLED',
   'NO_SHOW',
   'ARCHIVED',
-  'FLAGGED',
 ]);
+const NEEDS_ATTENTION_STATES = new Set(['FLAGGED']);
 
 function formatDateRow(iso: string): string {
   const d = new Date(iso + 'T00:00:00');
@@ -138,30 +139,9 @@ export default function WorkerHome(): React.JSX.Element {
     return () => clearTimeout(t);
   }, [isUnauthorized]);
 
-  // NEXT picker — pick the SCHEDULED with earliest scheduledStart ≥ now.
-  // Fallback per panel A-11: if no SCHEDULED ahead, pick earliest SCHEDULED
-  // today regardless of now (clock skew / late start). Else IN_PROGRESS with
-  // most-recent scheduledStart. Else null (hide hero).
-  const nextVisitId = useMemo(() => {
-    if (!data) return null;
-    const now = Date.now();
-    const scheduled = data.visits
-      .filter((v) => v.state === 'SCHEDULED')
-      .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime());
-    const scheduledAhead = scheduled.filter((v) => new Date(v.scheduledFor).getTime() >= now);
-    if (scheduledAhead.length > 0) return scheduledAhead[0]!.id;
-    if (scheduled.length > 0) return scheduled[0]!.id;
-    const inProgress = data.visits
-      .filter((v) => v.state === 'IN_PROGRESS')
-      .sort((a, b) => new Date(b.scheduledFor).getTime() - new Date(a.scheduledFor).getTime());
-    if (inProgress.length > 0) return inProgress[0]!.id;
-    return null;
-  }, [data]);
-
   const nextVisit = useMemo(() => {
-    if (!data || !nextVisitId) return null;
-    return data.visits.find((v) => v.id === nextVisitId) ?? null;
-  }, [data, nextVisitId]);
+    return pickWorkerCaptureVisit(data);
+  }, [data]);
 
   const stats = useMemo(() => {
     const visits = data?.visits ?? [];
@@ -174,6 +154,7 @@ export default function WorkerHome(): React.JSX.Element {
   const groups = useMemo(() => {
     const visits = data?.visits ?? [];
     return {
+      needsAttention: visits.filter((v) => NEEDS_ATTENTION_STATES.has(v.state)),
       inProgress: visits.filter((v) => IN_PROGRESS_STATES.has(v.state)),
       upcoming: visits.filter((v) => UPCOMING_STATES.has(v.state)),
       completed: visits.filter((v) => COMPLETED_STATES.has(v.state)),
@@ -186,11 +167,7 @@ export default function WorkerHome(): React.JSX.Element {
 
   const onHeroPress = useCallback(() => {
     if (!nextVisit) return;
-    // For IN_PROGRESS, continue capture flow. For SCHEDULED, open the visit
-    // detail (worker reviews instructions / address before starting). The
-    // canon CTA copy is "Scan QR · check in" — kept until backend exposes
-    // per-visit verb state.
-    router.push(NAV_ROUTES.workerVisitDetail(nextVisit.id));
+    router.push(NAV_ROUTES.workerCaptureEntry(nextVisit.id));
   }, [nextVisit]);
 
   const onResumeContinue = useCallback(() => {
@@ -311,6 +288,7 @@ export default function WorkerHome(): React.JSX.Element {
               siteName={nextVisit.siteName}
               scheduledFor={formatTimeShort(nextVisit.scheduledFor)}
               distance={null}
+              visitState={nextVisit.state}
               onScanPress={onHeroPress}
             />
           </View>
@@ -336,6 +314,24 @@ export default function WorkerHome(): React.JSX.Element {
             </View>
           ) : (
             <>
+              {groups.needsAttention.length > 0 ? (
+                <View style={s.group}>
+                  <Text style={[s.groupHeader, { color: tokens.color.semantic.warn }]}>
+                    Needs attention
+                  </Text>
+                  {groups.needsAttention.map((v, i) => (
+                    <AssignmentCard
+                      key={v.id}
+                      siteName={v.siteName}
+                      scheduledFor={v.scheduledFor}
+                      state={v.state}
+                      isNext={false}
+                      isLast={i === groups.needsAttention.length - 1}
+                      onPress={() => onAssignmentTap(v.id)}
+                    />
+                  ))}
+                </View>
+              ) : null}
               {groups.inProgress.length > 0 ? (
                 <View style={s.group}>
                   <Text style={s.groupHeader}>In progress</Text>
@@ -345,7 +341,7 @@ export default function WorkerHome(): React.JSX.Element {
                       siteName={v.siteName}
                       scheduledFor={v.scheduledFor}
                       state={v.state}
-                      isNext={v.id === nextVisitId}
+                      isNext={v.id === nextVisit?.id}
                       isLast={i === groups.inProgress.length - 1}
                       onPress={() => onAssignmentTap(v.id)}
                     />
@@ -361,7 +357,7 @@ export default function WorkerHome(): React.JSX.Element {
                       siteName={v.siteName}
                       scheduledFor={v.scheduledFor}
                       state={v.state}
-                      isNext={v.id === nextVisitId}
+                      isNext={v.id === nextVisit?.id}
                       isLast={i === groups.upcoming.length - 1}
                       onPress={() => onAssignmentTap(v.id)}
                     />

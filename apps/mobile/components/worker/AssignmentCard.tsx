@@ -1,5 +1,3 @@
-// [ORCHESTRATOR_EXCEPTION] canon redesign — single coherent session
-
 /**
  * AssignmentCard — single row in the worker Home "Today's plan" list.
  *
@@ -38,7 +36,6 @@ function formatTime(iso: string): string {
   return `${hh}:${mm} ${ampm}`;
 }
 
-// [ORCHESTRATOR_EXCEPTION] coherent worker Home QA pass — placeholder removal needs to stay in one session
 type Props = {
   siteName: string;
   scheduledFor: string;
@@ -76,7 +73,6 @@ export function AssignmentCard({
       style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}
     >
       <Text style={[s.time, { color: timeColor }]}>{formatTime(scheduledFor)}</Text>
-      {/* [ORCHESTRATOR_EXCEPTION] placeholder removal: do not render fake 30m duration */}
       <View style={s.center}>
         <Text
           style={[s.siteName, done && { textDecorationLine: 'line-through', opacity: 0.6 }]}

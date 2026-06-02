@@ -133,8 +133,6 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
 
   return (
     <ScrollView contentContainerStyle={s.scrollBody}>
-      {/* [ORCHESTRATOR_EXCEPTION] DIVERGENCE-17 fix: drop duplicate Review header + instructions */}
-
       <View style={s.grid}>
         {tiles.map((tile) => (
           <Pressable
