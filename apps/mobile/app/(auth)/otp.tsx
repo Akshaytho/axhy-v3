@@ -11,7 +11,7 @@
  * @derives(F-006a scope round-2 v6 Pick 5)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,12 +23,13 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 import type { VerifyOTPOutput, RequestOTPOutput } from '@axhy/shared-schema';
 
 import { apiFetch, ApiError } from '../../lib/api';
 import { API_ROUTES, NAV_ROUTES } from '../../lib/api-routes';
+import { clearPendingAuthPhone, getPendingAuthPhone } from '../../lib/auth-pending-phone';
 import {
   onIdentifiedLogin,
   NonSupervisorRoleNotSupportedError,
@@ -38,13 +39,28 @@ import PushPermissionPrompt from '../../components/PushPermissionPrompt';
 const RESEND_SECONDS = 60;
 
 export default function OtpScreen() {
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const [phone, setPhone] = useState<string | null>(null);
+  const [phoneReady, setPhoneReady] = useState(false);
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(RESEND_SECONDS);
   const [resending, setResending] = useState(false);
   const [identifiedLoginComplete, setIdentifiedLoginComplete] = useState(false);
+  const verifyInFlightRef = useRef(false);
+  const resendInFlightRef = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    void getPendingAuthPhone().then((storedPhone) => {
+      if (!alive) return;
+      setPhone(storedPhone);
+      setPhoneReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -53,8 +69,9 @@ export default function OtpScreen() {
   }, [countdown]);
 
   const handleVerify = useCallback(async () => {
-    if (code.length !== 6) return;
+    if (verifyInFlightRef.current || loading || code.length !== 6 || !phone) return;
     setError(null);
+    verifyInFlightRef.current = true;
     setLoading(true);
     try {
       const result = await apiFetch<VerifyOTPOutput>(API_ROUTES.authOtpVerify, {
@@ -68,10 +85,12 @@ export default function OtpScreen() {
       // hands off to PushPermissionPrompt as before.
       const role = result.memberships[0]?.role;
       if (role === 'WORKER') {
+        await clearPendingAuthPhone();
         router.replace(NAV_ROUTES.authPermissions);
         return;
       }
       // Hand off to PushPermissionPrompt — it owns the exactly-once nav contract.
+      await clearPendingAuthPhone();
       setIdentifiedLoginComplete(true);
     } catch (err) {
       if (err instanceof NonSupervisorRoleNotSupportedError) {
@@ -82,16 +101,18 @@ export default function OtpScreen() {
         setError('Verification failed. Check your connection and try again.');
       }
     } finally {
+      verifyInFlightRef.current = false;
       setLoading(false);
     }
   }, [code, phone]);
 
   const handlePromptComplete = useCallback(() => {
-    router.replace(NAV_ROUTES.supervisorProfile);
+    router.replace(NAV_ROUTES.supervisorMe);
   }, []);
 
   async function handleResend() {
-    if (countdown > 0 || resending) return;
+    if (!phone || countdown > 0 || resending || resendInFlightRef.current) return;
+    resendInFlightRef.current = true;
     setResending(true);
     setError(null);
     try {
@@ -109,6 +130,7 @@ export default function OtpScreen() {
         setError('Could not resend OTP. Try again.');
       }
     } finally {
+      resendInFlightRef.current = false;
       setResending(false);
     }
   }
@@ -116,6 +138,35 @@ export default function OtpScreen() {
   const maskedPhone = phone
     ? `+91 ${phone.slice(-10, -6).replace(/\d/g, '•')}${phone.slice(-4)}`
     : '';
+
+  if (!phoneReady) {
+    return (
+      <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
+        <View style={s.fallback}>
+          <ActivityIndicator color={tokens.color.brand.accent} />
+          <Text style={s.fallbackText}>Loading your sign-in step…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!phone) {
+    return (
+      <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
+        <View style={s.fallback}>
+          <Text style={s.heading}>Start again</Text>
+          <Text style={s.sub}>We need your mobile number before we can verify an OTP.</Text>
+          <TouchableOpacity
+            style={s.btn}
+            onPress={() => router.replace(NAV_ROUTES.authPhone)}
+            accessibilityLabel="Back to sign in"
+          >
+            <Text style={s.btnText}>Back to sign in</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
@@ -141,6 +192,9 @@ export default function OtpScreen() {
             maxLength={6}
             returnKeyType="done"
             onSubmitEditing={handleVerify}
+            autoComplete="one-time-code"
+            accessibilityLabel="One-time password"
+            testID="auth-otp-input"
             autoFocus
             textAlign="center"
           />
@@ -152,6 +206,8 @@ export default function OtpScreen() {
             onPress={handleVerify}
             disabled={loading || code.length !== 6}
             activeOpacity={0.8}
+            accessibilityLabel="Verify OTP"
+            testID="auth-otp-submit"
           >
             {loading ? (
               <ActivityIndicator color={tokens.color.surface.paper} />
@@ -253,6 +309,18 @@ const s = StyleSheet.create({
   resendRow: {
     marginTop: tokens.space[5],
     alignItems: 'center',
+  },
+  fallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: tokens.space[5],
+    gap: tokens.space[3],
+  },
+  fallbackText: {
+    fontSize: tokens.type.body.size,
+    color: tokens.color.ink.tertiary,
+    textAlign: 'center',
   },
   resendTimer: {
     fontSize: tokens.type.bodySm.size,

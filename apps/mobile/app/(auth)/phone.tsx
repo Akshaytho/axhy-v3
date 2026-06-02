@@ -3,7 +3,7 @@
  * @derives(ADR-0007)
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -20,19 +20,35 @@ import { tokens } from '@axhy/ui-tokens';
 import type { RequestOTPOutput } from '@axhy/shared-schema';
 
 import { apiFetch, ApiError } from '../../lib/api';
+import { NAV_ROUTES } from '../../lib/api-routes';
+import { getPendingAuthPhone, setPendingAuthPhone } from '../../lib/auth-pending-phone';
 
 export default function PhoneScreen() {
   const [digits, setDigits] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestInFlightRef = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    void getPendingAuthPhone().then((storedPhone) => {
+      if (!alive || !storedPhone || !storedPhone.startsWith('+91')) return;
+      setDigits(storedPhone.slice(3, 13));
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function handleGetOtp() {
+    if (requestInFlightRef.current || loading) return;
     const trimmed = digits.trim();
     if (trimmed.length !== 10) {
       setError('Enter a valid 10-digit mobile number.');
       return;
     }
     setError(null);
+    requestInFlightRef.current = true;
     setLoading(true);
     const phone = `+91${trimmed}`;
     try {
@@ -41,7 +57,9 @@ export default function PhoneScreen() {
         body: { phone },
         auth: false,
       });
-      router.push({ pathname: '/(auth)/otp', params: { phone } });
+      await setPendingAuthPhone(phone);
+      setDigits('');
+      router.replace(NAV_ROUTES.authOtp);
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setError('Too many attempts. Wait 15 min.');
@@ -49,6 +67,7 @@ export default function PhoneScreen() {
         setError('Could not send OTP. Check your connection and try again.');
       }
     } finally {
+      requestInFlightRef.current = false;
       setLoading(false);
     }
   }
@@ -78,6 +97,9 @@ export default function PhoneScreen() {
               maxLength={10}
               returnKeyType="done"
               onSubmitEditing={handleGetOtp}
+              autoComplete="tel"
+              accessibilityLabel="Mobile number"
+              testID="auth-phone-input"
               autoFocus
             />
           </View>
@@ -89,6 +111,8 @@ export default function PhoneScreen() {
             onPress={handleGetOtp}
             disabled={loading || digits.length !== 10}
             activeOpacity={0.8}
+            accessibilityLabel="Get OTP"
+            testID="auth-phone-submit"
           >
             {loading ? (
               <ActivityIndicator color={tokens.color.surface.paper} />

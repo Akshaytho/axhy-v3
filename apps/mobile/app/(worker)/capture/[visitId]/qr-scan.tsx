@@ -25,17 +25,19 @@ import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
 import { CAPTURE_STEPS, NAV_ROUTES } from '../../../../lib/api-routes';
+import { useWorkerTodayQuery } from '../../../../lib/queries/use-worker-today';
+import { findWorkerTodayVisit } from '../../../../lib/worker-today-helpers';
 
 const STEP = 'qr-scan';
 const STEP_INDEX = CAPTURE_STEPS.indexOf(STEP) + 1;
 const ACCENT = tokens.color.brand.accent;
 
-const SITE_PLACEHOLDER = 'SITE — QR';
-
 /** @derives(master-plan §G) */
 export default function QrScanStep(): React.JSX.Element {
   const { visitId } = useLocalSearchParams<{ visitId: string }>();
   const vid = visitId ?? '';
+  const { data } = useWorkerTodayQuery();
+  const siteLabel = findWorkerTodayVisit(data, vid)?.siteName ?? 'SITE — QR';
 
   const scan = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -76,7 +78,7 @@ export default function QrScanStep(): React.JSX.Element {
 
       <View style={s.sitePillRow}>
         <View style={s.sitePill}>
-          <Text style={s.sitePillText}>{SITE_PLACEHOLDER}</Text>
+          <Text style={s.sitePillText}>{siteLabel}</Text>
         </View>
       </View>
 

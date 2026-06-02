@@ -4,14 +4,9 @@
  * Capture step 6 — Submit + Verify polling (canon redesign).
  *
  * Existing submit + polling logic is preserved (collect uploaded photos,
- * POST /submit, poll /verify-status). Only the success-state visuals match
- * the canon "Site verified" screen: concentric rings burst, terracotta
- * check, score card (AI VERIFICATION SCORE / 92/100 / "Excellent work"),
- * stats row, terracotta "SITE COMPLETED · WORK LOGGED" strip, outline
- * "Back to home" button.
- *
- * The 92 score is a placeholder until the verify-status response surfaces
- * a quality score; see DESIGN_MISSING.md.
+ * POST /submit, poll /verify-status). The success state stays close to the
+ * canon visual, but avoids inventing a quality score the backend does not
+ * return yet.
  *
  * @derives(WORKER_MVP_SLICE_2B_3_PLAN.md §T8)
  * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerSuccess)
@@ -28,6 +23,11 @@ import { CAPTURE_STEPS, NAV_ROUTES } from '../../../../lib/api-routes';
 import { r2UploadQueue } from '../../../../lib/r2-upload-queue';
 import { submitVisit, fetchVerifyStatus } from '../../../../lib/api-submit';
 import { WCard } from '../../../../components/worker/WCard';
+import { useWorkerTodayQuery } from '../../../../lib/queries/use-worker-today';
+import {
+  findWorkerTodayVisit,
+  formatWorkerVisitLocation,
+} from '../../../../lib/worker-today-helpers';
 
 const STEP = 'submit';
 const STEP_INDEX = CAPTURE_STEPS.indexOf(STEP) + 1;
@@ -36,19 +36,23 @@ const POLL_MAX = 40;
 
 type ScreenState = 'idle' | 'submitting' | 'polling' | 'done' | 'error';
 
-const PLACEHOLDER_SCORE = 92;
 const ACCENT = tokens.color.brand.accent;
 
 /** @derives(master-plan §G) */
 export default function SubmitStep(): React.JSX.Element {
   const { visitId } = useLocalSearchParams<{ visitId: string }>();
   const vid = visitId ?? '';
+  const { data } = useWorkerTodayQuery();
 
   const [state, setState] = useState<ScreenState>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [pollCount, setPollCount] = useState(0);
+  const [uploadSummary, setUploadSummary] = useState({ total: 0, uploaded: 0 });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  const visit = findWorkerTodayVisit(data, vid);
+  const visitLabel = formatWorkerVisitLocation(visit);
+  const uploadsReady = uploadSummary.total > 0 && uploadSummary.uploaded === uploadSummary.total;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -57,6 +61,22 @@ export default function SubmitStep(): React.JSX.Element {
       if (pollRef.current !== null) clearInterval(pollRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    function syncUploadSummary(snapshot: ReturnType<typeof r2UploadQueue.snapshot>): void {
+      let total = 0;
+      let uploaded = 0;
+      snapshot.forEach((item) => {
+        if (item.visitId !== vid) return;
+        total += 1;
+        if (item.status === 'done') uploaded += 1;
+      });
+      setUploadSummary({ total, uploaded });
+    }
+
+    syncUploadSummary(r2UploadQueue.snapshot());
+    return r2UploadQueue.onChange(syncUploadSummary);
+  }, [vid]);
 
   function stopPolling(): void {
     if (pollRef.current !== null) {
@@ -156,7 +176,11 @@ export default function SubmitStep(): React.JSX.Element {
             <Feather name="upload-cloud" size={48} color={ACCENT} />
             <Text style={s.idleTitle}>Submit your work</Text>
             <Text style={s.idleHint}>
-              Your photos are uploaded. Tap below to send them for AI verification.
+              {uploadsReady
+                ? 'Your photos are uploaded. Tap below to send them for AI verification.'
+                : uploadSummary.total === 0
+                  ? 'Upload at least one photo before you submit this visit.'
+                  : `Wait for uploads to finish before submitting (${uploadSummary.uploaded}/${uploadSummary.total} ready).`}
             </Text>
           </View>
         )}
@@ -192,21 +216,18 @@ export default function SubmitStep(): React.JSX.Element {
             </View>
 
             <Text style={s.successTitle}>Site verified</Text>
-            <Text style={s.successSubtitle}>Phoenix Mall — B1 · Whitefield, Bangalore</Text>
+            <Text style={s.successSubtitle}>{visitLabel}</Text>
 
             <WCard padding={20} style={s.scoreCard}>
-              <Text style={s.scoreEyebrow}>AI VERIFICATION SCORE</Text>
-              <View style={s.scoreRow}>
-                <Text style={s.scoreValue}>{PLACEHOLDER_SCORE}</Text>
-                <Text style={s.scoreSlash}>/100</Text>
-              </View>
-              <Text style={s.scoreRating}>Excellent work</Text>
+              <Text style={s.scoreEyebrow}>AI VERIFICATION</Text>
+              <Text style={s.statusValue}>Completed</Text>
+              <Text style={s.scoreRating}>Photos accepted and work logged.</Text>
               <View style={s.scoreDivider} />
               <View style={s.scoreStatsRow}>
                 {[
-                  { n: '8', l: 'Photos' },
-                  { n: '28m', l: 'Duration' },
-                  { n: 'OK', l: 'GPS' },
+                  { n: String(uploadSummary.uploaded), l: 'Photos' },
+                  { n: 'Done', l: 'Upload' },
+                  { n: 'Verified', l: 'Status' },
                 ].map((stat) => (
                   <View key={stat.l} style={s.scoreStatCell}>
                     <Text style={s.scoreStatValue}>{stat.n}</Text>
@@ -235,10 +256,15 @@ export default function SubmitStep(): React.JSX.Element {
       <View style={s.footer}>
         {state === 'idle' && (
           <Pressable
-            onPress={() => void handleSubmit()}
+            onPress={uploadsReady ? () => void handleSubmit() : undefined}
             accessibilityRole="button"
             accessibilityLabel="Submit photos"
-            style={({ pressed }) => [s.primaryBtn, pressed && { opacity: 0.92 }]}
+            disabled={!uploadsReady}
+            style={({ pressed }) => [
+              s.primaryBtn,
+              !uploadsReady && s.primaryBtnDisabled,
+              pressed && uploadsReady && { opacity: 0.92 },
+            ]}
           >
             <Text style={s.primaryBtnText}>Submit photos</Text>
           </Pressable>
@@ -357,32 +383,22 @@ const s = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.1,
     color: tokens.color.ink.tertiary,
-    marginBottom: 8,
     textAlign: 'center',
   },
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    gap: 4,
-    marginBottom: 4,
-  },
-  scoreValue: {
+  statusValue: {
+    marginTop: 12,
+    textAlign: 'center',
     fontWeight: '800',
-    fontSize: 64,
-    letterSpacing: -2,
+    fontSize: 28,
+    letterSpacing: -0.8,
     color: ACCENT,
-  },
-  scoreSlash: {
-    fontSize: 22,
-    color: tokens.color.ink.tertiary,
-    fontWeight: '600',
   },
   scoreRating: {
     textAlign: 'center',
     fontSize: 13,
     fontWeight: '700',
     color: '#2e5037',
+    marginTop: 8,
     marginBottom: 16,
   },
   scoreDivider: {
@@ -439,6 +455,9 @@ const s = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  primaryBtnDisabled: {
+    opacity: 0.45,
   },
   primaryBtnText: {
     fontSize: 16,

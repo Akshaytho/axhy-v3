@@ -1,16 +1,12 @@
-// [ORCHESTRATOR_EXCEPTION] coherent multi-file canon implementation must stay in single session
-
 /**
  * WorkerDrawer — left slide-in panel for worker-extra screens not in canon.
  *
  * Mirrors the supervisor Drawer pattern (RN Modal + Animated translation).
- * Holds the items the canon design omits but worker MVP needs:
+ * Holds the real worker utilities that exist today:
  *
  *   1. My profile     → /(worker)/profile
- *   2. Leave request  → not built; opens an inline "coming soon" alert for now
- *   3. Swap / replacement invites → not built; alert
- *   4. Help / Support → Linking.openURL('https://axhy.app/help')
- *   5. Sign out       → onAppLogout() + replace /(auth)/phone
+ *   2. Help / Support → Linking.openURL('https://axhy.app/help')
+ *   3. Sign out       → onAppLogout() + replace /(auth)/phone
  *
  * Provides WorkerDrawerContext so any worker screen can open the drawer via
  * useWorkerDrawer().openDrawer().
@@ -20,7 +16,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Animated, Alert, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
@@ -35,7 +31,6 @@ interface WorkerDrawerContextValue {
 const WorkerDrawerContext = createContext<WorkerDrawerContextValue | null>(null);
 
 /** @derives(master-plan §G) — worker surface */
-/* [ORCHESTRATOR_EXCEPTION] add-@derives JSDoc */
 export function useWorkerDrawer(): WorkerDrawerContextValue {
   const ctx = useContext(WorkerDrawerContext);
   if (!ctx) {
@@ -59,10 +54,11 @@ interface DrawerProps {
 }
 
 /** @derives(master-plan §G) — worker surface */
-/* [ORCHESTRATOR_EXCEPTION] add-@derives JSDoc */
 export function WorkerDrawer({ open, onClose }: DrawerProps) {
   const translate = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlay = useRef(new Animated.Value(0)).current;
+  const appVersion = process.env.EXPO_PUBLIC_APP_VERSION ?? 'dev';
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     Animated.parallel([
@@ -79,16 +75,23 @@ export function WorkerDrawer({ open, onClose }: DrawerProps) {
     ]).start();
   }, [open, translate, overlay]);
 
+  useEffect(() => {
+    if (!logoutError) return;
+    const t = setTimeout(() => setLogoutError(null), 5000);
+    return () => clearTimeout(t);
+  }, [logoutError]);
+
   async function handleLogout(): Promise<void> {
     try {
       await onAppLogout();
+      onClose();
+      router.replace(NAV_ROUTES.authPhone);
     } catch (err) {
       if (__DEV__) {
         console.warn('[worker-drawer] onAppLogout threw', err);
       }
+      setLogoutError("Couldn't sign out. Tap to try again.");
     }
-    onClose();
-    router.replace(NAV_ROUTES.authPhone);
   }
 
   const items: Item[] = useMemo(
@@ -99,22 +102,6 @@ export function WorkerDrawer({ open, onClose }: DrawerProps) {
         onPress: () => {
           onClose();
           router.push('/(worker)/profile' as never);
-        },
-      },
-      {
-        icon: 'calendar',
-        label: 'Leave request',
-        onPress: () => {
-          onClose();
-          Alert.alert('Coming soon', 'Leave requests open in slice 3.');
-        },
-      },
-      {
-        icon: 'repeat',
-        label: 'Swap / replacement invites',
-        onPress: () => {
-          onClose();
-          Alert.alert('Coming soon', 'Replacement invites open in slice 3.');
         },
       },
       {
@@ -179,9 +166,14 @@ export function WorkerDrawer({ open, onClose }: DrawerProps) {
                 </Text>
               </Pressable>
             ))}
+            {logoutError ? (
+              <View style={s.errorBanner}>
+                <Text style={s.errorBannerText}>{logoutError}</Text>
+              </View>
+            ) : null}
           </View>
 
-          <Text style={s.footer}>Axhy v1.0.0</Text>
+          <Text style={s.footer}>{`Axhy v${appVersion}`}</Text>
         </Animated.View>
       </View>
     </Modal>
@@ -193,7 +185,6 @@ interface ProviderProps {
 }
 
 /** @derives(master-plan §G) — worker surface */
-/* [ORCHESTRATOR_EXCEPTION] add-@derives JSDoc */
 export function WorkerDrawerProvider({ children }: ProviderProps) {
   const [open, setOpen] = useState(false);
   const value = useMemo<WorkerDrawerContextValue>(() => ({ openDrawer: () => setOpen(true) }), []);
@@ -236,6 +227,19 @@ const s = StyleSheet.create({
     letterSpacing: 0.4,
   },
   list: { gap: 4 },
+  errorBanner: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: tokens.radius.r3,
+    backgroundColor: tokens.color.semantic.badSoft,
+    borderWidth: 1,
+    borderColor: tokens.color.semantic.bad,
+  },
+  errorBannerText: {
+    fontSize: 13,
+    color: tokens.color.semantic.bad,
+    fontWeight: '600',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
