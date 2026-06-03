@@ -53,6 +53,17 @@ const ResumeCaptureSchema = z.object({
   photosTakenSoFar: z.number().int().nonnegative(),
 });
 
+const WorkerHistoryVisitRowSchema = z.object({
+  id: z.string().uuid(),
+  siteId: z.string().uuid(),
+  siteName: z.string(),
+  siteAddress: z.string().nullable(),
+  scheduledFor: z.string(),
+  state: VisitStateSchema,
+  photosBefore: z.number().int().nonnegative(),
+  photosAfter: z.number().int().nonnegative(),
+});
+
 /**
  * GET /worker/today response.
  *
@@ -77,6 +88,28 @@ export const WorkerTodayOutput = z.object({
 });
 /** @derives(master-plan §G) */
 export type WorkerTodayOutput = z.infer<typeof WorkerTodayOutput>;
+
+/**
+ * GET /worker/history response.
+ *
+ * Returns the worker's recent completed / closed visit history across multiple
+ * days so the history screen is backed by real data instead of today's payload.
+ *
+ * @derives(master-plan §G)
+ */
+export const WorkerHistoryOutput = z.object({
+  workerId: z.string().uuid(),
+  windowDays: z.number().int().positive(),
+  summary: z.object({
+    total: z.number().int().nonnegative(),
+    verified: z.number().int().nonnegative(),
+    flagged: z.number().int().nonnegative(),
+    awaitingVerification: z.number().int().nonnegative(),
+  }),
+  visits: z.array(WorkerHistoryVisitRowSchema),
+});
+/** @derives(master-plan §G) */
+export type WorkerHistoryOutput = z.infer<typeof WorkerHistoryOutput>;
 
 /**
  * GET /worker/visits/:id response.

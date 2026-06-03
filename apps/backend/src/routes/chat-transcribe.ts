@@ -18,7 +18,6 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import multipart from '@fastify/multipart';
 
 import { requireAuth } from '../middleware/tenant-context.js'; // tenant-exempt: pure Whisper proxy, no DB access
 
@@ -64,17 +63,14 @@ function deriveConfidence(
   return 'medium';
 }
 
-export async function registerChatTranscribeRoutes(app: FastifyInstance): Promise<void> {
-  // Register multipart plugin scoped to this route registration context.
-  // fileSize capped at 10 MB — Whisper supports up to 25 MB but we impose a
-  // conservative limit to protect backend memory on Railway's shared instances.
-  await app.register(multipart, {
-    limits: {
-      fileSize: 10 * 1024 * 1024, // 10 MB
-      files: 1,
-    },
-  });
+/** Per-call cap that previously lived on this route's multipart registration.
+ *  Now applied per `req.file({ limits })` because multipart registers once at
+ *  app scope (server.ts) — fastify-plugin hoists the plugin globally so two
+ *  registrations would throw FST_ERR_DEC_ALREADY_PRESENT. Whisper supports up
+ *  to 25 MB; the 10 MB cap protects backend memory on Railway shared instances. */
+const TRANSCRIBE_AUDIO_LIMIT_BYTES = 10 * 1024 * 1024;
 
+export async function registerChatTranscribeRoutes(app: FastifyInstance): Promise<void> {
   app.post('/chat/transcribe', { preHandler: requireAuth }, async (req, reply) => {
     const auth = req.auth;
     if (!auth) {
@@ -100,7 +96,7 @@ export async function registerChatTranscribeRoutes(app: FastifyInstance): Promis
     // Read the single `audio` multipart field.
     let audioPart: import('@fastify/multipart').MultipartFile | undefined;
     try {
-      audioPart = await req.file();
+      audioPart = await req.file({ limits: { fileSize: TRANSCRIBE_AUDIO_LIMIT_BYTES } });
     } catch {
       reply
         .code(400)
@@ -265,7 +261,7 @@ export async function registerChatTranscribeRoutes(app: FastifyInstance): Promis
 
     let audioPart: import('@fastify/multipart').MultipartFile | undefined;
     try {
-      audioPart = await req.file();
+      audioPart = await req.file({ limits: { fileSize: TRANSCRIBE_AUDIO_LIMIT_BYTES } });
     } catch {
       reply
         .code(400)

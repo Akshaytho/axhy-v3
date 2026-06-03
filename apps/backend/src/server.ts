@@ -27,12 +27,14 @@ import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAuthRefreshRoutes } from './routes/auth-refresh.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerWorkerConsentRoutes } from './routes/worker-consent.js';
+import { registerWorkerHistoryRoutes } from './routes/worker-history.js';
 import { registerWorkerTodayRoutes } from './routes/worker-today.js';
 import { registerWorkerVisitRoutes } from './routes/worker-visit.js';
 import { registerWorkerCapturesRoutes } from './routes/worker-captures.js';
@@ -58,6 +60,7 @@ import { registerActivityRoutes } from './routes/activity.js';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.js';
 import { registerChatReloadContextRoutes } from './routes/chat-reload-context.js';
 import { registerWorkerSubmitRoutes } from './routes/worker-submit.js';
+import { registerWorkerLifecycleRoutes } from './routes/worker-lifecycle.js';
 import { registerAdminMembershipRoutes } from './routes/admin-memberships.js';
 import { registerAdminWorkerRoutes } from './routes/admin-workers.js';
 import { registerAdminSiteRoutes } from './routes/admin-sites.js';
@@ -112,6 +115,19 @@ export async function buildServer(): Promise<FastifyInstance> {
       : true;
   await app.register(cors, { origin: corsOrigin, credentials: true });
   await app.register(helmet);
+  // Multipart is registered once at the app scope because @fastify/multipart
+  // is published via fastify-plugin (hoists to root) and decorates
+  // `request.formData`/`request.parts`/etc — a second registration throws
+  // FST_ERR_DEC_ALREADY_PRESENT. The 20 MB cap accommodates worker capture
+  // photos (MAX_PHOTO_BYTES = 20 MB) which is the largest multipart payload
+  // the app accepts; routes with tighter caps (e.g. chat-transcribe at 10 MB)
+  // override per-call via `req.file({ limits: { fileSize: ... } })`.
+  await app.register(multipart, {
+    limits: {
+      fileSize: 20 * 1024 * 1024,
+      files: 1,
+    },
+  });
   // Friend review #14 (MEDIUM): two rate-limit layers serve DIFFERENT
   // dimensions and are documented here so they're not mysterious:
   //   - @fastify/rate-limit (in-memory, per-IP, 100/min) = edge DDoS guard.
@@ -157,6 +173,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerAuthRefreshRoutes(app);
   await registerMeRoutes(app);
   await registerWorkerConsentRoutes(app);
+  await registerWorkerHistoryRoutes(app);
   await registerWorkerTodayRoutes(app);
   await registerWorkerVisitRoutes(app);
   await registerWorkerCapturesRoutes(app);
@@ -182,6 +199,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerAdminPolicyRoutes(app);
   await registerChatReloadContextRoutes(app);
   await registerWorkerSubmitRoutes(app);
+  await registerWorkerLifecycleRoutes(app);
   await registerAdminMembershipRoutes(app);
   await registerAdminWorkerRoutes(app);
   await registerAdminSiteRoutes(app);

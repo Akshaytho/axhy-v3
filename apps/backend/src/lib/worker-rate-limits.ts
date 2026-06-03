@@ -35,11 +35,14 @@ function envLimit(envVar: string, defaultValue: number): number {
 /** @derives(ADR-0024) */
 export type WorkerRateLimitKey =
   | 'today'
+  | 'history'
   | 'visit'
   | 'captures'
   | 'submit'
   | 'verifyStatus'
-  | 'consent';
+  | 'consent'
+  | 'clockIn'
+  | 'clockOut';
 
 type RateLimitConfig = {
   readonly route: string;
@@ -59,6 +62,12 @@ function configFor(key: WorkerRateLimitKey): RateLimitConfig {
       return {
         route: 'worker:visit',
         limit: envLimit('RATE_LIMIT_WORKER_VISIT_PER_MIN', 60),
+        windowMs: WINDOW_MS,
+      };
+    case 'history':
+      return {
+        route: 'worker:history',
+        limit: envLimit('RATE_LIMIT_WORKER_HISTORY_PER_MIN', 60),
         windowMs: WINDOW_MS,
       };
     case 'captures':
@@ -83,6 +92,18 @@ function configFor(key: WorkerRateLimitKey): RateLimitConfig {
       return {
         route: 'worker:consent',
         limit: envLimit('RATE_LIMIT_WORKER_CONSENT_PER_MIN', 10),
+        windowMs: WINDOW_MS,
+      };
+    case 'clockIn':
+      return {
+        route: 'worker:clock-in',
+        limit: envLimit('RATE_LIMIT_WORKER_CLOCK_IN_PER_MIN', 20),
+        windowMs: WINDOW_MS,
+      };
+    case 'clockOut':
+      return {
+        route: 'worker:clock-out',
+        limit: envLimit('RATE_LIMIT_WORKER_CLOCK_OUT_PER_MIN', 20),
         windowMs: WINDOW_MS,
       };
   }

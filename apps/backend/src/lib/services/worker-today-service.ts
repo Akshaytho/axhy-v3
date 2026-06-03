@@ -17,13 +17,37 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import type { WorkerTodayOutput, WorkerVisitDetailOutput } from '@axhy/shared-schema';
+import type {
+  WorkerHistoryOutput,
+  WorkerTodayOutput,
+  WorkerVisitDetailOutput,
+} from '@axhy/shared-schema';
 
 import { deriveWorkerPrimarySiteId, getEffectiveBinding } from '../effective-responsibility.js';
 
 const DEFAULT_TZ = 'Asia/Kolkata';
 
 const IN_FLIGHT_STATES = new Set<string>(['EN_ROUTE', 'ON_SITE', 'IN_PROGRESS', 'PHOTOS_PENDING']);
+
+// resumeCapture should point at the visit the worker most needs to finish.
+// Lower index wins. Mirrors the home-card priority in
+// apps/mobile/lib/worker-today-helpers.ts so server and client agree on
+// which visit owns the hero card. See docs/capture-submission_flow/00-overview.md
+// (Rule A — one active timer per worker + Home card priority).
+const RESUME_PRIORITY: ReadonlyArray<string> = [
+  'IN_PROGRESS',
+  'PHOTOS_PENDING',
+  'ON_SITE',
+  'EN_ROUTE',
+];
+const HISTORY_STATES = new Set<string>([
+  'VERIFIED',
+  'FLAGGED',
+  'AWAITING_VERIFICATION',
+  'CANCELLED',
+  'NO_SHOW',
+  'ARCHIVED',
+]);
 
 function startOfDayInTz(at: Date, tz: string): Date {
   const ymd = new Intl.DateTimeFormat('en-CA', {
@@ -69,6 +93,16 @@ export type WorkerTodayInput = {
 /** @derives(master-plan §G) */
 export type WorkerTodayResult = { kind: 'OK'; data: WorkerTodayOutput } | { kind: 'NO_WORKER' };
 
+/** @derives(master-plan §G) */
+export type WorkerHistoryInput = {
+  userId: string;
+  windowDays?: number;
+  now?: Date;
+};
+
+/** @derives(master-plan §G) */
+export type WorkerHistoryResult = { kind: 'OK'; data: WorkerHistoryOutput } | { kind: 'NO_WORKER' };
+
 /** Compose the Worker Home response for the given user.
  *  @derives(master-plan §G) */
 export async function getWorkerToday(
@@ -76,6 +110,15 @@ export async function getWorkerToday(
   input: WorkerTodayInput,
 ): Promise<WorkerTodayResult> {
   return getWorkerTodayImpl(tx, input);
+}
+
+/** Compose the worker's recent multi-day visit history.
+ *  @derives(master-plan §G) */
+export async function getWorkerHistory(
+  tx: Prisma.TransactionClient,
+  input: WorkerHistoryInput,
+): Promise<WorkerHistoryResult> {
+  return getWorkerHistoryImpl(tx, input);
 }
 
 async function getWorkerTodayImpl(
@@ -120,7 +163,16 @@ async function getWorkerTodayImpl(
     }
   }
 
-  const inFlightVisit = visits.find((v) => IN_FLIGHT_STATES.has(v.state));
+  const inFlightVisit = visits
+    .filter((v) => IN_FLIGHT_STATES.has(v.state))
+    .sort((a, b) => {
+      const pa = RESUME_PRIORITY.indexOf(a.state);
+      const pb = RESUME_PRIORITY.indexOf(b.state);
+      if (pa !== pb) return pa - pb;
+      // Within the same priority bucket, earliest scheduled wins so the
+      // worker resumes the visit they started first.
+      return a.scheduledFor.getTime() - b.scheduledFor.getTime();
+    })[0];
   const resumeCapture = inFlightVisit
     ? {
         visitId: inFlightVisit.id,
@@ -145,6 +197,57 @@ async function getWorkerTodayImpl(
       photosAfter: v.photosAfter,
     })),
     resumeCapture,
+  };
+
+  return { kind: 'OK', data };
+}
+
+async function getWorkerHistoryImpl(
+  tx: Prisma.TransactionClient,
+  input: WorkerHistoryInput,
+): Promise<WorkerHistoryResult> {
+  const worker = await tx.worker.findFirst({
+    where: { userId: input.userId },
+  });
+  if (!worker) return { kind: 'NO_WORKER' };
+
+  const now = input.now ?? new Date();
+  const windowDays = Math.min(Math.max(input.windowDays ?? 30, 1), 90);
+  const todayStart = startOfDayInTz(now, DEFAULT_TZ);
+  const historyStart = new Date(todayStart.getTime() - (windowDays - 1) * 24 * 60 * 60 * 1000);
+  const historyEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+  const visits = await tx.visit.findMany({
+    where: {
+      workerId: worker.id,
+      scheduledFor: { gte: historyStart, lt: historyEnd },
+      state: { in: Array.from(HISTORY_STATES) },
+    },
+    include: { site: { select: { id: true, name: true, address: true } } },
+    orderBy: { scheduledFor: 'desc' },
+    take: 200,
+  });
+
+  const data: WorkerHistoryOutput = {
+    workerId: worker.id,
+    windowDays,
+    summary: {
+      total: visits.length,
+      verified: visits.filter((visit) => visit.state === 'VERIFIED').length,
+      flagged: visits.filter((visit) => visit.state === 'FLAGGED').length,
+      awaitingVerification: visits.filter((visit) => visit.state === 'AWAITING_VERIFICATION')
+        .length,
+    },
+    visits: visits.map((visit) => ({
+      id: visit.id,
+      siteId: visit.siteId,
+      siteName: visit.site.name,
+      siteAddress: visit.site.address,
+      scheduledFor: visit.scheduledFor.toISOString(),
+      state: visit.state as WorkerHistoryOutput['visits'][number]['state'],
+      photosBefore: visit.photosBefore,
+      photosAfter: visit.photosAfter,
+    })),
   };
 
   return { kind: 'OK', data };

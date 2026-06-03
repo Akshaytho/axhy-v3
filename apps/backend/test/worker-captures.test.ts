@@ -196,6 +196,137 @@ describe('POST /worker/captures/upload-urls', () => {
   }
 });
 
+describe('POST /worker/captures/upload (web fallback proxy)', () => {
+  // Tiny 1x1 JPEG (base64-decoded at use-time) so we exercise the multipart
+  // path without bundling a real fixture file.
+  const TINY_JPEG = Buffer.from(
+    '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB/9sAQwEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB/8AAEQgAAQABAwEiAAIRAQMRAf/EABUAAQEAAAAAAAAAAAAAAAAAAAAJ/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/EABUBAQEAAAAAAAAAAAAAAAAAAAAJ/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==',
+    'base64',
+  );
+  const BOUNDARY = '----axhytestboundary';
+  const buildMultipart = (
+    overrides: Partial<{
+      visitId: string;
+      phase: string;
+      index: string;
+      contentType: string;
+      omitPhoto: boolean;
+      fieldName: string;
+    }> = {},
+  ): Buffer => {
+    const visitId = overrides.visitId ?? 'visit-test-proxy';
+    const phase = overrides.phase ?? 'before';
+    const index = overrides.index ?? '1';
+    const contentType = overrides.contentType ?? 'image/jpeg';
+    const fieldName = overrides.fieldName ?? 'photo';
+    const text = (name: string, value: string): string =>
+      `--${BOUNDARY}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
+    let body =
+      text('visitId', visitId) +
+      text('phase', phase) +
+      text('index', index) +
+      text('contentType', contentType);
+    if (!overrides.omitPhoto) {
+      body +=
+        `--${BOUNDARY}\r\nContent-Disposition: form-data; name="${fieldName}"; filename="before-1.jpg"\r\n` +
+        `Content-Type: ${contentType}\r\n\r\n`;
+    }
+    const head = Buffer.from(body, 'utf8');
+    const tail = overrides.omitPhoto
+      ? Buffer.from(`--${BOUNDARY}--\r\n`, 'utf8')
+      : Buffer.from(`\r\n--${BOUNDARY}--\r\n`, 'utf8');
+    return overrides.omitPhoto
+      ? Buffer.concat([head, tail])
+      : Buffer.concat([head, TINY_JPEG, tail]);
+  };
+  const MULTIPART_HEADER = `multipart/form-data; boundary=${BOUNDARY}`;
+
+  it('rejects unauth requests with 401', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/worker/captures/upload',
+      headers: { 'content-type': MULTIPART_HEADER },
+      payload: buildMultipart(),
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects SUPERVISOR with 403 WRONG_ROLE', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/worker/captures/upload',
+      headers: {
+        'content-type': MULTIPART_HEADER,
+        authorization: `Bearer ${supervisorToken}`,
+      },
+      payload: buildMultipart(),
+    });
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: string }).error).toBe('WRONG_ROLE');
+  });
+
+  it('rejects missing photo field with 400 PHOTO_REQUIRED', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/worker/captures/upload',
+      headers: {
+        'content-type': MULTIPART_HEADER,
+        authorization: `Bearer ${workerToken}`,
+      },
+      payload: buildMultipart({ omitPhoto: true }),
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('PHOTO_REQUIRED');
+  });
+
+  it('rejects bad meta (missing visitId) with 400 BAD_INPUT', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/worker/captures/upload',
+      headers: {
+        'content-type': MULTIPART_HEADER,
+        authorization: `Bearer ${workerToken}`,
+      },
+      payload: buildMultipart({ visitId: '' }),
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('BAD_INPUT');
+  });
+
+  if (r2Configured) {
+    it('returns objectKey under v3-captures/{workerId}/{visitId}/ on success', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/worker/captures/upload',
+        headers: {
+          'content-type': MULTIPART_HEADER,
+          authorization: `Bearer ${workerToken}`,
+        },
+        payload: buildMultipart({ visitId: 'visit-test-proxy', phase: 'before', index: '1' }),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { objectKey: string };
+      expect(body.objectKey).toMatch(
+        new RegExp(`^v3-captures/${workerUserId}/visit-test-proxy/before-01\\.jpg$`),
+      );
+    });
+  } else {
+    it('returns 503 R2_NOT_CONFIGURED when env vars are missing', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/worker/captures/upload',
+        headers: {
+          'content-type': MULTIPART_HEADER,
+          authorization: `Bearer ${workerToken}`,
+        },
+        payload: buildMultipart(),
+      });
+      expect(res.statusCode).toBe(503);
+      expect((res.json() as { error: string }).error).toBe('R2_NOT_CONFIGURED');
+    });
+  }
+});
+
 describe.skipIf(!process.env.REDIS_URL)(
   'POST /worker/captures/upload-urls — per-user rate limit',
   () => {

@@ -27,13 +27,26 @@
 
 import type { FastifyInstance } from 'fastify';
 import { UploadUrlsRequestSchema } from '@axhy/shared-schema';
+import { z } from 'zod';
 
 import { requireWorkerRole } from '../middleware/tenant-context.js';
 import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
-import { generateBatchUploadUrls } from '../lib/r2-presign.js';
+import { generateBatchUploadUrls, uploadCaptureObject } from '../lib/r2-presign.js';
+
+const UploadProxyMetaSchema = z.object({
+  visitId: z.string().min(1),
+  phase: z.enum(['before', 'after']),
+  index: z.coerce.number().int().min(1).max(3),
+  contentType: z
+    .string()
+    .regex(/^image\/(jpeg|png|webp)$/, 'contentType must be image/jpeg, image/png, or image/webp'),
+});
 
 /** @derives(master-plan §G) */
 export async function registerWorkerCapturesRoutes(app: FastifyInstance): Promise<void> {
+  // @fastify/multipart is registered once globally in server.ts (it publishes
+  // via fastify-plugin which hoists to root). Re-registering here would throw
+  // FST_ERR_DEC_ALREADY_PRESENT at boot.
   app.post(
     '/worker/captures/upload-urls',
     { preHandler: requireWorkerRole },
@@ -97,4 +110,97 @@ export async function registerWorkerCapturesRoutes(app: FastifyInstance): Promis
       }
     },
   );
+
+  app.post('/worker/captures/upload', { preHandler: requireWorkerRole }, async (req, reply) => {
+    try {
+      const auth = req.auth!;
+
+      const rl = await consumeWorkerRateLimit('captures', auth.userId);
+      if (!rl.ok) {
+        reply
+          .code(429)
+          .header('Retry-After', String(Math.ceil(rl.retryAfterMs / 1000)))
+          .send({
+            error: 'RATE_LIMITED',
+            message: 'Too many requests. Please wait a moment.',
+            retryAfterMs: rl.retryAfterMs,
+          });
+        return;
+      }
+
+      let photoPart: import('@fastify/multipart').MultipartFile | undefined;
+      const fields: Record<string, string> = {};
+      try {
+        const parts = req.parts();
+        for await (const part of parts) {
+          if (part.type === 'file') {
+            photoPart = part;
+          } else {
+            fields[part.fieldname] = String(part.value ?? '');
+          }
+        }
+      } catch {
+        reply
+          .code(400)
+          .send({ error: 'MULTIPART_PARSE_ERROR', message: 'Could not parse multipart body' });
+        return;
+      }
+
+      if (!photoPart) {
+        reply
+          .code(400)
+          .send({ error: 'PHOTO_REQUIRED', message: 'Multipart field `photo` is required' });
+        return;
+      }
+
+      if (photoPart.fieldname !== 'photo') {
+        reply
+          .code(400)
+          .send({ error: 'WRONG_FIELD', message: 'Expected multipart field named `photo`' });
+        return;
+      }
+
+      const meta = UploadProxyMetaSchema.safeParse(fields);
+      if (!meta.success) {
+        reply.code(400).send({
+          error: 'BAD_INPUT',
+          message: meta.error.message,
+        });
+        return;
+      }
+
+      let photoBuffer: Buffer;
+      try {
+        photoBuffer = await photoPart.toBuffer();
+      } catch {
+        reply.code(400).send({ error: 'READ_ERROR', message: 'Could not read photo stream' });
+        return;
+      }
+
+      if (photoBuffer.length === 0) {
+        reply.code(400).send({ error: 'EMPTY_PHOTO', message: 'Photo file is empty' });
+        return;
+      }
+
+      const result = await uploadCaptureObject(
+        auth.userId,
+        meta.data.visitId,
+        meta.data,
+        photoBuffer,
+      );
+      if (result.kind === 'NOT_CONFIGURED') {
+        req.log.warn({ workerId: auth.userId, visitId: meta.data.visitId }, 'R2 not configured');
+        reply.code(503).send({
+          error: 'R2_NOT_CONFIGURED',
+          message: 'Photo upload is temporarily unavailable. Please try again later.',
+        });
+        return;
+      }
+
+      reply.send({ objectKey: result.objectKey });
+    } catch (err) {
+      req.log.error({ err }, 'worker captures upload proxy failed');
+      reply.code(500).send({ error: 'UPLOAD_FAILED', message: 'Could not upload photo.' });
+    }
+  });
 }
