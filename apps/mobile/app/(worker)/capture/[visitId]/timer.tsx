@@ -20,10 +20,18 @@
  * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerTimer)
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  BackHandler,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 import { useQueryClient } from '@tanstack/react-query';
@@ -68,7 +76,10 @@ export default function TimerStep(): React.JSX.Element {
   const vid = visitId ?? '';
 
   const todayQuery = useWorkerTodayQuery();
-  const siteName = todayQuery.data?.visits.find((v) => v.id === vid)?.siteName ?? '';
+  const visit = todayQuery.data?.visits.find((v) => v.id === vid);
+  const siteName = visit?.siteName ?? '';
+  // BUG-10: real clock-in time, so elapsed survives leaving/reopening the timer.
+  const startedAtMs = visit?.startedAt ? new Date(visit.startedAt).getTime() : null;
   const queryClient = useQueryClient();
 
   const [elapsed, setElapsed] = useState(0);
@@ -78,45 +89,64 @@ export default function TimerStep(): React.JSX.Element {
   const [transitionError, setTransitionError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Clock-in fires in before-photos goNext (PhasePhotoCapture); by the time the
+  // timer mounts the visit is already IN_PROGRESS, so refresh caches on mount.
   useEffect(() => {
-    // Clock-in fires in the before-photos goNext (PhasePhotoCapture), not
-    // here — by the time timer mounts the visit is already IN_PROGRESS, so
-    // a refresh on remount/resume is enough to keep Home/visit caches honest.
     if (vid) {
       void queryClient.invalidateQueries({ queryKey: ['worker-today'] });
       void queryClient.invalidateQueries({ queryKey: ['worker-visit', vid] });
     }
+  }, [vid, queryClient]);
 
-    intervalRef.current = setInterval(() => {
-      setElapsed((s) => s + 1);
-    }, 1000);
-
-    if (Platform.OS !== 'web') {
-      import('expo-location').then(({ getCurrentPositionAsync }) => {
-        getCurrentPositionAsync({ accuracy: 3 })
-          .then((pos) => {
-            setGpsPoints(1);
-            if (__DEV__) {
-              console.warn('[timer] GPS start', pos.coords.latitude, pos.coords.longitude);
-            }
-          })
-          .catch((e) => {
-            console.warn('[timer] GPS unavailable', e);
-          });
-      });
+  // BUG-10: derive elapsed from the real clock-in time every second, so leaving
+  // and reopening shows the true cleaning session instead of restarting at
+  // 00:00. Fall back to a local count-up only while startedAt is still loading.
+  useEffect(() => {
+    function tick(): void {
+      if (startedAtMs != null) {
+        setElapsed(Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)));
+      } else {
+        setElapsed((s) => s + 1);
+      }
     }
-
+    tick();
+    intervalRef.current = setInterval(tick, 1000);
     return () => {
       if (intervalRef.current !== null) clearInterval(intervalRef.current);
     };
-  }, [vid, queryClient]);
+  }, [startedAtMs]);
 
-  // Simulate periodic GPS sampling on native via a 30s tick.
+  // BUG-11: one real GPS sample at start (when location policy is on). The UI
+  // must not fabricate an incrementing "points collected" counter or claim
+  // continuous tracking that does not happen.
   useEffect(() => {
     if (Platform.OS === 'web') return;
-    const id = setInterval(() => setGpsPoints((n) => n + 1), 30_000);
-    return () => clearInterval(id);
-  }, []);
+    void import('expo-location').then(({ getCurrentPositionAsync }) => {
+      getCurrentPositionAsync({ accuracy: 3 })
+        .then((pos) => {
+          setGpsPoints(1);
+          if (__DEV__) {
+            console.warn('[timer] GPS start', pos.coords.latitude, pos.coords.longitude);
+          }
+        })
+        .catch((e) => {
+          console.warn('[timer] GPS unavailable', e);
+        });
+    });
+  }, [vid]);
+
+  // BUG-12: Android hardware/system back opens the same exit-confirmation sheet
+  // as the on-screen home control (toggle: closed -> open, open -> dismiss).
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') return undefined;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        setConfirmExitVisible((open) => !open);
+        return true;
+      });
+      return () => sub.remove();
+    }, []),
+  );
 
   function leaveToHome(): void {
     setConfirmExitVisible(false);
@@ -201,15 +231,15 @@ export default function TimerStep(): React.JSX.Element {
           ELAPSED <Text style={{ color: tokens.color.brand.accent }}>·</Text> {pctLabel}% OF SLOT
         </Text>
 
-        <WCard padding={14} style={s.gpsCard}>
-          <View style={s.gpsHeader}>
-            <View style={s.gpsDot} />
-            <Text style={s.gpsTitle}>GPS tracking active</Text>
-          </View>
-          <Text style={s.gpsMeta}>
-            {gpsPoints} POINT{gpsPoints === 1 ? '' : 'S'} COLLECTED
-          </Text>
-        </WCard>
+        {gpsPoints > 0 ? (
+          <WCard padding={14} style={s.gpsCard}>
+            <View style={s.gpsHeader}>
+              <View style={s.gpsDot} />
+              <Text style={s.gpsTitle}>Location captured</Text>
+            </View>
+            <Text style={s.gpsMeta}>SITE CHECK-IN CONFIRMED</Text>
+          </WCard>
+        ) : null}
 
         {siteName ? (
           <View style={s.siteLabelWrap}>

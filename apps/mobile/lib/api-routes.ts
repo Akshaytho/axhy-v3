@@ -36,8 +36,10 @@ export const API_ROUTES = {
 export const CAPTURE_STEPS = [
   'qr-scan',
   'before-photos',
+  'before-photos-review',
   'timer',
   'after-photos',
+  'after-photos-review',
   'review',
   'submit',
 ] as const;

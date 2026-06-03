@@ -75,7 +75,12 @@ export async function registerWorkerLifecycleRoutes(app: FastifyInstance): Promi
       }
 
       const result = await withTenantContext(prisma, auth.companyId, (tx) =>
-        clockInVisit(tx, { workerId, visitId, companyId: auth.companyId }),
+        clockInVisit(tx, {
+          workerId,
+          visitId,
+          companyId: auth.companyId,
+          actorUserId: auth.userId,
+        }),
       );
 
       if (result.kind === 'NOT_FOUND') {
@@ -153,7 +158,12 @@ export async function registerWorkerLifecycleRoutes(app: FastifyInstance): Promi
       }
 
       const result = await withTenantContext(prisma, auth.companyId, (tx) =>
-        clockOutVisit(tx, { workerId, visitId, companyId: auth.companyId }),
+        clockOutVisit(tx, {
+          workerId,
+          visitId,
+          companyId: auth.companyId,
+          actorUserId: auth.userId,
+        }),
       );
 
       if (result.kind === 'NOT_FOUND') {

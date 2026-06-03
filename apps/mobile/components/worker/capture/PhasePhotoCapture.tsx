@@ -1,10 +1,17 @@
 /**
- * Shared 3-photo capture surface for the before/after phases.
+ * Shared photo-capture surface for the before/after phases.
  *
  * Uses the canon camera layout while keeping the real persistence/upload
  * behavior intact. Native persists into the worker partition; web renders the
  * same flow with simulated captures so QA can still walk the screen honestly.
  *
+ * BUG-02: captures up to MAX_PHOTOS_PER_PHASE (8); the "Done →" CTA enables at
+ * MIN_PHOTOS_PER_PHASE (3). BUG-03: "Done →" advances to the dedicated review
+ * checkpoint (before-photos-review / after-photos-review). Clock-in is NOT
+ * fired here — it moves to Before-Review's "Start cleaning →".
+ *
+ * @derives(docs/capture-submission_flow/02-before-photos-capture.md)
+ * @derives(docs/capture-submission_flow/05-after-photos-capture.md)
  * @derives(WORKER_MVP_SLICE_2B_2_PLAN.md §1)
  */
 
@@ -14,7 +21,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { useKeepAwake } from 'expo-keep-awake';
 import { File } from 'expo-file-system';
 import { tokens } from '@axhy/ui-tokens';
-import { useQueryClient } from '@tanstack/react-query';
 import type { PhotoPhase } from '@axhy/shared-schema';
 
 import { useWorkerTodayQuery } from '../../../lib/queries/use-worker-today';
@@ -26,21 +32,22 @@ import {
 import { r2UploadQueue } from '../../../lib/r2-upload-queue';
 import { CAPTURE_STEPS, NAV_ROUTES, type CaptureStep } from '../../../lib/api-routes';
 import { findWorkerTodayVisit } from '../../../lib/worker-today-helpers';
-import { postWorkerClockIn } from '../../../lib/api-lifecycle';
-import { ApiError } from '../../../lib/api';
-import { beforePhaseAdvanceStep, nextOpenCaptureSlot } from '../../../lib/capture-flow';
+import {
+  MIN_PHOTOS_PER_PHASE,
+  MAX_PHOTOS_PER_PHASE,
+  beforePhaseAdvanceStep,
+  nextOpenCaptureSlot,
+} from '../../../lib/capture-flow';
 import { consumeRetakePreservedSlots } from '../../../lib/capture-retake-state';
 
 import { CameraView, type CapturedPhoto } from './CameraView';
-
-const PHOTOS_PER_PHASE = 3;
 
 type Props = {
   visitId: string;
   phase: PhotoPhase;
   currentStep: CaptureStep;
   preservedSlotIndices?: ReadonlyArray<number>;
-  /** Step label shown in the badge above the body (e.g. "Step 2 of 6"). */
+  /** Step label shown in the badge above the body (e.g. "Step 2 of 8"). */
   title: string;
 };
 
@@ -49,7 +56,8 @@ type CapturedSlot = {
   localUri: string;
 };
 
-/** Compute the next step path from the current step. */
+/** Path of the next CAPTURE_STEPS entry after `current` (after-photos →
+ *  after-photos-review). Falls back to home at the end. */
 function nextStepPath(visitId: string, current: CaptureStep): string {
   const idx = CAPTURE_STEPS.indexOf(current);
   const next = CAPTURE_STEPS[idx + 1];
@@ -75,11 +83,11 @@ export function PhasePhotoCapture({
   preservedSlotIndices = [],
   title,
 }: Props): React.JSX.Element {
-  const queryClient = useQueryClient();
   const { data, isLoading, isError } = useWorkerTodayQuery();
   const [captured, setCaptured] = useState<CapturedSlot[]>([]);
-  const [transitioning, setTransitioning] = useState(false);
-  const [transitionError, setTransitionError] = useState<string | null>(null);
+  // CRIT-6: a failed capture must surface a quiet, recoverable error — never an
+  // uncaught throw that crashes the camera and loses every photo.
+  const [captureError, setCaptureError] = useState<string | null>(null);
   const workerId = data?.workerId ?? '';
   const siteName = findWorkerTodayVisit(data, visitId)?.siteName ?? 'Capture';
   const requiresWorkerProfile = canPersistCaptures();
@@ -89,11 +97,6 @@ export function PhasePhotoCapture({
   // `await writePhoto` between reading and committing setCaptured; a ref-based
   // slot set prevents both presses from claiming the same missing slot.
   const reservedSlotsRef = useRef<Set<number>>(new Set());
-
-  useEffect(() => {
-    setTransitioning(false);
-    setTransitionError(null);
-  }, [visitId, phase]);
 
   const hydrateCaptured = useCallback(
     async (preservedSeed: ReadonlyArray<number> = preservedSlotIndices): Promise<void> => {
@@ -165,8 +168,8 @@ export function PhasePhotoCapture({
   const onCapture = useCallback(
     async (photo: CapturedPhoto) => {
       if (requiresWorkerProfile && !workerId) return;
-      if (reservedSlotsRef.current.size >= PHOTOS_PER_PHASE) return;
-      const slotIndex = nextOpenCaptureSlot([...reservedSlotsRef.current], PHOTOS_PER_PHASE);
+      if (reservedSlotsRef.current.size >= MAX_PHOTOS_PER_PHASE) return;
+      const slotIndex = nextOpenCaptureSlot([...reservedSlotsRef.current], MAX_PHOTOS_PER_PHASE);
       if (!slotIndex) return;
       reservedSlotsRef.current.add(slotIndex);
 
@@ -194,54 +197,36 @@ export function PhasePhotoCapture({
             (a, b) => a.index - b.index,
           ),
         );
+        setCaptureError(null);
       } catch (err) {
+        // CRIT-6: re-throwing here bubbled into CameraView's uncaught
+        // `void handleShutter()` as an unhandled promise rejection and crashed
+        // Android. Free just this slot (so the worker retakes one photo, not
+        // all) and show a quiet inline error; the other slots stay intact.
         reservedSlotsRef.current.delete(slotIndex);
-        throw err;
+        setCaptureError("Couldn't save that photo — try again.");
+        if (__DEV__) {
+          console.warn(
+            '[capture] write/enqueue failed',
+            err instanceof Error ? err.message : String(err),
+          );
+        }
       }
     },
     [phase, requiresWorkerProfile, visitId, workerId],
   );
 
   const goNext = useCallback(() => {
+    // Both phases advance to their dedicated review checkpoint (BUG-03). Clock-in
+    // (→IN_PROGRESS) is NOT fired here anymore — it moves to Before-Review's
+    // "Start cleaning →" (contract 03). before-photos → before-photos-review;
+    // after-photos → after-photos-review (the next CAPTURE_STEPS entry).
     const nextPath =
       phase === 'before'
         ? NAV_ROUTES.workerCaptureStep(visitId, beforePhaseAdvanceStep(visit?.state))
         : nextStepPath(visitId, currentStep);
-    if (phase !== 'before' || visit?.state === 'PHOTOS_PENDING') {
-      router.replace(nextPath);
-      return;
-    }
-
-    if (transitioning) return;
-    setTransitioning(true);
-    setTransitionError(null);
-
-    postWorkerClockIn(visitId)
-      .then(async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['worker-today'] }),
-          queryClient.invalidateQueries({ queryKey: ['worker-visit', visitId] }),
-        ]);
-        router.replace(nextPath);
-      })
-      .catch((err) => {
-        // Rule A — another visit is already in progress. Refresh the cache
-        // (Home will surface that active visit as the hero card per the
-        // deterministic priority) and bounce the worker back so they can
-        // resume it before starting a second timer.
-        if (err instanceof ApiError && err.code === 'ACTIVE_TIMER_EXISTS') {
-          void queryClient.invalidateQueries({ queryKey: ['worker-today'] });
-          setTransitionError(
-            'You already have a visit in progress. Finish it before starting this one.',
-          );
-          setTransitioning(false);
-          return;
-        }
-        const message = err instanceof Error ? err.message : 'Could not start cleaning yet.';
-        setTransitionError(message);
-        setTransitioning(false);
-      });
-  }, [currentStep, phase, queryClient, transitioning, visit?.state, visitId]);
+    router.replace(nextPath);
+  }, [currentStep, phase, visit?.state, visitId]);
 
   const goBack = useCallback(() => {
     const idx = CAPTURE_STEPS.indexOf(currentStep);
@@ -270,13 +255,13 @@ export function PhasePhotoCapture({
     );
   }
 
-  const completed = captured.length >= PHOTOS_PER_PHASE;
+  const completed = captured.length >= MIN_PHOTOS_PER_PHASE;
   const slotNumber = completed
-    ? PHOTOS_PER_PHASE
+    ? Math.min(captured.length + 1, MAX_PHOTOS_PER_PHASE)
     : (nextOpenCaptureSlot(
         captured.map((item) => item.index),
-        PHOTOS_PER_PHASE,
-      ) ?? PHOTOS_PER_PHASE);
+        MAX_PHOTOS_PER_PHASE,
+      ) ?? MAX_PHOTOS_PER_PHASE);
 
   return (
     <View style={s.root}>
@@ -285,33 +270,24 @@ export function PhasePhotoCapture({
         mode={phase}
         siteName={siteName}
         photoCount={captured.length}
-        minPhotos={PHOTOS_PER_PHASE}
+        minPhotos={MIN_PHOTOS_PER_PHASE}
+        maxPhotos={MAX_PHOTOS_PER_PHASE}
         slotNumber={slotNumber}
-        totalSlots={PHOTOS_PER_PHASE}
         stepTitle={title}
         onBack={goBack}
         onCapture={onCapture}
-        onReviewPress={completed && !transitioning ? goNext : undefined}
+        onReviewPress={completed ? goNext : undefined}
       />
-      {transitioning ? (
-        <View style={s.overlay}>
-          <ActivityIndicator color={tokens.color.brand.accent} />
-          <Text style={s.overlayTitle}>Starting cleaning…</Text>
-          <Text style={s.overlayBody}>Saving your visit start before the timer opens.</Text>
-        </View>
-      ) : null}
-      {transitionError ? (
-        <View style={s.errorBanner}>
-          <Text style={s.errorText}>{transitionError}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry starting cleaning"
-            onPress={goNext}
-            style={({ pressed }) => [s.retryBtn, pressed && { opacity: 0.92 }]}
-          >
-            <Text style={s.retryText}>Retry</Text>
-          </Pressable>
-        </View>
+      {captureError ? (
+        <Pressable
+          style={s.errorBanner}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss photo error"
+          onPress={() => setCaptureError(null)}
+        >
+          <Text style={s.errorText}>{captureError}</Text>
+          <Text style={s.errorHint}>Tap to dismiss</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -327,25 +303,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: tokens.space[3],
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: tokens.space[3],
-    backgroundColor: 'rgba(26,22,18,0.78)',
-    paddingHorizontal: tokens.space[6],
-  },
-  overlayTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: tokens.color.surface.card,
-  },
-  overlayBody: {
-    fontSize: tokens.type.body.size,
-    lineHeight: tokens.type.body.size * 1.45,
-    color: 'rgba(253,250,243,0.86)',
-    textAlign: 'center',
   },
   errorBanner: {
     position: 'absolute',
@@ -364,19 +321,10 @@ const s = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  retryBtn: {
-    alignSelf: 'flex-start',
-    minHeight: tokens.tap.minMobile,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: tokens.color.brand.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  retryText: {
-    color: tokens.color.surface.card,
-    fontSize: 14,
-    fontWeight: '700',
+  errorHint: {
+    color: 'rgba(253,250,243,0.7)',
+    fontSize: 11,
+    marginTop: 4,
   },
   statusText: {
     fontSize: tokens.type.body.size,

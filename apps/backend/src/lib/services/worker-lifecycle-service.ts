@@ -35,10 +35,14 @@
 
 import type { Prisma } from '@prisma/client';
 
+import { recordAuditEvent } from '../audit-event.js';
+
 type ClockArgs = {
   workerId: string;
   visitId: string;
   companyId: string;
+  /** JWT user id of the worker performing the transition (AuditEvent actor). */
+  actorUserId: string;
 };
 
 const CLOCK_IN_LEGAL_FROM: ReadonlyArray<string> = ['SCHEDULED', 'NOTIFIED', 'EN_ROUTE', 'ON_SITE'];
@@ -65,7 +69,7 @@ export async function clockInVisit(
   tx: Prisma.TransactionClient,
   args: ClockArgs,
 ): Promise<ClockInResult> {
-  const { workerId, visitId, companyId } = args;
+  const { workerId, visitId, companyId, actorUserId } = args;
   const now = new Date();
 
   const visit = await tx.visit.findUnique({
@@ -113,6 +117,16 @@ export async function clockInVisit(
     },
   });
 
+  // BUG-13 / D9: append-only audit on the real transition only (idempotent
+  // already-IN_PROGRESS retries above do not reach here, so no duplicate rows).
+  await recordAuditEvent(tx, {
+    companyId,
+    kind: 'VISIT_CLOCKED_IN',
+    actorId: actorUserId,
+    targetId: visitId,
+    payload: { startedAt: (visit.startedAt ?? now).toISOString() },
+  });
+
   return { kind: 'OK', visitId, visitState: 'IN_PROGRESS', alreadyInProgress: false };
 }
 
@@ -121,7 +135,7 @@ export async function clockOutVisit(
   tx: Prisma.TransactionClient,
   args: ClockArgs,
 ): Promise<ClockOutResult> {
-  const { workerId, visitId, companyId } = args;
+  const { workerId, visitId, companyId, actorUserId } = args;
   const now = new Date();
 
   const visit = await tx.visit.findUnique({
@@ -151,6 +165,15 @@ export async function clockOutVisit(
       state: 'PHOTOS_PENDING',
       completedAt: visit.completedAt ?? now,
     },
+  });
+
+  // BUG-13 / D9: append-only audit on the real transition only.
+  await recordAuditEvent(tx, {
+    companyId,
+    kind: 'VISIT_CLOCKED_OUT',
+    actorId: actorUserId,
+    targetId: visitId,
+    payload: { completedAt: (visit.completedAt ?? now).toISOString() },
   });
 
   return { kind: 'OK', visitId, visitState: 'PHOTOS_PENDING', alreadyPending: false };

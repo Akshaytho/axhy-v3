@@ -23,7 +23,7 @@ export default function AfterPhotosStep(): React.JSX.Element {
       phase="after"
       currentStep="after-photos"
       preservedSlotIndices={preservedSlotIndices}
-      title="Step 4 of 6 — After photos"
+      title="Step 5 of 8 — After photos"
     />
   );
 }

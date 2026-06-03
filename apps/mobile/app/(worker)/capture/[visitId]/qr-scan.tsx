@@ -1,22 +1,19 @@
 /**
- * Capture step 1 — QR Scan (canon visual).
+ * Capture step 1 — Site check-in (honest deferred-QR pass-through).
  *
- * Renders the canon QR-scan viewport: site pill on top, dark overlay with a
- * 240x240 cutout + terracotta corner brackets + scan line, "Skip QR" pill at
- * the bottom. Real camera + decode logic lands in slice 2b-2; this screen
- * provides the canon visual today and uses the Skip CTA to advance the flow.
+ * QR scanning is deferred per the locked decision ("Full QR deferred until a
+ * site requests it; no QR scan screen wired by default, conditional on a site
+ * flag only" — brain QR/location). Rather than animate a fake scan-line over a
+ * dark box that reads no camera and decodes nothing, this screen is truthful:
+ * it confirms the worker is starting the visit at the named site, and the only
+ * action is Continue. When real QR lands, swap this for an expo-camera viewport
+ * + decode + a qrCheckedIn/qrSkipped server event, gated on the site's QR flag.
  *
- * Real camera integration plan:
- *   - swap the placeholder cutout for `expo-camera` <CameraView>
- *   - keep the brackets / scan line as overlay
- *   - decode QR via `expo-barcode-scanner` (or expo-camera onBarcodeScanned)
- *
- * @derives(WORKER_MVP_SLICE_2A_PLAN.md §7)
+ * @derives(docs/capture-submission_flow/01-qr-scan.md — QR deferred interim)
  * @derives(docs/design/worker-app-canon/project/worker-screens.jsx > WorkerQRScan)
  */
 
-import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -38,21 +35,9 @@ export default function QrScanStep(): React.JSX.Element {
   const { visitId } = useLocalSearchParams<{ visitId: string }>();
   const vid = visitId ?? '';
   const { data } = useWorkerTodayQuery();
-  const siteLabel = findWorkerTodayVisit(data, vid)?.siteName ?? 'SITE — QR';
+  const siteLabel = findWorkerTodayVisit(data, vid)?.siteName ?? 'Your site';
 
-  const scan = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scan, { toValue: 1, duration: 1400, useNativeDriver: true }),
-        Animated.timing(scan, { toValue: 0, duration: 1400, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [scan]);
-
-  function skip(): void {
+  function continueToVisit(): void {
     const nextStep = CAPTURE_STEPS[STEP_INDEX];
     if (nextStep !== undefined) {
       router.replace(NAV_ROUTES.workerCaptureStep(vid, nextStep));
@@ -71,21 +56,19 @@ export default function QrScanStep(): React.JSX.Element {
     );
   }
 
-  const translateY = scan.interpolate({ inputRange: [0, 1], outputRange: [-100, 100] });
-
   return (
     <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
       <View style={s.topBar}>
         <Pressable
           onPress={closeToSafeDestination}
           accessibilityRole="button"
-          accessibilityLabel="Close QR scan"
+          accessibilityLabel="Back to home"
           hitSlop={12}
           style={s.closeBtn}
         >
           <Feather name="x" size={16} color={tokens.color.surface.card} />
         </Pressable>
-        <Text style={s.topTitle}>SCAN QR</Text>
+        <Text style={s.topTitle}>SITE CHECK-IN</Text>
         <View style={s.closeBtn} />
       </View>
 
@@ -96,40 +79,23 @@ export default function QrScanStep(): React.JSX.Element {
       </View>
 
       <View style={s.framingArea}>
-        <View style={s.viewport}>
-          {[
-            { top: 0, left: 0 },
-            { top: 0, right: 0 },
-            { bottom: 0, left: 0 },
-            { bottom: 0, right: 0 },
-          ].map((p, i) => (
-            <View
-              key={i}
-              style={[
-                s.bracket,
-                p,
-                {
-                  borderTopWidth: p.top === 0 ? 3 : 0,
-                  borderLeftWidth: p.left === 0 ? 3 : 0,
-                  borderBottomWidth: p.bottom === 0 ? 3 : 0,
-                  borderRightWidth: p.right === 0 ? 3 : 0,
-                },
-              ]}
-            />
-          ))}
-          <Animated.View style={[s.scanLine, { transform: [{ translateY }] }]} />
+        <View style={s.iconCircle}>
+          <Feather name="map-pin" size={38} color={ACCENT} />
         </View>
-        <Text style={s.hint}>Point at the site QR code</Text>
+        <Text style={s.title}>Start your visit</Text>
+        <Text style={s.hint}>
+          QR check-in isn’t set up for this site yet. Tap Continue to begin with your before photos.
+        </Text>
       </View>
 
       <View style={s.footer}>
         <Pressable
-          onPress={skip}
+          onPress={continueToVisit}
           accessibilityRole="button"
-          accessibilityLabel="Skip QR"
-          style={({ pressed }) => [s.skipBtn, pressed && { opacity: 0.7 }]}
+          accessibilityLabel="Continue to before photos"
+          style={({ pressed }) => [s.continueBtn, pressed && { opacity: 0.9 }]}
         >
-          <Text style={s.skipText}>Skip QR</Text>
+          <Text style={s.continueText}>Continue</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -180,49 +146,42 @@ const s = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 22,
+    paddingHorizontal: 32,
+    gap: 18,
   },
-  viewport: {
-    width: 240,
-    height: 240,
-    backgroundColor: '#2a221a',
-    position: 'relative',
-    overflow: 'hidden',
+  iconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 1,
+    borderColor: 'rgba(192,73,42,0.4)',
+    backgroundColor: 'rgba(192,73,42,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  bracket: {
-    position: 'absolute',
-    width: 32,
-    height: 32,
-    borderColor: ACCENT,
-    borderStyle: 'solid',
-  },
-  scanLine: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    top: '50%',
-    height: 1,
-    backgroundColor: ACCENT,
-    opacity: 0.7,
-    shadowColor: ACCENT,
-    shadowOpacity: 1,
-    shadowRadius: 12,
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: tokens.color.surface.card,
+    letterSpacing: -0.3,
   },
   hint: {
     fontSize: 14,
-    color: 'rgba(253,250,243,0.85)',
+    lineHeight: 21,
+    textAlign: 'center',
+    color: 'rgba(253,250,243,0.8)',
   },
-  footer: { paddingBottom: 36, alignItems: 'center' },
-  skipBtn: {
-    backgroundColor: 'rgba(253,250,243,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(253,250,243,0.18)',
-    paddingHorizontal: 36,
-    paddingVertical: 12,
-    borderRadius: 12,
+  footer: { paddingBottom: 36, paddingHorizontal: 20 },
+  continueBtn: {
+    height: 52,
+    backgroundColor: ACCENT,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  skipText: {
+  continueText: {
     color: tokens.color.surface.card,
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

@@ -95,6 +95,8 @@ export default function SubmitStep(): React.JSX.Element {
   const [outcome, setOutcome] = useState<VerifyOutcome | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  // CRIT-5: guards against overlapping verify-status polls on slow networks.
+  const pollInFlightRef = useRef(false);
   const visit = findWorkerTodayVisit(data, vid);
   const visitLabel = formatWorkerVisitLocation(visit);
   const uploadsReady = uploadSummary.total > 0 && uploadSummary.uploaded === uploadSummary.total;
@@ -169,42 +171,54 @@ export default function SubmitStep(): React.JSX.Element {
     if (!mountedRef.current) return;
     setState('polling');
     let count = 0;
+    pollInFlightRef.current = false;
 
-    pollRef.current = setInterval(async () => {
+    pollRef.current = setInterval(() => {
       if (!mountedRef.current) {
         stopPolling();
         return;
       }
+      // CRIT-5 (2026-05-24 code review): skip this tick while the previous poll
+      // is still in flight. Without it, a verify-status call slower than the 3s
+      // interval (common on Indian mobile networks) lets overlapping requests
+      // accumulate — memory pressure and stale-closure poll counts. count only
+      // advances on a poll that actually fired, so POLL_MAX stays meaningful.
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
       count += 1;
       setPollCount(count);
 
-      try {
-        const status = await fetchVerifyStatus(vid);
-        const vs = status.visitState;
+      void (async () => {
+        try {
+          const status = await fetchVerifyStatus(vid);
+          const vs = status.visitState;
 
-        if (vs === 'AWAITING_VERIFICATION') {
+          if (vs === 'AWAITING_VERIFICATION') {
+            if (count >= POLL_MAX) {
+              stopPolling();
+              if (mountedRef.current) setState('timeout');
+            }
+            return;
+          }
+
+          stopPolling();
+          if (!mountedRef.current) return;
+          setOutcome({
+            visitState: vs,
+            reason: (status as { verificationText?: string | null }).verificationText ?? null,
+          });
+          if (vs === 'VERIFIED') setState('verified');
+          else if (vs === 'FLAGGED') setState('flagged');
+          else setState('closed');
+        } catch {
           if (count >= POLL_MAX) {
             stopPolling();
             if (mountedRef.current) setState('timeout');
           }
-          return;
+        } finally {
+          pollInFlightRef.current = false;
         }
-
-        stopPolling();
-        if (!mountedRef.current) return;
-        setOutcome({
-          visitState: vs,
-          reason: (status as { verificationText?: string | null }).verificationText ?? null,
-        });
-        if (vs === 'VERIFIED') setState('verified');
-        else if (vs === 'FLAGGED') setState('flagged');
-        else setState('closed');
-      } catch {
-        if (count >= POLL_MAX) {
-          stopPolling();
-          if (mountedRef.current) setState('timeout');
-        }
-      }
+      })();
     }, POLL_INTERVAL_MS);
   }
 
@@ -449,7 +463,10 @@ export default function SubmitStep(): React.JSX.Element {
           </Pressable>
         )}
 
-        {isTerminal && (
+        {/* BUG-09: State B (polling) must let the worker leave — "Submit success
+            frees the worker". The hardware/gesture lock still blocks re-entering
+            /review or re-firing submit; this button is the sanctioned exit. */}
+        {(isTerminal || state === 'polling') && (
           <Pressable
             onPress={goHome}
             accessibilityRole="button"

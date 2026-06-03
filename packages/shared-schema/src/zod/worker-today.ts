@@ -45,6 +45,10 @@ const VisitRowSchema = z.object({
   state: VisitStateSchema,
   photosBefore: z.number().int().nonnegative(),
   photosAfter: z.number().int().nonnegative(),
+  /** ISO timestamp of clock-in (Visit.startedAt); null until the worker starts cleaning. */
+  startedAt: z.string().nullable(),
+  /** ISO timestamp of clock-out (Visit.completedAt); null until cleaning is finished. */
+  completedAt: z.string().nullable(),
 });
 
 const ResumeCaptureSchema = z.object({

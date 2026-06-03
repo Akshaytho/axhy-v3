@@ -44,6 +44,7 @@ import { RoleSchema, type VerifyOTPOutput } from '@axhy/shared-schema';
 
 import { setTokens, clearTokens, getTokens, type StoredTokens } from './auth-store';
 import { API_ROUTES } from './api-routes';
+import { fetchWithTimeout } from './uploads/r2-put';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
 
@@ -341,11 +342,19 @@ export async function onAppLogout(): Promise<void> {
     const tokens = await getTokens();
     const refreshToken = tokens?.refreshToken;
     if (refreshToken) {
-      await fetch(`${API_BASE}${API_ROUTES.authSignOut}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
+      // Best-effort server revocation, time-bounded (8s) so a dead/patchy
+      // network can't hang sign-out forever before clearTokens. The catch below
+      // proceeds to clearTokens on timeout/abort exactly like any network
+      // failure (HIGH-12 class — a raw fetch here had no timeout).
+      await fetchWithTimeout(
+        `${API_BASE}${API_ROUTES.authSignOut}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        },
+        8_000,
+      );
     }
   } catch (err) {
     if (__DEV__) {

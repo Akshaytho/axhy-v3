@@ -21,14 +21,53 @@ import { PhotoGridReview } from '../../../../components/worker/capture/PhotoGrid
 import { NAV_ROUTES } from '../../../../lib/api-routes';
 import { StatCard } from '../../../../components/worker/StatCard';
 import { r2UploadQueue } from '../../../../lib/r2-upload-queue';
+import { useWorkerTodayQuery } from '../../../../lib/queries/use-worker-today';
+import { findWorkerTodayVisit } from '../../../../lib/worker-today-helpers';
+
+const MIN_PER_PHASE = 3;
+
+/** Specific "what's still missing" copy for the disabled submit state (BUG-05). */
+function missingPhotosHint(before: number, after: number): string {
+  const needBefore = Math.max(0, MIN_PER_PHASE - before);
+  const needAfter = Math.max(0, MIN_PER_PHASE - after);
+  if (needBefore > 0 && needAfter > 0) {
+    return `Take ${needBefore} more before and ${needAfter} more after photos.`;
+  }
+  if (needBefore > 0) return `Take ${needBefore} more before photo${needBefore > 1 ? 's' : ''}.`;
+  return `Take ${needAfter} more after photo${needAfter > 1 ? 's' : ''}.`;
+}
+
+/** BUG-08: real cleaned duration ("N min") from clock-in/clock-out; null until cleaning has started. */
+function formatCleanedDuration(
+  startedAt: string | null,
+  completedAt: string | null,
+): string | null {
+  if (!startedAt) return null;
+  const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+  const minutes = Math.max(0, Math.round((end - new Date(startedAt).getTime()) / 60000));
+  return `${minutes} min`;
+}
 
 /** @derives(master-plan §G) */
 export default function ReviewStep(): React.JSX.Element {
   const { visitId } = useLocalSearchParams<{ visitId: string }>();
   const id = visitId ?? '';
+  // BUG-04/08: surface the site name + cleaned duration the contract requires.
+  const { data: todayData } = useWorkerTodayQuery();
+  const visit = findWorkerTodayVisit(todayData, id);
+  const siteName = visit?.siteName ?? '';
+  const cleanedDuration = formatCleanedDuration(
+    visit?.startedAt ?? null,
+    visit?.completedAt ?? null,
+  );
   const [counts, setCounts] = useState({ before: 0, after: 0, uploaded: 0 });
   const totalCaptured = counts.before + counts.after;
-  const uploadsReady = totalCaptured > 0 && counts.uploaded === totalCaptured;
+  // BUG-01: the anti-gaming floor is >=3 before AND >=3 after (07-final-review.md),
+  // matched server-side by worker-submit-service MIN_PHOTOS_PER_PHASE. Submit stays
+  // disabled until the floor is met AND every captured photo has finished uploading.
+  const floorMet = counts.before >= MIN_PER_PHASE && counts.after >= MIN_PER_PHASE;
+  const allUploaded = totalCaptured > 0 && counts.uploaded === totalCaptured;
+  const canSubmit = floorMet && allUploaded;
 
   useEffect(() => {
     function syncCounts(snapshot: ReturnType<typeof r2UploadQueue.snapshot>): void {
@@ -49,7 +88,7 @@ export default function ReviewStep(): React.JSX.Element {
   }, [id]);
 
   function goBack(): void {
-    router.replace(NAV_ROUTES.workerCaptureStep(id, 'after-photos'));
+    router.replace(NAV_ROUTES.workerCaptureStep(id, 'after-photos-review'));
   }
 
   function goNext(): void {
@@ -62,7 +101,7 @@ export default function ReviewStep(): React.JSX.Element {
         <Pressable
           onPress={goBack}
           accessibilityRole="button"
-          accessibilityLabel="Back to after photos"
+          accessibilityLabel="Back to after review"
           hitSlop={12}
           style={s.iconBtn}
         >
@@ -73,6 +112,17 @@ export default function ReviewStep(): React.JSX.Element {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll}>
+        {siteName ? (
+          <View style={s.summaryRow}>
+            <Text style={s.summarySite} numberOfLines={1}>
+              {siteName}
+            </Text>
+            <Text style={s.summaryMeta}>
+              {cleanedDuration ? `Cleaned ${cleanedDuration} · ` : ''}
+              {totalCaptured} photo{totalCaptured === 1 ? '' : 's'}
+            </Text>
+          </View>
+        ) : null}
         <View style={s.statsRow}>
           <StatCard value={String(counts.before)} label="Before" padding={16} />
           <StatCard value={String(counts.after)} label="After" padding={16} />
@@ -95,23 +145,23 @@ export default function ReviewStep(): React.JSX.Element {
 
       <View style={s.footer}>
         <Pressable
-          onPress={uploadsReady ? goNext : undefined}
+          onPress={canSubmit ? goNext : undefined}
           accessibilityRole="button"
           accessibilityLabel="Submit for verification"
-          disabled={!uploadsReady}
+          disabled={!canSubmit}
           style={({ pressed }) => [
             s.nextBtn,
-            !uploadsReady && s.nextBtnDisabled,
-            pressed && uploadsReady && { opacity: 0.92 },
+            !canSubmit && s.nextBtnDisabled,
+            pressed && canSubmit && { opacity: 0.92 },
           ]}
         >
           <Text style={s.nextText}>Submit for verification</Text>
         </Pressable>
         <Text style={s.hint}>
-          {uploadsReady
+          {canSubmit
             ? 'AI will verify within 30 seconds'
-            : totalCaptured === 0
-              ? 'Take your required photos before you submit.'
+            : !floorMet
+              ? missingPhotosHint(counts.before, counts.after)
               : `Wait for all uploads to finish (${counts.uploaded}/${totalCaptured} ready).`}
         </Text>
       </View>
@@ -137,6 +187,9 @@ const s = StyleSheet.create({
     letterSpacing: -0.4,
   },
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
+  summaryRow: { marginBottom: 12, gap: 2 },
+  summarySite: { fontSize: 16, fontWeight: '700', color: tokens.color.ink.primary },
+  summaryMeta: { fontSize: 12, color: tokens.color.ink.tertiary },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
   labelRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   labelPill: {

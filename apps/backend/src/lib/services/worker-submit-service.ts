@@ -19,13 +19,25 @@ import type { WorkerSubmitPhoto } from '@axhy/shared-schema';
 
 import { buildObjectKey } from '../r2-presign.js';
 import { enqueueOutbox } from '../outbox.js';
+import { recordAuditEvent } from '../audit-event.js';
 
 type SubmitArgs = {
   workerId: string;
   visitId: string;
   companyId: string;
   photos: ReadonlyArray<WorkerSubmitPhoto>;
+  /** JWT user id of the submitting worker (AuditEvent actor). */
+  actorUserId: string;
 };
+
+/**
+ * Minimum photos required per phase. Mirrors the client floor
+ * (lib/capture-flow.ts MIN_PHOTOS_PER_PHASE = 3) and the anti-gaming contract in
+ * docs/capture-submission_flow/07-final-review.md ("Submit is disabled if
+ * fewer than 3 before-photos / fewer than 3 after-photos"). Enforced
+ * server-side so a bypassed/buggy client can never land a thin evidence set.
+ */
+const MIN_PHOTOS_PER_PHASE = 3;
 
 export type SubmitVisitResult =
   | {
@@ -37,7 +49,8 @@ export type SubmitVisitResult =
     }
   | { kind: 'NOT_FOUND' }
   | { kind: 'WRONG_WORKER' }
-  | { kind: 'WRONG_STATE'; currentState: string };
+  | { kind: 'WRONG_STATE'; currentState: string }
+  | { kind: 'INSUFFICIENT_PHOTOS'; photosBefore: number; photosAfter: number };
 
 /**
  * @derives(master-plan §G)
@@ -46,7 +59,7 @@ export async function submitVisit(
   tx: Prisma.TransactionClient,
   args: SubmitArgs,
 ): Promise<SubmitVisitResult> {
-  const { workerId, visitId, companyId, photos } = args;
+  const { workerId, visitId, companyId, photos, actorUserId } = args;
 
   const visit = await tx.visit.findUnique({
     where: { id: visitId },
@@ -56,6 +69,16 @@ export async function submitVisit(
   if (!visit || visit.companyId !== companyId) return { kind: 'NOT_FOUND' };
   if (visit.workerId !== workerId) return { kind: 'WRONG_WORKER' };
   if (visit.state !== 'PHOTOS_PENDING') return { kind: 'WRONG_STATE', currentState: visit.state };
+
+  // Minimum-photo evidence floor (BUG-01 fix). Reject BEFORE any VisitPhoto
+  // write or state transition so a thin evidence set never gets persisted or
+  // sent to AI verification. This is the authoritative server-side guard; the
+  // client review/submit screens gate the same rule for UX.
+  const photosBefore = photos.filter((p) => p.phase === 'before').length;
+  const photosAfter = photos.filter((p) => p.phase === 'after').length;
+  if (photosBefore < MIN_PHOTOS_PER_PHASE || photosAfter < MIN_PHOTOS_PER_PHASE) {
+    return { kind: 'INSUFFICIENT_PHOTOS', photosBefore, photosAfter };
+  }
 
   const photoRows = photos.map((p) => ({
     companyId,
@@ -68,9 +91,6 @@ export async function submitVisit(
 
   await tx.visitPhoto.createMany({ data: photoRows });
 
-  const photosBefore = photos.filter((p) => p.phase === 'before').length;
-  const photosAfter = photos.filter((p) => p.phase === 'after').length;
-
   await tx.visit.update({
     where: { id: visitId },
     data: {
@@ -78,6 +98,16 @@ export async function submitVisit(
       photosBefore,
       photosAfter,
     },
+  });
+
+  // BUG-13 / D9: append-only audit of the worker's submit transition, in the
+  // same transaction as the state change (commits together or not at all).
+  await recordAuditEvent(tx, {
+    companyId,
+    kind: 'VISIT_SUBMITTED',
+    actorId: actorUserId,
+    targetId: visitId,
+    payload: { photosBefore, photosAfter },
   });
 
   // Emit ai.verify in the same transaction as the state transition so either

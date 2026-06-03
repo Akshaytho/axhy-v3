@@ -72,6 +72,7 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
           visitId,
           companyId: auth.companyId,
           photos: parsed.data.photos,
+          actorUserId: auth.userId,
         }),
       );
 
@@ -91,6 +92,15 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
           error: 'WRONG_STATE',
           message: `Visit is in ${result.currentState}, not PHOTOS_PENDING.`,
           currentState: result.currentState,
+        });
+        return;
+      }
+      if (result.kind === 'INSUFFICIENT_PHOTOS') {
+        reply.code(422).send({
+          error: 'INSUFFICIENT_PHOTOS',
+          message: 'Submission needs at least 3 before photos and 3 after photos.',
+          photosBefore: result.photosBefore,
+          photosAfter: result.photosAfter,
         });
         return;
       }

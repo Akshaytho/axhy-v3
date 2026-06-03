@@ -23,7 +23,7 @@ export default function BeforePhotosStep(): React.JSX.Element {
       phase="before"
       currentStep="before-photos"
       preservedSlotIndices={preservedSlotIndices}
-      title="Step 2 of 6 — Before photos"
+      title="Step 2 of 8 — Before photos"
     />
   );
 }

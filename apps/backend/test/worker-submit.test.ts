@@ -134,6 +134,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  await prismaRaw.auditEvent.deleteMany({ where: { companyId } });
   await prismaRaw.visitPhoto.deleteMany({ where: { companyId } });
   await prismaRaw.visit.deleteMany({ where: { companyId } });
   await prismaRaw.worker.deleteMany({ where: { companyId } });
@@ -153,10 +154,15 @@ afterAll(async () => {
   await app.close();
 });
 
+// Compliant evidence set: the contract floor is >=3 before AND >=3 after
+// (07-final-review.md / worker-submit-service MIN_PHOTOS_PER_PHASE).
 const VALID_PHOTOS = [
   { phase: 'before', index: 1, contentType: 'image/jpeg' },
   { phase: 'before', index: 2, contentType: 'image/jpeg' },
+  { phase: 'before', index: 3, contentType: 'image/jpeg' },
   { phase: 'after', index: 1, contentType: 'image/jpeg' },
+  { phase: 'after', index: 2, contentType: 'image/jpeg' },
+  { phase: 'after', index: 3, contentType: 'image/jpeg' },
 ];
 
 describe('POST /worker/visits/:visitId/submit', () => {
@@ -214,6 +220,37 @@ describe('POST /worker/visits/:visitId/submit', () => {
     expect((res.json() as { error: string }).error).toBe('BAD_INPUT');
   });
 
+  it('rejects below the 3-before/3-after floor with 422 INSUFFICIENT_PHOTOS and does not transition (BUG-01)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/worker/visits/${visitId}/submit`,
+      payload: {
+        photos: [
+          { phase: 'before', index: 1, contentType: 'image/jpeg' },
+          { phase: 'before', index: 2, contentType: 'image/jpeg' },
+          { phase: 'after', index: 1, contentType: 'image/jpeg' },
+          { phase: 'after', index: 2, contentType: 'image/jpeg' },
+          { phase: 'after', index: 3, contentType: 'image/jpeg' },
+        ],
+      },
+      headers: { authorization: `Bearer ${workerToken}` },
+    });
+    expect(res.statusCode).toBe(422);
+    const body = res.json() as { error: string; photosBefore: number; photosAfter: number };
+    expect(body.error).toBe('INSUFFICIENT_PHOTOS');
+    expect(body.photosBefore).toBe(2);
+    expect(body.photosAfter).toBe(3);
+
+    // No partial write: visit stays PHOTOS_PENDING, zero VisitPhoto rows persisted.
+    const after = await prismaRaw.visit.findUnique({
+      where: { id: visitId },
+      select: { state: true },
+    });
+    expect(after?.state).toBe('PHOTOS_PENDING');
+    const rows = await prismaRaw.visitPhoto.findMany({ where: { visitId } });
+    expect(rows).toHaveLength(0);
+  });
+
   it('accepts valid submit: creates VisitPhoto rows and transitions visit to AWAITING_VERIFICATION', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -230,23 +267,31 @@ describe('POST /worker/visits/:visitId/submit', () => {
     };
     expect(body.visitId).toBe(visitId);
     expect(body.visitState).toBe('AWAITING_VERIFICATION');
-    expect(body.photosBefore).toBe(2);
-    expect(body.photosAfter).toBe(1);
+    expect(body.photosBefore).toBe(3);
+    expect(body.photosAfter).toBe(3);
 
     // Verify rows were actually created in DB
     const photos = await prismaRaw.visitPhoto.findMany({ where: { visitId } });
-    expect(photos).toHaveLength(3);
+    expect(photos).toHaveLength(6);
     expect(photos.every((p) => p.aiVerifyStatus === 'PENDING')).toBe(true);
-    expect(photos.filter((p) => p.side === 'BEFORE')).toHaveLength(2);
-    expect(photos.filter((p) => p.side === 'AFTER')).toHaveLength(1);
+    expect(photos.filter((p) => p.side === 'BEFORE')).toHaveLength(3);
+    expect(photos.filter((p) => p.side === 'AFTER')).toHaveLength(3);
 
     const updated = await prismaRaw.visit.findUnique({
       where: { id: visitId },
       select: { state: true, photosBefore: true, photosAfter: true },
     });
     expect(updated?.state).toBe('AWAITING_VERIFICATION');
-    expect(updated?.photosBefore).toBe(2);
-    expect(updated?.photosAfter).toBe(1);
+    expect(updated?.photosBefore).toBe(3);
+    expect(updated?.photosAfter).toBe(3);
+
+    // BUG-13 / D9: the submit transition writes exactly one immutable
+    // VISIT_SUBMITTED audit row, tenant-scoped and targeting this visit.
+    const auditRows = await prismaRaw.auditEvent.findMany({
+      where: { companyId, kind: 'VISIT_SUBMITTED', targetId: visitId },
+    });
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]?.payload).toMatchObject({ photosBefore: 3, photosAfter: 3 });
   });
 });
 
@@ -265,7 +310,7 @@ describe('GET /worker/visits/:visitId/verify-status', () => {
     };
     expect(body.visitId).toBe(visitId);
     expect(body.visitState).toBe('AWAITING_VERIFICATION');
-    expect(body.photos).toHaveLength(3);
+    expect(body.photos).toHaveLength(6);
     expect(body.photos.every((p) => p.aiVerifyStatus === 'PENDING')).toBe(true);
   });
 });

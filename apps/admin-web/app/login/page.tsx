@@ -66,7 +66,9 @@ export default function LoginPage() {
       return () => clearTimeout(t);
     }
     if (step === 'success') {
-      const t = setTimeout(() => router.push('/owner'), 1400);
+      // /owner stub was removed; land on home until the real authed dashboard
+      // is built so the live login flow never 404s.
+      const t = setTimeout(() => router.push('/'), 1400);
       return () => clearTimeout(t);
     }
   }, [step, router]);

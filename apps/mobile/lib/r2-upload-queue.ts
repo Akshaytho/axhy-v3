@@ -6,10 +6,11 @@
  * in the background with exponential backoff on failure. The capture flow
  * never blocks on the network.
  *
- * The queue lives in-memory; persistence between launches lands in 2b-4
- * (reinstall rehydration). For 2b-2, a fresh launch with un-uploaded photos
- * still has the local files on disk and will need a re-enqueue path from
- * 2b-3 Submit before they can flow to R2 again.
+ * The queue is persisted to disk (lib/storage/queue-persistence → local-kv) and
+ * rehydrated on cold-start by the worker layout, so queued photos survive an app
+ * kill (locked standard E6). Every network step is bounded by the timeout helper
+ * (lib/uploads/r2-put) so a stalled socket aborts and the backoff below retries
+ * rather than hanging the worker on "uploading…" forever (HIGH-12).
  *
  * @derives(WORKER_MVP_SLICE_2B_2_PLAN.md §1)
  */
@@ -21,6 +22,7 @@ import { API_BASE } from './api';
 import { getTokens } from './auth-store';
 import { API_ROUTES } from './api-routes';
 import { requestUploadUrls } from './api-capture';
+import { fetchWithTimeout, putFileToR2, UPLOAD_TIMEOUT_MS } from './uploads/r2-put';
 
 /** @derives(master-plan §G) */
 export type UploadStatus = 'idle' | 'uploading' | 'done' | 'failed';
@@ -202,18 +204,10 @@ class R2UploadQueue {
     entry: UploadUrlEntry,
     contentType: QueueItem['contentType'],
   ): Promise<void> {
-    // expo fetch can PUT a file:// URI directly via a Blob fetched from the
-    // local file. Cloudflare R2 expects the same Content-Type used to sign.
-    const fileRes = await fetch(localUri);
-    const blob = await fileRes.blob();
-    const putRes = await fetch(entry.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: blob,
-    });
-    if (!putRes.ok) {
-      throw new Error(`R2 PUT failed: ${putRes.status} ${putRes.statusText}`);
-    }
+    // Delegated to the timeout-guarded helper so a stalled ~2MB PUT on a patchy
+    // network aborts and the exponential backoff retries, instead of hanging the
+    // worker on "uploading…" forever (HIGH-12, 2026-05-24 code review).
+    await putFileToR2(localUri, entry.uploadUrl, contentType);
   }
 
   private async putViaBackendProxy(item: QueueItem): Promise<string> {
@@ -221,7 +215,7 @@ class R2UploadQueue {
     if (!tokens) {
       throw new Error('Sign in again to upload this photo.');
     }
-    const fileRes = await fetch(item.localUri);
+    const fileRes = await fetchWithTimeout(item.localUri, {}, UPLOAD_TIMEOUT_MS);
     const blob = await fileRes.blob();
     const form = new FormData();
     form.append('visitId', item.visitId);
@@ -231,11 +225,15 @@ class R2UploadQueue {
     const ext =
       item.contentType === 'image/png' ? 'png' : item.contentType === 'image/webp' ? 'webp' : 'jpg';
     form.append('photo', blob, `${item.phase}-${item.index}.${ext}`);
-    const res = await fetch(`${API_BASE}${API_ROUTES.workerCapturesUploadProxy}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${tokens.accessToken}` },
-      body: form,
-    });
+    const res = await fetchWithTimeout(
+      `${API_BASE}${API_ROUTES.workerCapturesUploadProxy}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokens.accessToken}` },
+        body: form,
+      },
+      UPLOAD_TIMEOUT_MS,
+    );
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`Upload proxy failed: ${res.status} ${text}`);

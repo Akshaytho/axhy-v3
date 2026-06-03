@@ -195,6 +195,8 @@ async function getWorkerTodayImpl(
       state: v.state as WorkerTodayOutput['visits'][number]['state'],
       photosBefore: v.photosBefore,
       photosAfter: v.photosAfter,
+      startedAt: v.startedAt ? v.startedAt.toISOString() : null,
+      completedAt: v.completedAt ? v.completedAt.toISOString() : null,
     })),
     resumeCapture,
   };

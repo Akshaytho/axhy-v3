@@ -1,131 +1,53 @@
 # Next Session
 
-**Last updated:** 2026-06-02 IST (late evening)
-**Branch:** `chore/handoff-late-2026-05-31`
-**HEAD:** `50b79ac`
-**Rule:** single rolling handoff file. Do not create dated `NEXT_SESSION*.md`, `STATUS.md`, or `handoff/README.md`.
+**Last updated:** 2026-06-04 IST (early morning)
+**Branch:** unchanged — **nothing pushed** (founder standing instruction: fix, do not push).
+**Rule:** single rolling handoff. Do not create dated `NEXT_SESSION*.md` / `STATUS.md`.
+
+**Evidence:** `qa-audit-2026-06-03/capture-submission/` — `bug-log.md` (Session 1/2/3), `EVID-CAPTURE-SUBMISSION-v1.md` (§12/§13), `shots/` (`s2-*`, `v2-60..64`).
 
 ---
 
-## What was completed this session (3 pushed batches + brain update)
+## What shipped this run (all verified, NOT pushed)
 
-### Batch 1 — `bd17fbb` (panel-verified worker scope)
+Founder answered two product forks (multiple-choice): **photo ceiling → 8**, **build dedicated review screens**. Other items resolved from the brain. Three guarded slices.
 
-- Backend role gates: `/chat/reload-context` and `/supervisor/decisions` reject WORKER role at preHandler (403, no tenant data touched). Multi-tenant `companyId` filter verified on every Prisma query.
-- `POST /auth/sign-out` best-effort refresh-token revoke (defensive, never throws).
-- Identity lifecycle: OneSignal.logout ordering before clearTokens, refresh-once mutex, 15s API timeout, role-guard rejects non-WORKER/SUPERVISOR.
-- Worker shell: `_layout` WorkerDrawerProvider, history, profile, capture review, PhotoGridReview, top-level Drawer.
+### Session 2 — capture hardening (HIGH-12 / CRIT-5 / CRIT-6 / GPS honesty)
 
-### Batch 2 — `e061d6c` (unblocked the held capture flow)
+- **HIGH-12** upload PUT timeout (new `lib/uploads/r2-put.ts`, 5 unit tests), **CRIT-5** poll-pileup guard, **CRIT-6** capture-crash fix, removed fabricated "GPS LOCKED" pill. CRIT-4/CRIT-7/E6-persistence verified already-fixed. Backend graceful degradation verified (fail-open rate-limit, Postgres-only critical path, /health).
 
-- `@derives(master-plan §G)` JSDoc added on 9 lint-failing exports across `worker-today-helpers`, `auth-pending-phone`, `capture-launcher` (`WorkerCaptureLauncher`), `CameraView` (`CapturedPhoto`).
-- `WorkerDrawer.tsx` logout failure surfaces inline error banner (was silent in `__DEV__` console.warn; worker stranded "signed in" on revoke timeout). Drawer stays open on failure; auto-clears after 5s.
-- Auth screens (`otp`, `phone`) + capture flow (`submit`, `qr-scan`, `PhasePhotoCapture`) shipped as transitives.
+### Session 3 — features
 
-### Batch 3 — `50b79ac` (strict-QA fixes + honesty audit)
+- **BUG-02** photo ceiling **3 → 8** (+ "Add more"). `capture-flow.ts` MIN_PHOTOS_PER_PHASE/MAX_PHOTOS_PER_PHASE; CameraView shutter to 8, "N OF 8 · MIN 3". Device: shot v2-60.
+- **BUG-03** dedicated **Before-Review + After-Review** screens — new `components/worker/capture/PhaseReview.tsx` (dynamic grid, tap-to-remove, "+ Add more" replacement loop, floor-gated CTA), new route files `before-photos-review.tsx` / `after-photos-review.tsx`, 8-step `CAPTURE_STEPS`, `PhotoGridReview` made dynamic (up to 8/phase). **Clock-in relocated** to Before-Review "Start cleaning". Device: shots v2-61 / v2-62.
+- **BUG-13** worker **audit events** `VISIT_CLOCKED_IN` / `VISIT_CLOCKED_OUT` / `VISIT_SUBMITTED`, written immutably inside each transition's transaction, real-transition-only. `kind` is a free String column (schema.prisma:549) — **no migration**. Test asserts the submit row.
+- **BUG-06** **QR made honest** — `qr-scan.tsx` is now a truthful "SITE CHECK-IN / Start your visit / Continue" screen (no fake scan-line / no camera pretense). Device: shot v2-64.
+- **sign-out timeout** — `identity-lifecycle.ts` uses `fetchWithTimeout(8s)` so a dead network can't hang sign-out.
 
-BLOCKER fixes:
+### Gates (all green)
 
-- `submit.tsx` no longer lies. Outcome-specific UI: VERIFIED / FLAGGED ("Needs supervisor review", amber) / closed (CANCELLED/NO_SHOW/ARCHIVED — neutral) / timeout ("Still processing", blue). Poll timeout is its own honest state, not a silent flip to "done".
-- Back-nav LOCKED on submit non-idle states. Android `BackHandler` + iOS `gestureEnabled: false` via `<Stack.Screen>`. Worker cannot re-enter `/review` or re-fire submit after AI has answered.
-
-HIGH fixes:
-
-- `capture-launcher.tsx` routes by visit.state: PHOTOS_PENDING -> review, AWAITING_VERIFICATION -> submit, IN_PROGRESS -> timer, terminal -> detail. Was always blindly to qr-scan, forcing re-shoot.
-- `(worker)/index.tsx` FLAGGED separated into "Needs attention" group above "In progress". Was silently bucketed into "Completed".
-- `timer.tsx` GPS lat/lng stripped from production logs (dev-gated). Privacy.
-
-Storage test fix:
-
-- `reinstall-rehydration.test.ts` + `photo-sweep.test.ts` mocks provide `Directory`/`File` class mocks matching SDK 54 production API (was still mocking legacy `getInfoAsync`/`readDirectoryAsync` from before commit `19505c5`). 4 failing tests now pass.
-
-Honesty audit cleanup:
-
-- 41 stale `[ORCHESTRATOR_EXCEPTION]` markers removed across 17 worker-scope files. 2 NextSiteCard `@derives` lines had embedded markers stripped while preserving the annotation.
-
-Gates at push time (verified by orchestrator, not subagent claims):
-
-- `pnpm --filter mobile run typecheck` — green
-- `pnpm --filter backend run typecheck` — green
-- `pnpm --filter mobile exec vitest run` — 99/99 pass (0 fail, 0 skip)
-- `pnpm exec eslint <staged>` — clean
-- Pre-commit audit + 15 learnings checks + gaming-pattern scan — all pass
-
-### Brain (memory) updates
-
-- New: `~/.claude/projects/-Users-thotaakshay-eclean-workspace/memory/feedback_qa_strict_production_standard.md` — 10-section strict-QA checklist; founder-mandated 2026-06-02 standard for every persona QA walk. MEMORY.md index updated.
-- Updated: `axhy-cognitive-system/memory/base/sop_qa_enterprise_walk.md` — appended `2026-06-02 EXPANSION — STRICT PRODUCTION STANDARD` section.
+mobile typecheck · **mobile vitest 123/123** · backend typecheck · **worker-submit 10/10** (incl. VISIT_SUBMITTED audit assertion) · `check_before_build` E1–E14 PASSED ×4 · `check_before_done`.
 
 ---
 
-## Cognitive-system layer-1 hooks neutered this session (uncommitted)
+## ⚠️ Documented deviations from the contract — FOUNDER TO RATIFY
 
-Founder directive 2026-06-02: reduce token churn from session-blocking hooks. Three layer-1 hooks early-exit; backups preserved next to each.
+1. **ON_SITE not introduced.** `visit.ts` only allows `EN_ROUTE → WORKER_ARRIVE → ON_SITE` (no `SCHEDULED → ON_SITE`); doing ON_SITE faithfully needs a **locked state-machine change** (add a transition + tests). Deferred (you accepted this). Pre-cleaning state stays SCHEDULED; clock-in goes SCHEDULED→IN_PROGRESS leniently as before.
+2. **Clock-out stays at Timer "Done"** (not After-Review "Continue" as the contract's after-phase=IN_PROGRESS model says). Chosen for **accurate cleaning duration** + **deterministic resume** (IN_PROGRESS→timer, PHOTOS_PENDING→review). Trade-off: the contract's "back to timer from after-capture" isn't supported; After-Review "Continue" just navigates. If you want the literal contract model, it's a follow-up slice (resume disambiguation needed).
 
-| Hook                         | Status   | Restore command                                                                    |
-| ---------------------------- | -------- | ---------------------------------------------------------------------------------- |
-| `orchestrator-counter.mjs`   | DISABLED | `mv orchestrator-counter.mjs.disabled-2026-06-02-bak orchestrator-counter.mjs`     |
-| `sub-agent-commit-guard.mjs` | DISABLED | `mv sub-agent-commit-guard.mjs.disabled-2026-06-02-bak sub-agent-commit-guard.mjs` |
-| `bash-guard.mjs`             | DISABLED | `mv bash-guard.mjs.disabled-2026-06-02-bak bash-guard.mjs`                         |
+## On-device verification honesty
 
-KEPT ACTIVE (real safety): `pre-edit-guard.mjs`, `pre-ask-guard.mjs`, `read-tracker.mjs`, `memory-firewall/storage-hook.mjs`, all post-commit/post-push audit hooks.
+New screens + 8-counter + honest QR verified by **deep-link screenshots** (v2-60..64). The **full clock-in→timer→submit lifecycle was NOT driven on-device** this run: date rolled to Jun 4 → the QA worker had no "today" visit to start, and the live-camera screen ANR-storms this emulator. Lifecycle correctness rests on typecheck + 123 mobile + 10 backend tests + the relocated-but-unchanged clock-in code. **Do a final phone walk with a real assigned visit before launch.**
 
-Decision needed next session: keep disabled, restore, or commit the disable as the new baseline.
+## Environment state
 
----
+- Disk was at 100% mid-session (a local release build) which crashed build/backend/emulator. Freed ~14G of **regenerable** caches OUTSIDE the project (`~/.gradle/caches`, `~/.cache`, `~/.npm`) — **project, pnpm store, and AVD untouched**. Now ~9–10G free.
+- Backend + Metro running; emulator up but ANR-prone (interactive walking is slow — use deep-links + `adb exec-out screencap`).
+- LAN IP: `apps/mobile/.env.local` → set to your machine's current LAN IP (10.0.2.2 / adb-reverse don't deliver on this macOS).
 
-## What is still incomplete (priority order)
+## Remaining / follow-ups (specced, not done)
 
-### BLOCKER (red, not fixed this session)
-
-- B-04 R2 CORS preflight 403 — web photo uploads fail; 0 `VisitPhoto` rows created in capture walk. Needs Cloudflare R2 bucket CORS policy update + verification.
-- B-01 follow-up — `/profile` URL collision. Supervisor `profile.tsx -> me.tsx` rename was staged but unstaged this session. Rename + `(supervisor)/_layout.tsx` + `(supervisor)/me.tsx` mods are still on disk uncommitted. Cold-nav to `/profile` for a worker may still render supervisor route until rename is committed.
-
-### HIGH (not fixed this session)
-
-- `/worker/history` backend route missing — history screen shows today-only because no multi-day endpoint exists. Worker at month 6 sees no history.
-- `timer.tsx` confirm-before-abandon — Home icon does `router.replace(workerHome)` with NO confirmation. One mis-tap mid-clean loses the timer + partial GPS.
-- `use-worker-today.ts` refetch tuning — no `refetchOnWindowFocus` / `refetchOnMount` / `refetchInterval`. After tab-switch mid-flow, Today shows stale state until pull-to-refresh.
-- `profile.tsx` counter math — "Remaining" silently drops FLAGGED + AWAITING_VERIFICATION + CANCELLED + NO_SHOW + ARCHIVED. Sites != Verified + Remaining when any of those exist.
-- `history.tsx` FLAGGED drop — only filters VERIFIED; flagged visits disappear from worker's view.
-- `qr-scan.tsx` close-X does `router.back()` which can pop out of `(worker)` layout entirely.
-- H-05 — Refresh token in `localStorage` on web (mobile uses SecureStore correctly). Blocker if web ships.
-
-### MEDIUM
-
-- WorkerDrawer logout error banner is text-only; consider audible/haptic for accessibility.
-- `submit.tsx` poll timeout banner says "still running" but does not auto-resume polling on app foreground.
-- PhotoGridReview `r2UploadQueue.onChange` cleanup contract still unverified (subscription leak risk over 1y).
-
-### LOW
-
-- `(worker)/_layout.tsx` lines 31-32 + 159-160 commented-out DEV import for `SendToClaudeButton`. Dead code.
-- `profile.tsx` `sanitizeDisplayName` strips `(real-phone)` suffix — signal that test fixtures leak into JWT name claims. Audit JWT issue path.
-
-### Strict-QA standard tasks needing infrastructure (cannot do without DB/device)
-
-- Real-data multi-tenant QA walk — strict standard forbids seeding shortcuts. Need DATABASE_URL + admin API access to create at least 2 companies x 2 HR x 2 supervisors x 5 workers x 10 visits/worker spanning all 12 states x 30 days history.
-- Real-device forward/back walk — Expo Go on physical Android + iOS. Verify back-nav locks (Android BackHandler, iOS Stack.Screen gestureEnabled) actually fire on real hardware.
-- State-machine walk — walk every persona UI in EACH of 12 Visit states (SCHEDULED, NOTIFIED, EN_ROUTE, ON_SITE, IN_PROGRESS, PHOTOS_PENDING, AWAITING_VERIFICATION, VERIFIED, FLAGGED, CANCELLED, NO_SHOW, ARCHIVED). Walk every legal + every illegal-transition attempt.
-- Negative + edge + special + network + device + timing + concurrency + role cases — full matrix per `feedback_qa_strict_production_standard.md`.
-
----
-
-## Out-of-scope uncommitted leftovers in working tree
-
-Not touched (not worker scope or not verified):
-
-- `.gitignore`, `handoff/*` (NEXT_SESSION updated; others not), `docs/learnings/*`, `packages/ai-tools/src/session-audit.ts`, `handoff/scripts/build-handoff-artifacts.mjs`
-- Supervisor: `_layout.tsx` mod, `me.tsx` mod, `profile.tsx -> me.tsx` rename
-- Untracked: `docs/audits/qa-2026-06-02/`, `done-memo-2026-06-02-axhy-boot-cleanup.md`, `scripts/claude-codex-collab.sh`
-- 3 disabled hook `.mjs` + their `.disabled-*-bak` backups
-
----
-
-## First action next session
-
-1. Decide hook layer: keep disabled, restore, or commit the disable. Backups at `axhy-cognitive-system/src/layer-1-hook/*.disabled-2026-06-02-bak`.
-2. Run `pnpm --filter @axhy/ai-tools run audit` from repo root.
-3. Read this file only for handoff context (do NOT load other docs).
-4. If continuing strict-QA: set up DATABASE_URL + real test data via admin API, then walk every state per `feedback_qa_strict_production_standard.md`.
-5. If continuing BLOCKER list: start with R2 CORS (B-04 — actually blocks photo upload end-to-end), then `/worker/history` backend route, then supervisor rename (B-01 follow-up).
+- **Same-class sign-out/upload-timeout** still open in **supervisor/chat** surfaces: `lib/uploads/photo-upload.ts:195`, `lib/audio/transcribe.ts:113/194`. Apply `fetchWithTimeout` in the supervisor pass.
+- **Full QR** (camera decode + `qrSkipped`/`qrCheckedIn` server event + per-site QR flag) — deferred per the locked "no QR by default" decision.
+- **ON_SITE + literal after-phase model** — a deliberate state-machine slice if you want the contract verbatim.
+- **Streaming PUT** (expo-file-system createUploadTask) — memory optimization, not a launch bug.

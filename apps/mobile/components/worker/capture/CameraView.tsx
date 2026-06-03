@@ -22,7 +22,7 @@ export type CapturedPhoto = Pick<CameraCapturedPicture, 'uri' | 'width' | 'heigh
 
 type Props = {
   slotNumber: number;
-  totalSlots: number;
+  maxPhotos: number;
   photoCount: number;
   minPhotos: number;
   mode: 'before' | 'after';
@@ -43,7 +43,7 @@ function getModeAccent(mode: Props['mode']): string {
 /** @derives(master-plan §G) */
 export function CameraView({
   slotNumber,
-  totalSlots,
+  maxPhotos,
   photoCount,
   minPhotos,
   mode,
@@ -59,8 +59,12 @@ export function CameraView({
   const [capturing, setCapturing] = useState(false);
 
   const accent = getModeAccent(mode);
+  // BUG-02: minimum (3) gates the "Done →" CTA; the shutter keeps capturing up
+  // to the maximum (8) so the worker can add coverage on a complex site.
   const hasMinimum = photoCount >= minPhotos;
-  const reviewLabel = mode === 'after' ? 'Review & submit' : 'Review photos';
+  const hasMaximum = photoCount >= maxPhotos;
+  const reviewLabel =
+    mode === 'after' ? 'Done — review after photos' : 'Done — review before photos';
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -70,14 +74,20 @@ export function CameraView({
   }, [permission, requestPermission]);
 
   async function handleShutter(): Promise<void> {
-    if (hasMinimum) return;
+    if (hasMaximum) return;
 
     if (Platform.OS === 'web') {
-      await onCapture({
-        uri: `https://placehold.co/600x800/3D2B1F/F8F4EB.jpg?text=${mode}+${slotNumber}`,
-        width: 600,
-        height: 800,
-      });
+      // The parent's onCapture owns the retake error UX; the shutter only
+      // guarantees it never surfaces an uncaught rejection (CRIT-6).
+      try {
+        await onCapture({
+          uri: `https://placehold.co/600x800/3D2B1F/F8F4EB.jpg?text=${mode}+${slotNumber}`,
+          width: 600,
+          height: 800,
+        });
+      } catch (err) {
+        console.warn('[CameraView] capture handler failed', err);
+      }
       return;
     }
 
@@ -98,6 +108,11 @@ export function CameraView({
       } else {
         console.warn('[CameraView] takePictureAsync returned no uri', { result });
       }
+    } catch (err) {
+      // takePictureAsync (low memory / hardware fault) or onCapture failed. The
+      // parent renders the inline retake error; here we only guarantee no crash
+      // — a re-throw would become an unhandled rejection and kill the camera.
+      console.warn('[CameraView] capture failed', err);
     } finally {
       setCapturing(false);
     }
@@ -169,7 +184,7 @@ export function CameraView({
             <Feather name="x" size={16} color={tokens.color.surface.card} />
           </Pressable>
           <Text style={s.photoCounter}>
-            PHOTO <Text style={{ color: accent }}>{slotNumber}</Text> OF {totalSlots}
+            PHOTO <Text style={{ color: accent }}>{slotNumber}</Text> OF {maxPhotos}
           </Text>
           <View style={s.flashWrap}>
             <Feather name="zap-off" size={18} color="rgba(253,250,243,0.72)" />
@@ -212,10 +227,10 @@ export function CameraView({
           ))}
         </View>
 
-        <View style={s.gpsPill}>
-          <View style={s.gpsDot} />
-          <Text style={s.gpsText}>GPS LOCKED</Text>
-        </View>
+        {/* Honesty: no "GPS LOCKED" pill here — CameraView reads no location, so
+            claiming a lock at capture would be fabricated UI. A real
+            location-at-capture indicator is a future feature (wire expo-location
+            like timer.tsx does), not a static label. */}
       </View>
 
       <View style={s.controls}>
@@ -234,7 +249,7 @@ export function CameraView({
         </View>
 
         <Text style={s.minimumLabel}>
-          <Text style={{ color: accent }}>{photoCount}</Text>/{minPhotos} MINIMUM
+          <Text style={{ color: accent }}>{photoCount}</Text> OF {maxPhotos} · MIN {minPhotos}
         </Text>
 
         <View style={s.shutterRow}>
@@ -246,13 +261,13 @@ export function CameraView({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={hasMinimum ? reviewLabel : 'Take photo'}
-            onPress={hasMinimum ? onReviewPress : () => void handleShutter()}
-            disabled={capturing || (!ready && Platform.OS !== 'web' && !hasMinimum)}
+            accessibilityLabel="Take photo"
+            onPress={() => void handleShutter()}
+            disabled={capturing || hasMaximum || (!ready && Platform.OS !== 'web')}
             style={[
               s.shutter,
               { borderColor: accent },
-              (capturing || (!ready && Platform.OS !== 'web' && !hasMinimum)) && s.shutterDisabled,
+              (capturing || hasMaximum || (!ready && Platform.OS !== 'web')) && s.shutterDisabled,
             ]}
           >
             <View style={[s.shutterAura, { borderColor: `${accent}44` }]} />
@@ -265,19 +280,26 @@ export function CameraView({
         </View>
 
         {hasMinimum ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={reviewLabel}
-            onPress={onReviewPress}
-            style={({ pressed }) => [s.reviewButton, pressed && { opacity: 0.92 }]}
-          >
-            <Text style={s.reviewButtonText}>{reviewLabel}</Text>
-          </Pressable>
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={reviewLabel}
+              onPress={onReviewPress}
+              style={({ pressed }) => [s.reviewButton, pressed && { opacity: 0.92 }]}
+            >
+              <Text style={s.reviewButtonText}>{reviewLabel}</Text>
+            </Pressable>
+            <Text style={s.captureHint}>
+              {hasMaximum
+                ? `Maximum ${maxPhotos} photos reached.`
+                : `Tap the shutter to add more (up to ${maxPhotos}).`}
+            </Text>
+          </>
         ) : (
           <Text style={s.captureHint}>
             {Platform.OS === 'web'
               ? 'Simulate captures here, then continue to review.'
-              : 'Capture at least 3 photos before moving on.'}
+              : `Capture at least ${minPhotos} photos (up to ${maxPhotos}) before moving on.`}
           </Text>
         )}
       </View>
@@ -427,30 +449,6 @@ const s = StyleSheet.create({
     height: 26,
     borderStyle: 'solid',
   },
-  gpsPill: {
-    position: 'absolute',
-    bottom: 14,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-    backgroundColor: 'rgba(74,124,89,0.18)',
-  },
-  gpsDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: GPS_OK,
-  },
-  gpsText: {
-    color: GPS_OK,
-    fontFamily: tokens.font.mono,
-    fontSize: 10,
-    letterSpacing: 0.8,
-  },
   controls: {
     paddingHorizontal: 24,
     paddingTop: 16,
@@ -555,6 +553,7 @@ const s = StyleSheet.create({
     color: tokens.color.ink.tertiary,
     fontSize: 11,
     lineHeight: 16,
+    marginTop: 8,
   },
   permissionPending: {
     flex: 1,
