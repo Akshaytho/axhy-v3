@@ -27,14 +27,13 @@
 
 ## Read order at start of any session
 
-1. `handoff/README.md`
-2. `handoff/NEXT_SESSION.md`
-3. `handoff/execution-state/INDEX.md` (this file) — build-state legend + rules.
-4. `handoff/workflow-maps/INDEX.md` — workflow-architecture conventions.
-5. The matching persona file(s) in **both** folders for the workflow(s) the current slice touches.
-6. `handoff/execution-state/combined.md` + `handoff/workflow-maps/combined-system.md` if the slice spans personas.
-7. `handoff/workflow-maps/data-model.md` if the slice touches schema, audit kinds, notifications, or any cross-table flow.
-8. (Optional) `handoff/generated/app-workflow-dashboard.html` for the single-pane view.
+1. `handoff/NEXT_SESSION.md`
+2. `handoff/execution-state/INDEX.md` (this file) — build-state legend + rules.
+3. `handoff/workflow-maps/INDEX.md` — workflow-architecture conventions.
+4. The matching persona file(s) in **both** folders for the workflow(s) the current slice touches.
+5. `handoff/execution-state/combined.md` + `handoff/workflow-maps/combined-system.md` if the slice spans personas.
+6. `handoff/workflow-maps/data-model.md` if the slice touches schema, audit kinds, notifications, or any cross-table flow.
+7. (Optional) `handoff/generated/app-workflow-dashboard.html` for the single-pane view.
 
 ## Strict enums
 
@@ -119,8 +118,8 @@ These rules apply across all three handoff layers (execution-state + workflow-ma
 1. **No code outside the tracker.** If you (Claude or human) are about to write code for a workflow that isn't represented in `execution-state/` and `workflow-maps/`, **stop**. Update both first. Adding a row + a journey step is cheap; tracking-after-the-fact is where drift starts.
 2. **Slice-truth and tracker-truth must agree at commit time.** If a slice changes any cell in any workflow row (Implementation state shift, new file path, new commit hash, Verification status change), update the tracker in the same local work session **before** marking the slice done. If the slice changes how a workflow actually flows (new step, new branch, new handoff), update `workflow-maps/` too.
 3. **Pause discipline.** If work is paused mid-slice (interrupted, blocked, waiting for review), mark the row's Implementation state as `WIP` or `BLOCKED` with the exact files/commit/stash reference. No anonymous working-tree state.
-4. **Mandatory read at session start.** Any new Claude session must read `handoff/README.md`, `handoff/NEXT_SESSION.md`, this `INDEX.md`, `workflow-maps/INDEX.md`, the relevant persona file(s) in both folders, plus `combined.md` / `combined-system.md` — **before** continuing any work.
-5. **Reconcile on disagreement.** If `STATUS.md` / `NEXT_SESSION.md`, execution-state, workflow-maps, or generated outputs disagree about any workflow's state, **stop**. Reconcile before any coding resumes. Precedence: canonical markdown (execution-state + workflow-maps) > generated outputs. STATUS / NEXT_SESSION are phase-level summary, not workflow-level; must align at any row both reference.
+4. **Mandatory read at session start.** Any new Claude session must read `handoff/NEXT_SESSION.md`, this `INDEX.md`, `workflow-maps/INDEX.md`, the relevant persona file(s) in both folders, plus `combined.md` / `combined-system.md` — **before** continuing any work.
+5. **Reconcile on disagreement.** If `NEXT_SESSION.md`, execution-state, workflow-maps, or generated outputs disagree about any workflow's state, **stop**. Reconcile before any coding resumes. Precedence: canonical markdown (execution-state + workflow-maps) > generated outputs. `NEXT_SESSION.md` is a session summary, not workflow-level truth; it must align anywhere it references a workflow.
 
 ### Generated-artifact discipline (rules 6–14 — friend 2026-05-15)
 
@@ -164,9 +163,7 @@ That's three updates per slice, not three updates per file edit. Don't over-upda
 
 ## Cross-references back into handoff
 
-- `handoff/README.md` points readers here at session start.
 - `handoff/NEXT_SESSION.md` mentions the active slice + the workflow IDs it touches.
-- `handoff/STATUS.md` cites this folder as the workflow-truth surface.
 
 ## What this folder will not do
 

@@ -17,6 +17,7 @@ build/
 .env
 .env.local
 .env.*.local
+.env.local.bak*
 
 # logs
 *.log
@@ -28,6 +29,7 @@ pnpm-debug.log*
 # editor
 .vscode/
 .idea/
+.claude/worktrees/
 *.swp
 *.swo
 .DS_Store
@@ -71,3 +73,4 @@ scripts/devtools-capture/
 # bootstrap-seed + ad-hoc script outputs (P1.5b — 2026-05-17)
 tmp/
 SETUP_ENV.template
+.agent-collab-runs/

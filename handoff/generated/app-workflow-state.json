@@ -1,11 +1,11 @@
 {
   "schema_version": 3,
   "metadata": {
-    "last_updated_at": "2026-05-17T12:48:46.882Z",
-    "generated_against_head": "47ca9bd5db8f47305f46ed41b56b706847192889",
-    "generated_against_branch": "feat/f-006a-onesignal-identity-lifecycle",
+    "last_updated_at": "2026-06-01T19:26:33.169Z",
+    "generated_against_head": "19505c5ac2142dd27ca9a7bec04d1d5b4284e7e7",
+    "generated_against_branch": "chore/handoff-late-2026-05-31",
     "commit_truth_note": "Under auto-regen pre-commit, generated_against_head is the PRIOR commit (the commit containing this JSON is one hash ahead). Use `git log -1` for the absolute newest.",
-    "last_canonical_commit_at_gen": "041fcfc2a5a07f2badef18d25f19b41a1b4a898e",
+    "last_canonical_commit_at_gen": "847d9a6951b766e8929564a3947a5bbb6a1d026a",
     "staleness_warning": null,
     "active_slice": "f-006a-onesignal-identity-lifecycle (F-006a — first slice of the β-split: F-006a → supervisor UI draft → backend gap list → F-011/F-006b cleanly) · CODE_APPROVED 2026-05-17 03:05. Friend's CODE: APPROVED verdict landed at HEAD 05477ae after 3 fix-up rounds (round-1 added initializeOneSignal() at root-layout useEffect; round-2 moved init-before-use into _resolveOneSignal() chokepoint; round-3 closed init-failure no-op contract + replaced bare-boolean latch with Promise<boolean> latch). 49/49 unit tests green. Friend's verbatim: \"CODE: APPROVED. No production-grade findings remain. The two blockers are now actually closed in code. ... Residual note: I could not rerun the Vitest suite locally because this machine's Rollup native optional dependency is broken, so this approval is based on direct code review rather than a fresh local green run.\" **Next:** owner runs manual smoke (handoff/owner-input/f-006a-manual-smoke.md — 5 scenarios on real device + OneSignal sandbox) → push branch → merge to main → F-006a → DONE → surface next slice (supervisor UI draft).",
     "generated_from": [
@@ -17,9 +17,7 @@
       "handoff/owner-input/active-slice.md",
       "handoff/owner-input/change-history.md",
       "handoff/feature-queue/INDEX.md",
-      "handoff/STATUS.md",
-      "handoff/NEXT_SESSION.md",
-      "handoff/README.md"
+      "handoff/NEXT_SESSION.md"
     ]
   },
   "personas": {

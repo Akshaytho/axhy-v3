@@ -151,17 +151,16 @@ These extend the rules in `handoff/execution-state/INDEX.md` (1–15).
 
 When a new Claude session starts on Axhy v3 work:
 
-1. `handoff/README.md`
-2. `handoff/NEXT_SESSION.md`
-3. `handoff/execution-state/INDEX.md`
-4. `handoff/workflow-maps/INDEX.md`
-5. **`handoff/owner-input/INDEX.md`** (this file)
-6. **`handoff/owner-input/pending-notes.md`** — scan for NEW; if any, surface immediately.
-7. **`handoff/owner-input/pending-approvals.md`** — confirm no AWAITING_APPROVAL blocking the intended slice.
-8. **`handoff/feature-queue/INDEX.md`** — see what's next + dependencies.
-9. The relevant persona files in `execution-state/` + `workflow-maps/`.
-10. `combined.md` + `combined-system.md` if the slice spans personas.
-11. (Optional) `generated/app-workflow-state.json` for machine context — but if it disagrees with markdown, **markdown wins** and generation must be re-run.
+1. `handoff/NEXT_SESSION.md`
+2. `handoff/execution-state/INDEX.md`
+3. `handoff/workflow-maps/INDEX.md`
+4. **`handoff/owner-input/INDEX.md`** (this file)
+5. **`handoff/owner-input/pending-notes.md`** — scan for NEW; if any, surface immediately.
+6. **`handoff/owner-input/pending-approvals.md`** — confirm no AWAITING_APPROVAL blocking the intended slice.
+7. **`handoff/feature-queue/INDEX.md`** — see what's next + dependencies.
+8. The relevant persona files in `execution-state/` + `workflow-maps/`.
+9. `combined.md` + `combined-system.md` if the slice spans personas.
+10. (Optional) `generated/app-workflow-state.json` for machine context — but if it disagrees with markdown, **markdown wins** and generation must be re-run.
 
 ## Commit-time discipline
 

@@ -58,6 +58,25 @@ function grep(pattern: string, dirs: string[], exts: string[]): string[] {
   }
 }
 
+function hitHasNearbyMarker(hit: string, marker: string): boolean {
+  const firstColon = hit.indexOf(':');
+  const secondColon = hit.indexOf(':', firstColon + 1);
+  if (firstColon <= 0 || secondColon <= firstColon) return false;
+
+  const filePath = hit.slice(0, firstColon);
+  const lineNum = Number(hit.slice(firstColon + 1, secondColon));
+  if (!filePath || !Number.isFinite(lineNum) || lineNum < 1) return false;
+  if (!existsSync(filePath)) return false;
+
+  const lines = readFileSync(filePath, 'utf8').split('\n');
+  const start = Math.max(0, lineNum - 2);
+  const end = Math.min(lines.length - 1, lineNum);
+  for (let i = start; i <= end; i++) {
+    if (lines[i]?.includes(marker)) return true;
+  }
+  return false;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // LOCKED DOC CHANGE DETECTION — alerts when constitutional docs were amended
 // ═══════════════════════════════════════════════════════════════════════════
@@ -216,7 +235,7 @@ function runLearnedChecks(learnings: Learning[], hotRules: Map<string, number>) 
     ran++;
 
     const paths = learning.checkPaths.split(',').map((p) => p.trim());
-    const hits = grep(learning.checkPattern, paths, ['.ts', '.tsx']);
+    const hits = grep(learning.checkPattern, paths, ['.ts', '.tsx', '.js', '.mjs', '.md']);
 
     // Pattern breadth guard — a pattern matching 20+ raw hits is too broad.
     // It will fire on normal code, cause false positives, and erode trust.
@@ -232,7 +251,9 @@ function runLearnedChecks(learnings: Learning[], hotRules: Map<string, number>) 
     const filtered = hits.filter((h) => {
       if (h.includes('node_modules') || h.includes('/dist/') || h.includes('.next/')) return false;
       if (h.includes('.test.') || h.includes('.spec.') || h.includes('/test/')) return false;
-      if (h.includes('/scripts/') || h.includes('session-audit.ts')) return false;
+      if (h.includes('/scripts/')) return false;
+      if (h.includes('session-audit.ts') && !paths.some((p) => p.includes('session-audit.ts')))
+        return false;
       if (h.includes('// learned-ok')) return false;
       const colonIdx = h.indexOf(':', h.indexOf(':') + 1);
       const linePart = colonIdx > 0 ? h.slice(colonIdx + 1).trim() : '';
@@ -430,7 +451,82 @@ function checkPanelExists() {
   }
 }
 
-// ─── CHECK 7: Schema.prisma exists and has key models ─────────────────────
+// ─── CHECK 7: Single rolling handoff contract ─────────────────────────────
+
+function checkRollingHandoff() {
+  const handoffDir = join(REPO_ROOT, 'handoff');
+  if (!existsSync(handoffDir)) {
+    fail('handoff', 'BLOCKER', 'Missing handoff/ directory');
+    return;
+  }
+
+  const canonical = join(handoffDir, 'NEXT_SESSION.md');
+  if (!existsSync(canonical)) {
+    fail('handoff', 'BLOCKER', 'Missing canonical handoff file: handoff/NEXT_SESSION.md');
+    return;
+  }
+
+  const nextSessionFiles = readdirSync(handoffDir).filter((name) =>
+    /^NEXT_SESSION.*\.md$/.test(name),
+  );
+  if (nextSessionFiles.length !== 1 || nextSessionFiles[0] !== 'NEXT_SESSION.md') {
+    fail(
+      'handoff',
+      'HIGH',
+      `Expected exactly one rolling handoff file (handoff/NEXT_SESSION.md). Found: ${nextSessionFiles.join(', ') || '(none)'}`,
+    );
+  }
+
+  for (const retired of ['STATUS.md', 'README.md']) {
+    if (existsSync(join(handoffDir, retired))) {
+      fail(
+        'handoff',
+        'MEDIUM',
+        `Retired handoff file present: handoff/${retired}. Consolidate into handoff/NEXT_SESSION.md.`,
+      );
+    }
+  }
+
+  const content = readFileSync(canonical, 'utf8');
+  for (const section of [
+    '## What was completed',
+    '## What is genuinely incomplete',
+    '## First action next session',
+  ]) {
+    if (!content.includes(section)) {
+      fail('handoff', 'MEDIUM', `handoff/NEXT_SESSION.md missing required section: ${section}`);
+    }
+  }
+}
+
+// ─── CHECK 8: Workspace AGENTS.md stays slim and current ──────────────────
+
+function checkWorkspaceAgentsContract() {
+  const agentsPath = join(REPO_ROOT, '..', 'AGENTS.md');
+  if (!existsSync(agentsPath)) {
+    fail('workspace-agents', 'MEDIUM', 'Missing workspace AGENTS.md at ../AGENTS.md');
+    return;
+  }
+
+  const content = readFileSync(agentsPath, 'utf8');
+  for (const retired of ['STATUS.md', 'NEXT_SESSION_20', 'handoff/README.md']) {
+    if (content.includes(retired)) {
+      fail(
+        'workspace-agents',
+        'MEDIUM',
+        `Workspace AGENTS.md still references retired boot context: ${retired}`,
+      );
+    }
+  }
+
+  if (content.includes('<claude-mem-context>')) {
+    console.log(
+      '[audit] NOTE: Workspace AGENTS.md contains an auto-managed claude-mem context block. This is outside the repo handoff contract and should be trimmed at its source if boot tokens remain too high.',
+    );
+  }
+}
+
+// ─── CHECK 9: Schema.prisma exists and has key models ─────────────────────
 
 function checkSchemaIntegrity() {
   const schemaPath = join(REPO_ROOT, 'packages/shared-schema/prisma/schema.prisma');
@@ -457,7 +553,7 @@ function checkSchemaIntegrity() {
   }
 }
 
-// ─── CHECK 8: State machine files exist ───────────────────────────────────
+// ─── CHECK 10: State machine files exist ──────────────────────────────────
 
 function checkStateMachines() {
   const smDir = join(REPO_ROOT, 'packages/state-machines');
@@ -478,7 +574,7 @@ function checkStateMachines() {
   }
 }
 
-// ─── CHECK 9: Routes have requireAuth ─────────────────────────────────────
+// ─── CHECK 11: Routes have requireAuth ────────────────────────────────────
 
 function checkRouteAuth() {
   const routeDir = join(REPO_ROOT, 'apps/backend/src/routes');
@@ -525,7 +621,7 @@ function checkRouteAuth() {
   }
 }
 
-// ─── CHECK 10: No raw prisma outside transactions ─────────────────────────
+// ─── CHECK 12: No raw prisma outside transactions ────────────────────────
 
 function checkTenantIsolation() {
   const hits = grep(
@@ -544,6 +640,7 @@ function checkTenantIsolation() {
     )
       continue;
     if (hit.includes('withTenantContext') || hit.includes('// raw-ok')) continue;
+    if (hitHasNearbyMarker(hit, '// raw-ok')) continue;
     fail(
       'tenant-isolation',
       'MEDIUM',
@@ -864,7 +961,8 @@ function checkAbusePrevention() {
   if (existsSync(chatRoute)) {
     const content = readFileSync(chatRoute, 'utf8');
     if (
-      !content.includes('rateLimit') &&
+      !content.toLowerCase().includes('ratelimit') &&
+      !content.includes('checkAndConsumeRateLimit') &&
       !content.includes('messageCount') &&
       !content.includes('messages_per_supervisor')
     ) {
@@ -880,7 +978,8 @@ function checkAbusePrevention() {
   if (existsSync(chatRoute)) {
     const content = readFileSync(chatRoute, 'utf8');
     if (
-      !content.includes('semaphore') &&
+      !content.toLowerCase().includes('semaphore') &&
+      !content.includes('tryAcquireChatSlot') &&
       !content.includes('concurrent') &&
       !content.includes('CONCURRENT')
     ) {
@@ -927,6 +1026,8 @@ console.log('[audit] Phase 1: Structural checks...');
 checkLockedDocsExist();
 checkProtocolExists();
 checkPanelExists();
+checkRollingHandoff();
+checkWorkspaceAgentsContract();
 checkSchemaIntegrity();
 checkStateMachines();
 checkNoTodos();
@@ -1000,7 +1101,7 @@ for (const learning of learnings) {
   if (!learning.checkPattern || !learning.checkPaths) continue;
   if (learning.checkExpect === 'none') continue;
   const paths = learning.checkPaths.split(',').map((p) => p.trim());
-  const testHits = grep(learning.checkPattern, paths, ['.ts', '.tsx', '.md']);
+  const testHits = grep(learning.checkPattern, paths, ['.ts', '.tsx', '.js', '.mjs', '.md']);
   if (testHits.length === 0) {
     fail(
       'integrity-dead-pattern',

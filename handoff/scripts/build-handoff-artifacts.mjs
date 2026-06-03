@@ -5,7 +5,7 @@
  * Reads canonical sources:
  *   handoff/execution-state/*.md  — workflow rows (build state)
  *   handoff/workflow-maps/*.md    — journey flowcharts (Mermaid)
- *   handoff/STATUS.md             — active slice
+ *   handoff/NEXT_SESSION.md       — rolling session handoff
  *   git metadata
  *
  * Writes:
@@ -65,7 +65,7 @@ function git(cmd) {
 const generatedAgainstHead = git('rev-parse HEAD');
 const generatedAgainstBranch = git('rev-parse --abbrev-ref HEAD');
 // Canonical = the markdown sources of truth (NOT the generated outputs).
-const CANONICAL_PATHS = 'handoff/execution-state handoff/workflow-maps handoff/owner-input handoff/feature-queue handoff/README.md handoff/STATUS.md handoff/NEXT_SESSION.md';
+const CANONICAL_PATHS = 'handoff/execution-state handoff/workflow-maps handoff/owner-input handoff/feature-queue handoff/NEXT_SESSION.md';
 const GENERATED_PATHS = 'handoff/generated';
 const lastCanonicalCommit = git(`log -1 --format=%H -- ${CANONICAL_PATHS}`);
 const lastGeneratedCommit = git(`log -1 --format=%H -- ${GENERATED_PATHS}`);
@@ -319,8 +319,8 @@ function parseCombinedTally() {
  *
  * Per friend's verification (2026-05-15 evening): header + Current Slice
  * callout must agree. owner-input/active-slice.md is the slice-level
- * canonical source. STATUS.md is phase-level and stays as a fallback only
- * if the active-slice file is missing.
+ * canonical source. If that file is missing, fall back to the rolling
+ * handoff pointer instead of reviving a second phase-level handoff file.
  */
 function activeSlice() {
   const aSlice = parseActiveSlice();
@@ -329,13 +329,7 @@ function activeSlice() {
     const status = (aSlice['Status'] || '').replace(/`/g, '').trim();
     return status ? `${name} · ${status}` : name;
   }
-  try {
-    const status = readFileSync(resolve(handoff, 'STATUS.md'), 'utf8');
-    const m = status.match(/\*\*Active phase:\*\*\s*\*\*(.+?)\.\*\*/);
-    return m ? m[1].trim() : 'unknown';
-  } catch {
-    return 'unknown';
-  }
+  return 'see handoff/NEXT_SESSION.md';
 }
 
 /**
@@ -380,7 +374,7 @@ function staleReason() {
       }
     }
   }
-  for (const f of ['README.md', 'STATUS.md', 'NEXT_SESSION.md']) {
+  for (const f of ['NEXT_SESSION.md']) {
     const p = resolve(handoff, f);
     if (!existsSync(p)) continue;
     const m = statSync(p).mtimeMs;
@@ -650,9 +644,7 @@ const json = {
       'handoff/owner-input/active-slice.md',
       'handoff/owner-input/change-history.md',
       'handoff/feature-queue/INDEX.md',
-      'handoff/STATUS.md',
       'handoff/NEXT_SESSION.md',
-      'handoff/README.md',
     ],
   },
   personas: Object.fromEntries(
@@ -1207,7 +1199,7 @@ const html = `<!DOCTYPE html>
         ·
         <a href="../workflow-maps/INDEX.md">workflow-maps/INDEX.md</a>
         ·
-        <a href="../STATUS.md">handoff/STATUS.md</a>
+        <a href="../NEXT_SESSION.md">handoff/NEXT_SESSION.md</a>
         ·
         <a href="app-workflow-state.json">app-workflow-state.json</a> (machine-readable)
       </p>

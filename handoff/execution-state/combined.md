@@ -235,4 +235,4 @@ A slice can be called done only when:
 2. **No workflow row introduced or modified** by the slice still shows Implementation state `WIP` unless explicitly tracked as paused.
 3. **Verification state moved forward** (UNVERIFIED → LOCAL → REAL_DB or stayed at the higher level).
 4. **Cross-persona coherence** was checked for any workflow this slice touches — i.e., did the slice surface a new gap in another persona's file?
-5. **STATUS.md and NEXT_SESSION.md align** with the tracker. If they disagree, the rule #5 from INDEX.md fires.
+5. **NEXT_SESSION.md aligns** with the tracker. If it disagrees, the rule #5 from INDEX.md fires.

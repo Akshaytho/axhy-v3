@@ -81,8 +81,8 @@ After PR 8: Layer 1 exit criteria met; draft Layer 2 kickoff memo.
 
 ## How to update this file
 
-1. When a layer ships: move its bullet from "after Layer N lands" to "DONE" in `STATUS.md`; shift this file's "Immediate next" forward.
+1. When a layer ships: mark it `DONE` in `NEXT_SESSION.md` and shift this file's "Immediate next" forward.
 2. When a new layer's scope clarifies: tighten the bullet for it.
-3. When a founder pick lands: drop F-P-N from the "Founder picks resolution" item; note the resolution in `STATUS.md`.
+3. When a founder pick lands: drop F-P-N from the "Founder picks resolution" item; note the resolution in `NEXT_SESSION.md`.
 
-This file is the forward-look companion to `STATUS.md`. Both are updated at phase shifts.
+This file is the forward-look companion to `NEXT_SESSION.md`. Both are updated at phase shifts.
