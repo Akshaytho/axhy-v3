@@ -4,7 +4,7 @@ persona: all
 date: 2026-05-24
 session: 'Worker code-review Cluster A — anti-gaming + state-machine discipline'
 check_pattern: 'no-op-rethrow'
-check_paths: 'packages'
+check_paths: 'packages/ai-tools/src/session-audit.ts'
 check_expect: 'exists'
 ---
 

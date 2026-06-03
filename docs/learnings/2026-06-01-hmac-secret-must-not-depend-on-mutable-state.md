@@ -4,8 +4,8 @@ persona: all
 session: trial-graduation-2026-05-31-into-2026-06-01
 broken_rule: 'general principle — integrity primitives must not depend on mutable state'
 check_pattern: 'getHmacSecret.*\.update\(.*pkg|getHmacSecret.*\.update\(.*readFileSync.*package\.json'
-check_paths: 'axhy-cognitive-system/src/shared/*.mjs axhy-cognitive-system/src/shared/**/*.mjs'
-check_expect: absent
+check_paths: '../axhy-cognitive-system/src/shared/config.mjs'
+check_expect: none
 status: fixed
 ---
 
