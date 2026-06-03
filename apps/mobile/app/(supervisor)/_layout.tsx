@@ -77,11 +77,11 @@ export default function SupervisorLayout() {
   const pathname = usePathname();
   const strings = useLocaleStrings();
 
-  // MicFAB hides on Profile (R6: `showMic = tab !== 'profile'`) AND on Chat (the
+  // MicFAB hides on Profile (R6: `showMic = tab !== 'me'`) AND on Chat (the
   // current Wave 4a chat has its own Send button at bottom-right which the FAB
   // would overlap; once Chat is rebuilt to R6's centered voice-waveform shape,
   // re-enable the FAB on Chat).
-  const showMic = !pathname.endsWith('profile') && !pathname.endsWith('chat');
+  const showMic = !pathname.endsWith('me') && !pathname.endsWith('chat');
 
   function openDrawer() {
     setDrawerOpen(true);
@@ -146,7 +146,7 @@ export default function SupervisorLayout() {
             }}
           />
           <Tabs.Screen
-            name="profile"
+            name="me"
             options={{
               title: strings.tabs.profile,
               tabBarIcon: tabIcon('user'),

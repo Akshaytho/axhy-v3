@@ -10,18 +10,26 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { jwtDecode } from 'jwt-decode';
 import { tokens } from '@axhy/ui-tokens';
 
-import { getTokens } from '../../lib/auth-store';
-import { WCard } from '../../components/worker/WCard';
-import { SyncPill, type SyncState } from '../../components/worker/SyncPill';
-import { useWorkerDrawer } from '../../components/worker/WorkerDrawer';
-import { r2UploadQueue, type QueueItem } from '../../lib/r2-upload-queue';
-import { useWorkerTodayQuery } from '../../lib/queries/use-worker-today';
+import { getTokens } from '../../../lib/auth-store';
+import { WCard } from '../../../components/worker/WCard';
+import { SyncPill, type SyncState } from '../../../components/worker/SyncPill';
+import { useWorkerDrawer } from '../../../components/worker/WorkerDrawer';
+import { r2UploadQueue, type QueueItem } from '../../../lib/r2-upload-queue';
+import { useWorkerTodayQuery } from '../../../lib/queries/use-worker-today';
 
 interface JwtPayload {
   phone?: string;
@@ -64,7 +72,7 @@ function useQueueSummary(): { state: SyncState; pendingCount: number } {
 /** @derives(master-plan §G) */
 export default function WorkerProfile(): React.JSX.Element {
   const { openDrawer } = useWorkerDrawer();
-  const { data } = useWorkerTodayQuery();
+  const { data, isLoading, isError, refetch, isRefetching } = useWorkerTodayQuery();
   const { state: syncState, pendingCount } = useQueueSummary();
   const [payload, setPayload] = useState<JwtPayload | null>(null);
 
@@ -90,9 +98,11 @@ export default function WorkerProfile(): React.JSX.Element {
   ).length;
 
   const supportLine = useMemo(() => {
+    if (isLoading && !data) return 'Loading supervisor contact…';
+    if (isError && !data) return 'Supervisor contact unavailable right now.';
     if (data?.supervisorPhone) return data.supervisorPhone;
     return 'Supervisor contact is not configured yet.';
-  }, [data?.supervisorPhone]);
+  }, [data, isError, isLoading]);
 
   const appVersion = process.env.EXPO_PUBLIC_APP_VERSION ?? 'dev';
   const name = sanitizeDisplayName(payload?.name) ?? 'Worker';
@@ -126,23 +136,49 @@ export default function WorkerProfile(): React.JSX.Element {
         </View>
 
         <View style={s.section}>
-          <WCard padding={16}>
-            <Text style={s.sectionMono}>TODAY</Text>
-            <View style={s.statsRow}>
-              <View style={s.statCell}>
-                <Text style={s.statValue}>{visits.length}</Text>
-                <Text style={s.statLabel}>Sites</Text>
+          {isLoading && !data ? (
+            <WCard padding={16}>
+              <View style={s.center}>
+                <ActivityIndicator color={tokens.color.brand.accent} />
+                <Text style={s.cardBody}>Loading your work summary…</Text>
               </View>
-              <View style={s.statCell}>
-                <Text style={s.statValue}>{verifiedCount}</Text>
-                <Text style={s.statLabel}>Verified</Text>
+            </WCard>
+          ) : isError && !data ? (
+            <WCard padding={16}>
+              <View style={s.center}>
+                <Text style={s.cardTitle}>Couldn&apos;t load today&apos;s summary.</Text>
+                <Text style={s.cardBody}>Check your connection and try again.</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Try again"
+                  onPress={() => {
+                    void refetch();
+                  }}
+                  style={({ pressed }) => [s.retryBtn, pressed && { opacity: 0.9 }]}
+                >
+                  <Text style={s.retryText}>{isRefetching ? 'Retrying…' : 'Try again'}</Text>
+                </Pressable>
               </View>
-              <View style={s.statCell}>
-                <Text style={s.statValue}>{inProgressCount + upcomingCount}</Text>
-                <Text style={s.statLabel}>Remaining</Text>
+            </WCard>
+          ) : (
+            <WCard padding={16}>
+              <Text style={s.sectionMono}>TODAY</Text>
+              <View style={s.statsRow}>
+                <View style={s.statCell}>
+                  <Text style={s.statValue}>{visits.length}</Text>
+                  <Text style={s.statLabel}>Sites</Text>
+                </View>
+                <View style={s.statCell}>
+                  <Text style={s.statValue}>{verifiedCount}</Text>
+                  <Text style={s.statLabel}>Verified</Text>
+                </View>
+                <View style={s.statCell}>
+                  <Text style={s.statValue}>{inProgressCount + upcomingCount}</Text>
+                  <Text style={s.statLabel}>Remaining</Text>
+                </View>
               </View>
-            </View>
-          </WCard>
+            </WCard>
+          )}
         </View>
 
         <View style={s.section}>
@@ -297,6 +333,11 @@ const s = StyleSheet.create({
     color: tokens.color.ink.tertiary,
     marginTop: 4,
   },
+  center: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.space[3],
+  },
   syncRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -339,6 +380,19 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: tokens.color.surface.paper,
+  },
+  retryBtn: {
+    minHeight: tokens.tap.minMobile,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: tokens.color.brand.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryText: {
+    color: tokens.color.surface.card,
+    fontSize: 14,
+    fontWeight: '700',
   },
   footer: {
     textAlign: 'center',

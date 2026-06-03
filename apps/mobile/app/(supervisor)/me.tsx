@@ -43,7 +43,6 @@ import { onAppLogout } from '../../lib/identity-lifecycle';
 import { useDrawer } from '../../components/Drawer';
 import { useLocaleStrings, setLocale } from '../../lib/i18n/use-locale';
 
-
 const isWeb = Platform.OS === 'web';
 
 function prefGet(key: string, defaultVal: string): string {
@@ -86,6 +85,10 @@ const LOCALE_OPTIONS: { code: LocaleCode; label: string }[] = [
 
 function localeLabel(code: string): string {
   return LOCALE_OPTIONS.find((o) => o.code === code)?.label ?? 'English';
+}
+
+function sanitizeDisplayName(name: string): string {
+  return name.replace(/\s*\(real-phone\)\s*$/i, '').trim();
 }
 
 // ─── fetchMe ──────────────────────────────────────────────────────────────────
@@ -494,7 +497,7 @@ export default function ProfileScreen() {
     );
   }
 
-  const displayName = data.user.name ?? data.user.phone;
+  const displayName = sanitizeDisplayName(data.user.name ?? data.user.phone);
   const firstName = displayName.split(' ')[0] ?? displayName;
   const initial = firstName[0]?.toUpperCase() ?? '?';
 

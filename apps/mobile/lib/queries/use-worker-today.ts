@@ -8,7 +8,9 @@
  * @derives(master-plan §G)
  */
 
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useFocusEffect } from 'expo-router';
 import type { WorkerTodayOutput } from '@axhy/shared-schema';
 
 import { apiFetch } from '../api';
@@ -18,8 +20,24 @@ const QUERY_KEY = ['worker-today'] as const;
 
 /** @derives(master-plan §G) */
 export function useWorkerTodayQuery() {
-  return useQuery<WorkerTodayOutput, Error>({
+  const query = useQuery<WorkerTodayOutput, Error>({
     queryKey: QUERY_KEY,
     queryFn: () => apiFetch<WorkerTodayOutput>(API_ROUTES.workerToday),
+    // Worker home reflects rapidly-changing visit state; treat cached data as
+    // stale on every mount/focus so tab switches and app-foreground show truth.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
+
+  // Refire on screen focus (covers tab switches in the worker shell where the
+  // screen stays mounted but blurs/focuses without unmounting).
+  useFocusEffect(
+    useCallback(() => {
+      void query.refetch();
+    }, [query.refetch]),
+  );
+
+  return query;
 }

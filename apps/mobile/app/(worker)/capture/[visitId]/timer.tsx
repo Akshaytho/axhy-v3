@@ -5,6 +5,14 @@
  * Keeps the screen awake on native via expo-keep-awake. Samples GPS at start
  * and end (no backend column yet — known gap from 2b-3 plan).
  *
+ * Lifecycle ownership split: clock-in (→ IN_PROGRESS) fires from the
+ * before-photos goNext (PhasePhotoCapture); by the time timer mounts the
+ * visit is already IN_PROGRESS and this screen is the resume source of
+ * truth. Clock-out (→ PHOTOS_PENDING) fires on the Done press and BLOCKS
+ * navigation until the server confirms — only on success (or already-
+ * pending idempotent ack) do we advance to after-photos. A failure shows
+ * a small inline error and re-enables the button so the worker can retry.
+ *
  * Layout follows docs/design/worker-app-canon/project/worker-screens.jsx > WorkerTimer.
  *
  * @derives(master-plan §G)
@@ -13,16 +21,18 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { CAPTURE_STEPS, NAV_ROUTES } from '../../../../lib/api-routes';
 import { TimerRing } from '../../../../components/worker/TimerRing';
 import { WCard } from '../../../../components/worker/WCard';
 import { useWorkerTodayQuery } from '../../../../lib/queries/use-worker-today';
+import { postWorkerClockOut } from '../../../../lib/api-lifecycle';
 
 const STEP = 'timer';
 const STEP_INDEX = CAPTURE_STEPS.indexOf(STEP) + 1;
@@ -59,12 +69,24 @@ export default function TimerStep(): React.JSX.Element {
 
   const todayQuery = useWorkerTodayQuery();
   const siteName = todayQuery.data?.visits.find((v) => v.id === vid)?.siteName ?? '';
+  const queryClient = useQueryClient();
 
   const [elapsed, setElapsed] = useState(0);
   const [gpsPoints, setGpsPoints] = useState(0);
+  const [confirmExitVisible, setConfirmExitVisible] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+  const [transitionError, setTransitionError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    // Clock-in fires in the before-photos goNext (PhasePhotoCapture), not
+    // here — by the time timer mounts the visit is already IN_PROGRESS, so
+    // a refresh on remount/resume is enough to keep Home/visit caches honest.
+    if (vid) {
+      void queryClient.invalidateQueries({ queryKey: ['worker-today'] });
+      void queryClient.invalidateQueries({ queryKey: ['worker-visit', vid] });
+    }
+
     intervalRef.current = setInterval(() => {
       setElapsed((s) => s + 1);
     }, 1000);
@@ -87,7 +109,7 @@ export default function TimerStep(): React.JSX.Element {
     return () => {
       if (intervalRef.current !== null) clearInterval(intervalRef.current);
     };
-  }, []);
+  }, [vid, queryClient]);
 
   // Simulate periodic GPS sampling on native via a 30s tick.
   useEffect(() => {
@@ -96,7 +118,13 @@ export default function TimerStep(): React.JSX.Element {
     return () => clearInterval(id);
   }, []);
 
-  function goNext(): void {
+  function leaveToHome(): void {
+    setConfirmExitVisible(false);
+    router.replace(NAV_ROUTES.workerHome);
+  }
+
+  async function goNext(): Promise<void> {
+    if (transitioning) return;
     if (Platform.OS !== 'web') {
       import('expo-location').then(({ getCurrentPositionAsync }) => {
         getCurrentPositionAsync({ accuracy: 3 })
@@ -111,10 +139,30 @@ export default function TimerStep(): React.JSX.Element {
           });
       });
     }
+    if (!vid) return;
+    // Worker-owned lifecycle: leaving the timer = clock-out. We refuse to
+    // advance to after-photos until PHOTOS_PENDING is durable (or the server
+    // confirms it was already pending — idempotent retries). Anything less
+    // would let the worker reach /submit against a stale IN_PROGRESS row.
+    setTransitioning(true);
+    setTransitionError(null);
+    try {
+      await postWorkerClockOut(vid);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['worker-today'] }),
+        queryClient.invalidateQueries({ queryKey: ['worker-visit', vid] }),
+      ]);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Could not finish cleaning yet.';
+      setTransitionError(message);
+      setTransitioning(false);
+      return;
+    }
     const nextStep = CAPTURE_STEPS[STEP_INDEX];
     if (nextStep !== undefined) {
       router.replace(NAV_ROUTES.workerCaptureStep(vid, nextStep));
     }
+    setTransitioning(false);
   }
 
   const pct = Math.min(100, (elapsed / SLOT_SECONDS) * 100);
@@ -126,7 +174,7 @@ export default function TimerStep(): React.JSX.Element {
 
       <View style={s.topBar}>
         <Pressable
-          onPress={() => router.replace(NAV_ROUTES.workerHome)}
+          onPress={() => setConfirmExitVisible(true)}
           accessibilityRole="button"
           accessibilityLabel="Back to home"
           hitSlop={12}
@@ -174,16 +222,64 @@ export default function TimerStep(): React.JSX.Element {
       </View>
 
       <View style={s.footer}>
+        {transitionError ? (
+          <Text style={s.errorText} accessibilityLiveRegion="polite">
+            {transitionError} Tap Done to try again.
+          </Text>
+        ) : null}
         <Pressable
           onPress={goNext}
+          disabled={transitioning}
           accessibilityRole="button"
-          accessibilityLabel="Done — take AFTER photos"
-          style={({ pressed }) => [s.nextBtn, pressed && { opacity: 0.92 }]}
+          accessibilityLabel={transitioning ? 'Finishing cleaning' : 'Done — take AFTER photos'}
+          accessibilityState={{ disabled: transitioning, busy: transitioning }}
+          style={({ pressed }) => [s.nextBtn, (pressed || transitioning) && { opacity: 0.92 }]}
         >
-          <Feather name="camera" size={18} color={tokens.color.surface.card} />
-          <Text style={s.nextText}>Done — take AFTER photos</Text>
+          {transitioning ? (
+            <ActivityIndicator size="small" color={tokens.color.surface.card} />
+          ) : (
+            <Feather name="camera" size={18} color={tokens.color.surface.card} />
+          )}
+          <Text style={s.nextText}>
+            {transitioning ? 'Finishing…' : 'Done — take AFTER photos'}
+          </Text>
         </Pressable>
       </View>
+
+      {confirmExitVisible ? (
+        <View style={s.confirmOverlay}>
+          <Pressable
+            style={s.confirmBackdrop}
+            accessibilityRole="button"
+            accessibilityLabel="Stay on timer"
+            onPress={() => setConfirmExitVisible(false)}
+          />
+          <WCard padding={18} style={s.confirmCard}>
+            <Text style={s.confirmTitle}>Leave cleaning?</Text>
+            <Text style={s.confirmBody}>
+              Go back home now? You can reopen this visit from Home if you need to continue.
+            </Text>
+            <View style={s.confirmActions}>
+              <Pressable
+                onPress={() => setConfirmExitVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Stay on timer"
+                style={({ pressed }) => [s.confirmSecondaryBtn, pressed && { opacity: 0.92 }]}
+              >
+                <Text style={s.confirmSecondaryText}>Stay here</Text>
+              </Pressable>
+              <Pressable
+                onPress={leaveToHome}
+                accessibilityRole="button"
+                accessibilityLabel="Leave cleaning and go home"
+                style={({ pressed }) => [s.confirmPrimaryBtn, pressed && { opacity: 0.92 }]}
+              >
+                <Text style={s.confirmPrimaryText}>Go home</Text>
+              </Pressable>
+            </View>
+          </WCard>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -270,7 +366,71 @@ const s = StyleSheet.create({
     letterSpacing: 0.9,
     color: tokens.color.ink.tertiary,
   },
-  footer: { paddingHorizontal: 20, paddingBottom: 20 },
+  footer: { paddingHorizontal: 20, paddingBottom: 20, gap: 8 },
+  errorText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.color.brand.accent,
+    textAlign: 'center',
+  },
+  confirmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+  },
+  confirmBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(24,18,12,0.24)',
+  },
+  confirmCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 20,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: tokens.color.ink.primary,
+  },
+  confirmBody: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    color: tokens.color.ink.secondary,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  confirmSecondaryBtn: {
+    flex: 1,
+    minHeight: tokens.tap.minMobile,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: tokens.color.surface.cardEdge,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  confirmSecondaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tokens.color.ink.primary,
+  },
+  confirmPrimaryBtn: {
+    flex: 1,
+    minHeight: tokens.tap.minMobile,
+    borderRadius: 14,
+    backgroundColor: tokens.color.brand.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  confirmPrimaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tokens.color.surface.card,
+  },
   nextBtn: {
     height: 56,
     backgroundColor: tokens.color.brand.accent,

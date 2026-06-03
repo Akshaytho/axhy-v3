@@ -49,10 +49,11 @@ beforeEach(() => {
 });
 
 describe('saveQueueState', () => {
-  it('persists idle and failed items', async () => {
+  it('persists idle, failed, and done items', async () => {
     const items = new Map<string, QueueItem>([
       ['k1', makeItem({ status: 'idle' })],
       ['k2', makeItem({ phase: 'after', status: 'failed', attempts: 3 })],
+      ['k3', makeItem({ phase: 'after', status: 'done', objectKey: 'r2/key' })],
     ]);
 
     await saveQueueState(items);
@@ -62,18 +63,7 @@ describe('saveQueueState', () => {
     const parsed = JSON.parse(raw!);
     expect(parsed['k1'].status).toBe('idle');
     expect(parsed['k2'].status).toBe('failed');
-  });
-
-  it('excludes done items', async () => {
-    const items = new Map<string, QueueItem>([
-      ['done-key', makeItem({ status: 'done', objectKey: 'r2/key' })],
-    ]);
-
-    await saveQueueState(items);
-
-    const raw = vi.mocked(setKvItem).mock.calls[0]?.[1];
-    const parsed = JSON.parse(raw!);
-    expect(Object.keys(parsed)).toHaveLength(0);
+    expect(parsed['k3']).toMatchObject({ status: 'done', objectKey: 'r2/key' });
   });
 
   it('resets uploading items to idle', async () => {

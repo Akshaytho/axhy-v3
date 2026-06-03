@@ -22,7 +22,8 @@ import {
   listPhotos,
 } from '../../../lib/storage/per-user-partition';
 import { r2UploadQueue, type QueueItem, type UploadStatus } from '../../../lib/r2-upload-queue';
-import { NAV_ROUTES } from '../../../lib/api-routes';
+import { shouldRetryFailedUpload } from '../../../lib/capture-flow';
+import { setRetakePreservedSlots } from '../../../lib/capture-retake-state';
 
 const SLOTS: ReadonlyArray<{ phase: PhotoPhase; index: number }> = [
   { phase: 'before', index: 1 },
@@ -120,15 +121,45 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
   }, [visitId]);
 
   const retake = useCallback(
-    async (phase: PhotoPhase, index: number) => {
+    async (phase: PhotoPhase, index: number, preservedSlotIndices: ReadonlyArray<number>) => {
       if (workerId && canPersistCaptures()) {
         await deletePhoto(workerId, visitId, phase, index);
       }
       r2UploadQueue.remove(`${visitId}:${phase}:${index}`);
+      setRetakePreservedSlots(visitId, phase, preservedSlotIndices);
       const step = phase === 'before' ? 'before-photos' : 'after-photos';
-      router.push(NAV_ROUTES.workerCaptureStep(visitId, step));
+      router.push({
+        pathname: '/(worker)/capture/[visitId]/[step]',
+        params: {
+          visitId,
+          step,
+          preserved: preservedSlotIndices.join(','),
+          retakeToken: String(Date.now()),
+        },
+      });
     },
     [workerId, visitId],
+  );
+
+  const onTilePress = useCallback(
+    async (tile: TileState) => {
+      const key = `${visitId}:${tile.phase}:${tile.index}`;
+      if (shouldRetryFailedUpload(tile.status, tile.localUri)) {
+        r2UploadQueue.retry(key);
+        return;
+      }
+      const preserved = tiles
+        .filter(
+          (candidate) =>
+            candidate.phase === tile.phase &&
+            candidate.index !== tile.index &&
+            (candidate.localUri !== null || candidate.status !== null),
+        )
+        .map((candidate) => candidate.index)
+        .sort((a, b) => a - b);
+      await retake(tile.phase, tile.index, preserved);
+    },
+    [retake, tiles, visitId],
   );
 
   return (
@@ -137,9 +168,13 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
         {tiles.map((tile) => (
           <Pressable
             key={`${tile.phase}-${tile.index}`}
-            onPress={() => void retake(tile.phase, tile.index)}
+            onPress={() => void onTilePress(tile)}
             accessibilityRole="button"
-            accessibilityLabel={`Retake ${tile.phase} photo ${tile.index}`}
+            accessibilityLabel={
+              shouldRetryFailedUpload(tile.status, tile.localUri)
+                ? `Retry upload for ${tile.phase} photo ${tile.index}`
+                : `Retake ${tile.phase} photo ${tile.index}`
+            }
             style={s.tile}
           >
             {tile.localUri ? (

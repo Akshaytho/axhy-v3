@@ -3,9 +3,12 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { router } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 
-import { NAV_ROUTES } from '../../lib/api-routes';
-import { useWorkerTodayQuery } from '../../lib/queries/use-worker-today';
-import { pickWorkerCaptureVisit, type WorkerTodayVisit } from '../../lib/worker-today-helpers';
+import { NAV_ROUTES } from '../../../lib/api-routes';
+import { useWorkerTodayQuery } from '../../../lib/queries/use-worker-today';
+import {
+  pickWorkerCaptureVisit,
+  workerCaptureRouteForVisit,
+} from '../../../lib/worker-today-helpers';
 
 /**
  * Redirect tab that always opens the worker's most relevant capture flow.
@@ -27,7 +30,7 @@ export default function WorkerCaptureLauncher(): React.JSX.Element {
     if (isLoading || isError) return;
     if (visit) {
       setHandoffStarted(true);
-      router.replace(pickStepRoute(visit));
+      router.replace(workerCaptureRouteForVisit(visit));
     }
   }, [isError, isLoading, visit]);
 
@@ -94,30 +97,6 @@ export default function WorkerCaptureLauncher(): React.JSX.Element {
       <Text style={s.body}>Opening your capture flow…</Text>
     </View>
   );
-}
-
-const TERMINAL_VISIT_STATES = new Set(['VERIFIED', 'FLAGGED', 'CANCELLED', 'NO_SHOW', 'ARCHIVED']);
-
-/**
- * Decide which screen to drop the worker on based on visit state.
- * Terminal -> read-only detail. Awaiting verify -> submit poller.
- * Photos taken but not submitted -> review. In progress -> timer.
- * Pre-arrival states -> qr-scan entry (original default).
- */
-function pickStepRoute(picked: WorkerTodayVisit): string {
-  if (TERMINAL_VISIT_STATES.has(picked.state)) {
-    return NAV_ROUTES.workerVisitDetail(picked.id);
-  }
-  if (picked.state === 'AWAITING_VERIFICATION') {
-    return NAV_ROUTES.workerCaptureStep(picked.id, 'submit');
-  }
-  if (picked.state === 'PHOTOS_PENDING') {
-    return NAV_ROUTES.workerCaptureStep(picked.id, 'review');
-  }
-  if (picked.state === 'IN_PROGRESS') {
-    return NAV_ROUTES.workerCaptureStep(picked.id, 'timer');
-  }
-  return NAV_ROUTES.workerCaptureEntry(picked.id);
 }
 
 const s = StyleSheet.create({

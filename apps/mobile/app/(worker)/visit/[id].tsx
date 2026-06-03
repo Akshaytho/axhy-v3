@@ -61,21 +61,32 @@ function primaryActionFor(state: VisitState, visitId: string): PrimaryAction {
     case 'SCHEDULED':
     case 'NOTIFIED':
     case 'EN_ROUTE':
-    case 'ON_SITE':
       return {
         kind: 'navigate',
         label: 'Start cleaning',
         href: NAV_ROUTES.workerCaptureEntry(visitId),
       };
+    case 'ON_SITE':
+      // QR is already cleared — resume into before-photos, not the QR screen.
+      return {
+        kind: 'navigate',
+        label: 'Start cleaning',
+        href: NAV_ROUTES.workerCaptureStep(visitId, 'before-photos'),
+      };
     case 'IN_PROGRESS':
-    case 'PHOTOS_PENDING':
       return {
         kind: 'navigate',
         label: 'Resume cleaning',
-        href: NAV_ROUTES.workerCaptureEntry(visitId),
+        href: NAV_ROUTES.workerCaptureStep(visitId, 'timer'),
+      };
+    case 'PHOTOS_PENDING':
+      return {
+        kind: 'navigate',
+        label: 'Review work',
+        href: NAV_ROUTES.workerCaptureStep(visitId, 'review'),
       };
     case 'AWAITING_VERIFICATION':
-      return { kind: 'disabled', label: 'Waiting for verification' };
+      return { kind: 'disabled', label: 'Verification in progress' };
     case 'VERIFIED':
     case 'FLAGGED':
     case 'CANCELLED':

@@ -14,8 +14,12 @@
  * @derives(WORKER_MVP_SLICE_2B_2_PLAN.md §1)
  */
 
+import { Platform } from 'react-native';
 import type { PhotoPhase, UploadUrlEntry } from '@axhy/shared-schema';
 
+import { API_BASE } from './api';
+import { getTokens } from './auth-store';
+import { API_ROUTES } from './api-routes';
 import { requestUploadUrls } from './api-capture';
 
 /** @derives(master-plan §G) */
@@ -39,6 +43,14 @@ type Listener = (snapshot: ReadonlyMap<string, QueueItem>) => void;
 
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000];
 const MAX_ATTEMPTS = BACKOFF_MS.length;
+
+/** True on react-native-web. Web browsers cannot PUT directly to R2 from
+ *  arbitrary origins without bucket-side CORS rules we do not control from
+ *  application code — so web uploads go through the backend proxy fallback
+ *  while native (iOS / Android) keeps the presigned-direct path. */
+function isWebPlatform(): boolean {
+  return Platform.OS === 'web';
+}
 
 function keyOf(visitId: string, phase: PhotoPhase, index: number): string {
   return `${visitId}:${phase}:${index}`;
@@ -146,19 +158,28 @@ class R2UploadQueue {
     this.emit();
 
     try {
-      const presign = await requestUploadUrls(item.visitId, [
-        {
-          phase: item.phase,
-          index: item.index,
-          contentType: item.contentType,
-          fileSize: item.fileSize,
-        },
-      ]);
-      const entry = presign.urls[0];
-      if (!entry) throw new Error('Empty presign response');
-      await this.putToR2(item.localUri, entry, item.contentType);
+      let objectKey: string;
+      if (isWebPlatform()) {
+        // Web cannot PUT directly to R2 (bucket CORS); the proxy route returns
+        // the canonical objectKey it wrote. Skipping the presign call also
+        // avoids a wasted round-trip and double-charging the captures budget.
+        objectKey = await this.putViaBackendProxy(item);
+      } else {
+        const presign = await requestUploadUrls(item.visitId, [
+          {
+            phase: item.phase,
+            index: item.index,
+            contentType: item.contentType,
+            fileSize: item.fileSize,
+          },
+        ]);
+        const entry = presign.urls[0];
+        if (!entry) throw new Error('Empty presign response');
+        await this.putToR2(item.localUri, entry, item.contentType);
+        objectKey = entry.objectKey;
+      }
       item.status = 'done';
-      item.objectKey = entry.objectKey;
+      item.objectKey = objectKey;
       item.lastError = null;
       this.emit();
     } catch (err) {
@@ -193,6 +214,37 @@ class R2UploadQueue {
     if (!putRes.ok) {
       throw new Error(`R2 PUT failed: ${putRes.status} ${putRes.statusText}`);
     }
+  }
+
+  private async putViaBackendProxy(item: QueueItem): Promise<string> {
+    const tokens = await getTokens();
+    if (!tokens) {
+      throw new Error('Sign in again to upload this photo.');
+    }
+    const fileRes = await fetch(item.localUri);
+    const blob = await fileRes.blob();
+    const form = new FormData();
+    form.append('visitId', item.visitId);
+    form.append('phase', item.phase);
+    form.append('index', String(item.index));
+    form.append('contentType', item.contentType);
+    const ext =
+      item.contentType === 'image/png' ? 'png' : item.contentType === 'image/webp' ? 'webp' : 'jpg';
+    form.append('photo', blob, `${item.phase}-${item.index}.${ext}`);
+    const res = await fetch(`${API_BASE}${API_ROUTES.workerCapturesUploadProxy}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokens.accessToken}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Upload proxy failed: ${res.status} ${text}`);
+    }
+    const data = (await res.json()) as { objectKey?: unknown };
+    if (typeof data.objectKey !== 'string' || data.objectKey.length === 0) {
+      throw new Error('Upload proxy returned no objectKey');
+    }
+    return data.objectKey;
   }
 }
 

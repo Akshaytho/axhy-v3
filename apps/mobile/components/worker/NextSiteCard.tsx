@@ -40,7 +40,8 @@ interface Props {
 type CtaMode =
   | { kind: 'scan'; label: 'Scan QR · check in' }
   | { kind: 'continue'; label: 'Continue cleaning' }
-  | { kind: 'waiting'; label: 'Waiting for verification' }
+  | { kind: 'review'; label: 'Review work' }
+  | { kind: 'waiting'; label: 'Verification in progress' }
   | { kind: 'hidden' };
 
 function ctaModeFor(state: NextSiteCardVisitState): CtaMode {
@@ -51,10 +52,11 @@ function ctaModeFor(state: NextSiteCardVisitState): CtaMode {
     case 'ON_SITE':
       return { kind: 'scan', label: 'Scan QR · check in' };
     case 'IN_PROGRESS':
-    case 'PHOTOS_PENDING':
       return { kind: 'continue', label: 'Continue cleaning' };
+    case 'PHOTOS_PENDING':
+      return { kind: 'review', label: 'Review work' };
     case 'AWAITING_VERIFICATION':
-      return { kind: 'waiting', label: 'Waiting for verification' };
+      return { kind: 'waiting', label: 'Verification in progress' };
     default:
       return { kind: 'hidden' };
   }

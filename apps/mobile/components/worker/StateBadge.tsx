@@ -32,7 +32,7 @@ const STATE_MAP: Record<VisitStateValue, { label: string; tone: Tone }> = {
   EN_ROUTE: { label: 'En route', tone: 'accent' },
   ON_SITE: { label: 'On site', tone: 'accent' },
   IN_PROGRESS: { label: 'In progress', tone: 'accent' },
-  PHOTOS_PENDING: { label: 'Photos', tone: 'accent' },
+  PHOTOS_PENDING: { label: 'Review', tone: 'accent' },
   AWAITING_VERIFICATION: { label: 'Verifying', tone: 'warn' },
   VERIFIED: { label: 'Verified', tone: 'ok' },
   FLAGGED: { label: 'Flagged', tone: 'warn' },

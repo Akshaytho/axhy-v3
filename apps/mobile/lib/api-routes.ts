@@ -19,12 +19,16 @@ export const API_ROUTES = {
   authSignOut: apiPath('auth', 'sign-out'),
   me: apiPath('me'),
   workerConsent: apiPath('worker', 'consent'),
+  workerHistory: apiPath('worker', 'history'),
   workerToday: apiPath('worker', 'today'),
   workerVisit: (visitId: string): string => apiPath('worker', 'visits', visitId),
   workerCapturesUploadUrls: apiPath('worker', 'captures', 'upload-urls'),
+  workerCapturesUploadProxy: apiPath('worker', 'captures', 'upload'),
   workerSubmit: (visitId: string): string => apiPath('worker', 'visits', visitId, 'submit'),
   workerVerifyStatus: (visitId: string): string =>
     apiPath('worker', 'visits', visitId, 'verify-status'),
+  workerClockIn: (visitId: string): string => apiPath('worker', 'visits', visitId, 'clock-in'),
+  workerClockOut: (visitId: string): string => apiPath('worker', 'visits', visitId, 'clock-out'),
 } as const;
 
 /** Capture-flow step names, in the order the worker traverses them.

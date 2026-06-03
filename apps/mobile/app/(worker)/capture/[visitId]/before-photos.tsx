@@ -12,12 +12,17 @@ import { PhasePhotoCapture } from '../../../../components/worker/capture/PhasePh
 
 /** @derives(master-plan §G) */
 export default function BeforePhotosStep(): React.JSX.Element {
-  const { visitId } = useLocalSearchParams<{ visitId: string }>();
+  const { visitId, preserved } = useLocalSearchParams<{ visitId: string; preserved?: string }>();
+  const preservedSlotIndices = (preserved ?? '')
+    .split(',')
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
   return (
     <PhasePhotoCapture
       visitId={visitId ?? ''}
       phase="before"
       currentStep="before-photos"
+      preservedSlotIndices={preservedSlotIndices}
       title="Step 2 of 6 — Before photos"
     />
   );

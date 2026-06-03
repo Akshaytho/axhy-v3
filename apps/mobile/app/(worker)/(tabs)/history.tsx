@@ -1,8 +1,8 @@
 /**
  * Worker History.
  *
- * Avoids fake multi-day history data. Until the dedicated history endpoint
- * exists, this screen shows an honest summary of today's real completed work.
+ * Uses the dedicated worker history endpoint so this screen reflects recent
+ * multi-day completed / closed work instead of today's payload.
  *
  * @derives(MVP_V2_ALIGNED_PLAN.md §2)
  * @derives(master-plan §G)
@@ -13,9 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
-import { WCard } from '../../components/worker/WCard';
-import { useWorkerDrawer } from '../../components/worker/WorkerDrawer';
-import { useWorkerTodayQuery } from '../../lib/queries/use-worker-today';
+import { WCard } from '../../../components/worker/WCard';
+import { useWorkerDrawer } from '../../../components/worker/WorkerDrawer';
+import { useWorkerHistoryQuery } from '../../../lib/queries/use-worker-history';
 
 function formatTimeShort(iso: string): string {
   const d = new Date(iso);
@@ -27,14 +27,45 @@ function formatTimeShort(iso: string): string {
   return `${hh}:${mm} ${ampm}`;
 }
 
+function formatDayLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
 /** @derives(master-plan §G) */
 export default function WorkerHistory(): React.JSX.Element {
   const { openDrawer } = useWorkerDrawer();
-  const { data, isLoading, isError, refetch, isRefetching } = useWorkerTodayQuery();
+  const { data, isLoading, isError, refetch, isRefetching } = useWorkerHistoryQuery();
 
   const visits = data?.visits ?? [];
-  const verified = visits.filter((visit) => visit.state === 'VERIFIED');
-  const awaiting = visits.filter((visit) => visit.state === 'AWAITING_VERIFICATION');
+  const groupedVisits = visits.reduce<Array<{ day: string; visits: typeof visits }>>(
+    (acc, visit) => {
+      const day = formatDayLabel(visit.scheduledFor);
+      const existing = acc[acc.length - 1];
+      if (existing && existing.day === day) {
+        existing.visits.push(visit);
+        return acc;
+      }
+      acc.push({ day, visits: [visit] });
+      return acc;
+    },
+    [],
+  );
+
+  const statusTone = (state: (typeof visits)[number]['state']) => {
+    if (state === 'VERIFIED') return { icon: 'check-circle', text: 'Verified', color: '#2e5037' };
+    if (state === 'FLAGGED')
+      return { icon: 'alert-triangle', text: 'Needs review', color: '#8a5b19' };
+    if (state === 'AWAITING_VERIFICATION') {
+      return { icon: 'clock', text: 'Waiting', color: tokens.color.brand.accentInk };
+    }
+    if (state === 'CANCELLED') return { icon: 'x-circle', text: 'Cancelled', color: '#7c5f44' };
+    if (state === 'NO_SHOW') return { icon: 'slash', text: 'No show', color: '#7c5f44' };
+    return { icon: 'archive', text: 'Archived', color: '#7c5f44' };
+  };
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
@@ -51,7 +82,7 @@ export default function WorkerHistory(): React.JSX.Element {
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>History</Text>
-            <Text style={s.subtitle}>Real completed work only</Text>
+            <Text style={s.subtitle}>Recent verified and closed work</Text>
           </View>
         </View>
 
@@ -79,51 +110,65 @@ export default function WorkerHistory(): React.JSX.Element {
           <>
             <View style={s.cardWrap}>
               <WCard padding={18}>
-                <Text style={s.sectionMono}>TODAY</Text>
+                <Text style={s.sectionMono}>{`${data?.windowDays ?? 30} DAYS`}</Text>
                 <View style={s.statsRow}>
                   <View style={s.statCell}>
-                    <Text style={s.statValue}>{verified.length}</Text>
+                    <Text style={s.statValue}>{data?.summary.verified ?? 0}</Text>
                     <Text style={s.statLabel}>Verified</Text>
                   </View>
                   <View style={s.statCell}>
-                    <Text style={s.statValue}>{awaiting.length}</Text>
-                    <Text style={s.statLabel}>Waiting</Text>
+                    <Text style={s.statValue}>{data?.summary.flagged ?? 0}</Text>
+                    <Text style={s.statLabel}>Flagged</Text>
                   </View>
                   <View style={s.statCell}>
-                    <Text style={s.statValue}>{visits.length}</Text>
+                    <Text style={s.statValue}>{data?.summary.total ?? 0}</Text>
                     <Text style={s.statLabel}>Total</Text>
                   </View>
                 </View>
-                <Text style={s.helperText}>Today&apos;s verified work and active visit count.</Text>
+                <Text style={s.helperText}>
+                  Last {data?.windowDays ?? 30} days of completed and closed visits.
+                </Text>
               </WCard>
             </View>
 
             <View style={s.cardWrap}>
-              <Text style={s.listTitle}>Completed today</Text>
-              {verified.length === 0 ? (
+              <Text style={s.listTitle}>Recent visits</Text>
+              {visits.length === 0 ? (
                 <WCard padding={18}>
-                  <Text style={s.emptyTitle}>No completed sites yet</Text>
+                  <Text style={s.emptyTitle}>No recent history yet</Text>
                   <Text style={s.bodyText}>
-                    Finished visits will appear here after they reach verified state.
+                    Verified, flagged, cancelled, and archived visits will appear here.
                   </Text>
                 </WCard>
               ) : (
-                verified.map((visit) => (
-                  <WCard key={visit.id} padding={16} style={s.listCard}>
-                    <View style={s.rowTop}>
-                      <Text style={s.siteName}>{visit.siteName}</Text>
-                      <Text style={s.timeText}>{formatTimeShort(visit.scheduledFor)}</Text>
-                    </View>
-                    {visit.siteAddress ? (
-                      <Text style={s.siteAddress} numberOfLines={2}>
-                        {visit.siteAddress}
-                      </Text>
-                    ) : null}
-                    <View style={s.verifiedPill}>
-                      <Feather name="check-circle" size={12} color="#2e5037" />
-                      <Text style={s.verifiedText}>Verified</Text>
-                    </View>
-                  </WCard>
+                groupedVisits.map((group) => (
+                  <View key={group.day} style={s.groupWrap}>
+                    <Text style={s.groupDay}>{group.day}</Text>
+                    {group.visits.map((visit) => {
+                      const tone = statusTone(visit.state);
+                      return (
+                        <WCard key={visit.id} padding={16} style={s.listCard}>
+                          <View style={s.rowTop}>
+                            <Text style={s.siteName}>{visit.siteName}</Text>
+                            <Text style={s.timeText}>{formatTimeShort(visit.scheduledFor)}</Text>
+                          </View>
+                          {visit.siteAddress ? (
+                            <Text style={s.siteAddress} numberOfLines={2}>
+                              {visit.siteAddress}
+                            </Text>
+                          ) : null}
+                          <View style={s.verifiedPill}>
+                            <Feather
+                              name={tone.icon as React.ComponentProps<typeof Feather>['name']}
+                              size={12}
+                              color={tone.color}
+                            />
+                            <Text style={[s.verifiedText, { color: tone.color }]}>{tone.text}</Text>
+                          </View>
+                        </WCard>
+                      );
+                    })}
+                  </View>
                 ))
               )}
             </View>
@@ -224,6 +269,17 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: tokens.color.ink.primary,
     marginBottom: 10,
+  },
+  groupWrap: {
+    marginBottom: 14,
+  },
+  groupDay: {
+    fontFamily: tokens.font.mono,
+    fontSize: 11,
+    letterSpacing: 0.9,
+    color: tokens.color.ink.tertiary,
+    marginBottom: 8,
+    paddingHorizontal: 2,
   },
   listCard: {
     marginBottom: 10,

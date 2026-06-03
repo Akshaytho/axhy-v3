@@ -24,7 +24,10 @@ import { tokens } from '@axhy/ui-tokens';
 
 import { CAPTURE_STEPS, NAV_ROUTES } from '../../../../lib/api-routes';
 import { useWorkerTodayQuery } from '../../../../lib/queries/use-worker-today';
-import { findWorkerTodayVisit } from '../../../../lib/worker-today-helpers';
+import {
+  findWorkerTodayVisit,
+  workerCaptureRouteForVisit,
+} from '../../../../lib/worker-today-helpers';
 
 const STEP = 'qr-scan';
 const STEP_INDEX = CAPTURE_STEPS.indexOf(STEP) + 1;
@@ -56,13 +59,25 @@ export default function QrScanStep(): React.JSX.Element {
     }
   }
 
+  function closeToSafeDestination(): void {
+    const visit = findWorkerTodayVisit(data, vid);
+    if (!visit) {
+      router.replace(NAV_ROUTES.workerHome);
+      return;
+    }
+    const nextRoute = workerCaptureRouteForVisit(visit);
+    router.replace(
+      nextRoute === NAV_ROUTES.workerCaptureEntry(vid) ? NAV_ROUTES.workerHome : nextRoute,
+    );
+  }
+
   const translateY = scan.interpolate({ inputRange: [0, 1], outputRange: [-100, 100] });
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'bottom', 'left', 'right']}>
       <View style={s.topBar}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={closeToSafeDestination}
           accessibilityRole="button"
           accessibilityLabel="Close QR scan"
           hitSlop={12}

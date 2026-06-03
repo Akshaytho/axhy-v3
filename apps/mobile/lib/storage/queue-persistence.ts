@@ -1,9 +1,10 @@
 /**
  * Serializes and restores the r2UploadQueue state across app launches.
  *
- * Only idle and failed items are persisted. Uploading items are reset to
- * idle on restore so they retry on next launch. Done items are excluded
- * (object keys already on R2 — no retry needed).
+ * Idle, failed, and done items are persisted. Uploading items are reset to
+ * idle on restore so they retry on next launch. Persisting done items keeps
+ * the worker's submitted-photo truth intact across relaunch, so resumable
+ * PHOTOS_PENDING visits do not reopen into a fake-empty review state.
  *
  * @derives(NEXT_SESSION.md §2b-4)
  */
@@ -14,16 +15,16 @@ import { getKvItem, setKvItem } from './local-kv';
 
 const QUEUE_KEY = 'axhy-queue-v1';
 
-type PersistedItem = Omit<QueueItem, 'status'> & { status: 'idle' | 'failed' };
+type PersistedItem = Omit<QueueItem, 'status'> & { status: 'idle' | 'failed' | 'done' };
 
-/** Persist queue snapshot to local-kv. Excludes done items; resets uploading→idle.
+/** Persist queue snapshot to local-kv. Resets uploading→idle.
  *  @derives(master-plan §G) */
 export async function saveQueueState(items: ReadonlyMap<string, QueueItem>): Promise<void> {
   try {
     const toSave: Record<string, PersistedItem> = {};
     for (const [key, item] of items) {
-      if (item.status === 'done') continue;
-      const status: 'idle' | 'failed' = item.status === 'failed' ? 'failed' : 'idle';
+      const status: 'idle' | 'failed' | 'done' =
+        item.status === 'failed' ? 'failed' : item.status === 'done' ? 'done' : 'idle';
       toSave[key] = { ...item, status };
     }
     await setKvItem(QUEUE_KEY, JSON.stringify(toSave));

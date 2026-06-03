@@ -11,9 +11,10 @@
  *      decision (worker has no acted-on history yet).
  *   4. ResumeCaptureBanner (when server-flagged) above the plan.
  *   5. "Today's plan · N sites" list — grouped into Needs attention /
- *      In progress / Upcoming / Completed sections, each shown only when
- *      non-empty (panel UI/UX F-03). FLAGGED visits live in Needs attention
- *      so the worker can see them, separate from VERIFIED completions.
+ *      In progress / Submit pending / Verifying / Upcoming / Completed
+ *      sections, each shown only when non-empty (panel UI/UX F-03).
+ *      FLAGGED visits live in Needs attention so the worker can see them,
+ *      separate from VERIFIED completions.
  *
  * Behavior fixes landed:
  *   - Pluralization built as a single string (no split text nodes) — R-01.
@@ -47,30 +48,29 @@ import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 
-import { NAV_ROUTES } from '../../lib/api-routes';
-import { ApiError } from '../../lib/api';
-import { r2UploadQueue } from '../../lib/r2-upload-queue';
-import { useWorkerTodayQuery } from '../../lib/queries/use-worker-today';
-import { AssignmentCard } from '../../components/worker/AssignmentCard';
-import { NextSiteCard } from '../../components/worker/NextSiteCard';
-import { ResumeCaptureBanner } from '../../components/worker/ResumeCaptureBanner';
-import { StatCard } from '../../components/worker/StatCard';
-import { SyncPill, type SyncState } from '../../components/worker/SyncPill';
-import { useWorkerDrawer } from '../../components/worker/WorkerDrawer';
-import { pickWorkerCaptureVisit } from '../../lib/worker-today-helpers';
+import { NAV_ROUTES } from '../../../lib/api-routes';
+import { ApiError } from '../../../lib/api';
+import { r2UploadQueue } from '../../../lib/r2-upload-queue';
+import { useWorkerTodayQuery } from '../../../lib/queries/use-worker-today';
+import { AssignmentCard } from '../../../components/worker/AssignmentCard';
+import { NextSiteCard } from '../../../components/worker/NextSiteCard';
+import { ResumeCaptureBanner } from '../../../components/worker/ResumeCaptureBanner';
+import { StatCard } from '../../../components/worker/StatCard';
+import { SyncPill, type SyncState } from '../../../components/worker/SyncPill';
+import { useWorkerDrawer } from '../../../components/worker/WorkerDrawer';
+import {
+  pickWorkerCaptureVisit,
+  workerCaptureRouteForVisit,
+} from '../../../lib/worker-today-helpers';
 
 const PAUSED_STATES = new Set(['ON_SUSPENSION', 'BLOCKED']);
 
 // Visual grouping buckets for the "Today's plan" list — panel F-03.
 const IN_PROGRESS_STATES = new Set(['IN_PROGRESS']);
-const UPCOMING_STATES = new Set(['SCHEDULED', 'NOTIFIED', 'EN_ROUTE', 'ON_SITE', 'PHOTOS_PENDING']);
-const COMPLETED_STATES = new Set([
-  'VERIFIED',
-  'AWAITING_VERIFICATION',
-  'CANCELLED',
-  'NO_SHOW',
-  'ARCHIVED',
-]);
+const SUBMIT_PENDING_STATES = new Set(['PHOTOS_PENDING']);
+const VERIFYING_STATES = new Set(['AWAITING_VERIFICATION']);
+const UPCOMING_STATES = new Set(['SCHEDULED', 'NOTIFIED', 'EN_ROUTE', 'ON_SITE']);
+const COMPLETED_STATES = new Set(['VERIFIED', 'CANCELLED', 'NO_SHOW', 'ARCHIVED']);
 const NEEDS_ATTENTION_STATES = new Set(['FLAGGED']);
 
 function formatDateRow(iso: string): string {
@@ -156,6 +156,8 @@ export default function WorkerHome(): React.JSX.Element {
     return {
       needsAttention: visits.filter((v) => NEEDS_ATTENTION_STATES.has(v.state)),
       inProgress: visits.filter((v) => IN_PROGRESS_STATES.has(v.state)),
+      submitPending: visits.filter((v) => SUBMIT_PENDING_STATES.has(v.state)),
+      verifying: visits.filter((v) => VERIFYING_STATES.has(v.state)),
       upcoming: visits.filter((v) => UPCOMING_STATES.has(v.state)),
       completed: visits.filter((v) => COMPLETED_STATES.has(v.state)),
     };
@@ -167,13 +169,19 @@ export default function WorkerHome(): React.JSX.Element {
 
   const onHeroPress = useCallback(() => {
     if (!nextVisit) return;
-    router.push(NAV_ROUTES.workerCaptureEntry(nextVisit.id));
+    router.replace(workerCaptureRouteForVisit(nextVisit));
   }, [nextVisit]);
 
   const onResumeContinue = useCallback(() => {
     const resumeId = data?.resumeCapture?.visitId;
-    if (resumeId) router.push(NAV_ROUTES.workerCaptureEntry(resumeId));
-  }, [data?.resumeCapture?.visitId]);
+    if (!resumeId) return;
+    const resumedVisit = data?.visits.find((visit) => visit.id === resumeId);
+    if (!resumedVisit) {
+      router.replace(NAV_ROUTES.workerHome);
+      return;
+    }
+    router.replace(workerCaptureRouteForVisit(resumedVisit));
+  }, [data?.resumeCapture?.visitId, data?.visits]);
 
   if (isLoading) {
     return (
@@ -343,6 +351,38 @@ export default function WorkerHome(): React.JSX.Element {
                       state={v.state}
                       isNext={v.id === nextVisit?.id}
                       isLast={i === groups.inProgress.length - 1}
+                      onPress={() => onAssignmentTap(v.id)}
+                    />
+                  ))}
+                </View>
+              ) : null}
+              {groups.submitPending.length > 0 ? (
+                <View style={s.group}>
+                  <Text style={s.groupHeader}>Submit pending</Text>
+                  {groups.submitPending.map((v, i) => (
+                    <AssignmentCard
+                      key={v.id}
+                      siteName={v.siteName}
+                      scheduledFor={v.scheduledFor}
+                      state={v.state}
+                      isNext={v.id === nextVisit?.id}
+                      isLast={i === groups.submitPending.length - 1}
+                      onPress={() => onAssignmentTap(v.id)}
+                    />
+                  ))}
+                </View>
+              ) : null}
+              {groups.verifying.length > 0 ? (
+                <View style={s.group}>
+                  <Text style={s.groupHeader}>Verifying</Text>
+                  {groups.verifying.map((v, i) => (
+                    <AssignmentCard
+                      key={v.id}
+                      siteName={v.siteName}
+                      scheduledFor={v.scheduledFor}
+                      state={v.state}
+                      isNext={v.id === nextVisit?.id}
+                      isLast={i === groups.verifying.length - 1}
                       onPress={() => onAssignmentTap(v.id)}
                     />
                   ))}

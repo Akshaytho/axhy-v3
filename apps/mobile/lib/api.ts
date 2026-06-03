@@ -19,7 +19,7 @@ import { router } from 'expo-router';
 
 import { clearTokens, getTokens, replaceTokens } from './auth-store';
 
-const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:4000').replace(
+export const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:4000').replace(
   /\/$/,
   '',
 );
