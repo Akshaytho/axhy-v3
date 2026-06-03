@@ -18,6 +18,7 @@ import type { Prisma } from '@prisma/client';
 import type { WorkerSubmitPhoto } from '@axhy/shared-schema';
 
 import { buildObjectKey } from '../r2-presign.js';
+import { enqueueOutbox } from '../outbox.js';
 
 type SubmitArgs = {
   workerId: string;
@@ -77,6 +78,15 @@ export async function submitVisit(
       photosBefore,
       photosAfter,
     },
+  });
+
+  // Emit ai.verify in the same transaction as the state transition so either
+  // both commit or neither does. The dispatcher (ai.ts handler) picks this up
+  // on its next tick (~2s) and runs the OpenAI multimodal verification.
+  await enqueueOutbox(tx, {
+    companyId,
+    topic: 'ai.verify',
+    payload: { visitId, companyId },
   });
 
   return {

@@ -137,3 +137,83 @@ export async function generateBatchUploadUrls(
 
   return { kind: 'OK', entries };
 }
+
+/** @derives(master-plan §G) */
+export type UploadProxyResult = { kind: 'OK'; objectKey: string } | { kind: 'NOT_CONFIGURED' };
+
+/**
+ * Direct server-side upload path for browser clients when bucket CORS is not
+ * available for presigned PUTs. Native clients should keep using presigned URLs.
+ *
+ * No DB writes happen here; this only places the object into R2 using the same
+ * key naming contract as the presign flow.
+ *
+ * @derives(master-plan §G)
+ */
+/**
+ * Generate short-lived presigned GET URLs for a list of object keys.
+ *
+ * Used by the AI verification path to hand photo URLs to OpenAI Vision —
+ * the model fetches each URL once during the chat completion. 5 minutes is
+ * comfortably longer than the longest observed model fetch (~20s on cold
+ * routing) and short enough that the URLs cannot be replayed by anyone
+ * who later sees them in audit logs.
+ *
+ * Reads the same env shape as the PUT path. Returns NOT_CONFIGURED if any
+ * R2_* env var is missing so the caller can surface a typed error.
+ *
+ * @derives(ADR-0023)
+ * @derives(master-plan §G)
+ */
+/** @derives(ADR-0023) */
+export type PresignedGetResult =
+  | { kind: 'OK'; urls: Array<{ objectKey: string; getUrl: string; expiresAt: string }> }
+  | { kind: 'NOT_CONFIGURED' };
+
+/** @derives(ADR-0023) — presigned GET for AI verifier photo fetch */
+export async function generatePresignedGetUrls(
+  objectKeys: ReadonlyArray<string>,
+  ttlSeconds = 300,
+): Promise<PresignedGetResult> {
+  const env = readR2Env();
+  if (!env) return { kind: 'NOT_CONFIGURED' };
+
+  const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+  const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+  const s3 = await getS3Client(env);
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+
+  const urls = await Promise.all(
+    objectKeys.map(async (objectKey) => {
+      const cmd = new GetObjectCommand({ Bucket: env.bucketName, Key: objectKey });
+      const getUrl = await getSignedUrl(s3, cmd, { expiresIn: ttlSeconds });
+      return { objectKey, getUrl, expiresAt };
+    }),
+  );
+
+  return { kind: 'OK', urls };
+}
+
+/** @derives(master-plan §G) */
+export async function uploadCaptureObject(
+  workerId: string,
+  visitId: string,
+  file: Pick<UploadUrlFile, 'phase' | 'index' | 'contentType'>,
+  body: Buffer,
+): Promise<UploadProxyResult> {
+  const env = readR2Env();
+  if (!env) return { kind: 'NOT_CONFIGURED' };
+
+  const { PutObjectCommand } = await import('@aws-sdk/client-s3');
+  const s3 = await getS3Client(env);
+  const objectKey = buildObjectKey(workerId, visitId, file);
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: env.bucketName,
+      Key: objectKey,
+      ContentType: file.contentType,
+      Body: body,
+    }),
+  );
+  return { kind: 'OK', objectKey };
+}

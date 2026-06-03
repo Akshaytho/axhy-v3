@@ -48,10 +48,10 @@ const POLICY: Record<AISurface, ModelChoice> = {
   },
   ai_verification: {
     vendor: 'openai',
-    model: 'gpt-5.4',
+    model: 'gpt-5.4-nano',
     maxCostPerCallInr: 1.0,
     rationale:
-      'Multimodal reasoning (photos + voice + supervisor expectation). GPT-5.4 multimodal at competitive cost.',
+      'Founder-locked 2026-06-03: switched from gpt-5.4 to gpt-5.4-nano. Vision uses detail:low (~85 tok/img) and caps at 2 before + 2 after photos, so 4-image multimodal cost lands ~₹0.4/call worst case, comfortably under the ₹1 ceiling. Watching pass/flag accuracy on first 100 visits — escalate to gpt-5.4 if false-pass rate above 5%.',
   },
   ai_onboarding: {
     vendor: 'anthropic',
