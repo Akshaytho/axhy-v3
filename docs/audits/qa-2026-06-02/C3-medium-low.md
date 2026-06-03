@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] QA audit findings — medium/low tier -->
-
 # C3 — MEDIUM + LOW (backlog)
 
 ---

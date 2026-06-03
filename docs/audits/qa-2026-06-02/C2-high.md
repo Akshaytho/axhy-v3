@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] QA audit findings — high tier -->
-
 # C2 — HIGH (should-fix this cycle)
 
 ---

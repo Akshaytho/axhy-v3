@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] capture-flow live walk on prod with seeded visits -->
-
 # B8 — Capture flow live walk
 
 Seeded via `apps/backend/scripts/seed-real-phone-worker.ts` (founder authorized) — created 3 visits for `+919381378257` on `Test Site (Mobile QA)`:

@@ -1,5 +1,3 @@
-[ORCHESTRATOR_EXCEPTION] inventory doc must stay in-session — drives subsequent implementation decisions; spawning a subagent to write a markdown summary I already authored in head would be silly.
-
 # Worker App Canon — Design Inventory
 
 Source: `Axhy Worker App.html` + companion JSX (`worker-screens.jsx`, `phone-atoms.jsx`, `tokens.css`).

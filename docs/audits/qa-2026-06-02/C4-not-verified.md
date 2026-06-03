@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] QA audit — gaps + why -->
-
 # C4 — NOT VERIFIED (gaps in this session)
 
 Every item here is something the audit mandate explicitly asked for but could not complete in this session. Each carries the reason.

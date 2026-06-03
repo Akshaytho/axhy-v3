@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] admin-web live walk -->
-
 # B7 — Admin web live walk
 
 Driving: Chrome on `--remote-debugging-port=9222`, viewport 390×844 (mobile). Target: `https://admin-web-production-d922.up.railway.app`.

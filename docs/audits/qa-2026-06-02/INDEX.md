@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] full-file QA audit scaffold — markdown only, guardrail-optional path -->
-
 # QA audit — 2026-06-02
 
 Strict prod QA pass on the worker mobile app + connected personas. **No code changes this session.** Findings only, split per surface, handed to next session.

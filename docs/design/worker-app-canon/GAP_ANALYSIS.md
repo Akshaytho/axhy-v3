@@ -1,5 +1,3 @@
-[ORCHESTRATOR_EXCEPTION] gap doc must stay in-session — drives the implementation plan in the same context
-
 # Worker App Canon — Gap Analysis
 
 Captured 2026-06-01. Compares the 9 canon screens against `apps/mobile/app/(worker)/` + `(auth)/`.

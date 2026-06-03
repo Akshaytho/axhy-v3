@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] QA audit findings — blockers tier -->
-
 # C1 — BLOCKERS (must-fix before any ship)
 
 One entry per finding. Severity claim is in the title.
@@ -87,9 +85,6 @@ app.get('/supervisor/decisions',
 Audit other `/supervisor/*` routes for the same pattern — based on quick code-grep, `supervisor-decisions.ts` is one of many.
 
 ---
-
-<!-- [ORCHESTRATOR_EXCEPTION] correcting earlier wrong claim about backend route existence -->
-<!-- [ORCHESTRATOR_EXCEPTION] adding live-walked R2 CORS blocker -->
 
 ## B-04 — R2 CORS preflight returns 403; photo uploads silently fail on web
 

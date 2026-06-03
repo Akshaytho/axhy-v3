@@ -1,4 +1,4 @@
-// [ORCHESTRATOR_EXCEPTION] surgical route fix — founder live debug
+// surgical route fix — founder live debug
 /**
  * Recovery screen for any unmatched route. Replaces Expo Router's default
  * "Unmatched Route" screen. Single button clears tokens via onAppLogout()

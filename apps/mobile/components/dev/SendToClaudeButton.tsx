@@ -1,4 +1,4 @@
-// [ORCHESTRATOR_EXCEPTION] DEV-only debug FAB — captures screen, POSTs to local Claude receiver.
+// DEV-only debug FAB — captures screen, POSTs to local Claude receiver.
 
 /**
  * SendToClaudeButton — floating debug FAB (DEV ONLY).

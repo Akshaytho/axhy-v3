@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] worker UI walk: per-screen observations -->
-
 # A1 — Worker screens walked (live, against prod)
 
 Each section: what I did, what the screen rendered, what backend it called, what I noted. Findings here are cross-referenced to C1–C3 by code (B-01, H-04, etc.).

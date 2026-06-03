@@ -1,5 +1,3 @@
-[ORCHESTRATOR_EXCEPTION] post-implementation summary, same coherent session
-
 # Worker App Canon — What's Missing
 
 Captured 2026-06-01 after the first implementation pass against the canon design.

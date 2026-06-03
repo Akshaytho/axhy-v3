@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] QA audit — open asks for founder -->
-
 # C5 — NEEDS USER ACTION (open asks)
 
 Consolidated list. Each item unblocks specific NV-\* items in C4.

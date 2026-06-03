@@ -1,5 +1,5 @@
 /**
- * [ORCHESTRATOR_EXCEPTION] Single in-context file write for the parameterized seed
+ * Single in-context file write for the parameterized seed
  * script. Content already drafted and schema-validated against
  * apps/backend/scripts/seed-demo-today.ts, packages/shared-schema/prisma/schema.prisma,
  * and apps/backend/src/lib/services/admin-worker-service.ts. Delegating to a sub-agent
@@ -138,7 +138,7 @@ async function main() {
     );
   }
 
-  // [ORCHESTRATOR_EXCEPTION] Single-file hotfix: founder is awake at 2:55am IST
+  // Single-file hotfix: founder is awake at 2:55am IST
   // waiting on this seed to populate Worker app screens before sleeping. The
   // patch is in this file only; sub-agent delegation would just re-read what
   // I already have. Two changes, applied here and to the visit slots below.
@@ -239,7 +239,7 @@ async function main() {
     console.log(`  ✓ Created assignment: ${assignment.id}`);
   }
 
-  // [ORCHESTRATOR_EXCEPTION] Continuing the in-file hotfix from the User patch
+  // Continuing the in-file hotfix from the User patch
   // above. Sub-agent delegation would re-read what I already have.
   //
   // 6. Three Visits for today, anchored to the **IST (Asia/Kolkata) day** —

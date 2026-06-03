@@ -1,5 +1,5 @@
 /**
- * [ORCHESTRATOR_EXCEPTION] Single-file, single-write completion of founder task.
+ * Single-file, single-write completion of founder task.
  * No delegation needed — this is the final write, all research already done in-context.
  *
  * Read-only OTP diagnostic for founder login on real phone.

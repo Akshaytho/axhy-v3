@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] backend role-gate matrix audit -->
-
 # A2 — Backend role-gate audit (full matrix)
 
 Pure code audit. No probing — `grep` only, then reading handlers. Covers all 33 route files in `apps/backend/src/routes/`.

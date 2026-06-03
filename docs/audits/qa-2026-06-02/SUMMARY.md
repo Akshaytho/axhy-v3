@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] QA audit one-pager summary -->
-
 # QA audit — 2026-06-02 — one-pager
 
 Read this first. Full detail in [INDEX.md](./INDEX.md) and per-finding docs.
@@ -26,8 +24,6 @@ Read this first. Full detail in [INDEX.md](./INDEX.md) and per-finding docs.
 See [C4-not-verified.md](./C4-not-verified.md) and [C5-needs-user-action.md](./C5-needs-user-action.md) for unblock paths.
 
 ## Headline findings (severity-bucketed)
-
-<!-- [ORCHESTRATOR_EXCEPTION] adding B-04 R2 CORS blocker, new HIGH from B8 capture-flow walk -->
 
 ### BLOCKER (4) — see [C1-blockers.md](./C1-blockers.md)
 

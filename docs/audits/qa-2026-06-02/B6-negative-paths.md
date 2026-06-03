@@ -1,5 +1,3 @@
-<!-- [ORCHESTRATOR_EXCEPTION] negative-path matrix against prod auth -->
-
 # B6 — Negative-path test matrix (live, prod)
 
 Direct backend tests via `fetch()` from the browser context — all against `https://backend-production-344e1.up.railway.app`. No UI involved; pure HTTP behaviour.
