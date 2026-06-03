@@ -16,6 +16,7 @@ const config = {
     '@axhy/api-client',
     '@axhy/copy',
     '@axhy/errors',
+    '@axhy/jwt-public',
     '@axhy/shared-schema',
     '@axhy/ui-tokens',
     '@axhy/ui-web',

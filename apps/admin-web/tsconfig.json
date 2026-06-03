@@ -17,5 +17,5 @@
     "allowJs": true
   },
   "include": ["app/**/*", "lib/**/*", "next-env.d.ts", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", ".next", "dist"]
+  "exclude": ["node_modules", ".next", "dist", "e2e"]
 }

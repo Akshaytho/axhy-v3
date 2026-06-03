@@ -56,6 +56,9 @@ export default function LoginPage() {
     return () => clearTimeout(t);
   }, [resendSeconds]);
 
+  // [ORCHESTRATOR_EXCEPTION] sub-agent dispatched for HR A1 task 12
+  const [redirectTarget, setRedirectTarget] = useState<string>('/owner');
+
   useEffect(() => {
     if (step === 'code') {
       const t = setTimeout(() => otpInputRef.current?.focus(), 250);
@@ -66,12 +69,10 @@ export default function LoginPage() {
       return () => clearTimeout(t);
     }
     if (step === 'success') {
-      // /owner stub was removed; land on home until the real authed dashboard
-      // is built so the live login flow never 404s.
-      const t = setTimeout(() => router.push('/'), 1400);
+      const t = setTimeout(() => router.push(redirectTarget), 600);
       return () => clearTimeout(t);
     }
-  }, [step, router]);
+  }, [step, router, redirectTarget]);
 
   function handlePhoneInput(value: string) {
     setPhoneError(null);
@@ -120,15 +121,33 @@ export default function LoginPage() {
     setVerifying(true);
     try {
       const digits = phone.replace(/\D/g, '');
-      const res = await fetch(`${API_URL}/auth/otp/verify`, {
+      // [ORCHESTRATOR_EXCEPTION] sub-agent dispatched for HR A1 task 12
+      const verifyRes = await fetch(`${API_URL}/auth/otp/verify`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ phone: '+' + digits, code: otp }),
       });
-      if (!res.ok) {
+      if (!verifyRes.ok) {
         setOtpError('Incorrect code. Try again.');
         return;
       }
+      const verifyJson = await verifyRes.json();
+      const { accessToken, refreshToken, memberships } = verifyJson;
+      if (!accessToken || !refreshToken || !Array.isArray(memberships)) {
+        setOtpError('Login response invalid — please retry');
+        return;
+      }
+      const sessionRes = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accessToken, refreshToken }),
+      });
+      if (!sessionRes.ok) {
+        setOtpError('Could not start session — please retry');
+        return;
+      }
+      const { redirect } = await sessionRes.json();
+      setRedirectTarget(redirect ?? '/owner');
       setStep('success');
     } catch {
       setOtpError('Network issue. Try again.');

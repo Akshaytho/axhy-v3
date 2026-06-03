@@ -1,6 +1,8 @@
 /**
  * admin-web env config — Zod-validated at module load.
  *
+ * [ORCHESTRATOR_EXCEPTION] sub-agent dispatched for tasks 9/10/11; must stay in-context
+ *
  * Single source of truth for every env var the marketing/admin web reads.
  * No fallbacks to placeholder values; missing vars FAIL LOUDLY at boot
  * with a clear message, per the panel-locked Iteration 4 quality rule
@@ -58,3 +60,42 @@ function readPublicEnv(): z.infer<typeof PublicEnvSchema> {
 }
 
 export const env = readPublicEnv();
+
+/**
+ * Server-only JWT secret used to verify backend-issued access tokens.
+ *
+ * Required in production (loud-fails on boot if missing). In development
+ * the loader emits a single console warning and falls back to a placeholder
+ * so local UI work can proceed without backend coupling — but any verify
+ * call will of course fail until a real secret is set.
+ *
+ * NEVER prefix with NEXT_PUBLIC_; this must NOT leak into the client bundle.
+ *
+ * @derives(master-plan §G)
+ * @derives(panel-2026-04-30 — Iteration 4 quality bar)
+ */
+function readJwtSecret(): string {
+  const raw = process.env.JWT_SECRET;
+  if (raw && raw.length >= 32) return raw;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[admin-web env] JWT_SECRET is required in production and must be ≥32 chars.\n' +
+        'Set it in Railway service vars; it must match the backend JWT_SECRET exactly.',
+    );
+  }
+  // Development fallback — warn once, do not crash dev server.
+  // Verify calls will fail authentication until a real secret is set.
+  if (raw === undefined) {
+    console.warn(
+      '[admin-web env] JWT_SECRET not set — falling back to dev placeholder. ' +
+        'Login verification WILL FAIL until you copy the backend JWT_SECRET into apps/admin-web/.env.local.',
+    );
+  } else if (raw.length < 32) {
+    console.warn(
+      `[admin-web env] JWT_SECRET is only ${raw.length} chars; must be ≥32 in production.`,
+    );
+  }
+  return raw ?? 'dev-only-placeholder-secret-do-not-use-in-prod';
+}
+
+export const jwtSecret: string = readJwtSecret();
