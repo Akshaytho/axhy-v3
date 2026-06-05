@@ -89,3 +89,6 @@ SETUP_ENV.template
 backups/
 **/backups/
 *.sql.gz
+
+# apksigner sidecar (build artifact for the gitignored APK)
+*.idsig
