@@ -39,6 +39,14 @@ export const MAX_FAIL = 5;
 /** Per-batch row cap so one slow tenant can't starve others. */
 export const BATCH_SIZE = 50;
 
+/**
+ * Multi-replica claim lease (ADR-0009). When a dispatcher picks up an Outbox row
+ * it pushes nextRetryAt this far forward so a second replica skips it; if the
+ * handler crashes mid-flight the lease expires and the row is re-claimable. Must
+ * exceed the slowest handler (AI verify ~ seconds); 5 min matches the retry cap.
+ */
+export const CLAIM_LEASE_MS = 5 * 60 * 1000;
+
 /** Default poll interval. Override via OUTBOX_POLL_INTERVAL_MS. */
 export const DEFAULT_POLL_INTERVAL_MS = 2000;
 
@@ -72,12 +80,13 @@ export async function processOnce(
   log: FastifyBaseLogger,
   opts: { companyId?: string } = {},
 ): Promise<{ processed: number; failed: number; quarantined: number; skipped: number }> {
+  const now = new Date();
   const candidates = await client.outbox.findMany({
     where: {
       ...(opts.companyId ? { companyId: opts.companyId } : {}),
       processedAt: null,
       failCount: { lt: MAX_FAIL },
-      nextRetryAt: { lte: new Date() },
+      nextRetryAt: { lte: now },
     },
     orderBy: { nextRetryAt: 'asc' },
     take: BATCH_SIZE,
@@ -89,6 +98,21 @@ export async function processOnce(
   let skipped = 0;
 
   for (const row of candidates) {
+    // Multi-replica atomic claim (ADR-0009): conditionally push nextRetryAt
+    // forward as a lease. Whichever dispatcher's UPDATE matches count=1 owns the
+    // row; a concurrent replica matches 0 rows and skips it — no double dispatch.
+    // A crash mid-handler leaves the lease, which expires after CLAIM_LEASE_MS so
+    // the row becomes re-claimable.
+    const claim = await client.outbox.updateMany({
+      where: { id: row.id, processedAt: null, nextRetryAt: { lte: now } },
+      data: { nextRetryAt: new Date(now.getTime() + CLAIM_LEASE_MS) },
+    });
+    if (claim.count === 0) {
+      // Another replica claimed it (or it was processed between findMany and now).
+      skipped += 1;
+      continue;
+    }
+
     const handler = HANDLERS[row.topic];
     if (!handler) {
       // Unknown topic — count as failure so it eventually quarantines and
