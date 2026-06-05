@@ -35,7 +35,8 @@ export type AnonymizeWorkerServiceInput = {
 export type AnonymizeWorkerServiceOutput =
   | { kind: 'OK'; workerId: string; anonymizedAt: Date }
   | { kind: 'WORKER_NOT_FOUND' }
-  | { kind: 'WORKER_ALREADY_TERMINATED' };
+  | { kind: 'WORKER_ALREADY_TERMINATED' }
+  | { kind: 'WORKER_NOT_PENDING_TERMINATION' };
 
 /**
  * Hash a phone to fit User.phone VarChar(16).
@@ -59,6 +60,13 @@ export async function anonymizeWorkerService(
   if (!worker) return { kind: 'WORKER_NOT_FOUND' };
   if (worker.state === 'TERMINATED' || worker.state === 'ARCHIVED') {
     return { kind: 'WORKER_ALREADY_TERMINATED' };
+  }
+  // Two-step termination (founder 2026-06-05): HR FINALIZES a termination that
+  // was already proposed (→ TERMINATION_PENDING), never terminates directly.
+  // workerMachine reaches TERMINATED only via TERMINATION_PENDING (worker.ts).
+  // Guard is before any mutation below, so a rejected call scrubs nothing.
+  if (worker.state !== 'TERMINATION_PENDING') {
+    return { kind: 'WORKER_NOT_PENDING_TERMINATION' };
   }
 
   const effectiveAt = input.effectiveAt ?? new Date();

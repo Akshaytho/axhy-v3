@@ -177,6 +177,11 @@ describe('HR cross-route water-flow — boundary contracts hold end-to-end', () 
         }
 
         // ── Step 5: HR anonymizes the worker ────────────────────────────
+        // Two-step termination (2026-06-05): HR finalizes a pending termination.
+        await prisma.worker.update({
+          where: { id: created.workerId },
+          data: { state: 'TERMINATION_PENDING' },
+        });
         const anonRes = await app.inject({
           method: 'POST',
           url: `/admin/workers/${created.workerId}/anonymize`,

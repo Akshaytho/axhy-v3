@@ -279,6 +279,13 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
         });
         return;
       }
+      if (out.kind === 'WORKER_NOT_PENDING_TERMINATION') {
+        reply.code(409).send({
+          error: 'WORKER_NOT_PENDING_TERMINATION',
+          message: 'Worker must have a pending termination before HR can finalize/anonymize it',
+        });
+        return;
+      }
       reply.send({
         workerId: out.workerId,
         anonymizedAt: out.anonymizedAt.toISOString(),

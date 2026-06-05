@@ -164,6 +164,13 @@ describe('POST /admin/workers/:id/anonymize (R3)', () => {
         expect(createRes.statusCode).toBe(200);
         const { workerId, userId } = createRes.json();
 
+        // Two-step termination (2026-06-05): HR can only finalize/anonymize a
+        // worker that already has a pending termination.
+        await prisma.worker.update({
+          where: { id: workerId },
+          data: { state: 'TERMINATION_PENDING' },
+        });
+
         // Anonymize
         const anonRes = await app.inject({
           method: 'POST',
