@@ -4,12 +4,13 @@
  *   POST /visits/:id/resolve
  *       Supervisor confirms an AI-flagged visit is fine. Body:
  *       `{ supervisorReason?: string | null }`. Conditional UPDATE on
- *       Visit.flagged=true; no state transition. Idempotency-Key supported.
+ *       Visit.flagged=true; transitions state to VERIFIED (RCA-B 2026-06-04).
+ *       Idempotency-Key supported.
  *
  *   POST /visits/:id/reject
  *       Supervisor rejects an AI-flagged visit. Body:
  *       `{ supervisorReason: string }` (required). Conditional UPDATE on
- *       Visit.flagged=true AND state IN (IN_PROGRESS, COMPLETED, NEEDS_REVIEW);
+ *       Visit.flagged=true AND state=FLAGGED (REJECTABLE_VISIT_STATES);
  *       transitions state to REJECTED. Idempotency-Key supported. The
  *       client surfaces a typed-phrase confirmation ("REJECT") before
  *       firing this mutation.

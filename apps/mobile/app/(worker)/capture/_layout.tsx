@@ -1,9 +1,10 @@
 /**
- * Capture-flow Stack layout — wraps the six placeholder steps in their own
+ * Capture-flow Stack layout — wraps the capture steps in their own
  * stack so back-navigation between steps doesn't pop the worker out of the
  * (worker) tab tree.
  *
- * Scaffold-only this slice. Real step contents land in 2b-2/2b-3.
+ * All steps are fully implemented (qr-scan, before/after photos, timer,
+ * review, submit) — no longer scaffold-only.
  *
  * @derives(WORKER_MVP_SLICE_2A_PLAN.md §7)
  * @derives(MVP_V2_ALIGNED_PLAN.md §2)
