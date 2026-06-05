@@ -30,6 +30,7 @@ import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 
+import { startDispatcher } from './dispatcher/index.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAuthRefreshRoutes } from './routes/auth-refresh.js';
 import { registerMeRoutes } from './routes/me.js';
@@ -267,6 +268,16 @@ export async function startServer(): Promise<void> {
   await app.listen({ port, host: '0.0.0.0' });
   app.log.info(`[axhy-backend] listening on :${port}`);
 
+  // Run the outbox dispatcher IN-PROCESS — AI photo verification, async
+  // notifications, payroll recompute, and the periodic sweeps all drain here.
+  // Prod has no separate dispatcher service, so without this, submitted work is
+  // enqueued but never processed. Set RUN_DISPATCHER_IN_PROCESS=false on the web
+  // service if a dedicated dispatcher service is ever added (the CLAIM_LEASE_MS
+  // atomic claim already makes concurrent dispatch safe either way).
+  const dispatcher =
+    process.env.RUN_DISPATCHER_IN_PROCESS === 'false' ? null : startDispatcher({ log: app.log });
+  if (dispatcher) app.log.info('[axhy-backend] in-process outbox dispatcher started');
+
   // Graceful shutdown — Railway sends SIGTERM 30s before SIGKILL. Drain
   // in-flight requests, close DB + Redis, then exit. Idempotent: a second
   // signal during drain is a no-op (already shutting down).
@@ -298,6 +309,12 @@ export async function startServer(): Promise<void> {
       app.log.error({ err }, '[axhy-backend] error draining fastify'),
     );
     app.log.info('[axhy-backend] fastify drained');
+    if (dispatcher) {
+      await raceTimeout(dispatcher.stop(), SHUTDOWN_FASTIFY_MS, 'dispatcher').catch((err) =>
+        app.log.error({ err }, '[axhy-backend] error stopping dispatcher'),
+      );
+      app.log.info('[axhy-backend] dispatcher stopped');
+    }
     try {
       const { closeRedis } = await import('./lib/redis.js');
       await raceTimeout(closeRedis(), SHUTDOWN_REDIS_MS, 'redis');
