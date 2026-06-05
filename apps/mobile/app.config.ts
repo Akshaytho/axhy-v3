@@ -22,9 +22,15 @@ const config = {
   name: 'Axhy',
   slug: 'axhy',
   scheme: 'axhy',
-  version: '0.0.1',
+  version: '0.1.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
+  icon: './assets/icon.png',
+  splash: {
+    image: './assets/splash-icon.png',
+    resizeMode: 'contain',
+    backgroundColor: '#4F46E5',
+  },
   platforms: ['ios', 'android', 'web'],
   web: {
     bundler: 'metro',
@@ -32,9 +38,15 @@ const config = {
   ios: {
     bundleIdentifier: 'app.axhy.mobile',
     supportsTablet: false,
+    buildNumber: '1',
   },
   android: {
     package: 'app.axhy.mobile',
+    versionCode: 1,
+    adaptiveIcon: {
+      foregroundImage: './assets/adaptive-icon.png',
+      backgroundColor: '#4F46E5',
+    },
   },
   plugins: [
     'expo-localization',

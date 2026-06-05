@@ -51,6 +51,8 @@ android/
 # secrets — never commit
 *.pem
 *.key
+*.keystore
+.keystore-password.txt
 secrets/
 
 # generated
