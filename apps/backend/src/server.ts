@@ -67,6 +67,7 @@ import { registerAdminMembershipRoutes } from './routes/admin-memberships.js';
 import { registerAdminWorkerRoutes } from './routes/admin-workers.js';
 import { registerAdminSiteRoutes } from './routes/admin-sites.js';
 import { registerSuperAdminMembershipRoutes } from './routes/super-admin-memberships.js';
+import { registerSuperAdminCompanyRoutes } from './routes/super-admin-companies.js';
 import { registerAdminCompanyRoutes } from './routes/admin-company.js';
 
 /**
@@ -246,6 +247,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerAdminWorkerRoutes(app);
   await registerAdminSiteRoutes(app);
   await registerSuperAdminMembershipRoutes(app);
+  await registerSuperAdminCompanyRoutes(app);
   await registerAdminCompanyRoutes(app);
 
   return app;
