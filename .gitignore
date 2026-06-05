@@ -61,6 +61,14 @@ packages/shared-schema/src/generated/
 # Subsumes prior wave-specific apps/mobile/screenshots-wave-4a*/ lines.
 **/screenshots-*/
 **/scripts/screenshot-*.mjs
+
+# QA screenshots / image evidence — NEVER commit to git (founder rule 2026-06-05).
+# Keep them local for visual verification; do not push.
+**/screenshots/
+**/shots/
+docs/evidence/**/*.png
+docs/evidence/**/*.jpg
+qa-audit-*/**/*.png
 apps/admin-web/render-r4.mjs
 apps/admin-web/public/design-review/
 
