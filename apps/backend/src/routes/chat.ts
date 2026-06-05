@@ -1861,10 +1861,26 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             });
 
             // Step 3: worker.update + audit.
-            const updated = await tx.worker.update({
-              where: { id: wid },
+            // Race-safe + machine-correct: only transition from a state the
+            // workerMachine has a TERMINATE edge from (worker.ts) — first-writer-wins,
+            // so an illegal source state (TRANSFER_PENDING, DOC_PENDING, INVITED…)
+            // or a concurrent change cannot land an invalid TERMINATION_PENDING.
+            const TERMINATE_LEGAL_FROM = [
+              'ACTIVE',
+              'ON_LEAVE',
+              'ON_SUSPENSION',
+              'ABSENT',
+              'AT_RISK',
+              'BLOCKED',
+              'INACTIVE',
+            ];
+            const updated = await tx.worker.updateMany({
+              where: { id: wid, state: { in: TERMINATE_LEGAL_FROM } },
               data: { state: 'TERMINATION_PENDING' },
             });
+            if (updated.count === 0) {
+              throw new ServiceDomainError('WORKER_NOT_TERMINABLE');
+            }
             await recordAuditEvent(tx, {
               companyId: auth.companyId,
               kind: 'WORKER_TERMINATION_REQUESTED',
@@ -1877,7 +1893,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                 previousState: w.state,
               },
             });
-            return { worker: updated };
+            return { worker: { id: wid, state: 'TERMINATION_PENDING' as const } };
           });
           reply.code(200).send({ workerId: out.worker.id, state: out.worker.state });
         } catch (err) {
