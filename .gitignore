@@ -84,3 +84,8 @@ scripts/devtools-capture/
 tmp/
 SETUP_ENV.template
 .agent-collab-runs/
+
+# DB backups — contain production data, NEVER commit (2026-06-06)
+backups/
+**/backups/
+*.sql.gz
