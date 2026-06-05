@@ -591,17 +591,20 @@ const leaveRequestSource: DecisionSource = {
     });
     if (candidates.length === 0) return [];
 
+    // Pre-load supervised site names once (today-service pattern) instead of a
+    // per-row tx.site.findFirst — every matched siteId is already proven to be
+    // in ctx.supervisedSiteIds below, so this single query covers all of them.
+    const supervisedSiteRows = await tx.site.findMany({
+      where: { companyId: ctx.companyId, id: { in: [...ctx.supervisedSiteIds] } },
+      select: { id: true, name: true },
+    });
+    const siteNameById = new Map(supervisedSiteRows.map((s) => [s.id, s.name]));
+
     const out: DecisionRowT[] = [];
     for (const lr of candidates) {
       // Routing: worker's primary site at `at` must be in supervisor portfolio.
       const siteId = await getCachedWorkerPrimarySite(tx, ctx, lr.workerId);
       if (!siteId || !ctx.supervisedSiteIds.has(siteId)) continue;
-
-      // Site lookup for siteName surfacing.
-      const site = await tx.site.findFirst({
-        where: { id: siteId, companyId: ctx.companyId },
-        select: { name: true },
-      });
 
       const dayCount = leaveDayCount(lr.fromDate, lr.toDate);
       const section = leaveSection(lr.fromDate, ctx.at);
@@ -641,7 +644,7 @@ const leaveRequestSource: DecisionSource = {
         title: `Approve leave for ${lr.worker.name}`,
         body: leaveBody(lr.fromDate, lr.toDate, lr.reason, dayCount),
         workerName: lr.worker.name,
-        siteName: site?.name ?? null,
+        siteName: siteNameById.get(siteId) ?? null,
         proposedAt: lr.createdAt.toISOString(),
         summaryText: null,
         dayCount,

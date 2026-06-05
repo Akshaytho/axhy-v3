@@ -159,13 +159,14 @@ export async function markAbsentService(
     },
   });
 
-  if (payDeductPaise > 0) {
-    await enqueueOutbox(tx, {
-      companyId: auth.companyId,
-      topic: 'payroll.recompute',
-      payload: { workerId: input.workerId, monthOf: input.date.slice(0, 7) },
-    });
-  }
+  // Always recompute payroll on a mark — a correction back to a zero-deduction
+  // status (e.g. ABSENT→PRESENT) must RESTORE a prior deduction, not only fire
+  // when the new value is positive. The recompute is a month-level tally.
+  await enqueueOutbox(tx, {
+    companyId: auth.companyId,
+    topic: 'payroll.recompute',
+    payload: { workerId: input.workerId, monthOf: input.date.slice(0, 7) },
+  });
 
   return { kind: 'OK', attendance };
 }

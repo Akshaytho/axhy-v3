@@ -995,6 +995,22 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
               };
             }
             if (name === 'propose_create_assignment') {
+              // RULE 4 (docs/locked/chat-behavior-rules.md): never surface a
+              // decision card for a worker/site that doesn't exist in the tenant.
+              const exists = await withTenantContext(prisma, auth.companyId, async (tx) => {
+                const w = await tx.worker.findFirst({
+                  where: { id: input.workerId as string, companyId: auth.companyId },
+                  select: { id: true },
+                });
+                const s = await tx.site.findFirst({
+                  where: { id: input.siteId as string, companyId: auth.companyId },
+                  select: { id: true },
+                });
+                return { worker: !!w, site: !!s };
+              });
+              if (!exists.worker) return { output: { error: 'WORKER_NOT_FOUND' } };
+              if (!exists.site) return { output: { error: 'SITE_NOT_FOUND' } };
+
               // Plumb detectConflicts — Wave 4a-PRO Task 9
               const conflicts = await withTenantContext(prisma, auth.companyId, async (tx) => {
                 const activeAssignments = await tx.assignment.findMany({
