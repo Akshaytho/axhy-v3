@@ -163,6 +163,25 @@ export async function buildServer(): Promise<FastifyInstance> {
     timeWindow: '1 minute',
   });
 
+  // Every path param in this API is a UUID (:id, :visitId, :messageId, :siteId).
+  // Reject malformed ones with a clean 400 here instead of letting
+  // prisma.findUnique throw a 500 deep inside a handler (audit NEW-2).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const UUID_PARAM_NAMES = ['id', 'visitId', 'messageId', 'siteId'] as const;
+  app.addHook('preValidation', async (req, reply) => {
+    const params = req.params as Record<string, string | undefined> | undefined;
+    if (!params) return;
+    for (const key of UUID_PARAM_NAMES) {
+      const value = params[key];
+      if (typeof value === 'string' && !UUID_RE.test(value)) {
+        return reply.code(400).send({
+          error: 'BAD_PATH_PARAM',
+          message: `Path parameter "${key}" must be a valid UUID.`,
+        });
+      }
+    }
+  });
+
   // Friend review #13 (MEDIUM): /health pings Redis + Postgres so the
   // load balancer doesn't route to an instance with dead downstream
   // connections. Returns 503 with the failing dep on outage.
