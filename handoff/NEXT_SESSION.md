@@ -1,53 +1,66 @@
 # Next Session
 
-**Last updated:** 2026-06-04 IST (early morning)
-**Branch:** unchanged — **nothing pushed** (founder standing instruction: fix, do not push).
-**Rule:** single rolling handoff. Do not create dated `NEXT_SESSION*.md` / `STATUS.md`.
+**Last updated:** 2026-06-05 (afternoon) · **Branch:** `chore/handoff-late-2026-05-31` (47 commits ahead of `main`; working tree has many uncommitted files). · **Deploy state:** NOT pushed — Railway `main` is ~2 days stale and is missing the whole RCA wave + everything below.
 
-**Evidence:** `qa-audit-2026-06-03/capture-submission/` — `bug-log.md` (Session 1/2/3), `EVID-CAPTURE-SUBMISSION-v1.md` (§12/§13), `shots/` (`s2-*`, `v2-60..64`).
+This run (founder: "make it real-market production-ready, both apps, no compromise; seed your own data; push to main if needed"): seeded a **production-shaped dataset** on the Railway prod DB, verified both apps at the route+DB layer with real data, ran an **exhaustive multi-agent audit** (adversarially verified), and **fixed + verified 9 real bugs** including 2 BLOCKING. Full evidence: `docs/evidence/2026-06-05/worker-supervisor-release/`.
 
----
-
-## What shipped this run (all verified, NOT pushed)
-
-Founder answered two product forks (multiple-choice): **photo ceiling → 8**, **build dedicated review screens**. Other items resolved from the brain. Three guarded slices.
-
-### Session 2 — capture hardening (HIGH-12 / CRIT-5 / CRIT-6 / GPS honesty)
-
-- **HIGH-12** upload PUT timeout (new `lib/uploads/r2-put.ts`, 5 unit tests), **CRIT-5** poll-pileup guard, **CRIT-6** capture-crash fix, removed fabricated "GPS LOCKED" pill. CRIT-4/CRIT-7/E6-persistence verified already-fixed. Backend graceful degradation verified (fail-open rate-limit, Postgres-only critical path, /health).
-
-### Session 3 — features
-
-- **BUG-02** photo ceiling **3 → 8** (+ "Add more"). `capture-flow.ts` MIN_PHOTOS_PER_PHASE/MAX_PHOTOS_PER_PHASE; CameraView shutter to 8, "N OF 8 · MIN 3". Device: shot v2-60.
-- **BUG-03** dedicated **Before-Review + After-Review** screens — new `components/worker/capture/PhaseReview.tsx` (dynamic grid, tap-to-remove, "+ Add more" replacement loop, floor-gated CTA), new route files `before-photos-review.tsx` / `after-photos-review.tsx`, 8-step `CAPTURE_STEPS`, `PhotoGridReview` made dynamic (up to 8/phase). **Clock-in relocated** to Before-Review "Start cleaning". Device: shots v2-61 / v2-62.
-- **BUG-13** worker **audit events** `VISIT_CLOCKED_IN` / `VISIT_CLOCKED_OUT` / `VISIT_SUBMITTED`, written immutably inside each transition's transaction, real-transition-only. `kind` is a free String column (schema.prisma:549) — **no migration**. Test asserts the submit row.
-- **BUG-06** **QR made honest** — `qr-scan.tsx` is now a truthful "SITE CHECK-IN / Start your visit / Continue" screen (no fake scan-line / no camera pretense). Device: shot v2-64.
-- **sign-out timeout** — `identity-lifecycle.ts` uses `fetchWithTimeout(8s)` so a dead network can't hang sign-out.
-
-### Gates (all green)
-
-mobile typecheck · **mobile vitest 123/123** · backend typecheck · **worker-submit 10/10** (incl. VISIT_SUBMITTED audit assertion) · `check_before_build` E1–E14 PASSED ×4 · `check_before_done`.
+> **Env truth:** emulator app → local backend on host `:4000` → **Railway prod DB**. No paying customers yet (founder-confirmed); all prod data is fake; seeding the prod DB is sanctioned (D8). The **emulator is unreliable on this host** (1 virtual core, RAM-tight — it crashed repeatedly), so exhaustive verification was done at the **route+DB layer** (bulletproof) + a parallel **code-audit workflow**; on-device screenshots cover the supervisor surface from earlier in the session.
 
 ---
 
-## ⚠️ Documented deviations from the contract — FOUNDER TO RATIFY
+## What was completed
 
-1. **ON_SITE not introduced.** `visit.ts` only allows `EN_ROUTE → WORKER_ARRIVE → ON_SITE` (no `SCHEDULED → ON_SITE`); doing ON_SITE faithfully needs a **locked state-machine change** (add a transition + tests). Deferred (you accepted this). Pre-cleaning state stays SCHEDULED; clock-in goes SCHEDULED→IN_PROGRESS leniently as before.
-2. **Clock-out stays at Timer "Done"** (not After-Review "Continue" as the contract's after-phase=IN_PROGRESS model says). Chosen for **accurate cleaning duration** + **deterministic resume** (IN_PROGRESS→timer, PHOTOS_PENDING→review). Trade-off: the contract's "back to timer from after-capture" isn't supported; After-Review "Continue" just navigates. If you want the literal contract model, it's a follow-up slice (resume disambiguation needed).
+**Seed:** `apps/backend/scripts/seed-qa-comprehensive.ts` — Company "Reddy Cleaning Services" (slug axhy-sandbox) with loginable supervisor **Suresh `+919999999999`** and loginable workers **Ravi `+919900000002`**, **Mukesh `+919900000001`** (OTP `123456`), 3 sites + bindings, visits across **all 13 states**, leaves in 3 states, edge personas (suspended worker, unicode/emoji name), + a 2nd company "Surya Facilities" (`+918888888888`) for tenant-isolation. Idempotent; re-runnable.
 
-## On-device verification honesty
+**Route+DB verification (real data):** supervisor + worker routes all 200 with rich data; floor-pulse aggregates correctly; **tenant isolation holds** (Surya sees zero Reddy data); unicode names render; negative cases (wrong-worker→403, nonexistent→404, no-auth→401) pass.
 
-New screens + 8-counter + honest QR verified by **deep-link screenshots** (v2-60..64). The **full clock-in→timer→submit lifecycle was NOT driven on-device** this run: date rolled to Jun 4 → the QA worker had no "today" visit to start, and the live-camera screen ANR-storms this emulator. Lifecycle correctness rests on typecheck + 123 mobile + 10 backend tests + the relocated-but-unchanged clock-in code. **Do a final phone walk with a real assigned visit before launch.**
+**9 fixes — all verified (backend typecheck green throughout):**
 
-## Environment state
+1. **Role-gate cluster (security)** — 14 supervisor routes were `requireAuth`-only (a worker could read the roster/summary/activity/living-doc/invites + drive the AI engine). Gated all: `chat.ts`, `decisions.ts`, `supervisor-updates.ts`, `supervisor-today/summary/context/living-doc/activity.ts`, `replacement-invites.ts` (supervisor routes→SUPERVISOR, worker accept/decline→WORKER). Test `supervisor-route-role-gates.test.ts` **29/29 prod-DB green**; `check_before_done` passed for the first slice.
+2. **BLOCKING-1 — `POST /assignments`** had NO role gate → a worker could fabricate assignments. Added `requireRole('SUPERVISOR','HR')`. Live: worker→**403**.
+3. **BLOCKING-2 — photo data-loss.** Capture/submit schemas capped photo `index` at 3 and the submit array at 6, but the UI allows 8/phase (locked doc: max 8) → photos 4-8 could **never upload** and permanently dead-ended the visit. Raised index→8 (`worker-captures.ts` ×2 in shared-schema + backend route; `worker-submit.ts`), array→16. Live: presign index 4→**200**, index 9→400.
+4. **Calendar cross-supervisor (security HIGH)** — `calendar.ts` PATCH/promote/GET scoped only by companyId (supervisor B could edit/promote A's calendar; GET trusted a client `?supervisorId`). Gated all 4 routes to SUPERVISOR + scoped to `supervisorId: auth.userId`; GET ignores the client param. Live: worker→403, supervisor→own only.
+5. **CLUSTER-B — replacement-invite id.** Picker sent `Worker.id` where backend wants `User.id` → every invite 404'd. Added `userId` to `TodayWorker`/today-service; picker sends User.id. **E2E proven**: User.id→201, Worker.id→404.
+6. **CLUSTER-D — worker FLAGGED reason.** verify-status didn't return `verificationText` → worker never saw why a visit was flagged. Added it to schema+route. Live: returns the reason.
+7. **Resign doc-truth** — supervisor `me.tsx` documented a Resign button that (correctly, per locked `no-self-service-resign-or-terminate`) doesn't exist. Removed the docstring + dead styles.
 
-- Disk was at 100% mid-session (a local release build) which crashed build/backend/emulator. Freed ~14G of **regenerable** caches OUTSIDE the project (`~/.gradle/caches`, `~/.cache`, `~/.npm`) — **project, pnpm store, and AVD untouched**. Now ~9–10G free.
-- Backend + Metro running; emulator up but ANR-prone (interactive walking is slow — use deep-links + `adb exec-out screencap`).
-- LAN IP: `apps/mobile/.env.local` → set to your machine's current LAN IP (10.0.2.2 / adb-reverse don't deliver on this macOS).
+---
 
-## Remaining / follow-ups (specced, not done)
+## What is genuinely incomplete (from the adversarial audit — exact locations)
 
-- **Same-class sign-out/upload-timeout** still open in **supervisor/chat** surfaces: `lib/uploads/photo-upload.ts:195`, `lib/audio/transcribe.ts:113/194`. Apply `fetchWithTimeout` in the supervisor pass.
-- **Full QR** (camera decode + `qrSkipped`/`qrCheckedIn` server event + per-site QR flag) — deferred per the locked "no QR by default" decision.
-- **ON_SITE + literal after-phase model** — a deliberate state-machine slice if you want the contract verbatim.
-- **Streaming PUT** (expo-file-system createUploadTask) — memory optimization, not a launch bug.
+**HIGH, latent (safe today, fix before scale):**
+
+- **Outbox dispatcher has no atomic claim** (`dispatcher/index.ts:75-117`; `schema.prisma` Outbox has no claim/lease column). Under the founder-mandated **multi-replica** scale-up, two dispatchers double-process the same rows → double AI cost + double side-effects. Needs `FOR UPDATE SKIP LOCKED` / a claimedAt column. Latent: prod pins 1 replica today.
+- **State-machine bypass** — `anonymize-worker-service.ts:80-86` writes `Worker.state='TERMINATED'` directly (illegal ACTIVE→TERMINATED, skips TERMINATION_PENDING); `chat.ts:1838` hardcodes `TERMINATION_PENDING`. Both bypass `workerMachine`. Safe today (manual guards hold) but violates the "no direct status writes" rule and is fragile to new source states.
+
+**MEDIUM:**
+
+- `decisions-service.ts:595-604` — N+1 in the leave-request decision source (up to ~600 sequential queries for 200 leaves). Batch-derive primary sites + single site fetch.
+- `submit.tsx` resume path — after app-kill during AI verification, resume reopens the idle "Submit" screen (offers a re-submit instead of resuming the poll). Relies on backend idempotency.
+- `chat.ts:993-1048` `propose_create_assignment` — no worker/site existence guard (chat-behavior RULE 4), unlike sibling propose\_\* tools; bad id surfaces a bogus card (apply re-validates, so bounded).
+
+**LOW:**
+
+- `attendance-service.ts:162-168` — payroll recompute enqueued only `if (payDeductPaise > 0)`; a correction back to 0 never restores the deduction (latent — payroll handler is a stub).
+- `me.tsx:584` — hardcoded `BUILD 2026.05.18` (Drawer uses an env-derived honest stamp; wire me.tsx to it).
+- `capture/_layout.tsx` docstring says "scaffold-only/placeholder" but all steps are built (doc-truth).
+- `dispatcher/handlers/ai.ts:377-394` — Visit-state write lacks an in-WHERE from-state guard (TOCTOU vs concurrent resolve).
+- **NEW-2** — `worker-submit.ts` verify-status returns 500 (not 400) on a malformed (non-UUID) visitId; this is a broader class (many `findUnique`-by-param routes) — add a shared UUID-param guard.
+
+**INFO:** workerMachine middle lifecycle (ON_LEAVE/ABSENT/etc.) never written to Worker.state (tracked on side tables); mutating dispatch handlers (payroll/gupshup) will need idempotency guards when wired.
+
+**Pre-existing test flakes (NOT from this session):** `supervisor-today` happy-path (time-of-day 'late' vs 'on_site', the test's own comment predicts it); `chat-swap` (NOT_RESPONSIBLE); `supervisor-decisions-union-all` (beforeAll fixture); `wave-1-replacement` (expiry CHECK constraint).
+
+---
+
+## First action next session
+
+1. **Deploy:** commit the working tree + push to `main` so Railway runs the verified code (the security fixes are NOT live until then). Set **`AXHY_REDIS_NAMESPACE`** per prod env first (RCA-G boot guard) or prod refuses to boot. Smoke-test the live server.
+2. Fix the outbox atomic-claim + the 2 state-machine bypasses before any replica scale-up.
+3. Work down the MEDIUM/LOW list above (all have exact file:line).
+
+## Method notes
+
+- Prod DB; route+DB verification is the reliable instrument on this host (emulator too weak). Multi-company + isolation always.
+- Audit was a multi-agent workflow with adversarial verification — 13 confirmed findings from ~33 agents.
+- Host kept awake via `caffeinate`.

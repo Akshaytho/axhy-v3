@@ -32,6 +32,7 @@ import { HRAckRequestBody } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import { buildHRUpdatesForSupervisor } from '../lib/services/hr-updates-service.js';
 
 /** Minimum words required in the ack text. */
@@ -59,32 +60,36 @@ export async function registerSupervisorUpdatesRoutes(app: FastifyInstance): Pro
   // ---------------------------------------------------------------------------
   // GET /supervisor/updates — HR update feed
   // ---------------------------------------------------------------------------
-  app.get('/supervisor/updates', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
-      return;
-    }
+  app.get(
+    '/supervisor/updates',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+        return;
+      }
 
-    try {
-      // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
-      const out = await buildHRUpdatesForSupervisor(prisma, {
-        companyId: auth.companyId,
-        userId: auth.userId,
-      });
-      reply.code(200).send(out);
-    } catch (err) {
-      req.log.error({ err }, 'GET /supervisor/updates failed');
-      reply.code(500).send({ error: 'INTERNAL', message: 'Could not build HR updates feed' });
-    }
-  });
+      try {
+        // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
+        const out = await buildHRUpdatesForSupervisor(prisma, {
+          companyId: auth.companyId,
+          userId: auth.userId,
+        });
+        reply.code(200).send(out);
+      } catch (err) {
+        req.log.error({ err }, 'GET /supervisor/updates failed');
+        reply.code(500).send({ error: 'INTERNAL', message: 'Could not build HR updates feed' });
+      }
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // POST /supervisor/updates/:id/acknowledge — write 5-word ack
   // ---------------------------------------------------------------------------
   app.post(
     '/supervisor/updates/:id/acknowledge',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
     async (req, reply) => {
       const auth = req.auth;
       if (!auth) {

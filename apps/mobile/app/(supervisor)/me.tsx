@@ -1,11 +1,12 @@
 /**
  * Supervisor profile screen — shows user identity, company, role, sign-out,
- * language picker, notification preferences, and resign.
+ * language picker, and notification preferences.
  *
  * Switch-company section removed: single-tenant model lock 2026-05-18.
- * A Resign button is shown at the bottom (below Sign out). Tap opens a
- * confirmation modal requiring the user to type "RESIGN" before POST /me/resign
- * fires. On success: onAppLogout() + router.replace('/(auth)/phone').
+ * NO self-service resign/terminate button here: per the locked rule
+ * (no-self-service-resign-or-terminate, 2026-05-18) termination always
+ * originates from HR/admin, never the supervisor app. Sign out is the only
+ * bottom action.
  *
  * F-006a: sign-out routes through `onAppLogout()` (ONE explicit identity
  * contract) which awaits `OneSignal.logout()` BEFORE `clearTokens()` to
@@ -14,10 +15,10 @@
  * @derives(ADR-0003) @derives(ADR-0007) @derives(ADR-0021)
  * @derives(F-006a scope round-2 v6 Pick 4)
  * @derives(master-plan §G) — supervisor surface
- * @derives(project_single_tenant_model_resign_anonymise — locked 2026-05-18)
+ * @derives(no-self-service-resign-or-terminate — locked 2026-05-18: HR-initiated only)
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -35,7 +36,8 @@ import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
-import type { MeOutput } from '@axhy/shared-schema';
+import type { MeOutput, NotificationPrefs } from '@axhy/shared-schema';
+import { DEFAULT_NOTIFICATION_PREFS } from '@axhy/shared-schema';
 import * as SecureStore from 'expo-secure-store';
 
 import { apiFetch } from '../../lib/api';
@@ -56,24 +58,11 @@ function prefGet(key: string, defaultVal: string): string {
   }
 }
 
-function prefSet(key: string, value: string): void {
-  if (isWeb && typeof localStorage !== 'undefined') {
-    localStorage.setItem(key, value);
-    return;
-  }
-  try {
-    SecureStore.setItem(key, value);
-  } catch {
-    // SecureStore can fail on some Android devices — swallow for non-critical prefs
-  }
-}
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const LOCALE_KEY = 'axhy_user_locale';
-const NOTIF_PUSH_KEY = 'axhy_notif_push';
-const NOTIF_WHATSAPP_KEY = 'axhy_notif_whatsapp';
-const NOTIF_EMAIL_KEY = 'axhy_notif_email';
+// Notification prefs now persist server-side (Membership.notificationPrefs via
+// PATCH /me/notification-prefs) — no device-local SecureStore keys.
 
 type LocaleCode = 'en' | 'hi' | 'te';
 
@@ -419,27 +408,26 @@ export default function ProfileScreen() {
     setStoredLocale(code);
   }, []);
 
-  // ── Notification prefs state ────────────────────────────────────────────────
-  // Local-only this slice; backend membership.notificationPrefs wire-up is a follow-up.
-  const [notifPush, setNotifPush] = useState(() => prefGet(NOTIF_PUSH_KEY, 'on') === 'on');
-  const [notifWhatsapp, setNotifWhatsapp] = useState(
-    () => prefGet(NOTIF_WHATSAPP_KEY, 'on') === 'on',
-  );
-  const [notifEmail, setNotifEmail] = useState(() => prefGet(NOTIF_EMAIL_KEY, 'on') === 'on');
+  // ── Notification prefs (persisted server-side; seeded from GET /me) ──────────
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+  const [notifError, setNotifError] = useState<string | null>(null);
 
-  function handleTogglePush(val: boolean) {
-    setNotifPush(val);
-    prefSet(NOTIF_PUSH_KEY, val ? 'on' : 'off');
-  }
+  // Sync the toggles from the server whenever /me resolves/refetches.
+  useEffect(() => {
+    if (data?.notificationPrefs) setNotifPrefs(data.notificationPrefs);
+  }, [data?.notificationPrefs]);
 
-  function handleToggleWhatsapp(val: boolean) {
-    setNotifWhatsapp(val);
-    prefSet(NOTIF_WHATSAPP_KEY, val ? 'on' : 'off');
-  }
-
-  function handleToggleEmail(val: boolean) {
-    setNotifEmail(val);
-    prefSet(NOTIF_EMAIL_KEY, val ? 'on' : 'off');
+  async function toggleNotif(channel: keyof NotificationPrefs, val: boolean) {
+    const prev = notifPrefs;
+    setNotifPrefs({ ...prev, [channel]: val }); // optimistic
+    setNotifError(null);
+    try {
+      await apiFetch('/me/notification-prefs', { method: 'PATCH', body: { [channel]: val } });
+    } catch {
+      // Never lie about saved state — revert and tell the user it didn't save.
+      setNotifPrefs(prev);
+      setNotifError("Couldn't save that. Check your connection and try again.");
+    }
   }
 
   // ── Sign-out ────────────────────────────────────────────────────────────────
@@ -537,19 +525,19 @@ export default function ProfileScreen() {
           />
         </Section>
 
-        {/* Notification prefs — Local-only this slice; backend membership.notificationPrefs wire-up is a follow-up. */}
+        {/* Notification prefs — persisted server-side (Membership.notificationPrefs). */}
         <Section title="NOTIFICATIONS">
           <StatRow
             label="Push notifications"
             right={
               <Switch
-                value={notifPush}
-                onValueChange={handleTogglePush}
+                value={notifPrefs.push}
+                onValueChange={(v) => toggleNotif('push', v)}
                 trackColor={{
                   false: tokens.color.surface.paper3,
                   true: tokens.color.brand.accentSoft,
                 }}
-                thumbColor={notifPush ? tokens.color.brand.accent : tokens.color.ink.tertiary}
+                thumbColor={notifPrefs.push ? tokens.color.brand.accent : tokens.color.ink.tertiary}
               />
             }
           />
@@ -557,13 +545,15 @@ export default function ProfileScreen() {
             label="WhatsApp"
             right={
               <Switch
-                value={notifWhatsapp}
-                onValueChange={handleToggleWhatsapp}
+                value={notifPrefs.whatsapp}
+                onValueChange={(v) => toggleNotif('whatsapp', v)}
                 trackColor={{
                   false: tokens.color.surface.paper3,
                   true: tokens.color.brand.accentSoft,
                 }}
-                thumbColor={notifWhatsapp ? tokens.color.brand.accent : tokens.color.ink.tertiary}
+                thumbColor={
+                  notifPrefs.whatsapp ? tokens.color.brand.accent : tokens.color.ink.tertiary
+                }
               />
             }
           />
@@ -572,16 +562,19 @@ export default function ProfileScreen() {
             divider={false}
             right={
               <Switch
-                value={notifEmail}
-                onValueChange={handleToggleEmail}
+                value={notifPrefs.email}
+                onValueChange={(v) => toggleNotif('email', v)}
                 trackColor={{
                   false: tokens.color.surface.paper3,
                   true: tokens.color.brand.accentSoft,
                 }}
-                thumbColor={notifEmail ? tokens.color.brand.accent : tokens.color.ink.tertiary}
+                thumbColor={
+                  notifPrefs.email ? tokens.color.brand.accent : tokens.color.ink.tertiary
+                }
               />
             }
           />
+          {notifError ? <Text style={s.notifError}>{notifError}</Text> : null}
         </Section>
 
         <TouchableOpacity style={s.signOut} onPress={handleSignOut} activeOpacity={0.8}>
@@ -646,6 +639,12 @@ const s = StyleSheet.create({
     textAlign: 'center',
     fontWeight: String(tokens.weight.medium) as '500',
   },
+  notifError: {
+    fontSize: tokens.type.caption.size,
+    color: tokens.color.semantic.bad,
+    paddingHorizontal: tokens.space[4],
+    paddingTop: tokens.space[2],
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -703,22 +702,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   signOutText: {
-    fontSize: tokens.type.subhead.size,
-    fontWeight: String(tokens.weight.semibold) as '600',
-    color: tokens.color.semantic.bad,
-  },
-  resign: {
-    marginTop: tokens.space[3],
-    borderRadius: tokens.radius.r3,
-    borderWidth: 1,
-    borderColor: tokens.color.semantic.bad,
-    paddingVertical: tokens.space[4],
-    alignItems: 'center',
-    minHeight: tokens.tap.minMobile,
-    justifyContent: 'center',
-    backgroundColor: tokens.color.surface.paper,
-  },
-  resignText: {
     fontSize: tokens.type.subhead.size,
     fontWeight: String(tokens.weight.semibold) as '600',
     color: tokens.color.semantic.bad,

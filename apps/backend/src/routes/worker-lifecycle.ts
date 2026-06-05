@@ -26,7 +26,11 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireWorkerRole, withTenantContext } from '../middleware/tenant-context.js';
+import {
+  requireWorkerRole,
+  withTenantContext,
+  resolveWorkerFromAuth,
+} from '../middleware/tenant-context.js';
 import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { clockInVisit, clockOutVisit } from '../lib/services/worker-lifecycle-service.js';
 
@@ -35,12 +39,12 @@ const ROUTES = {
   clockOut: '/worker/visits/:visitId/clock-out',
 } as const;
 
-async function resolveWorkerRowId(userId: string, companyId: string): Promise<string | null> {
-  const row = await prisma.worker.findFirst({
-    where: { userId, companyId },
-    select: { id: true },
-  });
-  return row?.id ?? null;
+// Delegates to the canonical resolver (tenant-context.ts:211) so every worker
+// route shares one Worker.id source of truth (RCA-A). Worker.userId is @unique,
+// so the companyId filter the old inline version used was redundant.
+async function resolveWorkerRowId(userId: string): Promise<string | null> {
+  const r = await resolveWorkerFromAuth(prisma, { userId });
+  return r.kind === 'OK' ? r.workerId : null;
 }
 
 /** @derives(master-plan §G) */
@@ -68,7 +72,7 @@ export async function registerWorkerLifecycleRoutes(app: FastifyInstance): Promi
         return;
       }
 
-      const workerId = await resolveWorkerRowId(auth.userId, auth.companyId);
+      const workerId = await resolveWorkerRowId(auth.userId);
       if (!workerId) {
         reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
         return;
@@ -151,7 +155,7 @@ export async function registerWorkerLifecycleRoutes(app: FastifyInstance): Promi
         return;
       }
 
-      const workerId = await resolveWorkerRowId(auth.userId, auth.companyId);
+      const workerId = await resolveWorkerRowId(auth.userId);
       if (!workerId) {
         reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
         return;

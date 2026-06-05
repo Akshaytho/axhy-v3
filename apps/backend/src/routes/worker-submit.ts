@@ -19,7 +19,11 @@ import type { FastifyInstance } from 'fastify';
 import { WorkerSubmitRequestSchema } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireWorkerRole, withTenantContext } from '../middleware/tenant-context.js';
+import {
+  requireWorkerRole,
+  withTenantContext,
+  resolveWorkerFromAuth,
+} from '../middleware/tenant-context.js';
 import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { submitVisit } from '../lib/services/worker-submit-service.js';
 
@@ -55,20 +59,17 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
         return;
       }
 
-      // Resolve the Worker DB row ID from the User ID in the JWT.
-      // visit.workerId references Worker.id, not User.id.
-      const workerRow = await prisma.worker.findFirst({
-        where: { userId: auth.userId, companyId: auth.companyId },
-        select: { id: true },
-      });
-      if (!workerRow) {
+      // Resolve Worker.id from the JWT User.id via the canonical helper.
+      // visit.workerId references Worker.id, not User.id (RCA-A: single source).
+      const worker = await resolveWorkerFromAuth(prisma, auth);
+      if (worker.kind === 'NO_WORKER') {
         reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
         return;
       }
 
       const result = await withTenantContext(prisma, auth.companyId, (tx) =>
         submitVisit(tx, {
-          workerId: workerRow.id,
+          workerId: worker.workerId,
           visitId,
           companyId: auth.companyId,
           photos: parsed.data.photos,
@@ -107,7 +108,7 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
 
       req.log.info(
         {
-          workerId: workerRow.id,
+          workerId: worker.workerId,
           visitId,
           photosBefore: result.photosBefore,
           photosAfter: result.photosAfter,
@@ -148,19 +149,16 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
 
       const visit = await prisma.visit.findUnique({
         where: { id: visitId },
-        select: { id: true, workerId: true, companyId: true, state: true },
+        select: { id: true, workerId: true, companyId: true, state: true, verificationText: true },
       });
 
       if (!visit || visit.companyId !== auth.companyId) {
         reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
         return;
       }
-      // Resolve Worker row to get the Worker.id for ownership comparison.
-      const workerRow = await prisma.worker.findFirst({
-        where: { userId: auth.userId, companyId: auth.companyId },
-        select: { id: true },
-      });
-      if (!workerRow || visit.workerId !== workerRow.id) {
+      // Resolve Worker.id for ownership comparison (RCA-A: single source).
+      const worker = await resolveWorkerFromAuth(prisma, auth);
+      if (worker.kind === 'NO_WORKER' || visit.workerId !== worker.workerId) {
         reply.code(403).send({
           error: 'WRONG_WORKER',
           message: 'This visit belongs to a different worker.',
@@ -177,6 +175,7 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
       reply.send({
         visitId,
         visitState: visit.state,
+        verificationText: visit.verificationText ?? null,
         photos: photos.map((p) => ({
           id: p.id,
           side: p.side,

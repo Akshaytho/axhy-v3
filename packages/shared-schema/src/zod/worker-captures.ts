@@ -37,7 +37,7 @@ export const MAX_PHOTOS_PER_BATCH = 20;
 export const UploadUrlFileSchema = z.object({
   phase: PhotoPhaseSchema,
   /** 1-based slot index inside the phase (matches `getPhotoPath`). */
-  index: z.number().int().min(1).max(3),
+  index: z.number().int().min(1).max(8),
   contentType: z
     .string()
     .regex(/^image\/(jpeg|png|webp)$/, 'contentType must be image/jpeg, image/png, or image/webp'),
@@ -59,7 +59,7 @@ export type UploadUrlsRequest = z.infer<typeof UploadUrlsRequestSchema>;
  *  @derives(master-plan §G) */
 export const UploadUrlEntrySchema = z.object({
   phase: PhotoPhaseSchema,
-  index: z.number().int().min(1).max(3),
+  index: z.number().int().min(1).max(8),
   /** Signed PUT URL the mobile uploads directly to. */
   uploadUrl: z.string().url(),
   /** Final object key in the R2 bucket (`v3-captures/...`). */

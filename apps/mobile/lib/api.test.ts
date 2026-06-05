@@ -212,4 +212,66 @@ describe('apiFetch refresh interceptor', () => {
     // recursive refresh attempt was made (the key invariant). Allow either
     // behavior; assert only no-loop.
   });
+
+  // RCA-G (2026-06-04): bounded refresh resilience — transient blips are
+  // retried, never log the worker out; definitive 401s are NOT retried.
+  it('transient refresh failure is retried, then succeeds, without logging out', async () => {
+    mockedGetTokens.mockResolvedValue({
+      accessToken: 'old-access',
+      refreshToken: 'axrt_old',
+      activeRole: 'WORKER',
+    });
+
+    let refreshAttempts = 0;
+    const hits = new Map<string, number>();
+    mockedFetch.mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        refreshAttempts += 1;
+        // First attempt: transient network reject. Second: success.
+        if (refreshAttempts === 1) return Promise.reject(new TypeError('Network request failed'));
+        return Promise.resolve(
+          jsonResponse(200, { accessToken: 'new-access', refreshToken: 'axrt_new' }),
+        );
+      }
+      const n = (hits.get(url) ?? 0) + 1;
+      hits.set(url, n);
+      // Original request: 401 first, 200 after refresh recovers.
+      if (n === 1) return Promise.resolve(jsonResponse(401, { error: 'TOKEN_EXPIRED' }));
+      return Promise.resolve(jsonResponse(200, { visits: [] }));
+    });
+
+    const result = await apiFetch<{ visits: unknown[] }>('/worker/today');
+
+    expect(result).toEqual({ visits: [] });
+    expect(refreshAttempts).toBe(2); // rejected once, retried, then succeeded
+    expect(mockedReplaceTokens).toHaveBeenCalledTimes(1);
+    expect(mockedClearTokens).not.toHaveBeenCalled();
+    expect(mockedRouterReplace).not.toHaveBeenCalled();
+  });
+
+  it('refresh failing on every attempt surfaces the error WITHOUT logging out', async () => {
+    mockedGetTokens.mockResolvedValue({
+      accessToken: 'old-access',
+      refreshToken: 'axrt_old',
+      activeRole: 'WORKER',
+    });
+
+    let refreshAttempts = 0;
+    mockedFetch.mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        refreshAttempts += 1;
+        return Promise.reject(new TypeError('Network request failed')); // persistent blip
+      }
+      return Promise.resolve(jsonResponse(401, { error: 'TOKEN_EXPIRED' })); // original always 401
+    });
+
+    await expect(apiFetch('/worker/today')).rejects.toThrow();
+
+    // 1 initial + 2 bounded retries, then give up — but NEVER wipe the session
+    // (a momentary outage must not log a worker out mid-shift).
+    expect(refreshAttempts).toBe(3);
+    expect(mockedClearTokens).not.toHaveBeenCalled();
+    expect(mockedRouterReplace).not.toHaveBeenCalled();
+    expect(mockedReplaceTokens).not.toHaveBeenCalled();
+  });
 });

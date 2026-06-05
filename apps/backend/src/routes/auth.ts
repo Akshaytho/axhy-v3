@@ -27,6 +27,7 @@ import { isPhoneAllowlisted } from '../lib/otp-bypass.js';
 import { issueAccessToken } from '../lib/jwt.js';
 import { createRefreshTokenStore, isLegacyToken } from '../lib/services/refresh-token-store.js';
 import { workerOtpVerifiedService } from '../lib/services/worker-otp-verified-service.js';
+import { recordAuditEvent } from '../lib/audit-event.js';
 
 /**
  * Register /auth/* routes.
@@ -156,7 +157,52 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           { err, userId: user.id, companyId: active.companyId },
           'worker OTP_VERIFIED transition failed; auth proceeds',
         );
+        // RCA-I 2026-06-04 — surface the silent gap. Auth still proceeds (we
+        // never lock a worker out over a transition hiccup), but the failure
+        // is now a queryable audit row for ops instead of a log line no one
+        // greps. Best-effort: never let the audit write block login.
+        try {
+          await recordAuditEvent(prisma, {
+            companyId: active.companyId,
+            kind: 'WORKER_ACTIVATION_TRANSITION_FAILED',
+            actorId: user.id,
+            targetId: user.id,
+            payload: {
+              membershipId: active.id,
+              reason: err instanceof Error ? err.message : String(err),
+            },
+          });
+        } catch (auditErr) {
+          req.log.error(
+            { auditErr, userId: user.id, companyId: active.companyId },
+            'failed to audit worker activation transition failure',
+          );
+        }
       }
+    }
+
+    // RCA-I 2026-06-04 — login audit. Before this, a successful OTP verify
+    // issued tokens but recorded NOTHING for already-active workers and for
+    // every supervisor / HR / owner login — no forensic trail of who signed
+    // in and when. Record one AUTH_LOGIN row scoped to the active company
+    // (the membership the issued token is for). Best-effort: a failed audit
+    // write must never block a legitimate login.
+    try {
+      await recordAuditEvent(prisma, {
+        companyId: active.companyId,
+        kind: 'AUTH_LOGIN',
+        actorId: user.id,
+        targetId: user.id,
+        payload: {
+          role: active.role,
+          membershipId: active.id,
+          availableRoles: memberships.map((m) => m.role),
+          via: 'otp',
+          ip: req.ip ? req.ip.slice(0, 64) : null,
+        },
+      });
+    } catch (err) {
+      req.log.warn({ err, userId: user.id }, 'login audit write failed; auth proceeds');
     }
 
     const accessToken = await issueAccessToken({

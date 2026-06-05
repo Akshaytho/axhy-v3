@@ -5,8 +5,9 @@
  * Holds the real worker utilities that exist today:
  *
  *   1. My profile     → /(worker)/profile
- *   2. Help / Support → Linking.openURL('https://axhy.app/help')
- *   3. Sign out       → onAppLogout() + replace /(auth)/phone
+ *   2. Request leave  → /(worker)/leave-request (self-service time-off)
+ *   3. Help / Support → Linking.openURL('https://axhy.app/help')
+ *   4. Sign out       → onAppLogout() + replace /(auth)/phone
  *
  * Provides WorkerDrawerContext so any worker screen can open the drawer via
  * useWorkerDrawer().openDrawer().
@@ -102,6 +103,14 @@ export function WorkerDrawer({ open, onClose }: DrawerProps) {
         onPress: () => {
           onClose();
           router.push('/(worker)/profile' as never);
+        },
+      },
+      {
+        icon: 'calendar',
+        label: 'Request leave',
+        onPress: () => {
+          onClose();
+          router.push(NAV_ROUTES.workerLeaveRequest as never);
         },
       },
       {

@@ -162,7 +162,7 @@ export async function buildTodayForSupervisor(
         siteId: true,
         shiftStart: true,
         dayMask: true,
-        worker: { select: { id: true, name: true } },
+        worker: { select: { id: true, name: true, userId: true } },
       },
     }),
     tx.visit.findMany({
@@ -255,6 +255,7 @@ export async function buildTodayForSupervisor(
 
     workerRows.push({
       id: a.worker.id,
+      userId: a.worker.userId,
       name: a.worker.name,
       siteId: a.siteId,
       state,

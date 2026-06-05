@@ -152,6 +152,11 @@ model Membership {
   /// @personal bank account number for payroll transfer.
   /// @derives(ADR-0025)
   bankAcct        String?
+  /// Per-membership notification opt-ins (push/whatsapp/email). DB owns the
+  /// truth for opt-outs; OneSignal owns push transport. Empty {} means
+  /// "all defaults on" — the read layer applies an all-true fallback.
+  /// @derives(2026-06-04 notification-prefs persistence)
+  notificationPrefs Json   @default("{}")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

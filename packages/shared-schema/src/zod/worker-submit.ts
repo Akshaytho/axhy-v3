@@ -18,14 +18,14 @@ import { z } from 'zod';
 /** One photo slot descriptor sent from mobile at submit time. */
 export const WorkerSubmitPhotoSchema = z.object({
   phase: z.enum(['before', 'after']),
-  index: z.number().int().min(1).max(3),
+  index: z.number().int().min(1).max(8),
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
 });
 export type WorkerSubmitPhoto = z.infer<typeof WorkerSubmitPhotoSchema>;
 
 /** POST /worker/visits/:visitId/submit request body. */
 export const WorkerSubmitRequestSchema = z.object({
-  photos: z.array(WorkerSubmitPhotoSchema).min(1).max(6),
+  photos: z.array(WorkerSubmitPhotoSchema).min(1).max(16),
 });
 export type WorkerSubmitRequest = z.infer<typeof WorkerSubmitRequestSchema>;
 
@@ -50,6 +50,12 @@ export type VerifyStatusPhoto = z.infer<typeof VerifyStatusPhotoSchema>;
 export const VerifyStatusResponseSchema = z.object({
   visitId: z.string().uuid(),
   visitState: z.string(),
+  /**
+   * AI verification reason shown to the worker on a FLAGGED outcome (the
+   * outcome-specific "why" the FLAGGED card promises). Null until the AI has
+   * written it / when the visit is not flagged.
+   */
+  verificationText: z.string().nullable(),
   photos: z.array(VerifyStatusPhotoSchema),
 });
 export type VerifyStatusResponse = z.infer<typeof VerifyStatusResponseSchema>;

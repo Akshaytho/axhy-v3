@@ -34,6 +34,7 @@ import { routingModeFor } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import {
   deriveWorkerPrimarySiteId,
   getEffectiveResponsibleUserId,
@@ -63,65 +64,69 @@ const DismissDecisionBody = z
  * @derives(master-plan §G) — HR control plane / responsibility model
  */
 export async function registerDecisionsRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/decisions/proposed-for-me', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
-      return;
-    }
+  app.get(
+    '/decisions/proposed-for-me',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+        return;
+      }
 
-    const now = new Date();
+      const now = new Date();
 
-    try {
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
-        // Pull PROPOSED candidates for the tenant. Pre-filter by either
-        // (a) origin matches the caller (so the fallback path is cheap)
-        // OR (b) kind is one we route by binding lookup (so we have to
-        // check current responsibility). Single query keeps the surface
-        // simple at small Layer-1 volumes; later slices may paginate.
-        // F-002 §3c: PROPOSED predicate tightened — now excludes dismissed
-        // rows too, since dismiss is part of the lifecycle this slice ships.
-        const candidates = await tx.supervisorDecision.findMany({
-          where: {
-            companyId: auth.companyId,
-            appliedAt: null,
-            dismissedAt: null,
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 200,
+      try {
+        const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+          // Pull PROPOSED candidates for the tenant. Pre-filter by either
+          // (a) origin matches the caller (so the fallback path is cheap)
+          // OR (b) kind is one we route by binding lookup (so we have to
+          // check current responsibility). Single query keeps the surface
+          // simple at small Layer-1 volumes; later slices may paginate.
+          // F-002 §3c: PROPOSED predicate tightened — now excludes dismissed
+          // rows too, since dismiss is part of the lifecycle this slice ships.
+          const candidates = await tx.supervisorDecision.findMany({
+            where: {
+              companyId: auth.companyId,
+              appliedAt: null,
+              dismissedAt: null,
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+          });
+
+          const matched: typeof candidates = [];
+
+          for (const dwi of candidates) {
+            const routedToMe = await isRoutedToCaller(tx, {
+              companyId: auth.companyId,
+              callerUserId: auth.userId,
+              dwi,
+              now,
+            });
+            if (routedToMe) matched.push(dwi);
+          }
+
+          return matched;
         });
 
-        const matched: typeof candidates = [];
-
-        for (const dwi of candidates) {
-          const routedToMe = await isRoutedToCaller(tx, {
-            companyId: auth.companyId,
-            callerUserId: auth.userId,
-            dwi,
-            now,
-          });
-          if (routedToMe) matched.push(dwi);
-        }
-
-        return matched;
-      });
-
-      reply.send({
-        decisions: out.map((d) => ({
-          id: d.id,
-          kind: d.kind,
-          tier: d.tier,
-          targetId: d.targetId,
-          supervisorId: d.supervisorId,
-          payload: d.payload,
-          createdAt: d.createdAt.toISOString(),
-        })),
-      });
-    } catch (err) {
-      req.log.error({ err }, 'decisions-proposed-for-me failed');
-      reply.code(500).send({ error: 'INTERNAL', message: 'Could not list proposed decisions' });
-    }
-  });
+        reply.send({
+          decisions: out.map((d) => ({
+            id: d.id,
+            kind: d.kind,
+            tier: d.tier,
+            targetId: d.targetId,
+            supervisorId: d.supervisorId,
+            payload: d.payload,
+            createdAt: d.createdAt.toISOString(),
+          })),
+        });
+      } catch (err) {
+        req.log.error({ err }, 'decisions-proposed-for-me failed');
+        reply.code(500).send({ error: 'INTERNAL', message: 'Could not list proposed decisions' });
+      }
+    },
+  );
 
   /**
    * POST /decisions/:id/dismiss — F-002 §3c.
@@ -140,51 +145,55 @@ export async function registerDecisionsRoutes(app: FastifyInstance): Promise<voi
    * @derives(F-002 scope §3c)
    * @derives(workflow-design-closure §3.2)
    */
-  app.post('/decisions/:id/dismiss', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
-      return;
-    }
-    const { id } = req.params as { id?: string };
-    if (!id) {
-      reply.code(400).send({ error: 'BAD_INPUT', message: 'Missing :id route param' });
-      return;
-    }
-    const parsedBody = DismissDecisionBody.safeParse(req.body);
-    if (!parsedBody.success) {
-      reply.code(400).send({ error: 'BAD_INPUT', message: parsedBody.error.message });
-      return;
-    }
-
-    try {
-      const result = await withTenantContext(prisma, auth.companyId, async (tx) =>
-        dismissProposedDecision(tx, {
-          companyId: auth.companyId,
-          decisionId: id,
-          actorUserId: auth.userId,
-          reason: parsedBody.data.reason,
-        }),
-      );
-      reply.send({
-        decisionId: result.decisionId,
-        dismissedAt: result.dismissedAt.toISOString(),
-      });
-    } catch (err) {
-      if (err instanceof LifecycleError) {
-        const httpStatus =
-          err.code === 'NOT_FOUND' || err.code === 'CROSS_TENANT'
-            ? 404
-            : err.code === 'NOT_RESPONSIBLE'
-              ? 403
-              : 409;
-        reply.code(httpStatus).send({ error: err.code });
+  app.post(
+    '/decisions/:id/dismiss',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
         return;
       }
-      req.log.error({ err }, 'decision-dismiss failed');
-      reply.code(500).send({ error: 'INTERNAL', message: 'Could not dismiss decision' });
-    }
-  });
+      const { id } = req.params as { id?: string };
+      if (!id) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: 'Missing :id route param' });
+        return;
+      }
+      const parsedBody = DismissDecisionBody.safeParse(req.body);
+      if (!parsedBody.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsedBody.error.message });
+        return;
+      }
+
+      try {
+        const result = await withTenantContext(prisma, auth.companyId, async (tx) =>
+          dismissProposedDecision(tx, {
+            companyId: auth.companyId,
+            decisionId: id,
+            actorUserId: auth.userId,
+            reason: parsedBody.data.reason,
+          }),
+        );
+        reply.send({
+          decisionId: result.decisionId,
+          dismissedAt: result.dismissedAt.toISOString(),
+        });
+      } catch (err) {
+        if (err instanceof LifecycleError) {
+          const httpStatus =
+            err.code === 'NOT_FOUND' || err.code === 'CROSS_TENANT'
+              ? 404
+              : err.code === 'NOT_RESPONSIBLE'
+                ? 403
+                : 409;
+          reply.code(httpStatus).send({ error: err.code });
+          return;
+        }
+        req.log.error({ err }, 'decision-dismiss failed');
+        reply.code(500).send({ error: 'INTERNAL', message: 'Could not dismiss decision' });
+      }
+    },
+  );
 }
 
 /**

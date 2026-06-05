@@ -3,10 +3,9 @@
  *
  * Wave 4 compliance flow (2026-05-18). Proves the bugs the FlaggedReviewSheet
  * disabled-buttons placeholder was hiding:
- *   - Supervisor can resolve an AI-flagged visit (flagged → false) and the
- *     row's state column stays put (no spurious state transition).
+ *   - Supervisor can resolve an AI-flagged visit (FLAGGED → VERIFIED, flagged → false).
  *   - Supervisor can reject an AI-flagged visit with a required reason and
- *     the state transitions to REJECTED.
+ *     the state transitions FLAGGED → REJECTED (distinct, billable terminal state).
  *   - Cross-tenant attempts return 404 (no information leak).
  *   - Non-supervisor role returns 403.
  *   - Conditional UPDATE race: a second Resolve attempt after the first
@@ -107,7 +106,7 @@ describe('Wave 4 — POST /visits/:id/{resolve,reject} regression', () => {
           tenantA.companyId,
           workerAId,
           siteA.id,
-          'COMPLETED',
+          'FLAGGED',
           true,
           'Photos missing post-clean signage.',
         );
@@ -131,16 +130,16 @@ describe('Wave 4 — POST /visits/:id/{resolve,reject} regression', () => {
         // Envelope shape — every field present, not just statusCode.
         expect(resolveBody.ok).toBe(true);
         expect(resolveBody.visitId).toBe(visitResolveId);
-        expect(resolveBody.previousState).toBe('COMPLETED');
+        expect(resolveBody.previousState).toBe('FLAGGED');
         expect(resolveBody.flagged).toBe(false);
-        expect(resolveBody.state).toBe('COMPLETED'); // state NOT changed on resolve
+        expect(resolveBody.state).toBe('VERIFIED'); // FLAGGED → VERIFIED on resolve (billable)
 
         // DB state
         const visitResolveRow = await prisma.visit.findUniqueOrThrow({
           where: { id: visitResolveId },
         });
         expect(visitResolveRow.flagged).toBe(false);
-        expect(visitResolveRow.state).toBe('COMPLETED');
+        expect(visitResolveRow.state).toBe('VERIFIED');
 
         // Audit payload shape
         const resolveAudit = await prisma.auditEvent.findFirstOrThrow({
@@ -156,7 +155,7 @@ describe('Wave 4 — POST /visits/:id/{resolve,reject} regression', () => {
           expect(resolvePayloadParse.data.visitId).toBe(visitResolveId);
           expect(resolvePayloadParse.data.workerId).toBe(workerAId);
           expect(resolvePayloadParse.data.siteId).toBe(siteA.id);
-          expect(resolvePayloadParse.data.previousState).toBe('COMPLETED');
+          expect(resolvePayloadParse.data.previousState).toBe('FLAGGED');
           expect(resolvePayloadParse.data.supervisorReason).toBe('Reviewed photos; looks fine.');
           expect(resolvePayloadParse.data.resolvedBy).toBe(supA.userId);
         }
@@ -211,7 +210,7 @@ describe('Wave 4 — POST /visits/:id/{resolve,reject} regression', () => {
           tenantA.companyId,
           workerAId,
           siteA.id,
-          'COMPLETED',
+          'FLAGGED',
           true,
           'AI flagged: bathroom not cleaned.',
         );
@@ -232,7 +231,7 @@ describe('Wave 4 — POST /visits/:id/{resolve,reject} regression', () => {
           flagged: boolean;
           state: string;
         };
-        expect(rejectBody.previousState).toBe('COMPLETED');
+        expect(rejectBody.previousState).toBe('FLAGGED');
         expect(rejectBody.state).toBe('REJECTED');
         expect(rejectBody.flagged).toBe(false);
 
@@ -253,7 +252,7 @@ describe('Wave 4 — POST /visits/:id/{resolve,reject} regression', () => {
         expect(rejectPayloadParse.success).toBe(true);
         if (rejectPayloadParse.success) {
           expect(rejectPayloadParse.data.visitId).toBe(visitRejectId);
-          expect(rejectPayloadParse.data.previousState).toBe('COMPLETED');
+          expect(rejectPayloadParse.data.previousState).toBe('FLAGGED');
           expect(rejectPayloadParse.data.supervisorReason).toBe(
             'Bathroom is filthy in the photos.',
           );
@@ -265,7 +264,7 @@ describe('Wave 4 — POST /visits/:id/{resolve,reject} regression', () => {
           tenantA.companyId,
           workerAId,
           siteA.id,
-          'COMPLETED',
+          'FLAGGED',
           true,
           null,
         );
@@ -299,14 +298,7 @@ describe('Wave 4 — POST /visits/:id/{resolve,reject} regression', () => {
         expect(rejectStateBody.currentState).toBe('SCHEDULED');
 
         // ── 8. Cross-tenant Reject ─────────────────────────────────────
-        const visitB = await mkVisit(
-          tenantB.companyId,
-          workerBId,
-          siteB.id,
-          'COMPLETED',
-          true,
-          null,
-        );
+        const visitB = await mkVisit(tenantB.companyId, workerBId, siteB.id, 'FLAGGED', true, null);
         const rejectXTenant = await app.inject({
           method: 'POST',
           url: `/visits/${visitB}/reject`,

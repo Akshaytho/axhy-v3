@@ -22,6 +22,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import {
   buildActivityForSupervisor,
   type DateFilter,
@@ -51,7 +52,7 @@ type ActivityQuerystring = {
 export async function registerSupervisorActivityRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: ActivityQuerystring }>(
     '/supervisor/activity',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
     async (req, reply) => {
       const auth = req.auth;
       if (!auth) {

@@ -8,7 +8,7 @@
  * @derives(master-plan §B) — Pricing locked
  *
  * Pricing locks (master plan §B):
- *   - ₹8/visit completed (all visits billable: verified, flagged, cancelled, no-show)
+ *   - ₹8/visit completed (all terminal visits billable: verified, flagged, cancelled, rejected, no-show)
  *   - ₹10/visit for long-duration tasks (deferred until "long-duration" defined)
  *   - ₹2,000/month tenant floor
  *   - First 30 days: founder-led pilot, no auto-billing
@@ -27,6 +27,7 @@ const BILLABLE_VISIT_STATES: ReadonlyArray<VisitStateValue> = [
   'VERIFIED',
   'FLAGGED',
   'CANCELLED',
+  'REJECTED',
   'NO_SHOW',
 ];
 

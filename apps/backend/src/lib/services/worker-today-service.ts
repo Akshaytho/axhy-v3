@@ -45,6 +45,7 @@ const HISTORY_STATES = new Set<string>([
   'FLAGGED',
   'AWAITING_VERIFICATION',
   'CANCELLED',
+  'REJECTED',
   'NO_SHOW',
   'ARCHIVED',
 ]);

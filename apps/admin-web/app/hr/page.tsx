@@ -1,25 +1,7 @@
-/**
- * HR dashboard — landing page for the HR persona at /hr.
- *
- * [ORCHESTRATOR_EXCEPTION] sub-agent dispatched for HR A1 task 14
- *
- * Server component. Gates on HR role, then issues four parallel
- * read-only fetches to the backend:
- *   - /admin/memberships?limit=1
- *   - /admin/workers?limit=1
- *   - /admin/sites?limit=1
- *   - /leave-requests?limit=50
- *
- * Each endpoint returns `{ items, nextCursor }`. The dashboard shows a
- * definition list of visible counts. When `nextCursor` is non-null we
- * suffix "+" to indicate "there are more" — a real count endpoint can
- * be added later if HR ever needs it. For the dashboard "1+" is enough.
- *
- * @derives(master-plan §G)
- */
-
 import { fetchJson } from '../../lib/api';
 import { requireRole } from '../../lib/auth';
+
+import styles from './hr.module.css';
 
 type Listing<T> = { items: T[]; nextCursor: string | null };
 
@@ -36,31 +18,71 @@ export default async function HrDashboard() {
     fetchJson<Listing<unknown>>('/admin/sites?limit=1'),
     fetchJson<Listing<unknown>>('/leave-requests?limit=50'),
   ]);
+
+  const cards = [
+    {
+      title: 'Company Memberships',
+      count: members.items.length,
+      hasMore: !!members.nextCursor,
+      icon: '👥',
+      desc: 'Registered company administrators and coordinators.',
+      link: '/hr/memberships',
+    },
+    {
+      title: 'Active Workers',
+      count: workers.items.length,
+      hasMore: !!workers.nextCursor,
+      icon: '🧹',
+      desc: 'Cleaners and field staff assigned to cleanings.',
+      link: '/hr/workers',
+    },
+    {
+      title: 'Cleaning Sites',
+      count: sites.items.length,
+      hasMore: !!sites.nextCursor,
+      icon: '🏢',
+      desc: 'Active commercial and hospital cleaning sites.',
+      link: '/hr/sites',
+    },
+    {
+      title: 'Pending Leave Requests',
+      count: leaves.items.length,
+      hasMore: !!leaves.nextCursor,
+      icon: '📅',
+      desc: 'Leave applications awaiting review or decision.',
+      link: '/hr/leave-requests',
+    },
+  ];
+
   return (
-    <section>
-      <h1>HR dashboard</h1>
-      <dl>
-        <dt>Memberships visible</dt>
-        <dd>
-          {members.items.length}
-          {members.nextCursor ? '+' : ''}
-        </dd>
-        <dt>Workers visible</dt>
-        <dd>
-          {workers.items.length}
-          {workers.nextCursor ? '+' : ''}
-        </dd>
-        <dt>Sites visible</dt>
-        <dd>
-          {sites.items.length}
-          {sites.nextCursor ? '+' : ''}
-        </dd>
-        <dt>Pending leave requests</dt>
-        <dd>
-          {leaves.items.length}
-          {leaves.nextCursor ? '+' : ''}
-        </dd>
-      </dl>
-    </section>
+    <div className={styles.dashboardContainer}>
+      <header className={styles.dashboardHeader}>
+        <div className={styles.eyebrow}>HR MANAGEMENT PORTAL</div>
+        <h1 className={styles.title}>Overview Dashboard</h1>
+        <p className={styles.subtitle}>
+          Track memberships, workers, geocoded cleaning sites, and approve active leave requests.
+        </p>
+      </header>
+
+      <div className={styles.statsGrid}>
+        {cards.map((card) => (
+          <div key={card.title} className={styles.statCard}>
+            <div className={styles.cardHeader}>
+              <span className={styles.cardIcon}>{card.icon}</span>
+              <span className={styles.cardBadge}>Active</span>
+            </div>
+            <h2 className={styles.cardTitle}>{card.title}</h2>
+            <div className={styles.cardValue}>
+              {card.count}
+              {card.hasMore && <span className={styles.plus}>+</span>}
+            </div>
+            <p className={styles.cardDesc}>{card.desc}</p>
+            <a href={card.link} className={styles.cardLink}>
+              Manage directory &rarr;
+            </a>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

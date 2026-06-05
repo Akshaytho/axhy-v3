@@ -1,17 +1,36 @@
 /**
- * GET /me
+ * GET  /me                      — profile + active company + memberships + notif prefs
+ * PATCH /me/notification-prefs  — update the caller's own notification toggles
  *
- * Returns the authenticated user's profile + active company + all memberships.
- * Mobile + admin call this on every screen mount to confirm session health.
+ * Mobile + admin call GET /me on every screen mount to confirm session health
+ * and to seed the notification toggles from the server (no longer device-local).
  *
  * @derives(ADR-0007)
  */
 
 import type { FastifyInstance } from 'fastify';
-import type { MeOutput, Role } from '@axhy/shared-schema';
+import type { MeOutput, Role, NotificationPrefs } from '@axhy/shared-schema';
+import { UpdateNotificationPrefsInput, DEFAULT_NOTIFICATION_PREFS } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { recordAuditEvent } from '../lib/audit-event.js';
+
+/**
+ * Read a stored notificationPrefs JSON value into a full NotificationPrefs,
+ * applying the all-true default for any missing/invalid channel. An empty
+ * stored `{}` (the column default + the 13 backfilled rows) therefore reads
+ * as "everything on".
+ */
+function mergeNotificationPrefs(raw: unknown): NotificationPrefs {
+  const r =
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  return {
+    push: typeof r.push === 'boolean' ? r.push : DEFAULT_NOTIFICATION_PREFS.push,
+    whatsapp: typeof r.whatsapp === 'boolean' ? r.whatsapp : DEFAULT_NOTIFICATION_PREFS.whatsapp,
+    email: typeof r.email === 'boolean' ? r.email : DEFAULT_NOTIFICATION_PREFS.email,
+  };
+}
 
 export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
   app.get('/me', { preHandler: requireAuth }, async (req, reply) => {
@@ -42,6 +61,12 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
+    // The active membership is the one the token was issued for (membershipId),
+    // falling back to the active-company+role match for legacy tokens.
+    const activeMembership =
+      memberships.find((m) => m.id === auth.membershipId) ??
+      memberships.find((m) => m.companyId === auth.companyId && m.role === auth.role);
+
     const result: MeOutput = {
       user: {
         id: user.id,
@@ -61,7 +86,70 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
         companyName: m.company.name,
         role: m.role as Role,
       })),
+      notificationPrefs: mergeNotificationPrefs(activeMembership?.notificationPrefs),
     };
     reply.send(result);
+  });
+
+  // PATCH the caller's OWN active membership's notification toggles. Keyed by
+  // auth.membershipId (never a client id) so a user can only edit their own.
+  app.patch('/me/notification-prefs', { preHandler: requireAuth }, async (req, reply) => {
+    const auth = req.auth;
+    if (!auth) {
+      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+      return;
+    }
+    if (!auth.membershipId) {
+      // SUPER_ADMIN / legacy tokens have no per-company membership to scope to.
+      reply
+        .code(400)
+        .send({ error: 'NO_MEMBERSHIP', message: 'This session has no membership to update.' });
+      return;
+    }
+    const parsed = UpdateNotificationPrefsInput.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+      return;
+    }
+    const membershipId = auth.membershipId;
+
+    try {
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        const current = await tx.membership.findFirst({
+          where: { id: membershipId, companyId: auth.companyId },
+          select: { notificationPrefs: true },
+        });
+        if (!current) return null;
+        // Merge the partial patch over the current full prefs so toggling one
+        // channel never clears the others.
+        const merged: NotificationPrefs = {
+          ...mergeNotificationPrefs(current.notificationPrefs),
+          ...parsed.data,
+        };
+        await tx.membership.updateMany({
+          where: { id: membershipId, companyId: auth.companyId },
+          data: { notificationPrefs: merged },
+        });
+        await recordAuditEvent(tx, {
+          companyId: auth.companyId,
+          kind: 'MEMBERSHIP_NOTIFICATION_PREFS_UPDATED',
+          actorId: auth.userId,
+          targetId: membershipId,
+          payload: { prefs: merged },
+        });
+        return merged;
+      });
+
+      if (!out) {
+        reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND', message: 'Membership not found.' });
+        return;
+      }
+      reply.send({ ok: true, notificationPrefs: out });
+    } catch (err) {
+      req.log.error({ err }, 'PATCH /me/notification-prefs failed');
+      reply
+        .code(500)
+        .send({ error: 'INTERNAL', message: 'Could not update notification preferences.' });
+    }
   });
 }

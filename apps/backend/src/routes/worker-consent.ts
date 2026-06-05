@@ -52,11 +52,36 @@ export async function registerWorkerConsentRoutes(app: FastifyInstance): Promise
 
       const parsed = SubmitConsentInput.safeParse(req.body);
       if (!parsed.success) {
+        // Includes a non-allowlisted policyVersion (ACCEPTED_POLICY_VERSIONS)
+        // — we never persist an unknown string as a legal consent record.
         reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
         return;
       }
 
-      // tenant-exempt: ConsentLog is per-User — schema.prisma:1337 has no
+      // Dedup (RCA-G/consent 2026-06-04): re-submitting the SAME
+      // (userId, policyVersion) — common on reinstall / screen refocus — used
+      // to silently append a duplicate consent row on every retry. Instead
+      // return 409, which the mobile client already treats as "already
+      // consented, proceed" (app/(auth)/consent.tsx). This NEVER deletes or
+      // mutates an existing row (INV 9 immutable legal record / INV 11 DPDP);
+      // a DIFFERENT allowed version still appends (real history of accepting
+      // v1 then v2). Scoped to exact (userId, policyVersion).
+      const existing = await prisma.consentLog.findFirst({
+        // raw-ok: per-User read, no companyId; see tenant-exempt note below.
+        where: { userId: auth.userId, policyVersion: parsed.data.policyVersion },
+        select: { id: true },
+      });
+      if (existing) {
+        reply
+          .code(409)
+          .send({
+            error: 'ALREADY_CONSENTED',
+            message: 'This policy version is already accepted.',
+          });
+        return;
+      }
+
+      // tenant-exempt: ConsentLog is per-User — schema.prisma:1390 has no
       // companyId column because DPDP consent is to the Axhy platform, not to
       // any tenant company. withTenantContext would have nothing meaningful to
       // GUC-scope here. // raw-ok pairs with this exemption for CHECK 10.

@@ -25,6 +25,7 @@ export type VisitStateValue =
   | 'VERIFIED'
   | 'FLAGGED'
   | 'CANCELLED'
+  | 'REJECTED'
   | 'NO_SHOW'
   | 'ARCHIVED';
 
@@ -130,12 +131,21 @@ export const visitMachine = setup({
     FLAGGED: {
       on: {
         SUPERVISOR_RESOLVED: [
+          // Supervisor confirms the AI-flagged work is fine → VERIFIED (billable).
           { target: 'VERIFIED', guard: ({ event }) => event.outcome === 'OK' },
-          { target: 'CANCELLED', guard: ({ event }) => event.outcome === 'REJECT' },
+          // Supervisor rejects the work → REJECTED (a distinct, recorded, billable
+          // terminal outcome; worker pay deduction is a separate per-company
+          // payroll policy, never automatic). Founder decision 2026-06-04.
+          { target: 'REJECTED', guard: ({ event }) => event.outcome === 'REJECT' },
         ],
       },
     },
     CANCELLED: {
+      on: {
+        ARCHIVE_THRESHOLD_REACHED: 'ARCHIVED',
+      },
+    },
+    REJECTED: {
       on: {
         ARCHIVE_THRESHOLD_REACHED: 'ARCHIVED',
       },
@@ -158,5 +168,6 @@ export const BILLABLE_VISIT_STATES: ReadonlyArray<VisitStateValue> = [
   'VERIFIED',
   'FLAGGED',
   'CANCELLED',
+  'REJECTED',
   'NO_SHOW',
 ];

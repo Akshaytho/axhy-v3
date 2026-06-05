@@ -111,21 +111,40 @@ describe('POST /worker/consent', () => {
     expect(rows[0]?.policyVersion).toBe('2026-05-21');
   });
 
-  it('appends a new row on each accept (append-only, latest by acceptedAt)', async () => {
+  it('dedups a re-submit of the SAME policy version with 409 (no duplicate row)', async () => {
+    // The prior test already accepted '2026-05-21' for this user. Re-submitting
+    // the same version (reinstall / refocus) must NOT pile up a duplicate legal
+    // record — it returns 409, which the client treats as "already consented".
     const res = await app.inject({
       method: 'POST',
       url: '/worker/consent',
-      payload: { policyVersion: '2026-05-22' },
+      payload: { policyVersion: '2026-05-21' },
       headers: { authorization: `Bearer ${accessToken}` },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: string }).error).toBe('ALREADY_CONSENTED');
 
     const rows = await prismaRaw.consentLog.findMany({
       where: { userId },
       orderBy: { acceptedAt: 'desc' },
     });
-    expect(rows).toHaveLength(2);
-    expect(rows[0]?.policyVersion).toBe('2026-05-22');
+    expect(rows).toHaveLength(1); // still exactly one, not two
+    expect(rows[0]?.policyVersion).toBe('2026-05-21');
+  });
+
+  it('rejects an unknown / non-allowlisted policyVersion with 400 (no row written)', async () => {
+    const before = await prismaRaw.consentLog.count({ where: { userId } });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/worker/consent',
+      payload: { policyVersion: 'v999-bogus' },
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('BAD_INPUT');
+
+    const after = await prismaRaw.consentLog.count({ where: { userId } });
+    expect(after).toBe(before); // garbage version never persisted
   });
 
   it('rejects unauth requests with 401', async () => {

@@ -129,10 +129,31 @@ export default function WorkerProfile(): React.JSX.Element {
           </View>
           <Text style={s.name}>{name}</Text>
           <Text style={s.phone}>{phone}</Text>
-          <View style={s.verifiedPill}>
-            <Feather name="shield" size={12} color="#2e5037" />
-            <Text style={s.verifiedText}>Verified</Text>
-          </View>
+          {(() => {
+            // Reflect the real account standing — a suspended/blocked worker must
+            // NOT see "Verified" (RCA-F 2026-06-04). Paused set matches home (index.tsx:66).
+            const ws = data?.workerState;
+            const paused = ws === 'ON_SUSPENSION' || ws === 'BLOCKED';
+            const onLeave = ws === 'ON_LEAVE';
+            const label = paused ? 'Account paused' : onLeave ? 'On leave' : 'Verified';
+            const icon = paused ? 'alert-triangle' : onLeave ? 'calendar' : 'shield';
+            const fg = paused
+              ? tokens.color.semantic.warn
+              : onLeave
+                ? tokens.color.ink.secondary
+                : '#2e5037';
+            return (
+              <View
+                style={[
+                  s.verifiedPill,
+                  paused ? { backgroundColor: tokens.color.semantic.warnSoft } : null,
+                ]}
+              >
+                <Feather name={icon} size={12} color={fg} />
+                <Text style={[s.verifiedText, { color: fg }]}>{label}</Text>
+              </View>
+            );
+          })()}
         </View>
 
         <View style={s.section}>
@@ -204,7 +225,8 @@ export default function WorkerProfile(): React.JSX.Element {
             <Text style={s.sectionMono}>SUPPORT</Text>
             <Text style={s.cardTitle}>Need help or a schedule change?</Text>
             <Text style={s.cardBody}>
-              Use your supervisor contact for leave requests, shift swaps, or task questions.
+              Need time off? Use Request leave in the menu. For shift swaps or task questions,
+              contact your supervisor.
             </Text>
             <View style={s.supportRow}>
               <Text style={s.supportLine}>{supportLine}</Text>

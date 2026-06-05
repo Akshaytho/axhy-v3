@@ -42,6 +42,12 @@ export async function registerWorkerHistoryRoutes(app: FastifyInstance): Promise
           ? Number(windowDaysRaw)
           : undefined;
 
+      // Worker READS must NOT use withTenantContext — same rule as worker-today.ts:20
+      // and worker-visit.ts:23. withTenantContext enforces Company.status==='ACTIVE'
+      // and would 403 a suspended company's worker reading their own history, which
+      // operational-invariants INV 2 explicitly permits (suspended companies CAN read).
+      // Tenant safety here is Worker.userId @unique + the userId filter in the service.
+      // 15s timeout covers Railway cold-call; warm calls < 1s (matches worker-today).
       const result = await prisma.$transaction(
         (tx) => getWorkerHistory(tx, { userId: auth.userId, windowDays }),
         { timeout: 15_000, maxWait: 10_000 },

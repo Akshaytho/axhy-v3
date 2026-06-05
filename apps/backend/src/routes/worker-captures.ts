@@ -14,12 +14,12 @@
  *   RATE_LIMIT_WORKER_CAPTURES_PER_MIN). Default accounts for ~6 photos
  *   per visit with a retry budget for flaky uplinks.
  *
- * Tenant safety: the presign key path embeds `auth.userId`. Cross-tenant
- * isolation comes from R2's object-key namespacing (`v3-captures/{userId}/...`)
- * + the requireWorkerRole gate. NOTE: P3.2 in WORKER_CODE_REVIEW_FINDINGS
- * flags a possible Worker.id vs User.id mismatch between presign and submit
- * key reconstruction — out of scope for Cluster B; will be addressed under
- * Cluster C (submit + verify trust gaps).
+ * Tenant safety: the presign key path embeds the resolved **Worker.id** (via
+ * resolveWorkerFromAuth), matching what worker-submit reconstructs for the
+ * stored VisitPhoto.r2Key (worker-submit-service.ts:88). Cross-tenant isolation
+ * comes from R2's object-key namespacing (`v3-captures/{workerId}/...`) + the
+ * requireWorkerRole gate. FIXED 2026-06-04 (RCA-A): previously embedded User.id,
+ * which orphaned every upload because submit keyed by Worker.id.
  *
  * @derives(WORKER_MVP_SLICE_2B_2_PLAN.md §1)
  * @derives(2026-05-25 founder direction on cluster B — anonymization model)
@@ -29,14 +29,15 @@ import type { FastifyInstance } from 'fastify';
 import { UploadUrlsRequestSchema } from '@axhy/shared-schema';
 import { z } from 'zod';
 
-import { requireWorkerRole } from '../middleware/tenant-context.js';
+import { prisma } from '../lib/prisma.js';
+import { requireWorkerRole, resolveWorkerFromAuth } from '../middleware/tenant-context.js';
 import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { generateBatchUploadUrls, uploadCaptureObject } from '../lib/r2-presign.js';
 
 const UploadProxyMetaSchema = z.object({
   visitId: z.string().min(1),
   phase: z.enum(['before', 'after']),
-  index: z.coerce.number().int().min(1).max(3),
+  index: z.coerce.number().int().min(1).max(8),
   contentType: z
     .string()
     .regex(/^image\/(jpeg|png|webp)$/, 'contentType must be image/jpeg, image/png, or image/webp'),
@@ -77,14 +78,23 @@ export async function registerWorkerCapturesRoutes(app: FastifyInstance): Promis
         }
 
         const { visitId, files } = parseResult.data;
-        // tenant-exempt: presign is keyed by userId — no DB writes happen here,
-        // so there is no companyId-bound row to GUC-scope. Cross-tenant isolation
-        // for the eventual upload lives in the R2 object-key namespace
-        // (`v3-captures/{userId}/...`), not in withTenantContext.
-        const result = await generateBatchUploadUrls(auth.userId, visitId, files);
+        // The R2 key MUST use Worker.id, because worker-submit reconstructs the
+        // stored VisitPhoto.r2Key with Worker.id (worker-submit-service.ts:88).
+        // Keying by User.id here orphaned every upload (presign path != r2Key).
+        // resolveWorkerFromAuth is the canonical tenant-safe resolver
+        // (tenant-context.ts:211); no DB write happens, only this findUnique read.
+        const worker = await resolveWorkerFromAuth(prisma, auth);
+        if (worker.kind === 'NO_WORKER') {
+          reply.code(404).send({ error: 'WORKER_NOT_FOUND', message: 'Worker profile not found.' });
+          return;
+        }
+        const result = await generateBatchUploadUrls(worker.workerId, visitId, files);
 
         if (result.kind === 'NOT_CONFIGURED') {
-          req.log.warn({ workerId: auth.userId, visitId }, 'R2 not configured — refusing presign');
+          req.log.warn(
+            { workerId: worker.workerId, visitId },
+            'R2 not configured — refusing presign',
+          );
           reply.code(503).send({
             error: 'R2_NOT_CONFIGURED',
             message: 'Photo upload is temporarily unavailable. Please try again later.',
@@ -94,7 +104,7 @@ export async function registerWorkerCapturesRoutes(app: FastifyInstance): Promis
 
         req.log.info(
           {
-            workerId: auth.userId,
+            workerId: worker.workerId,
             visitId,
             urlCount: result.entries.length,
           },
@@ -182,14 +192,24 @@ export async function registerWorkerCapturesRoutes(app: FastifyInstance): Promis
         return;
       }
 
+      // Same Worker.id key contract as the presign path (see above).
+      const worker = await resolveWorkerFromAuth(prisma, auth);
+      if (worker.kind === 'NO_WORKER') {
+        reply.code(404).send({ error: 'WORKER_NOT_FOUND', message: 'Worker profile not found.' });
+        return;
+      }
+
       const result = await uploadCaptureObject(
-        auth.userId,
+        worker.workerId,
         meta.data.visitId,
         meta.data,
         photoBuffer,
       );
       if (result.kind === 'NOT_CONFIGURED') {
-        req.log.warn({ workerId: auth.userId, visitId: meta.data.visitId }, 'R2 not configured');
+        req.log.warn(
+          { workerId: worker.workerId, visitId: meta.data.visitId },
+          'R2 not configured',
+        );
         reply.code(503).send({
           error: 'R2_NOT_CONFIGURED',
           message: 'Photo upload is temporarily unavailable. Please try again later.',

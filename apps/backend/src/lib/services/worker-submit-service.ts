@@ -80,6 +80,29 @@ export async function submitVisit(
     return { kind: 'INSUFFICIENT_PHOTOS', photosBefore, photosAfter };
   }
 
+  // RCA-C race guard: claim the PHOTOS_PENDING → AWAITING_VERIFICATION transition
+  // with a conditional updateMany BEFORE inserting photos. Two concurrent submits
+  // serialize on the row lock; the loser sees state != PHOTOS_PENDING (count 0) and
+  // bails out, so it never writes duplicate VisitPhoto rows / audit / ai.verify.
+  // Same first-writer-wins pattern as visit-flagged-review-service.ts:111.
+  const claim = await tx.visit.updateMany({
+    where: { id: visitId, companyId, state: 'PHOTOS_PENDING' },
+    data: {
+      state: 'AWAITING_VERIFICATION',
+      photosBefore,
+      photosAfter,
+    },
+  });
+  if (claim.count === 0) {
+    // Lost the race (or the visit moved out of PHOTOS_PENDING). Re-read for a
+    // precise error envelope; do NOT insert photos.
+    const fresh = await tx.visit.findUnique({
+      where: { id: visitId },
+      select: { state: true },
+    });
+    return { kind: 'WRONG_STATE', currentState: fresh?.state ?? 'UNKNOWN' };
+  }
+
   const photoRows = photos.map((p) => ({
     companyId,
     visitId,
@@ -90,15 +113,6 @@ export async function submitVisit(
   }));
 
   await tx.visitPhoto.createMany({ data: photoRows });
-
-  await tx.visit.update({
-    where: { id: visitId },
-    data: {
-      state: 'AWAITING_VERIFICATION',
-      photosBefore,
-      photosAfter,
-    },
-  });
 
   // BUG-13 / D9: append-only audit of the worker's submit transition, in the
   // same transaction as the state change (commits together or not at all).

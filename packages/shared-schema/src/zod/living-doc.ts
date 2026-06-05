@@ -84,6 +84,27 @@ export const LivingDocRule = z.object({
 export type LivingDocRule = z.infer<typeof LivingDocRule>;
 
 /**
+ * Response shape for `GET /supervisor/living-doc` — the supervisor's own
+ * LivingDoc with each of the 5 sections as an array of ACTIVE rules. The
+ * route filters out `WORKER_OWN`-visibility rules before sending (locked
+ * livingdoc-extraction-rules: WORKER_OWN is "visible to nobody directly").
+ *
+ * @derives(master-plan §G) @derives(docs/locked/livingdoc-extraction-rules.md)
+ */
+export const LivingDocResponse = z.object({
+  id: z.string(),
+  companyId: z.string(),
+  supervisorId: z.string(),
+  version: z.number(),
+  siteRules: z.array(LivingDocRule),
+  workerNotes: z.array(LivingDocRule),
+  clientPreferences: z.array(LivingDocRule),
+  recurringTasks: z.array(LivingDocRule),
+  freeNotes: z.array(LivingDocRule),
+});
+export type LivingDocResponseT = z.infer<typeof LivingDocResponse>;
+
+/**
  * Input for the propose_living_doc_update tool — what AI emits when supervisor
  * says e.g. "Mukesh tends to be late on rainy days" / "remember Suresh prefers
  * Tea breaks at 11am".

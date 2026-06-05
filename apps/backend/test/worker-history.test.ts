@@ -36,6 +36,11 @@ let supervisorUserId: string;
 let siteId: string;
 let workerToken: string;
 let supervisorToken: string;
+// RCA-D: a SUSPENDED company + its worker — must still be able to READ history.
+const SUSPENDED_WORKER_PHONE = `+9191${String(Date.now()).slice(-8)}`;
+let suspendedCompanyId: string;
+let suspendedWorkerUserId: string;
+let suspendedWorkerToken: string;
 
 beforeAll(async () => {
   const { buildServer } = await import('../src/server.js');
@@ -96,6 +101,43 @@ beforeAll(async () => {
     availableRoles: ['SUPERVISOR'],
     locale: 'en',
   });
+
+  // RCA-D fixture: a SUSPENDED company with an active worker. The worker must
+  // still be able to read their own history (INV 2). The pre-fix code wrapped
+  // this read in withTenantContext and 403'd it.
+  const susCo = await prismaRaw.company.create({
+    data: {
+      name: TEST_PREFIX + 'SusCo',
+      slug: TEST_PREFIX + 'susco',
+      ownerPhone: '+919900000092',
+      ownerName: 'Owner Suspended',
+      status: 'SUSPENDED',
+    },
+  });
+  suspendedCompanyId = susCo.id;
+  const susUser = await prismaRaw.user.create({
+    data: { phone: SUSPENDED_WORKER_PHONE, locale: 'en' },
+  });
+  suspendedWorkerUserId = susUser.id;
+  await prismaRaw.membership.create({
+    data: { companyId: susCo.id, userId: susUser.id, role: 'WORKER' },
+  });
+  await prismaRaw.worker.create({
+    data: {
+      companyId: susCo.id,
+      userId: susUser.id,
+      name: 'Worker Suspended',
+      phone: SUSPENDED_WORKER_PHONE,
+      state: 'ACTIVE',
+    },
+  });
+  suspendedWorkerToken = await issueAccessToken({
+    userId: susUser.id,
+    companyId: susCo.id,
+    role: 'WORKER',
+    availableRoles: ['WORKER'],
+    locale: 'en',
+  });
 }, 90_000);
 
 afterAll(async () => {
@@ -114,6 +156,23 @@ afterAll(async () => {
   }
   if (companyId) {
     await prismaRaw.company.deleteMany({ where: { id: companyId } }).catch(() => undefined);
+  }
+  // RCA-D suspended-company fixture cleanup
+  if (suspendedCompanyId) {
+    await prismaRaw.worker
+      .deleteMany({ where: { companyId: suspendedCompanyId } })
+      .catch(() => undefined);
+    await prismaRaw.membership
+      .deleteMany({ where: { companyId: suspendedCompanyId } })
+      .catch(() => undefined);
+    if (suspendedWorkerUserId) {
+      await prismaRaw.user
+        .deleteMany({ where: { id: suspendedWorkerUserId } })
+        .catch(() => undefined);
+    }
+    await prismaRaw.company
+      .deleteMany({ where: { id: suspendedCompanyId } })
+      .catch(() => undefined);
   }
   await prismaRaw.$disconnect();
   await app.close();
@@ -263,5 +322,18 @@ describe('GET /worker/history', () => {
     expect(res.statusCode).toBe(403);
     const body = res.json() as { error: string };
     expect(body.error).toBe('WRONG_ROLE');
+  });
+
+  it('RCA-D: a SUSPENDED company worker can still READ their history (INV 2, not 403)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/worker/history',
+      headers: { authorization: `Bearer ${suspendedWorkerToken}` },
+    });
+    // Pre-fix this 403'd via withTenantContext's ACTIVE gate. Reads are allowed
+    // for suspended companies; an empty history is fine, the point is NOT 403.
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { visits: unknown[] };
+    expect(Array.isArray(body.visits)).toBe(true);
   });
 });

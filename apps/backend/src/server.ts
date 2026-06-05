@@ -50,6 +50,7 @@ import { registerSupervisorTodayRoutes } from './routes/supervisor-today.js';
 import { registerSupervisorActivityRoutes } from './routes/supervisor-activity.js';
 import { registerSupervisorDecisionsRoutes } from './routes/supervisor-decisions.js';
 import { registerSupervisorContextRoutes } from './routes/supervisor-context.js';
+import { registerSupervisorLivingDocRoutes } from './routes/supervisor-living-doc.js';
 import { registerSupervisorSummaryRoutes } from './routes/supervisor-summary.js';
 import { registerSupervisorUpdatesRoutes } from './routes/supervisor-updates.js';
 import { registerChatTranscribeRoutes } from './routes/chat-transcribe.js';
@@ -65,6 +66,7 @@ import { registerAdminMembershipRoutes } from './routes/admin-memberships.js';
 import { registerAdminWorkerRoutes } from './routes/admin-workers.js';
 import { registerAdminSiteRoutes } from './routes/admin-sites.js';
 import { registerSuperAdminMembershipRoutes } from './routes/super-admin-memberships.js';
+import { registerAdminCompanyRoutes } from './routes/admin-company.js';
 
 /**
  * Build a Fastify instance with all plugins + routes wired.
@@ -85,6 +87,25 @@ export async function buildServer(): Promise<FastifyInstance> {
         `AXHY_OTP_BYPASS=1 requires NODE_ENV=development|test, got ${env ?? '<unset>'}. Refusing to boot.`,
       );
     }
+  }
+
+  // RCA-G (2026-06-04): require an explicit Redis namespace in production.
+  // redis-keys.ts falls back to NODE_ENV when AXHY_REDIS_NAMESPACE is unset —
+  // fine for dev/test, but if staging and prod both run NODE_ENV=production
+  // against a SHARED Redis they would both resolve to the 'production:' prefix
+  // and collide on OTP codes, refresh-hash hot-path keys, rate-limit windows
+  // and the circuit breaker (a cross-environment security + correctness
+  // incident). Mirror the OTP-bypass deny-by-default guard above: refuse to
+  // boot a production server until the namespace is set to a distinct value
+  // per environment (e.g. 'prod' / 'staging'). Dev/test keep the fallback so
+  // local + vitest are unaffected. getRedis() is lazy (only /health +
+  // shutdown), so this runs before any Redis access.
+  if (process.env.NODE_ENV === 'production' && !process.env.AXHY_REDIS_NAMESPACE) {
+    throw new Error(
+      'AXHY_REDIS_NAMESPACE is required in production (refusing the NODE_ENV fallback so ' +
+        'staging and prod cannot collide on a shared Redis). Set a distinct value per Railway ' +
+        "environment, e.g. 'prod' / 'staging'. Refusing to boot.",
+    );
   }
 
   const app = Fastify({
@@ -190,6 +211,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerSupervisorActivityRoutes(app);
   await registerSupervisorDecisionsRoutes(app);
   await registerSupervisorContextRoutes(app);
+  await registerSupervisorLivingDocRoutes(app);
   await registerSupervisorSummaryRoutes(app);
   await registerSupervisorUpdatesRoutes(app);
   await registerComplaintRoutes(app);
@@ -204,6 +226,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerAdminWorkerRoutes(app);
   await registerAdminSiteRoutes(app);
   await registerSuperAdminMembershipRoutes(app);
+  await registerAdminCompanyRoutes(app);
 
   return app;
 }

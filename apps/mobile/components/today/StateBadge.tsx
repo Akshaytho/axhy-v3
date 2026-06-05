@@ -21,11 +21,13 @@ const MAP: Record<TodayWorkerStateT, { color: string; label: string }> = {
 };
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export type StateBadgeProps = { state: TodayWorkerStateT };
+export type StateBadgeProps = { state: string };
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 export function StateBadge({ state }: StateBadgeProps) {
-  const m = MAP[state];
+  // Defensive: render an unmapped state as a neutral pill instead of crashing on
+  // `undefined.color` (RCA-F 2026-06-04).
+  const m = MAP[state as TodayWorkerStateT] ?? { color: tokens.color.ink.tertiary, label: state };
   return (
     <View style={s.row}>
       <View style={[s.dot, { backgroundColor: m.color }]} />

@@ -105,3 +105,31 @@ fallback is straightforward:
 The fallback is intentionally per-consumer so we can keep the cheap wins
 (idempotency, OTP) while rolling back the controversial ones (rate limit,
 circuit breaker) if measured pain reverses.
+
+## Amendment (2026-06-04 — RCA-G correction)
+
+The Rollback section above over-promised relative to what was actually
+built. Correcting the record honestly:
+
+- **`AXHY_REDIS_FALLBACK_TO_POSTGRES` (Rollback step 2) was never
+  implemented.** The env var appears nowhere in `apps/backend/src`. There
+  is no Postgres sliding-window rate limiter and no inline "Postgres-backed
+  fallback path" for the rate-limiter or circuit-breaker (Rollback step 1 /
+  the §Options "graceful degradation in consumers" claim, line 38).
+- **What actually exists is fail-OPEN on Redis unreachable.** When Redis is
+  down, `lib/redis-rate-limit.ts` (`failOpenOrClosed`) lets traffic through
+  (rate-limit + concurrency + circuit-breaker degrade open), reversible to
+  fail-CLOSED via `AXHY_RATE_LIMIT_FAIL_CLOSED=1`. OTP and chat idempotency
+  keep their durable Postgres tables as the cold source-of-truth (unchanged).
+- **This is intentional and adequate at current scale (~2K users).** A brief
+  Redis outage briefly letting extra requests through is lower harm than
+  blocking legitimate work, and a SQL sliding-window would re-introduce the
+  exact Postgres hot-path WAL churn this ADR moved OFF Postgres (§Context).
+  Per "simple > complex; do not build what is not needed", we do NOT build
+  the SQL fallback — we correct this ADR to describe the real behavior.
+- **Namespace safety (RCA-G):** `redis-keys.ts` namespaces every key by
+  `AXHY_REDIS_NAMESPACE` (falling back to `NODE_ENV` only in dev/test).
+  `server.ts` now refuses to boot a production server unless
+  `AXHY_REDIS_NAMESPACE` is set, so two prod-class environments cannot
+  collide on a shared Redis. Deploy precondition: set a distinct namespace
+  per Railway environment before deploying.

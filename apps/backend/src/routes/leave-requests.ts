@@ -28,7 +28,11 @@ import { CreateLeaveRequestInput, LeaveDecisionInput } from '@axhy/shared-schema
 import type { LeaveDecisionOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import {
+  requireAuth,
+  withTenantContext,
+  resolveWorkerFromAuth,
+} from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { getMyPodIds } from '../middleware/pod-scope.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
@@ -98,6 +102,33 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
     if (new Date(fromDate) > new Date(toDate)) {
       reply.code(400).send({ error: 'BAD_RANGE', message: 'fromDate must be ≤ toDate' });
       return;
+    }
+
+    // Identity binding (RCA-H 2026-06-04). This route is role-agnostic
+    // (requireAuth only) because supervisors/HR/owner legitimately file
+    // leave on a worker's behalf and /chat/apply reuses this route — so we
+    // do NOT add a blanket role gate. But createLeaveRequestService only
+    // scopes by companyId; it never binds `workerId` to the caller. Without
+    // this guard any WORKER could POST another worker's Worker.id (same
+    // tenant) and fabricate a leave request for them. So: a WORKER caller
+    // may only ever request leave for THEMSELVES. Non-worker roles keep the
+    // on-behalf-of contract (the service still 404s an unknown worker).
+    if (auth.role === 'WORKER') {
+      const self = await resolveWorkerFromAuth(prisma, auth);
+      if (self.kind === 'NO_WORKER') {
+        reply.code(403).send({
+          error: 'NOT_A_WORKER',
+          message: 'No worker profile is linked to this account.',
+        });
+        return;
+      }
+      if (self.workerId !== workerId) {
+        reply.code(403).send({
+          error: 'FORBIDDEN_NOT_SELF',
+          message: 'A worker can only request leave for themselves.',
+        });
+        return;
+      }
     }
 
     try {

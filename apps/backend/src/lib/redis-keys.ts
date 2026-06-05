@@ -18,6 +18,13 @@
  * @derives(friend review Wave A.2 #12 + #21)
  */
 
+// The NODE_ENV fallback is convenient for dev/test but unsafe in production:
+// if two prod-class environments share one Redis and neither sets
+// AXHY_REDIS_NAMESPACE, both resolve to 'production:' and their keys collide.
+// We do NOT throw here — this constant is evaluated at import time across every
+// test file, so a module-load throw would break the suite. The production
+// guarantee is enforced once, at boot, by the AXHY_REDIS_NAMESPACE assertion in
+// server.ts buildServer() (RCA-G 2026-06-04).
 const ENV_NAMESPACE = process.env.AXHY_REDIS_NAMESPACE ?? process.env.NODE_ENV ?? 'development';
 
 /** Internal — builds the namespaced key. */

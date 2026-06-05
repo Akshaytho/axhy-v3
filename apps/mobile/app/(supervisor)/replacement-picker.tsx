@@ -113,7 +113,7 @@ type Stage =
  * @derives(master-plan §P.4)
  */
 type CandidateRow = {
-  /** Worker UUID (matches `User.id` and is the backend's `candidateUserId`). */
+  /** The candidate worker's linked `User.id` — the backend's `candidateUserId`. */
   userId: string;
   name: string;
   /** Current-site context — null when the worker is not on any site today. */
@@ -186,9 +186,13 @@ export default function ReplacementPickerScreen() {
     for (const w of today.data.workers) {
       if (params.originalWorkerUserId && w.id === params.originalWorkerUserId) continue;
       if (seen.has(w.id)) continue;
+      // A worker with no linked User cannot accept an invite — the backend
+      // resolves `candidateUserId` as a User.id (replacement-invite-service.ts),
+      // so an unlinked worker would 404. Hide them from the candidate list.
+      if (!w.userId) continue;
       seen.add(w.id);
       rows.push({
-        userId: w.id,
+        userId: w.userId,
         name: w.name,
         currentSiteId: w.siteId,
         currentSiteName: siteNameById.get(w.siteId) ?? null,

@@ -21,27 +21,32 @@ import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import { buildSummaryForSupervisor } from '../lib/services/summary-service.js';
 
 export async function registerSupervisorSummaryRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/supervisor/summary', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
-      return;
-    }
+  app.get(
+    '/supervisor/summary',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+        return;
+      }
 
-    try {
-      // Read-path latency fix (Cluster 1, QA-walkthrough 2026-05-18):
-      // bare prisma client → genuine query parallelism via connection pool.
-      const out = await buildSummaryForSupervisor(prisma, {
-        companyId: auth.companyId,
-        userId: auth.userId,
-      });
-      reply.code(200).send(out);
-    } catch (err) {
-      req.log.error({ err }, 'GET /supervisor/summary failed');
-      reply.code(500).send({ error: 'INTERNAL', message: 'Could not build Summary payload' });
-    }
-  });
+      try {
+        // Read-path latency fix (Cluster 1, QA-walkthrough 2026-05-18):
+        // bare prisma client → genuine query parallelism via connection pool.
+        const out = await buildSummaryForSupervisor(prisma, {
+          companyId: auth.companyId,
+          userId: auth.userId,
+        });
+        reply.code(200).send(out);
+      } catch (err) {
+        req.log.error({ err }, 'GET /supervisor/summary failed');
+        reply.code(500).send({ error: 'INTERNAL', message: 'Could not build Summary payload' });
+      }
+    },
+  );
 }

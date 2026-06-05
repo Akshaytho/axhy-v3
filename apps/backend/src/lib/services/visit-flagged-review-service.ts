@@ -9,18 +9,19 @@
  *   - audit emitted INSIDE the same tx as the domain write (per data-flow §4)
  *
  * Resolve path (POST /visits/:id/resolve):
- *   Conditional UPDATE on flagged=true (race-safe). Flips Visit.flagged to
- *   false. Visit.state is NOT changed — Resolve is the supervisor saying
- *   "the AI verification flagged this but I reviewed and it's fine"; the
- *   visit itself remains in whatever state it was in (typically COMPLETED).
- *   Emits VISIT_RESOLVED with the previousState snapshot for audit chain.
+ *   Race-safe conditional UPDATE on flagged=true. Supervisor confirms the
+ *   AI-flagged work is fine → Visit.state FLAGGED → VERIFIED + flagged=false
+ *   (machine: FLAGGED → VERIFIED on SUPERVISOR_RESOLVED OK). VERIFIED is a
+ *   billable terminal state. Emits VISIT_RESOLVED with the previousState
+ *   snapshot for the audit chain.
  *
  * Reject path (POST /visits/:id/reject):
- *   Conditional UPDATE on flagged=true AND state IN ('COMPLETED','IN_PROGRESS').
- *   Transitions Visit.state to 'REJECTED' (the 12-state VisitState v1.1
- *   machine treats REJECTED as a terminal state) and flips Visit.flagged
- *   to false. Emits VISIT_REJECTED with previousState snapshot. Reason is
- *   REQUIRED (enforced by RejectFlaggedVisitInput.supervisorReason min 1).
+ *   Race-safe conditional UPDATE on flagged=true AND state='FLAGGED'.
+ *   Supervisor rejects the work → Visit.state FLAGGED → REJECTED + flagged=false
+ *   (REJECTED is a distinct, billable terminal state in the visit machine;
+ *   worker pay deduction is a SEPARATE per-company payroll policy, never
+ *   automatic — RCA-B 2026-06-04). Emits VISIT_REJECTED with previousState.
+ *   Reason REQUIRED (RejectFlaggedVisitInput.supervisorReason min 1).
  *
  * Failure kinds the route maps:
  *   VISIT_NOT_FOUND      → 404 (also covers cross-tenant attempts; never reveals existence)
@@ -38,12 +39,14 @@ import type { Prisma, Visit } from '@prisma/client';
 import { recordAuditEvent } from '../audit-event.js';
 
 /**
- * Visit states from which a flagged visit may be rejected. The 12-state
- * VisitState v1.1 machine (schema.prisma line 227) allows REJECTED from
- * any state where the worker has actually submitted evidence. Any other
- * source state (SCHEDULED, CANCELLED, …) means there's nothing to reject.
+ * A flagged visit is ALWAYS in state 'FLAGGED' (set by the AI verify handler,
+ * dispatcher/handlers/ai.ts, alongside flagged=true). Per the visit machine,
+ * FLAGGED → VERIFIED (resolve/OK) or → REJECTED (reject) via SUPERVISOR_RESOLVED.
+ * The old list ['IN_PROGRESS','COMPLETED','NEEDS_REVIEW'] was wrong — COMPLETED
+ * and NEEDS_REVIEW are not machine states and never co-occur with a real flag,
+ * so reject would 409 in production. RCA-B 2026-06-04.
  */
-const REJECTABLE_VISIT_STATES = ['IN_PROGRESS', 'COMPLETED', 'NEEDS_REVIEW'] as const;
+const REJECTABLE_VISIT_STATES = ['FLAGGED'] as const;
 
 /** Result discriminator for the Resolve path. */
 export type ResolveFlaggedVisitResult =
@@ -108,9 +111,11 @@ export async function resolveFlaggedVisit(
 
   const previousState = existing.state;
 
+  // Supervisor confirms the AI-flagged work is fine → VERIFIED (machine:
+  // FLAGGED → VERIFIED on SUPERVISOR_RESOLVED OK). VERIFIED is billable.
   const update = await tx.visit.updateMany({
     where: { id: input.visitId, companyId: input.companyId, flagged: true },
-    data: { flagged: false },
+    data: { flagged: false, state: 'VERIFIED' },
   });
   if (update.count === 0) {
     // Lost a race to a concurrent caller — treat as ALREADY_DECIDED.

@@ -73,6 +73,12 @@ export type TodaySiteT = z.infer<typeof TodaySite>;
 export const TodayWorker = z
   .object({
     id: z.string().uuid(),
+    /**
+     * The worker's linked `User.id`, or null when the worker has no User/phone
+     * link yet. This is the id the backend expects as `candidateUserId` for a
+     * replacement invite — distinct from `id` above, which is the `Worker.id`.
+     */
+    userId: z.string().uuid().nullable(),
     name: z.string(),
     siteId: z.string().uuid(),
     state: TodayWorkerState,

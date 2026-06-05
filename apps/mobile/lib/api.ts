@@ -94,17 +94,74 @@ type RequestOptions = {
 // catches the residual race that survives module-level dedup.
 let inFlightRefresh: Promise<{ accessToken: string; refreshToken: string } | null> | null = null;
 
+// Refresh gets a SHORTER timeout than DEFAULT_TIMEOUT_MS so a hung refresh
+// frees the shared inFlightRefresh mutex fast instead of stalling every
+// authenticated screen behind it (RCA-G 2026-06-04 — the bare un-timed fetch
+// was the only un-timed auth-critical call in this file).
+const REFRESH_TIMEOUT_MS = 8_000;
+// Bounded backoff between refresh retries (ms). Array length = max retries.
+// Transient blips only (network reject, timeout, 502/503/504) — a definitive
+// 401 / AUTH_LEGACY_REFRESH / INVALID_REFRESH is NEVER retried.
+const REFRESH_BACKOFFS_MS = [300, 800];
+
+function refreshBackoffSleep(ms: number): Promise<void> {
+  // Small +jitter so many clients recovering from one outage don't resync.
+  const jittered = ms + Math.floor(Math.random() * 150);
+  return new Promise((resolve) => setTimeout(resolve, jittered));
+}
+
+/** One refresh POST wrapped in an AbortController timeout (mirrors doFetch). */
+async function refreshFetchOnce(refreshToken: string): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+  try {
+    return await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) throw new TimeoutError('Refresh timed out');
+    throw err; // genuine network reject
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Transient server statuses worth a retry. A 401/4xx is definitive — never retried. */
+function isTransientRefreshStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
 async function attemptRefresh(): Promise<{ accessToken: string; refreshToken: string } | null> {
   const tokens = await getTokens();
   if (!tokens) return null;
 
-  const res = await fetch(`${API_BASE}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken: tokens.refreshToken }),
-  });
+  // Bounded retry on transient blips: without it a momentary outage either
+  // froze every screen (no timeout — the old bug) or risked surfacing as a
+  // logout. A definitive auth failure (401 / AUTH_LEGACY_REFRESH) still throws
+  // immediately and drives the force-logout path in apiFetch (see ~line 210);
+  // the rotation grace window on the backend covers the case where the server
+  // rotated but our response was lost on a retried attempt.
+  let lastErr: unknown = new ApiError(0, 'REFRESH_FAILED', 'Refresh failed');
+  for (let attempt = 0; attempt <= REFRESH_BACKOFFS_MS.length; attempt += 1) {
+    if (attempt > 0) await refreshBackoffSleep(REFRESH_BACKOFFS_MS[attempt - 1]!);
 
-  if (!res.ok) {
+    let res: Response;
+    try {
+      res = await refreshFetchOnce(tokens.refreshToken);
+    } catch (err) {
+      lastErr = err; // network reject or TimeoutError — transient, retry
+      continue;
+    }
+
+    if (res.ok) {
+      const data = (await res.json()) as { accessToken: string; refreshToken: string };
+      await replaceTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+      return { accessToken: data.accessToken, refreshToken: data.refreshToken };
+    }
+
     // Parse error code so the caller can distinguish AUTH_LEGACY_REFRESH
     // (force-logout per founder decision 2026-05-28) from network/server
     // failures (don't wipe; caller decides).
@@ -115,12 +172,18 @@ async function attemptRefresh(): Promise<{ accessToken: string; refreshToken: st
     } catch {
       // body not JSON — keep default
     }
-    throw new ApiError(res.status, code, 'Refresh failed');
+    const failure = new ApiError(res.status, code, 'Refresh failed');
+    if (isTransientRefreshStatus(res.status)) {
+      lastErr = failure; // 5xx — transient, retry
+      continue;
+    }
+    // Definitive auth outcome — never retry; surface immediately so apiFetch
+    // can force-logout (401 / AUTH_LEGACY_REFRESH) or the caller can decide.
+    throw failure;
   }
-
-  const data = (await res.json()) as { accessToken: string; refreshToken: string };
-  await replaceTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-  return { accessToken: data.accessToken, refreshToken: data.refreshToken };
+  // Exhausted retries on transient failures — surface WITHOUT a 401 so apiFetch
+  // keeps the tokens and a later request retries refresh (no mid-shift logout).
+  throw lastErr;
 }
 
 async function refreshOnce(): Promise<{ accessToken: string; refreshToken: string } | null> {

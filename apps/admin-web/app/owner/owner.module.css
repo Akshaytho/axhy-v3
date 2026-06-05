@@ -1,0 +1,460 @@
+/* Owner portal shell styles.
+   Uses Axhy token system from @axhy/ui-tokens (--paper, --ink, --accent,
+   --card, --card-edge). No raw color literals.
+*/
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 16px;
+  background: var(--card);
+  border-right: 1px solid var(--card-edge);
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  padding: 0 8px 16px;
+  border-bottom: 1px solid var(--card-edge);
+}
+
+.navList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navLink {
+  display: block;
+  padding: 8px 12px;
+  border-radius: var(--r-1);
+  color: var(--ink-2);
+  font-weight: 500;
+  font-size: 14px;
+  transition: background var(--dur-fast) var(--ease-natural), color var(--dur-fast);
+}
+
+.navLink:hover {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.logout {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--card-edge);
+}
+
+.logoutBtn {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: left;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+
+.logoutBtn:hover {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.main {
+  padding: 32px;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .nav {
+    border-right: none;
+    border-bottom: 1px solid var(--card-edge);
+  }
+}
+
+/* Dashboard Layout */
+.dashboardContainer {
+  max-width: 1100px;
+  margin: 0 auto;
+  animation: fadeIn 0.4s var(--ease-natural);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dashboardHeader {
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--ink-2);
+  max-width: 600px;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.statCard {
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: var(--r-2);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s var(--ease-natural), border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.statCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.cardIcon {
+  font-size: 24px;
+}
+
+.cardBadge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.cardTitle {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.cardValue {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.plus {
+  font-size: 20px;
+  color: var(--ink-3);
+  margin-left: 2px;
+  font-weight: 500;
+}
+
+.cardDesc {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 20px;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.cardLink {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  transition: color 0.15s;
+}
+
+.cardLink:hover {
+  color: var(--ink);
+}
+
+/* Settings & Configurations section */
+.settingsSection {
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: var(--r-2);
+  padding: 24px;
+}
+
+.sectionTitle {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--card-edge);
+  padding-bottom: 12px;
+}
+
+.policyList {
+  display: grid;
+  gap: 16px;
+}
+
+.policyRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--paper-2);
+  border-radius: var(--r-1);
+  border: 1px solid var(--card-edge);
+}
+
+.policyInfo {
+  flex: 1;
+}
+
+.policyKey {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.policyDesc {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+.policyValue {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 4px 8px;
+  background: var(--card);
+  border-radius: var(--r-1);
+  border: 1px solid var(--card-edge);
+}
+
+.sectionDesc {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 24px;
+  margin-top: -8px;
+  line-height: 1.4;
+}
+
+.policyTitle {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.policyForm {
+  margin-left: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.inputContainer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.selectInput, .numberInput, .textInput {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--card-edge);
+  border-radius: var(--r-1);
+  padding: 6px 12px;
+  font-size: 14px;
+  outline: none;
+  font-family: var(--font-mono);
+  transition: border-color var(--dur-fast);
+}
+
+.selectInput:focus, .numberInput:focus, .textInput:focus {
+  border-color: var(--accent);
+}
+
+.numberInput {
+  width: 100px;
+}
+
+.saveBtn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-1);
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+
+.saveBtn:hover {
+  background: var(--accent-2);
+}
+
+.saveBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.successMessage {
+  font-size: 12px;
+  color: var(--ok);
+  margin-top: 4px;
+  font-weight: 600;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.errorMessage {
+  font-size: 12px;
+  color: var(--bad);
+  margin-top: 4px;
+  font-weight: 600;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.spendTrackerCard {
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: var(--r-2);
+  padding: 24px;
+  margin-bottom: 32px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.spendHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.spendTitle {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.spendSubtitle {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.spendNumbers {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.spendCurrent {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.spendSeparator {
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.spendLimit {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.progressBarWrapper {
+  width: 100%;
+  height: 8px;
+  background: var(--paper-2);
+  border-radius: var(--r-1);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.progressBar {
+  height: 100%;
+  background: var(--ok);
+  border-radius: var(--r-1);
+  transition: width 0.3s ease-out;
+}
+
+.progressBarWarning {
+  background: var(--bad);
+}
+
+.spendFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.warningMessage {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+

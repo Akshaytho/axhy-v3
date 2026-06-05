@@ -29,6 +29,9 @@ export const API_ROUTES = {
     apiPath('worker', 'visits', visitId, 'verify-status'),
   workerClockIn: (visitId: string): string => apiPath('worker', 'visits', visitId, 'clock-in'),
   workerClockOut: (visitId: string): string => apiPath('worker', 'visits', visitId, 'clock-out'),
+  // Worker self-service time-off. A worker POSTs their own Worker.id; the
+  // backend binds the caller to self (403 otherwise). HR/supervisor decide.
+  leaveRequests: apiPath('leave-requests'),
 } as const;
 
 /** Capture-flow step names, in the order the worker traverses them.
@@ -59,5 +62,6 @@ export const NAV_ROUTES = {
     navPath('(worker)', 'capture', visitId, step),
   workerCaptureEntry: (visitId: string): string =>
     navPath('(worker)', 'capture', visitId, 'qr-scan'),
+  workerLeaveRequest: navPath('(worker)', 'leave-request'),
   supervisorMe: navPath('(supervisor)', 'me'),
 } as const;

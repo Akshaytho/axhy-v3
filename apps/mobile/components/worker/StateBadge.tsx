@@ -21,6 +21,7 @@ type VisitStateValue =
   | 'VERIFIED'
   | 'FLAGGED'
   | 'CANCELLED'
+  | 'REJECTED'
   | 'NO_SHOW'
   | 'ARCHIVED';
 
@@ -37,6 +38,7 @@ const STATE_MAP: Record<VisitStateValue, { label: string; tone: Tone }> = {
   VERIFIED: { label: 'Verified', tone: 'ok' },
   FLAGGED: { label: 'Flagged', tone: 'warn' },
   CANCELLED: { label: 'Cancelled', tone: 'neutral' },
+  REJECTED: { label: 'Rejected', tone: 'bad' },
   NO_SHOW: { label: 'Missed', tone: 'bad' },
   ARCHIVED: { label: 'Archived', tone: 'neutral' },
 };
@@ -53,8 +55,11 @@ const TONE_COLORS: Record<Tone, { bg: string; fg: string }> = {
 };
 
 /** @derives(master-plan §G) */
-export function StateBadge({ state }: { state: VisitStateValue }): React.JSX.Element {
-  const meta = STATE_MAP[state];
+export function StateBadge({ state }: { state: string }): React.JSX.Element {
+  // Defensive: the backend returns visit.state as an unvalidated string, so an
+  // unmapped / future / phantom state (e.g. a legacy 'REJECTED' row) must render
+  // as a neutral pill instead of crashing on `undefined.tone`. RCA-F 2026-06-04.
+  const meta = STATE_MAP[state as VisitStateValue] ?? { label: state, tone: 'neutral' as Tone };
   const colors = TONE_COLORS[meta.tone];
   return (
     <View style={[s.badge, { backgroundColor: colors.bg }]}>

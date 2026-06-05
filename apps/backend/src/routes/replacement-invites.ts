@@ -45,6 +45,7 @@ import {
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import { withIdempotency } from '../lib/idempotency-key.js';
 import {
   createReplacementInvite,
@@ -86,77 +87,81 @@ export async function registerReplacementInviteRoutes(app: FastifyInstance): Pro
   // ── POST /supervisor/replacement-invites ─────────────────────────────────
   // Idempotency-Key supported (Cluster F fix): a Slow-3G double-tap with
   // the same key returns the cached invite row instead of creating two.
-  app.post('/supervisor/replacement-invites', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED' });
-      return;
-    }
-    if (auth.role !== 'SUPERVISOR') {
-      reply.code(403).send({ error: 'SUPERVISOR_ROLE_REQUIRED' });
-      return;
-    }
-    const parsed = CreateReplacementInviteInput.safeParse(req.body);
-    if (!parsed.success) {
-      reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
-      return;
-    }
+  app.post(
+    '/supervisor/replacement-invites',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
+      }
+      if (auth.role !== 'SUPERVISOR') {
+        reply.code(403).send({ error: 'SUPERVISOR_ROLE_REQUIRED' });
+        return;
+      }
+      const parsed = CreateReplacementInviteInput.safeParse(req.body);
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+        return;
+      }
 
-    await withIdempotency(
-      req,
-      reply,
-      { companyId: auth.companyId, routeKey: 'POST:/supervisor/replacement-invites' },
-      async () => {
-        const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-          createReplacementInvite(tx, {
-            ...parsed.data,
-            companyId: auth.companyId,
-            fromSupervisorId: auth.userId,
-          }),
-        );
+      await withIdempotency(
+        req,
+        reply,
+        { companyId: auth.companyId, routeKey: 'POST:/supervisor/replacement-invites' },
+        async () => {
+          const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+            createReplacementInvite(tx, {
+              ...parsed.data,
+              companyId: auth.companyId,
+              fromSupervisorId: auth.userId,
+            }),
+          );
 
-        if (out.kind === 'SITE_NOT_FOUND') {
-          return { status: 404, body: { error: 'SITE_NOT_FOUND' } };
-        }
-        if (out.kind === 'VISIT_NOT_FOUND') {
-          return { status: 404, body: { error: 'VISIT_NOT_FOUND' } };
-        }
-        if (out.kind === 'CANDIDATE_NOT_FOUND') {
-          return { status: 404, body: { error: 'CANDIDATE_NOT_FOUND' } };
-        }
-        if (out.kind === 'CANDIDATE_NOT_LINKED_TO_WORKER') {
-          return {
-            status: 409,
-            body: {
-              error: 'CANDIDATE_NOT_LINKED_TO_WORKER',
-              message:
-                'Candidate must have a linked Worker row in this tenant. ' +
-                'Unlinked users cannot receive replacement invites.',
+          if (out.kind === 'SITE_NOT_FOUND') {
+            return { status: 404, body: { error: 'SITE_NOT_FOUND' } };
+          }
+          if (out.kind === 'VISIT_NOT_FOUND') {
+            return { status: 404, body: { error: 'VISIT_NOT_FOUND' } };
+          }
+          if (out.kind === 'CANDIDATE_NOT_FOUND') {
+            return { status: 404, body: { error: 'CANDIDATE_NOT_FOUND' } };
+          }
+          if (out.kind === 'CANDIDATE_NOT_LINKED_TO_WORKER') {
+            return {
+              status: 409,
+              body: {
+                error: 'CANDIDATE_NOT_LINKED_TO_WORKER',
+                message:
+                  'Candidate must have a linked Worker row in this tenant. ' +
+                  'Unlinked users cannot receive replacement invites.',
+              },
+            };
+          }
+
+          req.log.info(
+            {
+              event: 'replacement_invite.sent',
+              inviteId: out.invite.id,
+              toWorkerUserId: out.invite.toWorkerId,
+              siteId: parsed.data.siteId,
+              fromSupervisorId: auth.userId,
+              expiresAt: out.invite.expiresAt,
             },
-          };
-        }
+            'replacement-invite sent',
+          );
 
-        req.log.info(
-          {
-            event: 'replacement_invite.sent',
-            inviteId: out.invite.id,
-            toWorkerUserId: out.invite.toWorkerId,
-            siteId: parsed.data.siteId,
-            fromSupervisorId: auth.userId,
-            expiresAt: out.invite.expiresAt,
-          },
-          'replacement-invite sent',
-        );
-
-        return { status: 201, body: { ok: true, invite: out.invite } };
-      },
-    );
-  });
+          return { status: 201, body: { ok: true, invite: out.invite } };
+        },
+      );
+    },
+  );
 
   // ── POST /worker/replacement-invites/:id/accept ──────────────────────────
   app.post<{ Params: { id: string } }>(
     '/worker/replacement-invites/:id/accept',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('WORKER')] },
     async (req: IdParams, reply) => {
       const auth = req.auth;
       if (!auth) {
@@ -212,7 +217,7 @@ export async function registerReplacementInviteRoutes(app: FastifyInstance): Pro
   // ── POST /worker/replacement-invites/:id/decline ─────────────────────────
   app.post<{ Params: { id: string } }>(
     '/worker/replacement-invites/:id/decline',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('WORKER')] },
     async (req: IdParams, reply) => {
       const auth = req.auth;
       if (!auth) {
@@ -249,80 +254,84 @@ export async function registerReplacementInviteRoutes(app: FastifyInstance): Pro
   );
 
   // ── GET /supervisor/replacement-invites ──────────────────────────────────
-  app.get('/supervisor/replacement-invites', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED' });
-      return;
-    }
-    if (auth.role !== 'SUPERVISOR') {
-      reply.code(403).send({ error: 'SUPERVISOR_ROLE_REQUIRED' });
-      return;
-    }
-    const parsed = ListSupervisorReplacementInvitesQuery.safeParse(req.query);
-    if (!parsed.success) {
-      reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
-      return;
-    }
-    const { status, limit } = parsed.data;
-    const cursor = parsed.data.cursor ? decodeCursor(parsed.data.cursor) : null;
-    if (parsed.data.cursor && !cursor) {
-      reply.code(400).send({ error: 'BAD_CURSOR', message: 'cursor failed to decode' });
-      return;
-    }
+  app.get(
+    '/supervisor/replacement-invites',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
+      }
+      if (auth.role !== 'SUPERVISOR') {
+        reply.code(403).send({ error: 'SUPERVISOR_ROLE_REQUIRED' });
+        return;
+      }
+      const parsed = ListSupervisorReplacementInvitesQuery.safeParse(req.query);
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+        return;
+      }
+      const { status, limit } = parsed.data;
+      const cursor = parsed.data.cursor ? decodeCursor(parsed.data.cursor) : null;
+      if (parsed.data.cursor && !cursor) {
+        reply.code(400).send({ error: 'BAD_CURSOR', message: 'cursor failed to decode' });
+        return;
+      }
 
-    const rows = await withTenantContext(prisma, auth.companyId, async (tx) =>
-      tx.replacementInvite.findMany({
-        where: {
-          companyId: auth.companyId,
-          fromSupervisorId: auth.userId,
-          ...(status ? { status } : {}),
-          ...(cursor
-            ? {
-                OR: [
-                  { sentAt: { lt: cursor.sentAt } },
-                  { sentAt: cursor.sentAt, id: { lt: cursor.id } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-        include: {
-          site: { select: { name: true } },
-          toWorker: { select: { name: true } },
-        },
-      }),
-    );
+      const rows = await withTenantContext(prisma, auth.companyId, async (tx) =>
+        tx.replacementInvite.findMany({
+          where: {
+            companyId: auth.companyId,
+            fromSupervisorId: auth.userId,
+            ...(status ? { status } : {}),
+            ...(cursor
+              ? {
+                  OR: [
+                    { sentAt: { lt: cursor.sentAt } },
+                    { sentAt: cursor.sentAt, id: { lt: cursor.id } },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+          include: {
+            site: { select: { name: true } },
+            toWorker: { select: { name: true } },
+          },
+        }),
+      );
 
-    const hasMore = rows.length > limit;
-    const page = hasMore ? rows.slice(0, limit) : rows;
-    const last = page[page.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last.sentAt, last.id) : null;
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const last = page[page.length - 1];
+      const nextCursor = hasMore && last ? encodeCursor(last.sentAt, last.id) : null;
 
-    const invites: ReplacementInviteRowT[] = page.map((r) => ({
-      id: r.id,
-      fromSupervisorId: r.fromSupervisorId,
-      toWorkerId: r.toWorkerId,
-      toWorkerName: r.toWorker.name ?? null,
-      visitId: r.visitId,
-      siteId: r.siteId,
-      siteName: r.site.name,
-      scheduledStart: r.scheduledStart.toISOString(),
-      status: ReplacementInviteStatusSchema.parse(r.status) as ReplacementInviteStatus,
-      sentAt: r.sentAt.toISOString(),
-      expiresAt: r.expiresAt.toISOString(),
-      respondedAt: r.respondedAt ? r.respondedAt.toISOString() : null,
-      respondReason: r.respondReason,
-    }));
+      const invites: ReplacementInviteRowT[] = page.map((r) => ({
+        id: r.id,
+        fromSupervisorId: r.fromSupervisorId,
+        toWorkerId: r.toWorkerId,
+        toWorkerName: r.toWorker.name ?? null,
+        visitId: r.visitId,
+        siteId: r.siteId,
+        siteName: r.site.name,
+        scheduledStart: r.scheduledStart.toISOString(),
+        status: ReplacementInviteStatusSchema.parse(r.status) as ReplacementInviteStatus,
+        sentAt: r.sentAt.toISOString(),
+        expiresAt: r.expiresAt.toISOString(),
+        respondedAt: r.respondedAt ? r.respondedAt.toISOString() : null,
+        respondReason: r.respondReason,
+      }));
 
-    reply.code(200).send({ invites, nextCursor });
-  });
+      reply.code(200).send({ invites, nextCursor });
+    },
+  );
 
   // ── POST /supervisor/replacement-invites/:id/cancel ──────────────────────
   app.post<{ Params: { id: string } }>(
     '/supervisor/replacement-invites/:id/cancel',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
     async (req: IdParams, reply) => {
       const auth = req.auth;
       if (!auth) {

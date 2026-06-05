@@ -75,6 +75,7 @@ export default function WorkerLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="capture" />
       <Stack.Screen name="visit" />
+      <Stack.Screen name="leave-request" />
     </Stack>
   );
 }

@@ -2,17 +2,21 @@
  * Final-review photo grid (capture step 7).
  *
  * Renders every captured before + after photo (up to 8 per phase, BUG-02)
- * sourced from the upload queue with per-tile upload status. Each tile is
- * tappable to retake (deletes the local file, removes the queue entry,
- * navigates back to the phase capture screen with the other good photos
- * preserved) or, when failed, to retry the upload.
+ * sourced from the upload queue with per-tile upload status.
+ *
+ * Founder fix 2026-06-04: a normal tap on a tile now opens the photo
+ * FULL-SCREEN to VIEW it (not retake). Retake is a deliberate action inside
+ * the full-screen viewer, so a worker reviewing before submit can no longer
+ * accidentally delete + re-shoot a good photo just by tapping it. A failed
+ * upload still taps-to-retry.
  *
  * @derives(WORKER_MVP_SLICE_2B_2_PLAN.md §1)
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { tokens } from '@axhy/ui-tokens';
 import type { PhotoPhase } from '@axhy/shared-schema';
 
@@ -55,6 +59,8 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
   const { data } = useWorkerTodayQuery();
   const workerId = data?.workerId ?? '';
   const [tiles, setTiles] = useState<TileState[]>([]);
+  // The photo currently shown full-screen (null = viewer closed).
+  const [viewer, setViewer] = useState<TileState | null>(null);
 
   useEffect(() => {
     function sync(snapshot: ReadonlyMap<string, QueueItem>): void {
@@ -98,48 +104,100 @@ export function PhotoGridReview({ visitId }: Props): React.JSX.Element {
     [workerId, visitId],
   );
 
+  // A normal tap: VIEW the photo full-screen. A failed upload: tap to retry.
   const onTilePress = useCallback(
-    async (tile: TileState) => {
+    (tile: TileState) => {
       const key = `${visitId}:${tile.phase}:${tile.index}`;
       if (shouldRetryFailedUpload(tile.status, tile.localUri)) {
         r2UploadQueue.retry(key);
         return;
       }
+      setViewer(tile);
+    },
+    [visitId],
+  );
+
+  // Deliberate retake from inside the viewer (preserves the other good photos).
+  const retakeFromViewer = useCallback(
+    async (tile: TileState) => {
       const preserved = tiles
         .filter((candidate) => candidate.phase === tile.phase && candidate.index !== tile.index)
         .map((candidate) => candidate.index)
         .sort((a, b) => a - b);
+      setViewer(null);
       await retake(tile.phase, tile.index, preserved);
     },
-    [retake, tiles, visitId],
+    [retake, tiles],
   );
 
   return (
-    <ScrollView contentContainerStyle={s.scrollBody}>
-      <View style={s.grid}>
-        {tiles.map((tile) => (
-          <Pressable
-            key={`${tile.phase}-${tile.index}`}
-            onPress={() => void onTilePress(tile)}
-            accessibilityRole="button"
-            accessibilityLabel={
-              shouldRetryFailedUpload(tile.status, tile.localUri)
-                ? `Retry upload for ${tile.phase} photo ${tile.index}`
-                : `Retake ${tile.phase} photo ${tile.index}`
-            }
-            style={s.tile}
-          >
-            <Image source={{ uri: tile.localUri }} style={s.thumb} resizeMode="cover" />
-            <Text style={[s.tileStatus, { color: statusColor(tile.status) }]} numberOfLines={1}>
-              {statusLabel(tile.status)}
-            </Text>
-            <Text style={s.tilePhase}>
-              {tile.phase.toUpperCase()} · {tile.index}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    </ScrollView>
+    <>
+      <ScrollView contentContainerStyle={s.scrollBody}>
+        <View style={s.grid}>
+          {tiles.map((tile) => (
+            <Pressable
+              key={`${tile.phase}-${tile.index}`}
+              onPress={() => onTilePress(tile)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                shouldRetryFailedUpload(tile.status, tile.localUri)
+                  ? `Retry upload for ${tile.phase} photo ${tile.index}`
+                  : `View ${tile.phase} photo ${tile.index} full screen`
+              }
+              style={s.tile}
+            >
+              <Image source={{ uri: tile.localUri }} style={s.thumb} resizeMode="cover" />
+              <Text style={[s.tileStatus, { color: statusColor(tile.status) }]} numberOfLines={1}>
+                {statusLabel(tile.status)}
+              </Text>
+              <Text style={s.tilePhase}>
+                {tile.phase.toUpperCase()} · {tile.index}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+
+      <Modal
+        visible={viewer !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewer(null)}
+      >
+        <View style={s.viewerRoot}>
+          {viewer ? (
+            <>
+              <Image source={{ uri: viewer.localUri }} style={s.viewerImage} resizeMode="contain" />
+              <View style={s.viewerCaption}>
+                <Text style={s.viewerCaptionText}>
+                  {viewer.phase.toUpperCase()} · PHOTO {viewer.index}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setViewer(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Close photo"
+                hitSlop={16}
+                style={s.viewerClose}
+              >
+                <Feather name="x" size={24} color="#fff" />
+              </Pressable>
+              <View style={s.viewerActions}>
+                <Pressable
+                  onPress={() => void retakeFromViewer(viewer)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Retake ${viewer.phase} photo ${viewer.index}`}
+                  style={s.viewerRetake}
+                >
+                  <Feather name="refresh-ccw" size={16} color="#fff" />
+                  <Text style={s.viewerRetakeText}>Retake this photo</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -180,5 +238,54 @@ const s = StyleSheet.create({
     paddingTop: 2,
     letterSpacing: 0.3,
     textTransform: 'uppercase',
+  },
+  viewerRoot: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerImage: {
+    width: '100%',
+    height: '78%',
+  },
+  viewerCaption: {
+    position: 'absolute',
+    top: 56,
+    alignSelf: 'center',
+  },
+  viewerCaptionText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontFamily: tokens.font.mono,
+    fontSize: 12,
+    letterSpacing: 1.1,
+  },
+  viewerClose: {
+    position: 'absolute',
+    top: 48,
+    right: 20,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerActions: {
+    position: 'absolute',
+    bottom: 48,
+    alignSelf: 'center',
+  },
+  viewerRetake: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  viewerRetakeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -16,6 +16,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import { buildSupervisorContext } from '../lib/services/supervisor-context-service.js';
 
 /**
@@ -24,23 +25,27 @@ import { buildSupervisorContext } from '../lib/services/supervisor-context-servi
  * @derives(ADR-0003) @derives(master-plan §G) — supervisor surface
  */
 export async function registerSupervisorContextRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/supervisor/context', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
-      return;
-    }
+  app.get(
+    '/supervisor/context',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+        return;
+      }
 
-    try {
-      // tenant-exempt: read-only, bare prisma for parallel query dispatch.
-      const out = await buildSupervisorContext(prisma, {
-        companyId: auth.companyId,
-        userId: auth.userId,
-      });
-      reply.code(200).send(out);
-    } catch (err) {
-      req.log.error({ err }, 'GET /supervisor/context failed');
-      reply.code(500).send({ error: 'INTERNAL', message: 'Could not build supervisor context' });
-    }
-  });
+      try {
+        // tenant-exempt: read-only, bare prisma for parallel query dispatch.
+        const out = await buildSupervisorContext(prisma, {
+          companyId: auth.companyId,
+          userId: auth.userId,
+        });
+        reply.code(200).send(out);
+      } catch (err) {
+        req.log.error({ err }, 'GET /supervisor/context failed');
+        reply.code(500).send({ error: 'INTERNAL', message: 'Could not build supervisor context' });
+      }
+    },
+  );
 }
