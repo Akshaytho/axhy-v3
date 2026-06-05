@@ -375,8 +375,12 @@ async function applyOutcome(
   const flagged = visitState === 'FLAGGED';
 
   await prisma.$transaction(async (tx) => {
-    await tx.visit.update({
-      where: { id: visitId },
+    // First-writer-wins: only transition a visit still AWAITING_VERIFICATION so
+    // a concurrent supervisor resolve/reject or a re-delivered ai.verify cannot
+    // clobber a newer state (TOCTOU guard; visit.ts allows AI_VERIFIED/AI_FLAGGED
+    // only from AWAITING_VERIFICATION; mirrors worker-submit-service.ts).
+    const claimed = await tx.visit.updateMany({
+      where: { id: visitId, state: 'AWAITING_VERIFICATION' },
       data: {
         state: visitState,
         flagged,
@@ -384,6 +388,7 @@ async function applyOutcome(
         verificationText: outcome.reasoning,
       },
     });
+    if (claimed.count === 0) return; // visit already moved on — nothing to do
     await tx.visitPhoto.updateMany({
       where: { visitId, companyId },
       data: {
