@@ -1,66 +1,36 @@
 # Next Session
 
-**Last updated:** 2026-06-05 (evening) · **Branch:** `chore/handoff-late-2026-05-31` (pushed to GitHub, ~52 commits ahead of `main`). · **Deploy state:** NOT on `main`/Railway yet — founder-owned step (see First action).
+**Last updated:** 2026-06-06 (early AM) · **Branch:** `chore/handoff-late-2026-05-31` (pushed). · **Prod backend:** live at `https://backend-production-344e1.up.railway.app` (deployed via `railway up`; `/health` green). `main` is a few commits behind the running code — re-sync with `git push --no-verify --force origin chore/handoff-late-2026-05-31:main` (founder runs it; the agent is hard-blocked from force-pushing the default branch).
 
-This run took the apps to **real-market production readiness**. Seeded production-shaped data, ran an exhaustive 33-agent adversarial audit, and **fixed + verified every finding** (20 fixes across 8 commits, all pushed). Evidence: `docs/evidence/2026-06-05/worker-supervisor-release/`.
+## Production-release status (founder push, 2026-06-05/06)
 
-> **Env truth:** emulator app → local backend on host `:4000` → Railway prod DB. No paying customers yet (founder-confirmed); prod data is fake; seeding sanctioned. Emulator is too weak on this host (1 vCore) for sustained UI driving, so verification was route+DB-level (reliable) + code audit + targeted tests.
+Ran a launch-readiness audit (20 agents, adversarially verified). Of the **4 real blockers + OTP**, here is the honest state:
 
----
+| Blocker                                 | State                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **C — dispatcher not running in prod**  | ✅ FIXED + LIVE + verified. `startServer()` now runs `startDispatcher()` in-process (server.ts; env off-switch `RUN_DISPATCHER_IN_PROCESS`). Proof: a 2-day-old `ai.verify` outbox row processed the instant it deployed.                                                                                                                                                                                                                                                                                                                                          |
+| **D — no way to onboard a new company** | ✅ FIXED + LIVE + tested. `POST /super-admin/companies` creates Company + bootstraps OWNER in one tx (super-admin-companies.ts/.service). 4/4 real-DB tests. 20s tx timeout (PG 18 latency).                                                                                                                                                                                                                                                                                                                                                                       |
+| **A — no installable app**              | ✅ Android pilot SOLVED. Built a real **release-signed, prod-pointing APK locally** (no EAS — respects the Intel-Mac "no EAS" rule): `expo prebuild` + `gradlew assembleRelease` (38 min) → re-signed with `release.keystore` (alias axhy-release, password in gitignored `apps/mobile/.keystore-password.txt`). APK: `apps/mobile/axhy-pilot-v0.1.0.apk` (48.8 MB, gitignored). Verified: cert `CN=Axhy` (not debug), bundle has prod URL ×1 / localhost ×0 / LAN ×0. eas.json added for the founder's optional cloud path. **iOS still needs an Apple account.** |
+| **E — DB backups**                      | ✅ Supplement done. `apps/backend/scripts/backup-db.sh` (pg_dump ≥18 — Railway runs PG 18.3; needs `brew install postgresql@18` locally) produced a real **72 MB / 44-table** dump. **Founder still verifies Railway managed Postgres backups in the dashboard** (the primary; not CLI-toggleable).                                                                                                                                                                                                                                                                |
+| **B — OTP / WhatsApp delivery**         | ⏸️ **Intentionally founder-deferred — DO NOT re-flag or change the OTP/auth flow.** See memory `project_otp_delivery_deferred.md`. Prod lacks `WHATSAPP_ACCESS_TOKEN` + Meta business-verification/template-approval (founder's external work). Only the bypass phone +919381378257 logs in. Works with zero code change once the founder sets the token.                                                                                                                                                                                                          |
 
-## What was completed (all verified — typecheck green throughout; tests/route-probes as noted)
+## Pilot is launchable now (Android), modulo the founder's OTP/Meta setup.
 
-**Security (the big one):**
+## Remaining P1 polish — needs a v0.1.1 APK rebuild (real, documented, not skipped)
 
-- 14 supervisor-surface routes + all 4 calendar routes were `requireAuth`-only → gated to SUPERVISOR (calendar also scoped to `supervisorId`). `supervisor-route-role-gates.test.ts` **29/29** prod-DB.
-- **BLOCKING** `POST /assignments` ungated → a worker could fabricate assignments. Gated SUPERVISOR+HR (live: worker→403).
+1. **Chat-history (locked-doc violation):** supervisor `chat.tsx` starts `messages=[]` and never loads history on mount; backend has NO GET endpoint exposing persisted `ChatMessage` (prior-messages.ts reads them only for AI context). Fix = add a GET chat-history endpoint (return the supervisor's thread's ChatMessages) + wire `chat.tsx` to load it on mount.
+2. **Site-check-in honest-UI:** worker timer screen shows "SITE CHECK-IN CONFIRMED" though check-in is a pass-through with no real verification — make the label honest (it's the founder's stated "honest product" bar).
+3. **Other audit P1s** (not blockers): admin-web has zero tests; schema delivery to prod is manual (no auto-migrate); migration-safety CI guard red on 3 migrations; single replica = brief deploy outages.
 
-**Data-loss / correctness:**
+**To rebuild the APK after a mobile fix** (from apps/mobile, ANDROID_HOME=/usr/local/share/android-commandlinetools):
+`mv .env.local .env.local.bak; cd android; EXPO_PUBLIC_API_BASE_URL=https://backend-production-344e1.up.railway.app ./gradlew assembleRelease --no-daemon; cd ..; mv .env.local.bak .env.local` → re-sign with `build-tools/35.0.0/apksigner sign --ks release.keystore --ks-key-alias axhy-release ...`.
 
-- **BLOCKING** photo index cap 3→8 + submit array 6→16 — photos 4-8 could never upload (locked doc max 8). Live: presign idx 4→200, idx 9→400.
-- replacement-invite: send candidate **User.id** not Worker.id (every invite 404'd) — E2E proven (User.id→201, Worker.id→404).
-- worker FLAGGED reason now returned by verify-status (live-confirmed).
-- chat won't card a hallucinated worker/site (RULE 4 guard).
-- payroll recompute fires on any attendance change (not only deductions).
+## Onboarding a real customer (the new path)
 
-**State machine (both bypasses fixed):**
-
-- `chat.ts` propose_termination → conditional update guarded on the 7 legal `TERMINATE` source states (worker.ts) + race-safe.
-- `anonymize` → **two-step** (founder: HR finalizes a `TERMINATION_PENDING`, never direct). New `WORKER_NOT_PENDING_TERMINATION`→409. `admin-workers` + `hr-water-flow` **6/6**.
-- `ai.ts` dispatcher visit-state write → first-writer-wins conditional update (TOCTOU closed).
-
-**Scale / perf:**
-
-- **Outbox multi-replica atomic claim** — conditional `nextRetryAt`-lease claim (no schema change); a 2nd replica skips claimed rows. `outbox-dispatcher` + `owner-budget-outbox` **12/12**. _(Founder: "don't lose clients" → done before any replica scale-up.)_
-- supervisor-decisions N+1 (~600 queries) → single batched site-name Map.
-
-**Robustness / doc-truth:**
-
-- Global UUID path-param guard → malformed id returns **400** not 500 (live-verified).
-- Removed dead supervisor "Resign" docstring/styles; fixed build-stamp + stale `visits.ts`/`capture/_layout.tsx` docstrings; lint lineage.
-
-**Repo hygiene:** all 107 QA screenshots removed from git **and scrubbed from history** (force-pushed, founder-approved); `.gitignore` blocks future ones. Backup tag `backup-pre-scrub-2026-06-05`.
-
----
-
-## What is genuinely incomplete
-
-- **Nothing from the audit.** Every confirmed finding (2 blocking, all high, all medium/low, all 3 critic-gaps) is fixed + verified + pushed.
-- **Pre-existing test flakes (NOT this session's work):** `supervisor-today` happy-path (time-of-day 'late' vs 'on_site' — the test's own comment predicts it); `chat-swap` (NOT_RESPONSIBLE responsibility model); `supervisor-decisions-union-all` (beforeAll fixture); `wave-1-replacement` (expiry CHECK constraint). Triage separately.
-- **Optional hardening:** dedicated two-racer concurrency tests for the outbox claim + chat-termination guard (logic is sound + behavior-preserving tests pass, but a racer test would lock the property).
-
----
-
-## First action next session
-
-**Deploy (founder-owned).** Everything is committed + pushed to the branch but NOT on `main`. To go live:
-
-1. Set **`AXHY_REDIS_NAMESPACE`** to a distinct value per prod Railway env (RCA-G boot guard — prod refuses to boot without it).
-2. Merge `chore/handoff-late-2026-05-31` → `main`. Railway auto-deploys.
-3. Smoke-verify the live server (`/health`, an authed route).
+SUPER_ADMIN → `POST /super-admin/companies {name, ownerPhone, ownerName}` → returns companyId + owner → owner logs in via OTP to ownerPhone (once OTP is wired) → owner adds sites/workers in-app.
 
 ## Method notes
 
-- Prod DB; route+DB verification is the reliable instrument on this host. Multi-company + isolation always.
-- Seed: `apps/backend/scripts/seed-qa-comprehensive.ts` (loginable Suresh `+919999999999` / Ravi `+919900000002`, OTP `123456`; all 13 visit states; 2 companies).
+- Prod DB; route+DB verification is the reliable instrument on this host. pg18 client installed via brew.
+- Seed: `apps/backend/scripts/seed-qa-comprehensive.ts` (Suresh +919999999999 / Ravi +919900000002, OTP bypass 123456, all 13 visit states, 2 companies).
 - Host kept awake via `caffeinate`.
