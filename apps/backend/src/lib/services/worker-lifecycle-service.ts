@@ -109,13 +109,21 @@ export async function clockInVisit(
     return { kind: 'ACTIVE_TIMER_EXISTS', activeVisitId: activeOther.id };
   }
 
-  await tx.visit.update({
-    where: { id: visitId },
+  // Conditional transition (first-writer-wins): only flip to IN_PROGRESS if
+  // the visit is STILL in a clock-in-legal state. If a supervisor cancelled
+  // it (or any concurrent transition moved it) between our read above and
+  // this write, count===0 and we do NOT resurrect a terminal/cancelled visit.
+  const updated = await tx.visit.updateMany({
+    where: { id: visitId, companyId, state: { in: [...CLOCK_IN_LEGAL_FROM] } },
     data: {
       state: 'IN_PROGRESS',
       startedAt: visit.startedAt ?? now,
     },
   });
+  if (updated.count === 0) {
+    const fresh = await tx.visit.findUnique({ where: { id: visitId }, select: { state: true } });
+    return { kind: 'WRONG_STATE', currentState: fresh?.state ?? 'UNKNOWN' };
+  }
 
   // BUG-13 / D9: append-only audit on the real transition only (idempotent
   // already-IN_PROGRESS retries above do not reach here, so no duplicate rows).
