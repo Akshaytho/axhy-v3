@@ -235,9 +235,9 @@ export default function TimerStep(): React.JSX.Element {
           <WCard padding={14} style={s.gpsCard}>
             <View style={s.gpsHeader}>
               <View style={s.gpsDot} />
-              <Text style={s.gpsTitle}>Location captured</Text>
+              <Text style={s.gpsTitle}>Location noted</Text>
             </View>
-            <Text style={s.gpsMeta}>SITE CHECK-IN CONFIRMED</Text>
+            <Text style={s.gpsMeta}>SELF-REPORTED · NOT SITE-VERIFIED</Text>
           </WCard>
         ) : null}
 

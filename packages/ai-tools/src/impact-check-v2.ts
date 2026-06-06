@@ -114,6 +114,13 @@ async function getClient(): Promise<pg.Client> {
     process.env.DATABASE_PUBLIC_URL ?? process.env.DATABASE_URL ?? process.env.AXHY_DB_URL;
   if (!url) throw new Error('DATABASE_URL required for impact-check-v2');
   _client = new pg.Client({ connectionString: url });
+  // Self-heal: a dropped connection (e.g. Railway proxy idle-close over a long
+  // session) emits 'error'; with NO listener pg treats it as uncaught and kills
+  // the process, and the dead client would otherwise be reused forever. Null the
+  // memo so the next getClient() transparently reconnects.
+  _client.on('error', () => {
+    _client = null;
+  });
   await _client.connect();
   return _client;
 }
