@@ -20,8 +20,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyBaseLogger } from 'fastify';
 
-import { recordAuditEvent } from '../lib/audit-event.js';
-
 /**
  * Synthetic actor UUID for system-driven audit events. Phase 1 keeps it
  * inline; Phase D may move to a dedicated `system_actor_id` env.
@@ -76,24 +74,30 @@ export async function maybeResetAiSpend(
   }
 
   try {
-    const tenantsReset = await client.$transaction(async (tx) => {
-      // Fetch all Company ids before the bulk reset so we can write one
-      // AuditEvent per tenant (audit.companyId is NOT NULL FK; system
-      // events without a tenant don't fit the schema). Indexed scan;
-      // trivial at 1K-tenant scale (few hundred rows/year per tenant).
-      const tenants = await tx.company.findMany({ select: { id: true } });
-      await tx.$executeRaw`UPDATE "axhy"."Company" SET "aiSpendDailyInr" = 0`;
-      for (const t of tenants) {
-        await recordAuditEvent(tx, {
-          companyId: t.id,
-          kind: 'AI_SPEND_DAILY_RESET',
-          actorId: SYSTEM_ACTOR_ID,
-          targetId: null,
-          payload: { dateUtc: today },
-        });
-      }
-      return tenants.length;
-    });
+    const tenantsReset = await client.$transaction(
+      async (tx) => {
+        const tenants = await tx.company.findMany({ select: { id: true } });
+        await tx.$executeRaw`UPDATE "axhy"."Company" SET "aiSpendDailyInr" = 0`;
+        // One batched insert instead of a per-tenant loop. The loop did N
+        // sequential audit inserts which, under prod latency, blew past the
+        // default 5s tx timeout (~9.5s for 6 tenants) so the reset never
+        // committed and every tenant's budget stayed capped forever. One
+        // AI_SPEND_DAILY_RESET audit per tenant is still written — in 1 stmt.
+        if (tenants.length > 0) {
+          await tx.auditEvent.createMany({
+            data: tenants.map((t) => ({
+              companyId: t.id,
+              kind: 'AI_SPEND_DAILY_RESET',
+              actorId: SYSTEM_ACTOR_ID,
+              targetId: null,
+              payload: { dateUtc: today },
+            })),
+          });
+        }
+        return tenants.length;
+      },
+      { timeout: 20_000, maxWait: 10_000 },
+    );
     lastResetUtcDate = today;
     log.info(
       { event: 'reset_ai_spend.success', tenantsReset, dateUtc: today },
