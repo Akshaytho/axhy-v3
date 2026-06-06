@@ -194,6 +194,31 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
           return { kind: 'NOT_IMPLEMENTED' as const };
         }
 
+        // Tenant-validate the payload BEFORE writing an Assignment. workerId/
+        // siteId come straight from the stored calendar payload and Assignment
+        // has no RLS, so an entry referencing another tenant's ids would
+        // otherwise create a cross-tenant Assignment. Reject as not-promotable.
+        const cp = entry.payload as { workerId: string; siteId: string };
+        const [pWorker, pSite] = await Promise.all([
+          tx.worker.findFirst({
+            where: { id: cp.workerId, companyId: auth.companyId },
+            select: { id: true },
+          }),
+          tx.site.findFirst({
+            where: { id: cp.siteId, companyId: auth.companyId },
+            select: { id: true },
+          }),
+        ]);
+        if (!pWorker || !pSite) return { kind: 'CANNOT_PROMOTE' as const };
+
+        // Atomic claim (first-writer-wins): only one concurrent promote may flip
+        // promotedAt from NULL, so at most one Assignment is created per entry.
+        const claim = await tx.calendarEntry.updateMany({
+          where: { id: entry.id, companyId: auth.companyId, promotedAt: null },
+          data: { promotedAt: new Date() },
+        });
+        if (claim.count === 0) return { kind: 'ALREADY_PROMOTED' as const };
+
         const assignmentPayload = mapCalendarPayloadToAssignment(
           entry.payload as {
             workerId: string;
