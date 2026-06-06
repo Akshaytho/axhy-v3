@@ -74,8 +74,15 @@ export async function submitVisit(
   // write or state transition so a thin evidence set never gets persisted or
   // sent to AI verification. This is the authoritative server-side guard; the
   // client review/submit screens gate the same rule for UX.
-  const photosBefore = photos.filter((p) => p.phase === 'before').length;
-  const photosAfter = photos.filter((p) => p.phase === 'after').length;
+  // Count DISTINCT images per phase. Duplicate descriptors hash to the same
+  // storage key, so counting raw array length let a worker pad a thin set
+  // (e.g. the same 2 photos submitted 3×) past the floor and on to AI verify.
+  const photosBefore = new Set(
+    photos.filter((p) => p.phase === 'before').map((p) => buildObjectKey(workerId, visitId, p)),
+  ).size;
+  const photosAfter = new Set(
+    photos.filter((p) => p.phase === 'after').map((p) => buildObjectKey(workerId, visitId, p)),
+  ).size;
   if (photosBefore < MIN_PHOTOS_PER_PHASE || photosAfter < MIN_PHOTOS_PER_PHASE) {
     return { kind: 'INSUFFICIENT_PHOTOS', photosBefore, photosAfter };
   }
@@ -103,14 +110,23 @@ export async function submitVisit(
     return { kind: 'WRONG_STATE', currentState: fresh?.state ?? 'UNKNOWN' };
   }
 
-  const photoRows = photos.map((p) => ({
-    companyId,
-    visitId,
-    // Zod schema uses lowercase 'before'/'after'; Prisma column is 'BEFORE'/'AFTER'
-    side: p.phase === 'before' ? 'BEFORE' : 'AFTER',
-    r2Key: buildObjectKey(workerId, visitId, p),
-    aiVerifyStatus: 'PENDING',
-  }));
+  // Dedupe by storage key so duplicate descriptors never write duplicate
+  // VisitPhoto rows (same images would otherwise inflate the evidence set).
+  const seenKeys = new Set<string>();
+  const photoRows = photos
+    .map((p) => ({
+      companyId,
+      visitId,
+      // Zod schema uses lowercase 'before'/'after'; Prisma column is 'BEFORE'/'AFTER'
+      side: p.phase === 'before' ? 'BEFORE' : 'AFTER',
+      r2Key: buildObjectKey(workerId, visitId, p),
+      aiVerifyStatus: 'PENDING',
+    }))
+    .filter((row) => {
+      if (seenKeys.has(row.r2Key)) return false;
+      seenKeys.add(row.r2Key);
+      return true;
+    });
 
   await tx.visitPhoto.createMany({ data: photoRows });
 
