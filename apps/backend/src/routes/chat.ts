@@ -691,6 +691,14 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       // (friend review #8). Caller must release in the `finally` below.
       const chatSlot = await tryAcquireChatSlot();
       if (chatSlot === null) {
+        // Release the idempotency reservation so the retry is a fresh attempt
+        // instead of a 120s IDEMPOTENCY_IN_FLIGHT lockout.
+        await releaseIdempotency(auth.companyId, idempotencyKey).catch((cleanupErr) =>
+          req.log.warn(
+            { event: 'chat.cleanup.release_idempotency_failed', err: errMsg(cleanupErr) },
+            'chat: releaseIdempotency failed on CHAT_BUSY early return',
+          ),
+        );
         reply.code(503).header('Retry-After', '5').send({ error: 'CHAT_BUSY' });
         return;
       }
@@ -698,6 +706,12 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       try {
         const apiKey = process.env.OPENAI_API_KEY;
         if (!apiKey) {
+          await releaseIdempotency(auth.companyId, idempotencyKey).catch((cleanupErr) =>
+            req.log.warn(
+              { event: 'chat.cleanup.release_idempotency_failed', err: errMsg(cleanupErr) },
+              'chat: releaseIdempotency failed on AI_NOT_CONFIGURED early return',
+            ),
+          );
           reply.code(500).send({
             error: 'AI_NOT_CONFIGURED',
             message: 'OPENAI_API_KEY missing — set it in apps/backend/.env.local',
@@ -1411,6 +1425,15 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
         // banner. NO retry-after header; cap clears at next UTC midnight.
         // The CAP outbox alert already fired inside `assertWithinBudget`.
         if (err instanceof AICostBudgetError) {
+          // Release the reservation BEFORE returning — this branch returns
+          // ahead of the Promise.allSettled cleanup below, so without this the
+          // supervisor stays IDEMPOTENCY_IN_FLIGHT-locked for the full TTL.
+          await releaseIdempotency(auth.companyId, idempotencyKey).catch((cleanupErr) =>
+            req.log.warn(
+              { event: 'chat.cleanup.release_idempotency_failed', err: errMsg(cleanupErr) },
+              'chat: releaseIdempotency failed on AI_BUDGET_EXCEEDED early return',
+            ),
+          );
           reply.code(429).send({
             error: 'AI_BUDGET_EXCEEDED',
             message: 'Daily AI usage limit reached. Try again tomorrow.',
