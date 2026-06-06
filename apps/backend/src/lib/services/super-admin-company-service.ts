@@ -14,6 +14,8 @@
  * @derives(docs/locked/hiring-hierarchy.md)
  */
 
+import { createHash } from 'node:crypto';
+
 import type { Prisma } from '@prisma/client';
 
 import { recordAuditEvent } from '../audit-event.js';
@@ -33,12 +35,17 @@ export type SuperAdminCreateCompanyServiceOutput =
 
 /** Lowercase, hyphenate, trim to the Company.slug shape. */
 function slugify(name: string): string {
-  return name
+  const base = name
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
+  if (base.length >= 2) return base;
+  // Non-ASCII (e.g. all-Hindi/Telugu) or too-short names slugify to '' or a
+  // single char, which would collide across ALL such tenants (the 2nd one
+  // could never onboard). Derive a stable, unique fallback from the name.
+  return `co-${createHash('sha256').update(name).digest('hex').slice(0, 10)}`;
 }
 
 /** @derives(ADR-0026) */
