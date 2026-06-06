@@ -85,13 +85,23 @@ export async function anonymizeWorkerService(
     });
   }
 
-  await tx.worker.update({
-    where: { id: worker.id },
+  // Conditional finalize (first-writer-wins). The WHERE state='TERMINATION_PENDING'
+  // makes the two-step guard atomic: two concurrent anonymize calls can't both
+  // scrub + both write a WORKER_ANONYMIZED audit (the row lock serializes them,
+  // and the loser sees state already TERMINATED → count 0). Also scrub
+  // Worker.phone — the @@unique([companyId, phone]) otherwise leaves the
+  // resigned number permanently locked so the worker can never be re-hired.
+  const finalized = await tx.worker.updateMany({
+    where: { id: worker.id, companyId: input.callerCompanyId, state: 'TERMINATION_PENDING' },
     data: {
       state: 'TERMINATED',
       userId: null,
+      phone: worker.phone.startsWith('anon:') ? worker.phone : hashPhone(worker.phone),
     },
   });
+  if (finalized.count === 0) {
+    return { kind: 'WORKER_ALREADY_TERMINATED' };
+  }
 
   await recordAuditEvent(tx, {
     companyId: input.callerCompanyId,
