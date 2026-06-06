@@ -49,7 +49,7 @@ export type UploadUrlFile = z.infer<typeof UploadUrlFileSchema>;
 /** Batch presign request body.
  *  @derives(master-plan §G) */
 export const UploadUrlsRequestSchema = z.object({
-  visitId: z.string().min(1),
+  visitId: z.string().uuid(),
   files: z.array(UploadUrlFileSchema).min(1).max(MAX_PHOTOS_PER_BATCH),
 });
 /** @derives(master-plan §G) */

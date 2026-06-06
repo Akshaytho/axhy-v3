@@ -35,7 +35,7 @@ import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { generateBatchUploadUrls, uploadCaptureObject } from '../lib/r2-presign.js';
 
 const UploadProxyMetaSchema = z.object({
-  visitId: z.string().min(1),
+  visitId: z.string().uuid(),
   phase: z.enum(['before', 'after']),
   index: z.coerce.number().int().min(1).max(8),
   contentType: z
