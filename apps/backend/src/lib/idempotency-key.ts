@@ -47,6 +47,20 @@ import { prisma } from './prisma.js';
 /** Idempotency TTL — 10 minutes from creation. */
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 
+/** Sentinel `responseStatus` marking a reserved-but-not-yet-completed row.
+ *  No real HTTP response uses 0, so it unambiguously means "in flight". */
+const RESERVED_STATUS = 0;
+
+/** True if `err` is a Prisma P2002 unique-constraint violation. */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
+}
+
 /**
  * Cached-response shape persisted in `IdempotencyKey.responseJson`. The
  * status code rides in its own column so the cache hit returns the same
@@ -171,42 +185,131 @@ export async function withIdempotency(
   const headerValue = req.headers['idempotency-key'];
   const idempotencyKey = Array.isArray(headerValue) ? headerValue[0] : headerValue;
 
-  // Validate header format if present — UUID v4 / v7 / opaque token up to
-  // 200 chars. Anything outside that range is almost certainly a client
-  // bug and we 400 fast.
-  if (typeof idempotencyKey === 'string') {
-    if (idempotencyKey.length < 8 || idempotencyKey.length > 200) {
-      reply.code(400).send({
-        error: 'BAD_IDEMPOTENCY_KEY',
-        message: 'Idempotency-Key header must be 8-200 chars (UUID or opaque token).',
-      });
-      return;
-    }
-    const cached = await checkIdempotencyKey(options.companyId, options.routeKey, idempotencyKey);
-    if (cached) {
-      reply.code(cached.status).send(cached.body);
-      return;
-    }
+  // No Idempotency-Key header → idempotency is opt-in; run + send, no cache.
+  if (typeof idempotencyKey !== 'string') {
+    const result = await handler();
+    reply.code(result.status).send(result.body);
+    return;
   }
 
-  // Run the handler, capture its result, send it. If we have an
-  // idempotency key, persist the result BEFORE sending so a crash
-  // between the side-effect and the send still allows the retry to see
-  // the cached response.
-  const result = await handler();
+  // Validate header format — UUID v4 / v7 / opaque token, 8-200 chars.
+  // Anything outside that range is almost certainly a client bug; 400 fast.
+  if (idempotencyKey.length < 8 || idempotencyKey.length > 200) {
+    reply.code(400).send({
+      error: 'BAD_IDEMPOTENCY_KEY',
+      message: 'Idempotency-Key header must be 8-200 chars (UUID or opaque token).',
+    });
+    return;
+  }
 
-  if (typeof idempotencyKey === 'string') {
+  const { companyId, routeKey } = options;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + IDEMPOTENCY_TTL_MS);
+  const whereKey = {
+    companyId_routeKey_idempotencyKey: { companyId, routeKey, idempotencyKey },
+  };
+
+  // Fast path: a completed, non-expired cache row → return it, no handler.
+  const cached = await checkIdempotencyKey(companyId, routeKey, idempotencyKey, now);
+  if (cached) {
+    reply.code(cached.status).send(cached.body);
+    return;
+  }
+
+  // ── Atomic RESERVE-then-execute ──────────────────────────────────────────
+  // Insert a placeholder row (responseStatus 0 = "in flight"). The composite
+  // PK (companyId, routeKey, idempotencyKey) makes exactly ONE concurrent
+  // request win the INSERT; that winner is the only one allowed to run the
+  // side-effecting handler. Losers hit P2002 and either serve the winner's
+  // cached response (completed) or 409 IN_FLIGHT (still processing). The old
+  // check-then-act left a TOCTOU window where N duplicates all ran the
+  // handler — double invites/messages/audits/pushes. This closes it.
+  let reserved = false;
+  for (let attempt = 0; attempt < 2 && !reserved; attempt++) {
     try {
-      await recordIdempotencyKey(options.companyId, options.routeKey, idempotencyKey, result);
+      await prisma.idempotencyKey.create({
+        data: {
+          companyId,
+          routeKey,
+          idempotencyKey,
+          responseStatus: RESERVED_STATUS,
+          responseJson: {},
+          expiresAt,
+        },
+      });
+      reserved = true;
     } catch (err) {
-      // Record failure is non-fatal — the side effects already
-      // committed; we just couldn't cache. Log so ops sees the
-      // pattern if it becomes frequent.
-      req.log.warn(
-        { err, event: 'idempotency.record_failed', routeKey: options.routeKey },
-        'idempotency-key record failed; response will not be retry-cached',
-      );
+      if (!isUniqueViolation(err)) throw err;
+      const existing = await prisma.idempotencyKey.findUnique({ where: whereKey });
+      if (existing && existing.expiresAt >= now) {
+        if (existing.responseStatus !== RESERVED_STATUS) {
+          // Winner already completed → serve their cached response.
+          reply
+            .code(existing.responseStatus)
+            .send(existing.responseJson as CachedHttpResponse['body']);
+          return;
+        }
+        // Winner is still processing this same key → tell the client to retry.
+        reply.code(409).send({
+          error: 'IDEMPOTENT_REQUEST_IN_FLIGHT',
+          message: 'A request with this Idempotency-Key is still being processed. Retry shortly.',
+        });
+        return;
+      }
+      // Existing row is expired/stale → clear it and retry the reserve once.
+      await prisma.idempotencyKey
+        .deleteMany({ where: { companyId, routeKey, idempotencyKey, expiresAt: { lt: now } } })
+        .catch((e) =>
+          req.log.debug(
+            { err: e, routeKey },
+            'idempotency placeholder cleanup failed (non-fatal; TTL sweeps it)',
+          ),
+        );
     }
+  }
+  if (!reserved) {
+    // Lost the reserve twice to a concurrent stale-takeover — ask to retry.
+    reply.code(409).send({
+      error: 'IDEMPOTENT_REQUEST_IN_FLIGHT',
+      message: 'A request with this Idempotency-Key is still being processed. Retry shortly.',
+    });
+    return;
+  }
+
+  // We hold the reservation → run the handler exactly once.
+  let result: CachedHttpResponse;
+  try {
+    result = await handler();
+  } catch (err) {
+    // Handler failed → release our placeholder so a legitimate retry can
+    // proceed instead of being locked out for the full TTL. Scope the delete
+    // to responseStatus 0 so we never delete a completed row.
+    await prisma.idempotencyKey
+      .deleteMany({
+        where: { companyId, routeKey, idempotencyKey, responseStatus: RESERVED_STATUS },
+      })
+      .catch((e) =>
+        req.log.debug(
+          { err: e, routeKey },
+          'idempotency placeholder release failed (non-fatal; TTL sweeps it)',
+        ),
+      );
+    throw err;
+  }
+
+  // Persist the real response over the placeholder, then send.
+  try {
+    await prisma.idempotencyKey.update({
+      where: whereKey,
+      data: { responseStatus: result.status, responseJson: result.body as object, expiresAt },
+    });
+  } catch (err) {
+    // Non-fatal — the side effects already committed; we just couldn't cache
+    // the response (a retry will re-reserve since the placeholder is gone).
+    req.log.warn(
+      { err, event: 'idempotency.record_failed', routeKey },
+      'idempotency-key result persist failed; response will not be retry-cached',
+    );
   }
 
   reply.code(result.status).send(result.body);

@@ -92,3 +92,5 @@ backups/
 
 # apksigner sidecar (build artifact for the gitignored APK)
 *.idsig
+
+*.build-bak
