@@ -1,0 +1,512 @@
+[
+  {
+    "dim": "tenant-isolation",
+    "severity": "P1",
+    "title": "Zero RLS backstop on the entire axhy schema — withTenantContext GUC is set but never enforced; one missing companyId filter = silent cross-tenant leak",
+    "where": "apps/backend/src/middleware/tenant-context.ts:230-261 (withTenantContext sets axhy.current_company_id via SET LOCAL) vs prod pg_class/pg_policies",
+    "scenario": "Defense-in-depth gap, not a current exploit. The code comment at tenant-context.ts:184-189 states RLS exists only on axhy_chat.turn_embeddings / axhy_graph / axhy_audit. I verified against prod: every table in the axhy schema (Worker, Visit, Assignment, LeaveRequest, SwapRequest, Complaint, ChatMessage, SupervisorDecision, Membership, etc.) has relrowsecurity=false and pg_policies returns [] for schemaname='axhy'. So the SET LOCAL axhy.current_company_id executed on every withTenantContext transaction is dead weight in the app schema — no policy reads it. The whole multi-tenant guarantee therefore depends on every one of ~167 findMany/findFirst/update calls manually including companyId. Today all of them do, but there is no second line of defense: a single future handler that forgets companyId (or a dynamic where-builder that conditionally drops it) leaks another tenant's rows with nothing to catch it.",
+    "evidence": "Layer 1 (route claim): tenant-context.ts:4-6 + multiple route docblocks claim 'runs inside withTenantContext ... so RLS policies fire as a defense in depth' (e.g. complaints.ts:30-34). Layer 2 (route code): withTenantContext (tenant-context.ts:243-246) runs SELECT set_config('axhy.current_company_id',$1,true) then only a Company.status==ACTIVE check at :249-255; it does NOT add any companyId predicate to downstream queries. Layer 3 (prod DB): SELECT relrowsecurity,relforcerowsecurity FROM pg_class JOIN pg_namespace WHERE nspname='axhy' → all 33 tables relrowsecurity=false; SELECT * FROM pg_policies WHERE schemaname='axhy' → 0 rows. Layer 4 (side-effect): the GUC is set on every write tx but no axhy-schema policy consumes current_setting('axhy.current_company_id') — confirmed by the empty policy set. Net: the 'defense in depth' described in route docs does not exist for tenant tables.",
+    "expected": "Either (a) RLS policies enabled+FORCED on tenant tables filtering on current_setting('axhy.current_company_id') so the GUC actually backstops a forgotten app-layer filter, or (b) the misleading 'RLS fires as defense in depth' comments removed and replaced with an explicit 'app-layer filtering is the ONLY isolation; there is no DB backstop' warning so future authors do not assume a safety net that isn't there.",
+    "actual": "GUC is written on every transaction but no axhy-schema RLS policy reads it; isolation is single-layer (app code only) while comments across the codebase assert a second RLS layer that does not exist."
+  },
+  {
+    "dim": "tenant-isolation",
+    "severity": "P2",
+    "title": "Dormant legacy JWT auth mode trusts companyId from the token with ZERO DB verification when the 'epoch' claim is absent",
+    "where": "apps/backend/src/middleware/tenant-context.ts:79-89 (requireAuth legacy branch)",
+    "scenario": "requireAuth has a dual-mode design: if the verified JWT has no 'epoch' claim it takes the 'Legacy mode — no DB check' branch and sets req.auth.companyId straight from claims.companyId with no Membership lookup. A token whose companyId no longer matches an ACTIVE membership (e.g. issued before a company switch / membership revocation) would still be trusted in this branch. Not currently exploitable: I confirmed all tokens minted today carry epoch (auth.ts:216 epoch: active.tokenEpoch; auth-refresh.ts:174/210 always sets epoch), 15-min access TTL means pre-2026-05-27 no-epoch tokens have all expired, and the HMAC signature prevents an attacker from stripping epoch or swapping companyId.",
+    "evidence": "Layer 2 (route code): tenant-context.ts:80 `if (claims.epoch === undefined)` → :81-88 builds req.auth from claims.companyId/role with no prisma call, then returns; strict-mode DB verification (:92-138) is skipped entirely. Layer 1/4 (live probe): I decoded the QA worker's real token — payload includes epoch:0, so it goes through STRICT mode (membership re-read at :116-130). I then forged a token with epoch removed and companyId swapped to Reddy's tenant (7f356290) keeping the original signature, and POSTed to /me on prod → 401 AUTH_INVALID 'Token invalid or expired' (HMAC mismatch at verifyAccessToken). So the legacy branch is unreachable by an attacker today. Layer 3 (DB): n/a — the risk is the absence of the membership check in this branch, not a data row.",
+    "expected": "Remove the legacy no-epoch branch now that the 30-day cutover is complete (the docblock at :49-58 itself says 'Flip to strict-only at the f1-d slice'), so there is no code path that ever trusts companyId/role from a token without re-reading the Membership row.",
+    "actual": "The legacy branch remains in place and would trust token-supplied companyId with no DB check for any no-epoch token; it is currently dormant only because such tokens have expired and cannot be forged, not because the unsafe code path was removed."
+  },
+  {
+    "dim": "concurrency-races",
+    "severity": "P1",
+    "title": "clockInVisit TOCTOU: worker holds 2 simultaneous active timers",
+    "where": "worker-lifecycle-service.ts:99-118 (POST /worker/visits/:id/clock-in)",
+    "scenario": "two concurrent clock-ins on two visits both pass the active-timer read (99-107) then both update with no state guard (112)",
+    "evidence": "reproduced live 3 of 10; DB Visit IN_PROGRESS count for worker = 2; two VISIT_CLOCKED_IN audits same ms; cleaned up",
+    "expected": "second clock-in returns ACTIVE_TIMER_EXISTS 409",
+    "actual": "both succeed, two IN_PROGRESS rows for one worker"
+  },
+  {
+    "dim": "concurrency-races",
+    "severity": "P1",
+    "title": "POST /leave-requests no dedup, ignores Idempotency-Key",
+    "where": "leave-request-service.ts:51-101; routes/leave-requests.ts:89-164",
+    "scenario": "double-tap/retry; unconditional create, route not withIdempotency-wrapped",
+    "evidence": "2 concurrent both 201; 3 same-key gave 3 ids; DB 2 LeaveRequest rows same dates; 2 hr.leave_requested outbox",
+    "expected": "one LeaveRequest + one HR notification",
+    "actual": "new row + outbox per POST regardless of key"
+  },
+  {
+    "dim": "concurrency-races",
+    "severity": "P1",
+    "title": "withIdempotency check-then-act race: double create",
+    "where": "idempotency-key.ts:165-213 (complaints.ts:284, replacement-invites.ts:109, sites.ts:62, activity.ts:69)",
+    "scenario": "2 same-key POSTs both miss cache (185), both run handler (196), both create, upsert (128) to one row",
+    "evidence": "no cache row before handler; upsert never throws P2002; wrapped creates unconditional, tables only pkey UNIQUE; proven live on /leave-requests",
+    "expected": "handler runs once per key",
+    "actual": "both run handler, two rows, one cache row"
+  },
+  {
+    "dim": "concurrency-races",
+    "severity": "P2",
+    "title": "ConsentLog no unique on (userId,policyVersion); 13 dup prod rows",
+    "where": "worker-consent.ts:69-94 (POST /worker/consent)",
+    "scenario": "concurrent re-consent; findFirst (69) then create (88), no tx, no unique index",
+    "evidence": "prod DB 13 ConsentLog rows userId aa3699e4 all policyVersion 2026-05-21; pg_indexes only pkey + 2 non-unique",
+    "expected": "one row per (userId,policyVersion)",
+    "actual": "13 duplicate legal-consent rows"
+  },
+  {
+    "dim": "concurrency-races",
+    "severity": "P2",
+    "title": "workerOtpVerifiedService duplicate activation side-effects",
+    "where": "worker-otp-verified-service.ts:65-125 (auth.ts:147)",
+    "scenario": "2 concurrent OTP verifies; both read state (70), both non-conditional update by id (108), both audit (113) + worker.activated outbox (121)",
+    "evidence": "line 108 no state in WHERE (should be conditional updateMany); code-proven by analogy to the live clock-in race",
+    "expected": "audit + worker.activated fire once",
+    "actual": "two audits + two worker.activated outbox per concurrent verify"
+  },
+  {
+    "dim": "concurrency-races",
+    "severity": "P2",
+    "title": "swap-request and assignment create no dedup",
+    "where": "swap-request-service.ts:54-137; assignment-service.ts:69-113",
+    "scenario": "double-tap/two supervisors; unconditional create (swap enqueues 2 gupshup.send)",
+    "evidence": "swap create 76 + outbox 107/123; assignment create 84; pg_indexes both only pkey UNIQUE; same class as leave-create proven live",
+    "expected": "one row + one notification set",
+    "actual": "new row per create; swaps spam 2 extra sends each"
+  },
+  {
+    "dim": "concurrency-races",
+    "severity": "P2",
+    "title": "first-login user.create unguarded P2002 -> 500",
+    "where": "auth.ts:91-101 (POST /auth/otp/verify)",
+    "scenario": "new phone from 2 devices; both findFirst (91) miss, both create (96); 2nd throws P2002, no try/catch",
+    "evidence": "line 96 no try/catch/upsert; User_phone_key UNIQUE confirmed; unreachable for the one loginable prod phone",
+    "expected": "both resolve to same User",
+    "actual": "one first-verify 500s on unhandled P2002"
+  },
+  {
+    "dim": "idempotency",
+    "severity": "P1",
+    "title": "Generic withIdempotency has no reserve step: concurrent same-key requests double-execute the handler (replacement-invites create writes 2 invites + 2 audits + 2 push notifications)",
+    "where": "apps/backend/src/lib/idempotency-key.ts:185-212 (check-then-run-then-record, no reserve); consumer apps/backend/src/routes/replacement-invites.ts:109-157 + service apps/backend/src/lib/services/replacement-invite-service.ts:184 (bare tx.replacementInvite.create), :198 (audit), :214 (notification)",
+    "scenario": "A supervisor double-taps 'Send invite' on Slow-3G. The client retries with the SAME Idempotency-Key BEFORE the first response returns, so the two POST /supervisor/replacement-invites land concurrently (or on two replicas).",
+    "evidence": "LAYER 2 (route): withIdempotency (idempotency-key.ts:185 checkIdempotencyKey returns null for both racers; :196 `const result = await handler()` runs unconditionally with no lock/reserve; :200 recordIdempotencyKey is an upsert that only collapses the cache row). Comment at :155 claims 'Run handler exactly once' but there is no reserve between :185 and :196. LAYER 2 (service): replacement-invite-service.ts:184 `tx.replacementInvite.create(...)` is an unconditional INSERT with no compare-and-set; followed by recordAuditEvent (:198) and tx.notification.create (:214). LAYER 3 (DB): `select indexdef from pg_indexes where tablename='ReplacementInvite'` returns ONLY ReplacementInvite_pkey on (id) plus non-unique indexes -> no natural-key uniqueness to catch the duplicate. LAYER 4 (side-effect): two Notification rows (kind='replacement_invite', priority URGENT) -> two OneSignal pushes to the candidate, plus two REPLACEMENT_INVITE_SENT AuditEvents. Contrast: visits-resolve/reject and visit-submit survive the same wrapper gap because their services use conditional updateMany CAS (verified: visit-flagged-review-service.ts:116-120; worker-submit-service.ts:88-96), which I confirmed live (two concurrent submits -> 200 + 409, DB shows exactly 6 VisitPhoto / 1 audit / 1 outbox).",
+    "expected": "Exactly one ReplacementInvite, one AuditEvent, one Notification per (companyId, routeKey, Idempotency-Key) regardless of concurrency — as the route comment promises ('returns the cached invite row instead of creating two').",
+    "actual": "Two of each are created when the two requests race past the cache-miss check before either records. The Idempotency-Key only dedupes SEQUENTIAL retries, not concurrent ones."
+  },
+  {
+    "dim": "idempotency",
+    "severity": "P1",
+    "title": "Complaints reply double-tap (same Idempotency-Key, concurrent) appends 2 ComplaintMessage rows and increments HR unread counter by 2",
+    "where": "apps/backend/src/routes/complaints.ts:284-314 (withIdempotency wrap); service apps/backend/src/lib/services/complaint-service.ts:213 (tx.complaintMessage.create), :234-237 (tx.complaint.update unreadHrRepliesCount:{increment:1})",
+    "scenario": "HR or supervisor double-taps 'Send reply' on a complaint thread on a flaky connection; two POST /complaints/:id/messages arrive concurrently with the same Idempotency-Key.",
+    "evidence": "LAYER 1 (route comment, complaints.ts:264-266): explicitly states the Idempotency-Key exists so a double-tap 'returns the cached reply outcome instead of appending two ComplaintMessage rows + double-incrementing HR's unread counter'. LAYER 2 (route): wrapped in the same generic withIdempotency (complaints.ts:284) that has no reserve step (idempotency-key.ts:196 runs handler() for both racers). LAYER 2 (service): complaint-service.ts:213 bare create; :234-237 `unreadHrRepliesCount: { increment: 1 }` runs once per handler execution. LAYER 3 (DB): `pg_indexes where tablename='ComplaintMessage'` returns ONLY ComplaintMessage_pkey on (id) — no unique constraint on (complaintId, idempotencyKey) or similar to stop the second insert. LAYER 4 (side-effect): unread counter is now off by +1 from reality (HR sees a phantom unread), and the thread shows a duplicated message. The team clearly knows the DB-level fix (Notification has partial unique index notification_supervisor_change_idempotency; AuditEvent has AuditEvent_binding_ended_auto_dedup) but did not apply it here.",
+    "expected": "One ComplaintMessage and +1 to unreadHrRepliesCount per unique Idempotency-Key, even under concurrency.",
+    "actual": "Two messages and +2 to the counter when the two requests race; the promised dedup only covers sequential retries."
+  },
+  {
+    "dim": "idempotency",
+    "severity": "P1",
+    "title": "Worker consent dedup is a check-then-insert race with no unique constraint: concurrent identical submits create duplicate ConsentLog rows (proven against prod DB)",
+    "where": "apps/backend/src/routes/worker-consent.ts:69-94 (findFirst existing -> if none, create); no Idempotency-Key used at all",
+    "scenario": "First-run consent screen refocus / reinstall double-fires POST /worker/consent for the same (userId, policyVersion). The route's own comment names this exact case: 'common on reinstall / screen refocus'. Two requests land concurrently so both findFirst reads complete before either create.",
+    "evidence": "LAYER 2 (route): worker-consent.ts:69 `findFirst({where:{userId, policyVersion}})`; :74 if existing -> 409; :88 else `prisma.consentLog.create(...)`. This is a textbook TOCTOU — the guard is a read, not a DB constraint. LAYER 3 (DB): `pg_indexes where tablename='ConsentLog'` returns ConsentLog_pkey(id), ConsentLog_userId_idx, ConsentLog_userId_acceptedAt_idx — NO unique index on (userId, policyVersion). I REPRODUCED the race against the real prod DB by issuing both findFirst reads before either create (the exact interleave two concurrent HTTP requests produce) for userId aa3699e4-95a3-4880-8bff-0c69c49621cb with a synthetic policyVersion: both reads saw no row, both inserts succeeded, result = 2 ConsentLog rows. I cleaned up both synthetic rows (deleteMany count=2). LAYER 4: the prod ConsentLog already holds 13 rows for the same (userId='aa3699e4...', policyVersion='2026-05-21'), historical evidence the dedup has failed repeatedly. INV-9 (immutable legal record) is fine, but the 'exactly one consent per version' contract the fix claims to enforce is violated under concurrency.",
+    "expected": "Exactly one ConsentLog row per (userId, policyVersion); a concurrent duplicate should be rejected/collapsed (a unique index on (userId, policyVersion) + catch P2002, or upsert).",
+    "actual": "Two rows are created when two submits race; the RCA-G fix (worker-consent.ts:61-68) only closes the sequential window."
+  },
+  {
+    "dim": "idempotency",
+    "severity": "P1",
+    "title": "Chat leaks its Redis PROCESSING reservation on three early-return branches, locking the supervisor out of that message (409 IN_FLIGHT) for the full 120s TTL",
+    "where": "apps/backend/src/routes/chat.ts:637 reserveIdempotency; leak paths: :693-696 CHAT_BUSY return (before try, no release), :700-706 AI_NOT_CONFIGURED return (inside try, skips catch's releaseIdempotency), :1413-1419 AICostBudgetError return (inside catch, BEFORE the releaseIdempotency at :1427-1440)",
+    "scenario": "Supervisor sends a chat message. The reservation is taken at chat.ts:637 (Redis SET key __PROCESSING__ NX PX 120s). Then EITHER (a) the chat concurrency slot is full -> CHAT_BUSY, OR (b) OPENAI_API_KEY is unset -> AI_NOT_CONFIGURED, OR (c) the daily AI budget is exceeded -> AI_BUDGET_EXCEEDED. The client retries the same message with the same Idempotency-Key (correct idempotent-client behavior).",
+    "evidence": "LAYER 2 (route): chat.ts:637 reserveIdempotency sets __PROCESSING__ for 120s (chat-idempotency.ts:67-80, TTL_MS=120000). chat.ts:693-696 returns 503 CHAT_BUSY with NO releaseIdempotency call (it is before the try block at :698). chat.ts:700-706 returns AI_NOT_CONFIGURED inside the try, so it never reaches the catch block (:1408) where releaseIdempotency lives — only finally runs (releaseChatSlot). chat.ts:1413-1419 returns on AICostBudgetError inside the catch BEFORE the Promise.allSettled([recordCircuitFailure, releaseIdempotency]) at :1427. The irony: the comment at :1421-1424 states releaseIdempotency 'MUST still run — otherwise the supervisor is locked out of chat ... because the slot stays PROCESSING', yet the budget-exceeded branch above it bypasses exactly that. LAYER 4 (Redis side-effect): the key remains __PROCESSING__; on retry, checkIdempotency (chat.ts:579 / chat-idempotency.ts:57) returns {cached:'in_flight'} -> 409 IDEMPOTENCY_IN_FLIGHT for up to 120s. The user's legitimate message is blocked even though zero work happened. CHAT_BUSY (transient load) is the most impactful since it is a normal runtime condition, not a misconfig. (Note: chat is SUPERVISOR-gated so verified by code review; the QA prod phone is a WORKER and cannot reach /chat/messages.)",
+    "expected": "On any early return after reserving, releaseIdempotency should run so the retry is a fresh attempt (or gets the proper terminal error like 429 AI_BUDGET_EXCEEDED), not a 120s IN_FLIGHT lockout.",
+    "actual": "Reservation leaks on CHAT_BUSY, AI_NOT_CONFIGURED, and AI_BUDGET_EXCEEDED; the same-key retry is wrongly 409'd for the remaining TTL."
+  },
+  {
+    "dim": "idempotency",
+    "severity": "P2",
+    "title": "Idempotency cache ignores request body: a reused key with a DIFFERENT payload returns the stale cached response and silently drops the new request (no body-hash on either implementation)",
+    "where": "Generic: apps/backend/src/lib/idempotency-key.ts:80-108 (keyed only on companyId+routeKey+idempotencyKey, no body hash). Chat: apps/backend/src/lib/chat-idempotency.ts:50-64 + routes/chat.ts:579-583 (keyed only on companyId+idempotencyKey)",
+    "scenario": "A client reuses an Idempotency-Key it already used for a DIFFERENT body — e.g. mobile generates one key per screen-session instead of per-action, or a developer copy-pastes a key. Chat: same key, a genuinely new message text. Complaints/invites: same key, edited content.",
+    "evidence": "LAYER 2: checkIdempotencyKey (idempotency-key.ts:86-94) looks up only the composite (companyId, routeKey, idempotencyKey) and returns row.responseJson — the request body is never read or hashed. withIdempotency (:185-189) returns the cached body and skips handler() entirely. Chat checkIdempotency (chat-idempotency.ts:55) is `redis.get(RedisKeys.chatIdempotency(companyId, idempotencyKey))` — no body component; chat.ts:580-582 returns dedup.responseJson. LAYER 3 (DB): the IdempotencyKey table (verified columns: companyId, routeKey, idempotencyKey, responseStatus, responseJson, createdAt, expiresAt) has NO request-hash column, so detecting a payload mismatch is impossible. LAYER 4: the new payload produces no side effect and no message — it is silently discarded; the client believes its (different) request succeeded. Standard idempotency guidance (and Stripe-style impls) is to 422 on a key reused with a different request fingerprint; here it is accepted and the old answer is replayed.",
+    "expected": "A reused Idempotency-Key with a different request body should be rejected (e.g. 422 IDEMPOTENCY_KEY_REUSED), not served the previous unrelated response.",
+    "actual": "Stale cached response is returned and the new request is dropped with no error."
+  },
+  {
+    "dim": "idempotency",
+    "severity": "P2",
+    "title": "Mandated Idempotency-Key on /decisions/:id/apply is a dead guard — /chat/apply never consults it; the misleading comment also accepts a 1-char key",
+    "where": "apps/backend/src/routes/supervisor-decisions.ts:209-222 (mandates + forwards idempotency-key, only rejects length===0); apps/backend/src/routes/chat.ts:1453-1580 (/chat/apply handler has no checkIdempotency/reserveIdempotency/recordIdempotency)",
+    "scenario": "Supervisor taps Apply on a decision card; the proxy route mandates an Idempotency-Key and forwards it to /chat/apply, but apply dedupes on SupervisorDecision.appliedAt CAS, not on the key.",
+    "evidence": "LAYER 2: supervisor-decisions.ts:215-222 requires the header but only checks `length === 0` (a 1-char key passes), and the comment at :209-214 claims the key 'defeats the /chat/apply dedup cache' if regenerated. But /chat/apply (chat.ts:1453+) contains no idempotency lookup at all — grep of chat.ts shows checkIdempotency/reserveIdempotency only inside /chat/messages (:579, :637), never in /chat/apply. LAYER 2 (real guard): apply dedup is the SupervisorDecision lifecycle CAS — preCheckApply (supervisor-decision-writer.ts:392-401 throws ALREADY_APPLIED if appliedAt set) + commitApply conditional updateMany (:478-487, count===0 -> race-lost). LAYER 3 (DB): backed by a partial unique constraint (migration 20260518 per the file header) on the decision, so duplicate applies DO collapse to one — apply itself is safe. The defect is that the documented idempotency-key contract is dead code: it neither prevents nor enables the dedup, and the length check is weaker (>=1) than /chat/messages (>=8) and the generic wrapper (>=8), an inconsistency that lets near-empty keys through.",
+    "expected": "Either /chat/apply should actually honor the Idempotency-Key, or the mandate+comment should be corrected to state the real guard is the decision CAS; key length validation should be consistent (>=8) across surfaces.",
+    "actual": "The forwarded Idempotency-Key is never read by /chat/apply; dedup works only via decision state, and a 1-char key is accepted at the proxy."
+  },
+  {
+    "dim": "state-machines",
+    "severity": "P1",
+    "title": "Worker clock-in race bypasses Rule A: a single worker ends up with TWO concurrent IN_PROGRESS visits",
+    "where": "apps/backend/src/lib/services/worker-lifecycle-service.ts:99-118 (clockInVisit); route apps/backend/src/routes/worker-lifecycle.ts:81 POST /worker/visits/:visitId/clock-in; tx config apps/backend/src/middleware/tenant-context.ts:240-260 (no isolationLevel => Read Committed)",
+    "scenario": "Same worker (e.g. double-tapping 'Start' on two visits, or two app instances / flaky network retries) fires POST /worker/visits/V1/clock-in and POST /worker/visits/V2/clock-in concurrently. Both transactions read state=SCHEDULED and run the Rule-A check `findFirst({state:'IN_PROGRESS'})` BEFORE either write commits; under Read Committed both see zero active timers, both pass, both write IN_PROGRESS to their own (different) row, so there is no row-lock conflict to serialize them.",
+    "evidence": "LAYER 2 route/service: clockInVisit reads visit.state (line 75-78), checks CLOCK_IN_LEGAL_FROM in JS (line 92), checks Rule A via non-locking findFirst (line 99-107), then writes with `tx.visit.update({ where:{ id: visitId }, data:{ state:'IN_PROGRESS' } })` (line 112-118) — the WHERE has only `id`, never `state` and never re-checks the active-timer invariant atomically. Contrast worker-submit-service.ts:88 and visit-flagged-review-service.ts:116/174 which DO put the from-state in the updateMany WHERE. LAYER 3 DB: I created two SCHEDULED test visits for QA worker (Worker.id b0be64f7-...) and ran two separate PrismaClients with interleaved BEGIN; both Rule-A reads returned 0 active timers ('A sees active timers: 0', 'B sees active timers: 0'), then both committed IN_PROGRESS. Final prod-DB query returned COUNT=2 IN_PROGRESS visits for the one worker. LAYER 1 request: POST /worker/visits/{id}/clock-in body {} with worker JWT both return 200 {visitState:'IN_PROGRESS'}. LAYER 4 side-effect: each transition also emits a VISIT_CLOCKED_IN AuditEvent, so the audit log records two simultaneous active timers as legitimate. Test rows were deleted afterward; final DB verify shows 0 IN_PROGRESS / 0 leftover.",
+    "expected": "At most one IN_PROGRESS visit per worker at any time (Rule A, the explicit intent in worker-lifecycle-service.ts:56-58 and 96-110). The IN_PROGRESS write should be a conditional updateMany whose WHERE re-asserts both the legal from-state AND the no-other-active-timer invariant atomically (or run at Serializable), so the loser of a concurrent race gets count=0 and returns ACTIVE_TIMER_EXISTS.",
+    "actual": "Two concurrent clock-ins both succeed; prod DB ends with two IN_PROGRESS visits for one worker plus two VISIT_CLOCKED_IN audit events. Downstream timer/today logic (worker-today-service IN_FLIGHT_STATES, attendance, payroll duration) now sees a worker physically in two places at once."
+  },
+  {
+    "dim": "state-machines",
+    "severity": "P1",
+    "title": "Clock-in write has no from-state guard: a CANCELLED (terminal, billable) visit can be resurrected to IN_PROGRESS via a clock-in racing a supervisor cancel",
+    "where": "apps/backend/src/lib/services/worker-lifecycle-service.ts:92-118 (clockInVisit); legal edges in packages/state-machines/src/visit.ts:143-147 (CANCELLED has only ARCHIVE_THRESHOLD_REACHED; no edge to IN_PROGRESS)",
+    "scenario": "A visit is SCHEDULED/NOTIFIED. The worker taps Start (clock-in) at the same moment a supervisor cancels the visit. clockInVisit reads state=SCHEDULED and passes the CLOCK_IN_LEGAL_FROM JS check; meanwhile the cancel commits, moving the row to CANCELLED; then clock-in's unconditional `update({ where:{ id } })` overwrites it to IN_PROGRESS.",
+    "evidence": "LAYER 2 code: the from-state is validated only against the stale JS snapshot (line 92 `if (!CLOCK_IN_LEGAL_FROM.includes(visit.state))`), but the actual write at line 112-118 is `tx.visit.update({ where:{ id: visitId }, data:{ state:'IN_PROGRESS' } })` with no `state` in the WHERE, so it cannot detect the row moved to CANCELLED. LAYER 3 DB (prod): interleaved two-client transaction — clock-in read returned state=SCHEDULED ('passes CLOCK_IN_LEGAL_FROM'); a concurrent client committed `UPDATE Visit SET state='CANCELLED' WHERE id=.. AND state='SCHEDULED'` (cancel committed); then the clock-in client committed its unconditional UPDATE. Final prod-DB read: state='IN_PROGRESS'. CANCELLED→IN_PROGRESS is not an edge in visit.ts. LAYER 4: CANCELLED is in BILLABLE_VISIT_STATES (visit.ts:167-173); resurrecting it to IN_PROGRESS double-counts the work and lets it re-enter capture/submit/AI-verify, producing a second billable terminal state for the same scheduled visit. Same hole applies to VERIFIED/REJECTED/NO_SHOW/ARCHIVED if any lands there between read and write. Test row deleted; DB restored.",
+    "expected": "clock-in must refuse any visit not currently in a CLOCK_IN_LEGAL_FROM state at write time. The write should be a conditional updateMany `where:{ id, companyId, state:{ in: CLOCK_IN_LEGAL_FROM } }`; count=0 ⇒ WRONG_STATE 409. A terminal/cancelled visit must never become IN_PROGRESS.",
+    "actual": "The clock-in unconditionally forces state='IN_PROGRESS' regardless of the row's real current state, so a cancelled (or otherwise concluded) visit is silently revived into the active worker flow — an illegal transition the visit machine forbids."
+  },
+  {
+    "dim": "state-machines",
+    "severity": "P2",
+    "title": "Supervisor resolve path drops the state='FLAGGED' guard the reject path enforces (latent illegal FLAGGED-bypass)",
+    "where": "apps/backend/src/lib/services/visit-flagged-review-service.ts:116-119 (resolveFlaggedVisit) vs 174-182 (rejectFlaggedVisit)",
+    "scenario": "resolveFlaggedVisit's updateMany WHERE is only `{ id, companyId, flagged:true }` — no state condition — whereas rejectFlaggedVisit guards `state:{ in:['FLAGGED'] }`. Per visit.ts, SUPERVISOR_RESOLVED is legal only from FLAGGED. If any future code path ever sets flagged=true on a non-FLAGGED visit, resolve would force it straight to VERIFIED, skipping the machine.",
+    "evidence": "LAYER 2 code asymmetry: resolve line 116-118 `updateMany({ where:{ id, companyId, flagged:true }, data:{ flagged:false, state:'VERIFIED' } })` (no state); reject line 174-181 includes `state:{ in: REJECTABLE_VISIT_STATES }`. LAYER 3 DB: I queried prod for the safety invariant `flagged=true AND state<>'FLAGGED'` → [] (zero rows), and confirmed the only flagged=true WRITE is dispatcher/handlers/ai.ts:382-389 which co-sets state='FLAGGED'; every other flagged write sets false. So the invariant holds TODAY and the bug is not currently reachable. LAYER 4: no current divergence. Reported as defense-in-depth: the resolve write is the single place that trusts the flagged column to imply the FLAGGED state.",
+    "expected": "resolve should mirror reject and include `state:'FLAGGED'` (or `state:{ in: REJECTABLE_VISIT_STATES }`) in the updateMany WHERE so the SUPERVISOR_RESOLVED transition can only ever fire from the one legal source state, independent of the flagged column.",
+    "actual": "resolve relies solely on flagged=true; it would transition a non-FLAGGED visit to VERIFIED if the flagged⟺FLAGGED invariant were ever broken, bypassing the machine. Currently latent (no reachable trigger)."
+  },
+  {
+    "dim": "state-machines",
+    "severity": "P2",
+    "title": "anonymizeWorkerService finalizes TERMINATION_PENDING→TERMINATED with a read-then-unconditional-write (TOCTOU)",
+    "where": "apps/backend/src/lib/services/anonymize-worker-service.ts:57-94",
+    "scenario": "Two concurrent HR finalize calls (or a retry) on the same TERMINATION_PENDING worker: both read state='TERMINATION_PENDING', both pass the JS guard at line 68, both run `tx.worker.update({ where:{ id }, data:{ state:'TERMINATED', userId:null } })` with no state condition.",
+    "evidence": "LAYER 2 code: state is checked only on the JS snapshot (line 61-70); the write at line 88-93 has no `state` in the WHERE, unlike chat.ts:1877 (propose_termination) which uses `updateMany({ where:{ id, state:{ in: TERMINATE_LEGAL_FROM } } })`. Under Read Committed both finalizers can commit. LAYER 3/4: the resulting state (TERMINATED) is the same and the transition TERMINATION_PENDING→TERMINATED is legal in worker.ts, and the PII scrub (user.phone hash, membership INACTIVE, userId=null) is each idempotent-ish, so impact is low — but the second call re-emits a WORKER_ANONYMIZED audit event for an already-terminated worker and re-derives effectiveAt, and the pattern is the same unguarded read-then-write class as the clock-in bug. Verified by code review; not driven live (no HR/SUPER_ADMIN auth on prod).",
+    "expected": "Finalize should be a conditional updateMany `where:{ id, state:'TERMINATION_PENDING' }`; count=0 ⇒ already-finalized, return WORKER_NOT_PENDING_TERMINATION without re-scrubbing or re-auditing.",
+    "actual": "The TERMINATED write is unconditional on id, so concurrent finalizes both proceed and emit duplicate WORKER_ANONYMIZED audit events; defends the same TOCTOU class as clock-in but with low real-world blast radius."
+  },
+  {
+    "dim": "worker-journey-live",
+    "severity": "P1",
+    "title": "Concurrent clock-ins create two IN PROGRESS visits per worker, breaking one-active-timer Rule A",
+    "where": "worker-lifecycle-service.ts lines 99 to 118; route worker-lifecycle.ts lines 81 to 88",
+    "scenario": "Two clock-in POSTs on two SCHEDULED visits; unlocked read then write with no claim and no unique constraint so both pass.",
+    "evidence": "Both returned 200 IN PROGRESS (B4 200 A4 200 then count 2). DB count of IN PROGRESS for the worker was 2. Two clocked-in audit rows. Reproduced on 193ad272 and 1ec78646 then cleaned up.",
+    "expected": "Second clock-in should return 409 active timer exists.",
+    "actual": "Worker ends with two IN PROGRESS visits in DB."
+  },
+  {
+    "dim": "worker-journey-live",
+    "severity": "P1",
+    "title": "Duplicate descriptors at submit bypass the three-distinct-photos floor",
+    "where": "worker-submit-service.ts lines 77 to 115; zod worker-submit.ts lines 19 to 29 no dedupe; schema.prisma lines 1079 to 1103 no unique on r2Key",
+    "scenario": "Worker submits three before-1 plus three after-1; no dedupe so counts pass, deterministic key so all collide, createMany writes six rows.",
+    "evidence": "POST returned 200 three and three AWAITING VERIFICATION. DB six rows but two distinct keys. ai.verify ran on the same two images, visit FLAGGED. Cleaned up.",
+    "expected": "Floor should require three distinct photos per phase via dedupe or a unique constraint.",
+    "actual": "One before plus one after photo satisfies the floor and reaches AI as complete."
+  },
+  {
+    "dim": "supervisor-surface",
+    "severity": "P1",
+    "title": "/chat/transcribe and /chat/transcribe-stream have no role gate — any authenticated user (incl. WORKER) can drive paid OpenAI Whisper spend on the company key",
+    "where": "apps/backend/src/routes/chat-transcribe.ts:74 (`app.post('/chat/transcribe', { preHandler: requireAuth }, ...)`) and :241 (`/chat/transcribe-stream`, also `preHandler: requireAuth`)",
+    "scenario": "A WORKER (the only role that can auth on prod) — or any token from any role — POSTs a multipart `audio` field to /chat/transcribe. Every other supervisor-surface route uses `preHandler: [requireAuth, requireRole('SUPERVISOR')]`; these two use bare `requireAuth`, so the SUPERVISOR check is missing.",
+    "evidence": "ROUTE CODE: chat-transcribe.ts:74 `preHandler: requireAuth` (no requireRole), vs e.g. chat.ts:551 `[requireAuth, requireRole('SUPERVISOR')]`. The handler reads OPENAI_API_KEY (:81) and forwards the audio straight to https://api.openai.com/v1/audio/transcriptions with `Authorization: Bearer ${apiKey}` (:154-160). There is NO withTenantContext, NO requireRole, NO rate-limit, NO cost tracking (grep for rateLimit/withTenantContext/requireRole/incrementSpend on this file returns nothing). LIVE REQUEST (my WORKER token, JWT role=WORKER, epoch=0): `POST /chat/transcribe -F audio=@fake.m4a` → 502 `{\"error\":\"WHISPER_ERROR\",\"message\":\"Invalid file format. Supported formats: ['flac','m4a',...]\"}`. RESPONSE PROVES the request passed auth, parsed multipart, and was actually forwarded to OpenAI Whisper (the error message is OpenAI's). SIDE-EFFECT: with the same token, `GET /supervisor/today` → 403 (correctly gated), and `/chat/transcribe` with NO auth → 401 — so the only thing missing is the role check. A worker sending a real audio file would consume real Whisper budget.",
+    "expected": "/chat/transcribe and /chat/transcribe-stream should be gated `requireRole('SUPERVISOR')` (and ideally rate-limited + cost-tracked) like every other chat/supervisor route; a WORKER token should get 403.",
+    "actual": "WORKER token (and any authenticated user) passes the gate and triggers a paid OpenAI Whisper call billed to the company's key, with no rate limit or cost cap."
+  },
+  {
+    "dim": "supervisor-surface",
+    "severity": "P1",
+    "title": "REPLACEMENT_INVITE_OUTCOME decision is un-actionable in /supervisor/decisions: Apply 422s and Dismiss 403s — supervisor's own expired-invite notice is stuck for 48h",
+    "where": "Apply path: apps/backend/src/routes/supervisor-decisions.ts:200-207 + lib/services/decisions-service.ts:506-537 (supervisorDecisionActions builds an Apply action for every kind). Dismiss path: lib/supervisor-decision-writer.ts:291-297 (isCallerAuthorized site-targeted branch). Source of the targetId mismatch: lib/services/replacement-invite-service.ts:741-756 (emitInviteOutcomeDecision sets targetId=inviteId while registry routingMode='site-targeted').",
+    "scenario": "The expiry cron writes a REPLACEMENT_INVITE_OUTCOME SupervisorDecision (kind has no toolName, registry routingMode='site-targeted', tier OPERATIONAL) with targetId = the INVITE id and the real siteId only in payload.siteId. The origin supervisor opens /supervisor/decisions, sees the row (matched by origin), and taps either button.",
+    "evidence": "DB QUERY (prod, tenant Reddy 7f356290): supervisorDecision row f03507cc — kind=REPLACEMENT_INVITE_OUTCOME, supervisorId=f5f8479d, targetId=c9e96634, payload.siteId=8dc9792c. Verified targetId c9e96634 resolves: as Site=null, as Worker=null, as ReplacementInvite={status:EXPIRED} — i.e. targetId IS the inviteId, NOT a siteId. ROUTE/SERVICE: decisions-service.ts supervisorDecisionSource matches this row via origin (`row.supervisorId === ctx.userId`, true) and renders actions=[Apply→/decisions/<id>/apply, Dismiss→/supervisor/decisions/<id>/dismiss]. SIMULATION against prod data: Apply → supervisor-decisions.ts:200 `decisionSpecByKind.get('REPLACEMENT_INVITE_OUTCOME')` exists but `spec.toolName===undefined` → 422 KIND_NOT_APPLYABLE (printed true). Dismiss → dismissProposedDecision→isCallerAuthorized site-targeted branch calls getEffectiveResponsibleUserId({siteId: targetId=c9e96634}); DB shows NO siteSupervisorBinding for siteId=c9e96634 → responsible=null → `null === f5f8479d` false → throws NOT_RESPONSIBLE → 403 (printed true). The supervisor IS the real responsible (binding for the true payload.siteId=8dc9792c → userId=f5f8479d === origin, printed true), so the 403 is purely the wrong-field bug. SIDE-EFFECT: row stays PROPOSED until autoSweepStaleDecisions clears it after 48h (decisions-service.ts:190 STALE_THRESHOLD_MS=48h, sweep bypasses auth by id IN).",
+    "expected": "An informational REPLACEMENT_INVITE_OUTCOME row should have no Apply action (no toolName), and Dismiss should authorize the origin supervisor (or route by payload.siteId), so the supervisor can clear it.",
+    "actual": "Both buttons fail (Apply 422, Dismiss 403); the supervisor cannot acknowledge or dismiss their own expired-invite notification, which stays in the NEEDS-action queue for 48h."
+  },
+  {
+    "dim": "supervisor-surface",
+    "severity": "P1",
+    "title": "Calendar promote is check-then-act under READ COMMITTED with no Assignment uniqueness — concurrent promotes double-create ACTIVE assignments",
+    "where": "apps/backend/src/routes/calendar.ts:161-254 (POST /calendar/:id/promote). Guard is `if (entry.promotedAt) return ALREADY_PROMOTED` (line 182) followed by `tx.assignment.create` (line 209) and only THEN `update promotedAt` (line 227) — inside withTenantContext (default isolation).",
+    "scenario": "Supervisor (or a double-tap / retry) fires two concurrent POST /calendar/:id/promote for the same TENTATIVE_ASSIGNMENT entry. Both transactions read promotedAt=null (READ COMMITTED — no row lock, no SELECT FOR UPDATE), both pass the check, both run assignment.create.",
+    "evidence": "ROUTE CODE: calendar.ts findFirst→check entry.promotedAt→assignment.create→update; no `SELECT FOR UPDATE`, no conditional `updateMany WHERE promotedAt IS NULL` (contrast lib/supervisor-decision-writer.ts:478 and replacement-invite-service.ts:265 which DO use race-safe conditional updateMany). withTenantContext (tenant-context.ts:240) uses `prisma.$transaction(fn,{timeout,maxWait})` with NO isolationLevel → Postgres default READ COMMITTED (confirmed no isolationLevel set anywhere). DB: `model Assignment` (schema.prisma:360-387) has only `@@index` on (companyId,state)/(workerId,state)/(siteId,state) — NO @@unique on (workerId,siteId,validFrom). So two assignment.create calls both succeed. The two updates to calendarEntry serialize, but the FIRST assignment is orphaned (promotedToId points to the second), leaving a duplicate ACTIVE Assignment double-booking the worker, plus two ASSIGNMENT_CREATED audit events for one promote.",
+    "expected": "Promote must be race-safe (conditional updateMany on promotedAt IS NULL, or a unique constraint) so at most one Assignment is created per calendar entry.",
+    "actual": "Two concurrent promotes both create ACTIVE Assignment rows from one calendar entry; one is orphaned and the worker is double-assigned."
+  },
+  {
+    "dim": "supervisor-surface",
+    "severity": "P1",
+    "title": "Calendar create/promote never validate that payload workerId/siteId belong to the caller's company — promote can write a cross-tenant Assignment (no RLS on Assignment)",
+    "where": "apps/backend/src/routes/calendar.ts:40-79 (POST /calendar stores payload blindly: `payload: payload as object`) and :197-223 (promote: mapCalendarPayloadToAssignment(entry.payload) → assignment.create with companyId=auth.companyId but workerId/siteId taken verbatim from payload). Mapper: packages/state-machines/src/calendar.ts:57-86 passes workerId/siteId straight through with no tenant check.",
+    "scenario": "A supervisor creates (or PATCHes) a TENTATIVE_ASSIGNMENT calendar entry whose payload.workerId / payload.siteId reference a Worker/Site in ANOTHER tenant (UUIDs from any source), then promotes it.",
+    "evidence": "ROUTE CODE: calendar.ts create does no Site/Worker tenancy lookup; promote calls assignment.create({companyId: auth.companyId, workerId: assignmentPayload.workerId, siteId: assignmentPayload.siteId,...}) with no `findFirst({where:{id, companyId}})` validation of the worker or site. mapCalendarPayloadToAssignment (calendar.ts:77-85) returns workerId/siteId unchanged. SCHEMA: Assignment.workerId→Worker and siteId→Site FKs enforce existence only, NOT companyId match. SIDE-EFFECT/RLS: grep of all migrations shows the ONLY table with `ENABLE ROW LEVEL SECURITY` is axhy_chat.turn_embeddings (20260527_017); axhy.Assignment has NO RLS, so withTenantContext's GUC does not constrain the insert. Result: an Assignment row with companyId=A but workerId/siteId belonging to company B is creatable.",
+    "expected": "Calendar create/PATCH (or at minimum promote) must verify payload.workerId and payload.siteId belong to auth.companyId (findFirst {id, companyId}) before creating the Assignment.",
+    "actual": "No tenant-ownership validation; promote can create an Assignment in tenant A that references another tenant's worker/site, since FKs check existence only and Assignment has no RLS."
+  },
+  {
+    "dim": "supervisor-surface",
+    "severity": "P2",
+    "title": "Chat turn's user + assistant messages get identical createdAt; /chat/history and the AI prior-context loader order by createdAt with no tiebreaker → non-deterministic within-turn order",
+    "where": "Persistence: apps/backend/src/routes/chat.ts:388-463 (persistChatTurn creates user row then assistant row inside ONE withTenantContext tx; both columns default CURRENT_TIMESTAMP). Readers: apps/backend/src/routes/chat-history.ts:45-56 (`orderBy: { createdAt: 'desc' }`, no secondary key) and apps/backend/src/lib/prior-messages.ts:50-54 (same).",
+    "scenario": "Any normal chat turn: supervisor sends a message, AI replies; both ChatMessage rows are inserted in the same transaction. On the next /chat/history load (or when assembling AI prior-message context), the two rows have equal createdAt and Postgres may return them in either order.",
+    "evidence": "MIGRATION: 20260510_phase_c_wave_2a/migration.sql:64 `\"createdAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` for ChatMessage. PROD PROOF: ran a transaction selecting CURRENT_TIMESTAMP(3) before and after a 2.6s pg_sleep — both returned 2026-06-06T07:11:37.069Z (IDENTICAL=true) while clock_timestamp() advanced to ...39.679Z. So both rows created in persistChatTurn's single $transaction get the SAME createdAt to the millisecond. READERS order by createdAt only (no id/role tiebreaker), so within-turn order is undefined → restored history can show the AI reply before the user's question, and loadPriorMessages can feed the model assistant-before-user context. (Could not reproduce with live data: prod currently has 0 chat messages — chatMessage.count()=0.)",
+    "expected": "Order by (createdAt, id) or (createdAt, role) so the user message always precedes its assistant reply within a turn.",
+    "actual": "Both messages share an identical CURRENT_TIMESTAMP and ordering has no tiebreaker, so within-turn user/assistant order is non-deterministic in both /chat/history and the AI context window."
+  },
+  {
+    "dim": "hr-owner-superadmin",
+    "severity": "P1",
+    "title": "Anonymize never scrubs Worker.phone — resigned worker can never be re-hired at the same company",
+    "where": "apps/backend/src/lib/services/anonymize-worker-service.ts:88-94 (sets state=TERMINATED, userId=null but leaves phone) vs apps/backend/src/lib/services/admin-worker-service.ts:63-72 (worker.create); schema Worker @@unique([companyId, phone]) schema.prisma:276",
+    "scenario": "HR anonymizes a worker (POST /admin/workers/:id/anonymize). The terminated Worker row keeps the original real phone and retains the (companyId, phone) unique slot. Later HR re-hires the same person at the same company via POST /admin/workers with their real phone.",
+    "evidence": "Route: admin-workers.ts:216-247 calls adminCreateWorkerService. Service finds no User (anonymize set User.phone='anon:...', the find at admin-worker-service.ts:42 excludes anon:), creates a fresh User+Membership, then tx.worker.create at line 63. DB proof (rolled-back tx on prod company 7f356290): created a TERMINATED worker holding phone +919000000099, then the re-hire worker.create failed with P2002 target=[\"companyId\",\"phone\"]. Side-effect: anonymize writes the User.phone scrub + audit but leaves Worker.phone, so the slot is held indefinitely. Request/response: POST /admin/workers {phone:'+919000000099',...} → 409 {error:'WORKER_ALREADY_EXISTS'}, even though no live User/Membership/active Worker exists for that phone.",
+    "expected": "Re-hiring a previously-resigned worker at the same company should succeed (or anonymize should scrub/rename Worker.phone the way it scrubs User.phone, freeing the unique slot).",
+    "actual": "POST /admin/workers returns 409 WORKER_ALREADY_EXISTS permanently; the operator sees 'worker already exists' but cannot view or act on the hidden terminated row. The person is un-rehireable at that company."
+  },
+  {
+    "dim": "hr-owner-superadmin",
+    "severity": "P1",
+    "title": "Auto-derived company slug bypasses min(2) validation; non-ASCII names yield empty slug and collide on second tenant",
+    "where": "apps/backend/src/lib/services/super-admin-company-service.ts:35-42 (slugify) + :49 (slug = body.slug ?? slugify(name)); packages/shared-schema/src/zod/super-admin-companies.ts:18-24 (.min(2) only guards explicit slug); schema Company.slug @unique schema.prisma:34",
+    "scenario": "SUPER_ADMIN onboards a tenant via POST /super-admin/companies with a non-ASCII name (e.g. name='中文公司' or '🚀🚀' or '!!!') and no explicit slug. Then onboards a SECOND such tenant.",
+    "evidence": "Zod only enforces slug.min(2).regex when slug is PRESENT; the omitted-slug path computes the slug in the service, skipping Zod. slugify('中文公司')='' , slugify('🚀🚀')='', slugify('A')='a' (verified by running the exact slugify fn). DB proof (rolled-back tx on prod): Company.create({slug:''}) succeeded for the first non-ASCII tenant; a second Company.create({slug:''}) failed with P2002 target=[\"slug\"]. Route maps P2002→409 SLUG_EXISTS (super-admin-companies.ts:50-56) with message 'A company with slug \"\" already exists'.",
+    "expected": "Onboarding any validly-named tenant should produce a unique, non-empty, ≥2-char slug; two differently-named tenants should never collide.",
+    "actual": "First non-Latin/symbol-named tenant silently gets slug='' (unusable for slug routing); the SECOND such tenant's onboarding fails with a confusing 409 SLUG_EXISTS referencing an empty slug. Single-char names also produce slugs that violate the documented min(2) rule."
+  },
+  {
+    "dim": "hr-owner-superadmin",
+    "severity": "P1",
+    "title": "Anonymize TERMINATION_PENDING guard has no row lock — concurrent anonymize writes duplicate WORKER_ANONYMIZED audit events",
+    "where": "apps/backend/src/lib/services/anonymize-worker-service.ts:57-110 (read worker → check state !== 'TERMINATION_PENDING' → mutate, no SELECT FOR UPDATE / no updateMany-with-state-guard)",
+    "scenario": "Two concurrent POST /admin/workers/:id/anonymize for the same worker that is in TERMINATION_PENDING (e.g. HR double-click, or two HR tabs).",
+    "evidence": "Faithfully re-ran the service logic as two concurrent prod transactions against a seeded TERMINATION_PENDING worker (company 7f356290). Result: BOTH calls returned kind:'OK' and BOTH inserted a WORKER_ANONYMIZED audit row (queried back: 2 rows for the single workerId). Final worker state=TERMINATED, userId=null. The guard at line 68 reads stale state in each tx; nothing serializes them. Contrast the race-safe pattern in routes/chat.ts:1877-1883 which uses tx.worker.updateMany({where:{id, state:{in:LEGAL}}}) + count===0 check. (Test rows cleaned up afterward.)",
+    "expected": "A single resignation produces exactly one WORKER_ANONYMIZED audit row; the second concurrent call should return 409 WORKER_ALREADY_TERMINATED.",
+    "actual": "Both calls return 200 OK and the immutable audit log (system-of-record) gets duplicate WORKER_ANONYMIZED rows. Under tighter timing the second row's previousUserId is null (already-nulled), corrupting the audit payload."
+  },
+  {
+    "dim": "hr-owner-superadmin",
+    "severity": "P1",
+    "title": "baseSalaryPaise has no Zod upper bound but column is 32-bit Int — large salary value crashes create with uncaught 500",
+    "where": "packages/shared-schema/src/zod/admin-workers.ts:15 + admin-memberships.ts:23 + super-admin-memberships.ts:24 (baseSalaryPaise: z.number().int().nonnegative(), no .max()); schema Membership.baseSalaryPaise Int (32-bit) schema.prisma:148; catch only maps P2002 in admin-worker-service.ts:88-97 / admin-membership-service.ts:101-110",
+    "scenario": "HR/OWNER creates a worker or member with baseSalaryPaise above 2,147,483,647 (e.g. 3000000000 — a plausible annual-vs-monthly or rupee-vs-paise typo) via POST /admin/workers or /admin/memberships.",
+    "evidence": "Zod safeParse({baseSalaryPaise:3000000000}) returns success=true (no max). DB proof (rolled-back tx on prod): tx.membership.create with baseSalaryPaise=3000000000 threw a Prisma error with code=undefined (NOT P2002 — Postgres int overflow / query-execution error). The service catch blocks only re-map err.code==='P2002'→ALREADY_EXISTS; any other error rethrows. No global setErrorHandler exists (grep found none), so Fastify returns 500.",
+    "expected": "Out-of-range salary should be rejected at the boundary with 400 BAD_INPUT (Zod .max bound to the column's range).",
+    "actual": "Request passes validation, the DB insert throws a non-P2002 error that propagates uncaught → 500 Internal Server Error with no actionable message; the create silently fails."
+  },
+  {
+    "dim": "hr-owner-superadmin",
+    "severity": "P2",
+    "title": "Uncaught tx.user.create P2002 in onboarding/create services → 500 on concurrent same-phone requests",
+    "where": "apps/backend/src/lib/services/super-admin-owner-service.ts:71-77 (user.create outside try/catch); same pattern in admin-worker-service.ts:44-48 and admin-membership-service.ts:62-66; route super-admin-companies.ts has no error branch for thrown errors",
+    "scenario": "Two concurrent onboardings reusing the same NEW ownerPhone with different names (different slugs), or two concurrent POST /admin/workers with the same new phone (double-submit). Both miss the user.findFirst, both attempt user.create.",
+    "evidence": "User.phone is @unique (schema.prisma:96). DB proof: p.user.create with an existing phone throws P2002 target=[\"phone\"]. In super-admin-owner-service.ts the user.create at line 71 is NOT wrapped — only the subsequent membership.create try/catch (line 81) maps P2002. So a user-create P2002 rethrows, super-admin-company-service.ts re-throws (line 106 path or direct), $transaction rolls back, and the route (super-admin-companies.ts:29-64) has no catch → Fastify default 500. Same unguarded user.create in admin-worker-service.ts:44 and admin-membership-service.ts:62.",
+    "expected": "Concurrent same-phone create should resolve to a clean 409 (ALREADY_EXISTS) or succeed idempotently — never a 500.",
+    "actual": "The losing concurrent request returns 500 Internal Server Error (and for company onboarding, leaves no company — correct rollback but wrong status code and opaque error)."
+  },
+  {
+    "dim": "hr-owner-superadmin",
+    "severity": "P2",
+    "title": "Anonymize effectiveAt is immediate-scrub-but-future-labelled, writes no side-effect, and leaves dangling assignments/visits",
+    "where": "apps/backend/src/lib/services/anonymize-worker-service.ts:72-109 (scrub runs unconditionally; effectiveAt only labels audit+response; no enqueueOutbox; no assignment/visit cleanup)",
+    "scenario": "HR sets a future effectiveAt (e.g. +30 days) on POST /admin/workers/:id/anonymize expecting a scheduled resignation, while the worker still has ACTIVE assignments and SCHEDULED visits.",
+    "evidence": "Zod accepts a future effectiveAt (z.string().datetime().optional(), no bound — verified). Service lines 72-94 scrub User.phone, set Worker.userId=null + state=TERMINATED, set Membership INACTIVE immediately, regardless of effectiveAt; only the audit payload (line 105) and response anonymizedAt (route line 291) report the future date. No enqueueOutbox call (contrast worker-otp-verified-service.ts:121 which enqueues worker.activated). Prod DB shows 8 ACTIVE assignments and open visits (SCHEDULED/NOTIFIED/IN_PROGRESS) that reference Worker.id, which survives anonymize — so a terminated worker's future assignments/visits dangle with no actor able to log in (resolveWorkerFromAuth returns NO_WORKER once userId=null).",
+    "expected": "Either honor effectiveAt as a scheduled future termination (don't scrub until then) or document/return it as immediate; and cancel/transfer the worker's open assignments+visits and notify downstream via outbox.",
+    "actual": "Worker is locked out and scrubbed instantly while the API reports a future anonymizedAt; downstream assignments/visits remain ACTIVE/SCHEDULED with no owner; no outbox event is emitted for the termination."
+  },
+  {
+    "dim": "payroll-money",
+    "severity": "P0",
+    "title": "AI photo-verification spend is never counted against the daily budget — entire surface bypasses the Rs5000 cap",
+    "where": "apps/backend/src/dispatcher/handlers/ai.ts:236-318 (handleAiVerify); enqueued by apps/backend/src/lib/services/worker-submit-service.ts:130-133 (topic 'ai.verify'); registered apps/backend/src/dispatcher/handlers/registry.ts:36",
+    "scenario": "A worker submits a visit with photos. worker-submit-service enqueues 'ai.verify'. The dispatcher's handleAiVerify makes a real OpenAI vision call (multimodal, up to 4 high-detail images, model-policy ai_verification ceiling Rs1.0/call). This is the highest-volume AI path: one paid call per visit. A fraud loop or high visit volume runs this thousands of times/day.",
+    "evidence": "LAYER 2 (route/handler): ai.ts:236 does `fetch('https://api.openai.com/v1/chat/completions', ...)` and at :297-318 reads data.usage.prompt_tokens/completion_tokens but ONLY logs them — grep for incrementSpend|assertWithinBudget|aiSpendDailyInr|costInr across the ENTIRE dispatcher returns NONE. LAYER 4 (side-effect): the ONLY writer of Company.aiSpendDailyInr is incrementSpend (cost-tracking.ts:51), called solely from chat.ts:467 (chat surface). The budget gate assertWithinBudget (model-policy.ts:183) is invoked only from openaiToolLoop (chat). Verification spend touches neither. LAYER 3 (prod DB): outbox groupBy shows 6 'ai.verify' rows already processed in prod, yet every Company.aiSpendDailyInr = 0 — verification cost left zero trace on the counter. REQUEST: live worker token (phone +919381378257) can submit visits that trigger this path.",
+    "expected": "Per spec-2 §9, every AI surface's cost must increment Company.aiSpendDailyInr and respect the daily cap/WARN. handleAiVerify should compute cost from data.usage via tokenCostInrFor and call incrementSpend (and ideally assertWithinBudget before the call).",
+    "actual": "Verification AI cost is computed-then-discarded (logged only). aiSpendDailyInr reflects chat spend only. The Rs5000/day hard cap and Rs3000 WARN can NEVER fire from verification load, so the biggest cost driver has no spend ceiling — a runaway verification day is unbounded and the owner is never alerted."
+  },
+  {
+    "dim": "payroll-money",
+    "severity": "P1",
+    "title": "Daily AI-spend reset double-fires (zeroes the spend counter mid-day) — no DB lease, only in-memory per-process marker",
+    "where": "apps/backend/src/jobs/reset-ai-spend.ts:38 (in-memory lastResetUtcDate) + :85 (unconditional UPDATE Company SET aiSpendDailyInr=0); invoked apps/backend/src/dispatcher/index.ts:206 on every replica (server.ts:282 runs dispatcher in-process, default RUN_DISPATCHER_IN_PROCESS!=false)",
+    "scenario": "The dispatcher runs in-process on every backend replica (server.ts:278 'Prod has no separate dispatcher service'). Outbox rows have a multi-replica claim-lease, but the reset has only a per-process in-memory marker. After a UTC-midnight crossing AND any replica restart/scale-up later in the day, a second process whose marker lags 'today' runs the full reset again.",
+    "evidence": "LAYER 3 (prod DB, hard proof): SELECT on AuditEvent kind=AI_SPEND_DAILY_RESET returned 12 rows for 2026-06-06 — TWO complete reset passes for all 6 companies: pass 1 at 2026-06-06T00:00:00.885-.894Z, pass 2 at 2026-06-06T04:07:27.872-29.968Z, BOTH with payload.dateUtc='2026-06-06'. The dedup-by-(dateUtc,company) check flagged all 6 companies as DUP=2. LAYER 2: reset-ai-spend.ts:85 is `UPDATE \"axhy\".\"Company\" SET \"aiSpendDailyInr\" = 0` with NO WHERE/idempotency guard and NO DB lease (unlike dispatcher/index.ts:101-111 outbox claim). LAYER 4: the guard at :68-71 is per-process memory; a fresh/second process re-runs.",
+    "expected": "Exactly one reset per UTC day across all replicas (DB-level lease/idempotency like the outbox claim, or a once-per-day audit/lock row checked transactionally).",
+    "actual": "Reset ran twice on 2026-06-06 (~4h apart). Any AI spend incremented in the window between the two resets is silently zeroed by the second pass → tenant's real daily spend is under-counted → the Rs5000 cap and Rs3000 WARN fail to fire when they should. (Today the lost amount was 0 because spend was 0, but the mechanism is proven live.)"
+  },
+  {
+    "dim": "payroll-money",
+    "severity": "P1",
+    "title": "Approving leave never restores a prior absence deduction — worker double-penalized for an approved-leave day",
+    "where": "apps/backend/src/routes/leave-requests.ts:300-321 (approve transition) + apps/backend/src/lib/services/leave-request-service.ts (create) — neither touches Attendance/payDeductPaise/payroll.recompute",
+    "scenario": "Supervisor marks a worker ABSENT_NO_CALL for 2026-06-10 (full-day deduction written to Attendance.payDeductPaise, e.g. 57692 for a Rs15,000 salary). The worker then requests leave for 2026-06-10 and HR/supervisor approves it. computeDailyDeductPaise(ABSENT_APPROVED_LEAVE)=0, i.e. approved leave is paid — but nothing reconciles the existing absence row.",
+    "evidence": "LAYER 2: leave-request-service.ts only does tx.leaveRequest.create (line 61) — grep for attendance|payDeduct|markAbsent|recompute in the leave service AND the approve route returns EMPTY. The approve path leave-requests.ts:300 updates only leaveRequest.state→APPROVED and records LEAVE_APPROVED audit; it never upserts an Attendance row, never zeroes a prior payDeductPaise, never fires payroll.recompute. LAYER 4: contrast markAbsentService (attendance-service.ts:165-169) which ALWAYS fires payroll.recompute precisely so 'a correction back to a zero-deduction status must RESTORE a prior deduction'. The leave flow is exactly such a correction and fires nothing.",
+    "expected": "Approving leave for a day already marked ABSENT_NO_CALL/HALF_DAY must upsert the Attendance to ABSENT_APPROVED_LEAVE (deduct 0) and fire payroll.recompute, restoring the worker's pay.",
+    "actual": "The Attendance row keeps status=ABSENT_NO_CALL and payDeductPaise=full. The worker is deducted a full day's pay despite an approved leave — wrong money against the worker, with no in-product path (the chat-apply mark path hardcodes ABSENT_NO_CALL, chat.ts:1603) to correct it; only the direct /workers/:id/mark-absent supervisor route can fix it manually."
+  },
+  {
+    "dim": "payroll-money",
+    "severity": "P1",
+    "title": "Absence reversal deletes the deduction but never fires payroll.recompute — breaks the recompute contract markAbsentService depends on",
+    "where": "apps/backend/src/lib/services/activity-reverse-service.ts:167-217 (WORKER_MARKED_ABSENT reverse case)",
+    "scenario": "Supervisor marks a worker absent (Attendance row with payDeductPaise>0, payroll.recompute fired). Supervisor then reverses that activity (undo). The reverse path deletes the Attendance row.",
+    "evidence": "LAYER 2: activity-reverse-service.ts:177 does tx.attendance.deleteMany (removing the deduction), records ATTENDANCE_REVERSED audit (:181), and enqueues worker.absence_cleared (:204) — but emits NO payroll.recompute outbox. Compare markAbsentService (attendance-service.ts:165-169) whose own comment states recompute must fire 'on every mark ... a correction ... must RESTORE a prior deduction'. Deleting the row is the strongest correction and is the one path that skips recompute. LAYER 4: the reverse for LEAVE_APPROVED (:224) similarly only flips state, never reconciling attendance.",
+    "expected": "Deleting/zeroing a deduction must fire payroll.recompute(workerId, monthOf) so the monthly tally drops the reversed deduction — same contract every other attendance mutation honors.",
+    "actual": "Reversal removes the deduction silently. The recompute handler is a stub today, so no immediate damage, but the outbox event is the contract: once Phase D wires the real payroll tally, reversed absences leave a stale deduction in the monthly total (recompute that would clear it never fires). Latent wrong-money against the worker."
+  },
+  {
+    "dim": "payroll-money",
+    "severity": "P1",
+    "title": "payroll.recompute is a no-op stub and NO code consumes payDeductPaise — there is no monthly payroll tally at all",
+    "where": "apps/backend/src/dispatcher/handlers/payroll.ts:16-24 (handlePayrollRecompute logs only); no PayrollRun/Salary model in packages/shared-schema/prisma/schema.prisma",
+    "scenario": "Every attendance mark fires payroll.recompute (attendance-service.ts:165). The dispatcher drains it. Operators/owners expect a worker's monthly net pay to reflect accumulated deductions.",
+    "evidence": "LAYER 2: payroll.ts:20-23 only calls log.info('[stub] payroll.recompute — would adjust monthly running tally'); does no DB work. Grep across apps/backend/src + packages for any reader/aggregator of payDeductPaise (sum/groupBy/PayrollRun/netPay) finds ONLY the writers (attendance-service.ts) and the Zod output schema — NO consumer. LAYER 1/3: schema has no Payroll/PayrollRun/Salary model; the deduction lives only on each isolated Attendance row. Prod: 0 attendance rows, 0 workers with baseSalaryPaise>0, so this has never produced a real number.",
+    "expected": "payroll.recompute should recompute and persist a monthly running tally (baseSalary minus SUM of that month's payDeductPaise) so deductions actually affect pay.",
+    "actual": "Deductions are computed and stored per-day but never aggregated into any payable total. The whole 'attendance deduction' money feature is inert end-to-end. Acceptable as a documented Phase-D gap, but it means none of the deduction/restore logic has any monetary effect today and is untested against a real tally."
+  },
+  {
+    "dim": "payroll-money",
+    "severity": "P1",
+    "title": "AI-budget cap is overshootable: racy read-then-increment + fixed Rs0.1 preflight estimate instead of real cost, under a global (non-per-tenant) 50-way concurrency",
+    "where": "packages/ai-tools/src/model-policy.ts:183-226 (assertWithinBudget) + openai-tool-loop.ts:225 (preflight passes choice.maxCostPerCallInr=0.1) + cost-tracking.ts:42-59 (incrementSpend, no cap re-check) + apps/backend/src/lib/chat-concurrency.ts:52 (global 50-slot ZSET, not per-tenant)",
+    "scenario": "A single company runs many concurrent chat turns near the cap. (a) Real-cost-vs-estimate: preflight projects current + 0.1 (voice_change_parse ceiling), but the actual turn cost (openai-tool-loop.ts:440 tokenCostInrFor over accumulated tokens, up to 6 iterations × 50k-token context) is unbounded and never re-checked. (b) Concurrency: up to 50 turns (CHAT_MAX_CONCURRENT default, GLOBAL not per-tenant) all read the same aiSpendDailyInr in assertWithinBudget (non-tx prisma), all pass the gate, all run, all increment later in separate persistChatTurn tx.",
+    "evidence": "LAYER 2: model-policy.ts:198-213 reads company.aiSpendDailyInr then checks projected=current+estimatedCostInr>=cap, where estimatedCostInr is the fixed 0.1 passed at openai-tool-loop.ts:225 — NOT the real cost. incrementSpend (cost-tracking.ts:51) does a blind col=col+x with NO cap check. The read and the increment are in different transactions (gate uses tenantCtx.prisma at chat.ts:946; increment is inside persistChatTurn's withTenantContext tx, chat.ts:467). LAYER 4: chat-concurrency.ts:52 MAX_CONCURRENT=50 is a single global Redis ZSET (RedisKeys.chatConcurrency()), so 50 same-tenant turns can race the gate. The WARN at model-policy.ts:223 (current<warn && projected>=warn) is similarly missed when concurrent calls each individually project below Rs3000.",
+    "expected": "The cap should be enforced atomically against actual cost (e.g. conditional UPDATE ... WHERE aiSpendDailyInr+cost < cap, or a post-increment cap check), bounding overshoot to at most one in-flight call's cost; per-tenant concurrency limiting.",
+    "actual": "aiSpendDailyInr can exceed Rs5000 by up to (concurrent_calls × real_per_call_cost), and the Rs3000 WARN can be skipped entirely. The hard cap is a soft, racy approximation rather than a guarantee."
+  },
+  {
+    "dim": "payroll-money",
+    "severity": "P2",
+    "title": "Date validation accepts impossible calendar dates → Invalid Date crashes the attendance upsert (500)",
+    "where": "packages/shared-schema/src/zod/supervisor.ts:28 (DateOnlySchema regex /^\\d{4}-\\d{2}-\\d{2}$/) used by MarkAbsentInput + CreateLeaveRequestInput (fromDate/toDate); consumed by attendance-service.ts:116 new Date(input.date) and leave-request-service.ts:65-66",
+    "scenario": "A supervisor (or chat-apply) posts mark-absent / leave with a shape-valid but impossible date like 2026-13-45, 2026-02-30, or 2026-00-00.",
+    "evidence": "LIVE REQUEST (LAYER 1): POST /workers/<id>/mark-absent with {\"date\":\"2026-13-45\",...} and {\"date\":\"2026-02-30\",...} both passed the Zod gate (returned 403 NOT_SUPERVISOR — i.e. input accepted; only my worker-role auth stopped them before the upsert), whereas {\"date\":\"not-a-date\"} correctly returned 400 'Date must be YYYY-MM-DD'. LAYER 2: DateOnlySchema only regex-checks shape, no calendar validity. node confirms new Date('2026-13-45').toISOString() and new Date('2026-02-30').toISOString() both throw RangeError: Invalid time value. attendance-service.ts:116 feeds new Date(input.date) straight into the upsert where-key, so a real supervisor hits a Prisma error → route catch → 500 'Could not record absence'.",
+    "expected": "Reject non-existent calendar dates at the boundary (refine the schema to parse a real date), returning 400.",
+    "actual": "Impossible dates pass validation and crash with a 500 instead of a clean 400; same schema is reused for leave fromDate/toDate."
+  },
+  {
+    "dim": "db-cache-queue-ops",
+    "severity": "P0",
+    "title": "Production Redis is shared with dev/test/stale-prod environments — OTP codes, refresh-token hashes and rate-limit windows all coexist in one box, isolated only by key prefix",
+    "where": "apps/backend/.env.local (REDIS_URL=redis://...@centerbeam.proxy.rlwy.net:54836 — the prod Redis public proxy), used by package.json scripts dev/dispatcher/test:hr; namespace logic apps/backend/src/lib/redis-keys.ts:28; boot guard apps/backend/src/server.ts:106",
+    "scenario": "A developer runs `pnpm dev`/`dispatcher`/vitest locally (or a prior prod deploy ran without AXHY_REDIS_NAMESPACE). Because .env.local's REDIS_URL targets the same Railway Redis instance prod uses, those processes write keys into the production Redis, namespaced by NODE_ENV fallback (development:/test:/production:).",
+    "evidence": "Layer4 (Redis) live: `KEYS *` on prod Redis returns 215 keys across FOUR prefixes — development:162, axhy-prod:17 (real prod), production:23 (stale), test:12, plus an unprefixed openai:cb:state orphan. Cross-referencing rt:cur:<familyId> keys against the prod DB axhy.RefreshToken table (id::text = ANY): axhy-prod 18/18 exist in prod DB (genuine), development 24/161 (137 keys belong to a DIFFERENT/local DB → real foreign-env contamination), production 1/23 (stale deploy with NODE_ENV=production but no AXHY_REDIS_NAMESPACE), test 0/12 (vitest writes). Total prod DB RefreshToken rows = 43. OTP store + OTP rate-limit also live here (observed axhy-prod:otp:rl:+91... key). Layer2 (code): redis-keys.ts:28 ENV_NAMESPACE = AXHY_REDIS_NAMESPACE ?? NODE_ENV ?? 'development'; server.ts:106 only blocks the production→production fallback, NOT dev/test sharing the same instance.",
+    "expected": "Each environment uses an ISOLATED Redis instance (or at minimum a guaranteed-distinct namespace AND non-prod cannot reach the prod instance). Auth-critical state (OTP, refresh-token current-hash) and rate-limit windows must never be co-located with dev/test cache state.",
+    "actual": "Dev, test, a stale prod deploy, and the live prod backend all read/write the SAME Redis box. A dev FLUSHALL / maxmemory-eviction / key typo can wipe or read prod OTP codes, refresh-token hashes and rate-limit windows. If any non-prod run ever resolves to the same namespace as prod (the documented pre-Wave-A.3 no-prefix path, or a future deploy missing the env), OTP codes and refresh-hashes collide → auth confusion/bypass. The RCA-G guard does not cover this because dev/test legitimately fall back to development:/test: yet still hit prod Redis."
+  },
+  {
+    "dim": "db-cache-queue-ops",
+    "severity": "P1",
+    "title": "RLS disabled on all 34 app tables with zero policies — withTenantContext's GUC is inert, multi-tenant isolation has no DB safety net",
+    "where": "apps/backend/src/middleware/tenant-context.ts:230-261 (sets axhy.current_company_id GUC, comment line 226 claims 'tables protected by RLS'); only RLS migration is packages/shared-schema/prisma/migrations/20260527_017_turn_embeddings_rls_and_cascade/migration.sql (covers axhy_chat.turn_embeddings only)",
+    "scenario": "Any query in any service that forgets a `where: { companyId }` filter returns rows from ALL tenants. The documented defense-in-depth (RLS + per-tx GUC) does not exist for app tables, so there is no backstop.",
+    "evidence": "Layer3 (prod DB) live: SELECT relrowsecurity FROM pg_class for schema axhy → RLS ENABLED on 0/34 tables; pg_policies for schema axhy → []. Connection role = postgres with rolsuper=true AND rolbypassrls=true (would bypass RLS even if enabled). Layer2 (code): tenant-context.ts:243-246 runs `SELECT set_config('axhy.current_company_id', $1, true)` on every tenant tx — a no-op for 34 tables that have no policy reading that setting. grep across repo: only one CREATE POLICY exists and it targets the brain schema's turn_embeddings, not the axhy app schema.",
+    "expected": "Per the api-routes.md rule ('Multi-tenant isolation on every query') and the tenant-context comment, app tables should have RLS enabled with tenant_isolation policies keyed on current_setting('axhy.current_company_id'), so a missing app-level filter cannot leak cross-tenant.",
+    "actual": "Zero RLS on app tables; isolation is 100% dependent on hand-written companyId filters with no database enforcement. The GUC set on every transaction is dead weight. A single forgotten filter = silent cross-tenant leak with no second line of defense."
+  },
+  {
+    "dim": "db-cache-queue-ops",
+    "severity": "P1",
+    "title": "Visit-verification AI spend is uncapped and unrecorded — daily ₹5K budget cap and owner WARN/CAP alerts only ever fire for chat, never for the core worker photo-verification flow",
+    "where": "apps/backend/src/dispatcher/handlers/ai.ts:91-345 (handleAiVerify calls fetch() to OpenAI directly); assertWithinBudget called only at apps/backend/src/routes/chat.ts:1412; producer dispatchBudgetAlert lives in packages/ai-tools/src/model-policy.ts:214,224; ai_cost_daily view is ChatMessage-only",
+    "scenario": "A tenant submits many visits; each submission enqueues an ai.verify outbox row → handleAiVerify makes a real OpenAI multimodal call (up to 2 retries × 60s). No spend check before the call, no cost row written after.",
+    "evidence": "Layer2 (code): grep `assertWithinBudget` across backend → exactly one caller, chat.ts:1412. ai.ts has no import of openai-circuit-breaker and no budget/spend check — it fetch()es OpenAI unconditionally; COST_CEILING_INR (ai.ts:49) is used only in a log line. grep `dispatchBudgetAlert` callers in apps/backend/src → none (only model-policy.ts→chat path). Layer3 (prod DB): pg_get_viewdef('axhy.ai_cost_daily') = SELECT ... FROM axhy.\"ChatMessage\" ... (chat only); Visit table has NO cost/token/spend columns. Layer4 (outbox): all 6 prod Outbox rows are topic='ai.verify'; ZERO rows for owner.ai_budget_warning/capped have ever existed — the registered handlers are dead. The owner-budget.ts header claims '100% of daily cap reached (₹5K), 429 fired' — that 429 path (assertWithinBudget) never runs for verify.",
+    "expected": "The verify path should record its AI cost and be gated by the same daily company budget cap, with owner WARN at 80% / CAP at 100% as documented in owner-budget.ts and ADR-0023's ₹1/call ceiling.",
+    "actual": "Verify-path OpenAI spend is invisible (never written to DB) and uncapped (no budget gate, no circuit breaker). The documented daily cap and owner budget notifications cover only chat; a tenant whose cost is dominated by photo verification (every visit) is never throttled or warned, and ops cannot even see the spend."
+  },
+  {
+    "dim": "db-cache-queue-ops",
+    "severity": "P1",
+    "title": "OpenAI circuit breaker bypassed by the high-volume ai.verify path — breaker exists but only chat uses it",
+    "where": "apps/backend/src/lib/openai-circuit-breaker.ts (assertCircuitClosed/recordSuccess/recordFailure); imported only by apps/backend/src/routes/chat.ts:57-61; apps/backend/src/dispatcher/handlers/ai.ts:236 calls fetch() to OpenAI with no breaker",
+    "scenario": "OpenAI has an outage or sustained 5xx/timeout. Chat fast-fails via the breaker, but every visit submission still drives a direct fetch with 2 retries × 60s timeout (up to ~120s) per visit, holding a dispatcher batch slot per row.",
+    "evidence": "Layer2 (code): grep importers of openai-circuit-breaker (excluding the breaker file + redis-keys) → only chat.ts. ai.ts:236-290 issues the OpenAI request directly inside the retry loop (MAX_RETRIES=2, VISION_TIMEOUT_MS=60_000) with no assertCircuitClosed/recordFailure. Layer4 (Redis): circuit keys exist (axhy-prod / development openai:cb:state = CLOSED) but are written/read only on the chat path, so verify failures never trip or observe the shared breaker the file claims makes 'all replicas trip together'.",
+    "expected": "All OpenAI calls, especially the highest-volume verify path, should consult the shared circuit breaker so an upstream outage fast-fails instead of burning dispatcher capacity and OpenAI cost on doomed retries.",
+    "actual": "The breaker protects only chat. During an OpenAI outage, the verify dispatcher keeps issuing slow doomed calls, degrading drain throughput for every tenant and spending on retries the breaker was built to prevent."
+  },
+  {
+    "dim": "db-cache-queue-ops",
+    "severity": "P1",
+    "title": "Consent dedup is a check-then-insert TOCTOU race with no backing unique constraint — concurrent duplicate consent POSTs create duplicate immutable legal records",
+    "where": "apps/backend/src/routes/worker-consent.ts:69-94 (findFirst then create, no transaction/lock); schema packages/shared-schema/prisma/schema.prisma ConsentLog model has no @@unique",
+    "scenario": "Two concurrent POST /worker/consent with the same (userId, policyVersion) for a version not yet consented (common on reinstall / double-tap / screen refocus). Both findFirst see null, both create → two rows.",
+    "evidence": "Layer2 (code): worker-consent.ts:69 findFirst({userId, policyVersion}) → if existing 409 → else create at :88, with no surrounding tx and no DB constraint to catch the loser. Layer3 (prod DB) live: pg_indexes for axhy.ConsentLog = only ConsentLog_pkey(id) + two NON-unique btree indexes (userId; userId,acceptedAt) — NO unique on (userId,policyVersion). QA worker (aa3699e4-...) already has 13 ConsentLog rows ALL policyVersion='2026-05-21' (historical duplicate accumulation; pre-2026-06-04-dedup). Live attempt: 8 concurrent identical POSTs returned all 409 only because a row already existed (every request hit the existing-short-circuit) — confirming the guard is purely the racy read, with no constraint behind it. For a fresh (userId,version) the inserts would race to duplicates.",
+    "expected": "Dedup of an immutable legal consent record (the route's stated intent, INV 9/INV 11) must be race-safe — enforced by a DB unique constraint on (userId, policyVersion), with the application catching P2002 → 409.",
+    "actual": "Dedup is best-effort application-level only; under concurrency the same version inserts twice, producing duplicate DPDP consent rows that can never be deduplicated after the fact (immutable). The 13 existing same-version rows show the table already accretes duplicates."
+  },
+  {
+    "dim": "db-cache-queue-ops",
+    "severity": "P1",
+    "title": "withIdempotency wrapper has a TOCTOU gap — concurrent requests with the same Idempotency-Key both execute the handler (double side effects) before either caches",
+    "where": "apps/backend/src/lib/idempotency-key.ts:165-213 (checkIdempotencyKey → handler() → recordIdempotencyKey, no reservation/lock between check and run); used by visits.ts, complaints.ts, sites.ts, replacement-invites.ts, activity.ts",
+    "scenario": "Two concurrent POSTs carry the same Idempotency-Key to a wrapped route before the first finishes (mobile double-tap on flaky network — the exact case the wrapper cites). Both pass checkIdempotencyKey (cache miss), both run handler() → side effects execute twice; recordIdempotencyKey (an upsert, never throws P2002) runs only after.",
+    "evidence": "Layer2 (code): idempotency-key.ts:185 cache check, :196 handler runs, :200 record AFTER. recordIdempotencyKey (:120-152) is an upsert — it cannot throw the P2002 the header comment (:27-30) claims is 'caught and treated as another replica beat us'. There is NO SET-NX reservation before handler() (contrast chat.ts:635 which reserves the idempotency slot BEFORE the AI call). So the side-effecting handler is unguarded against concurrent duplicates; only sequential retries hit the cache. Layer3 (prod DB): axhy.IdempotencyKey currently has 0 rows (composite-PK only protects the cache row, not the double handler execution).",
+    "expected": "An idempotency wrapper must reserve the key (atomic insert / SET NX) BEFORE running side effects, so a concurrent duplicate is rejected or made to wait, guaranteeing the handler runs at most once.",
+    "actual": "Concurrent same-key requests both execute the handler's side effects; idempotency only deduplicates SEQUENTIAL retries. The wrapper's own comment overstates the guarantee (claims a P2002-race catch that the upsert makes impossible)."
+  },
+  {
+    "dim": "db-cache-queue-ops",
+    "severity": "P2",
+    "title": "Outbox idempotency unique index is FULL, not partial — diverges from the schema's documented 'partial WHERE idempotencyKey IS NOT NULL' intent",
+    "where": "packages/shared-schema/prisma/schema.prisma:600-610 (comment claims partial unique WHERE idempotencyKey IS NOT NULL; declaration is plain @@unique([companyId, idempotencyKey])); prod index Outbox_companyId_idempotencyKey_key",
+    "scenario": "Schema-vs-prod drift: a future dev reads the comment and assumes a partial index governs NULL-key dedup behavior, when in fact NULL-distinctness is just Postgres default behavior on a full unique index.",
+    "evidence": "Layer3 (prod DB) live: pg_indexes → CREATE UNIQUE INDEX Outbox_companyId_idempotencyKey_key ON axhy.\"Outbox\" (companyId, idempotencyKey) — NO WHERE clause (full index), unlike AuditEvent_binding_ended_auto_dedup which IS correctly partial (... WHERE kind='BINDING_ENDED_AUTO' AND targetId IS NOT NULL). All 6 prod Outbox rows have idempotencyKey=NULL under one companyId and coexist (Postgres treats NULLs as distinct in a full unique index), so today's behavior happens to match intent — but by accident, not by the documented partial index.",
+    "expected": "Either make the index partial (WHERE idempotencyKey IS NOT NULL) to match the schema comment + ADR-0009 intent, or correct the comment to reflect the full-index + NULL-distinctness reality.",
+    "actual": "Comment and DB disagree; the dedup guarantee for non-NULL keys is fine, but the documented mechanism (partial index) does not exist in prod."
+  },
+  {
+    "dim": "failure-modes",
+    "severity": "P1",
+    "title": "WORKER can post ADMIN-role messages into ANY complaint thread and escalate it to HR (missing role gate + role-default-to-ADMIN)",
+    "where": "apps/backend/src/routes/complaints.ts:135-139 (complaintRoleFromAuthRole) and :267-302 (POST /complaints/:id/messages, requireAuth only)",
+    "scenario": "A worker (or any non-SUPERVISOR/non-HR role) calls POST /complaints/:id/messages with any complaint UUID in their tenant. complaintRoleFromAuthRole maps every role except SUPERVISOR/HR to 'ADMIN', and the ownership filter `...(authorRole === 'SUPERVISOR' ? { createdByUserId } : {})` therefore evaluates to {} for a worker, so the createdBy ownership scope is skipped entirely.",
+    "evidence": "ROUTE: complaints.ts:269 preHandler is requireAuth ONLY (no requireRole); line 282 authorRole=complaintRoleFromAuthRole(auth.role) -> 'ADMIN' for WORKER; line 302 ownership filter skipped for non-SUPERVISOR. REQUEST (live, worker token sub=aa3699e4 role=WORKER): POST https://backend-production-344e1.up.railway.app/complaints/85088ba2-51f1-429f-bf17-969988d32742/messages body {\"body\":\"QA WORKER posting as fake ADMIN into complaint thread\"} -> HTTP 201 {\"ok\":true,\"messageId\":\"002967ba-...\"}. PRIMARY DB after: ComplaintMessage row authorUserId=aa3699e4 (the worker), authorRole='ADMIN'. SIDE-EFFECT: Complaint row went unreadHrRepliesCount 0->1 and state OPEN->IN_HR (appendComplaintMessage increments the unread counter when author is HR/ADMIN), so the worker's message is now surfaced to HR as an unread admin reply and the complaint is escalated into the HR queue. The worker is recorded as a platform ADMIN in the legal complaint thread.",
+    "expected": "Workers must not be able to write into complaint threads at all (route should be role-gated to SUPERVISOR/HR), and a non-supervisor/non-HR caller must never be silently treated as 'ADMIN'. Ownership scoping must apply regardless of role.",
+    "actual": "Worker token writes an authorRole='ADMIN' message into a tenant complaint, mutates complaint state (OPEN->IN_HR), and bumps HR's unread counter. The conditional ownership filter means a worker who knows a complaint UUID created by a real supervisor could append to it too (no createdBy scope applied for the ADMIN-mapped role)."
+  },
+  {
+    "dim": "failure-modes",
+    "severity": "P1",
+    "title": "WORKER can create supervisor-attributed complaints (no role gate on POST /sites/:id/complaints)",
+    "where": "apps/backend/src/routes/sites.ts:38-120 (POST /sites/:id/complaints, preHandler: requireAuth only)",
+    "scenario": "A worker calls POST /sites/:id/complaints for any site in their own company. The route has no role check; the service stores supervisorUserId/createdByUserId = auth.userId.",
+    "evidence": "ROUTE: sites.ts:40 preHandler is requireAuth only; lines 80-81 pass supervisorUserId: auth.userId, createdByUserId: auth.userId; origin: 'BUTTON' (comment at :70 explicitly frames the caller as a supervisor). REQUEST (live, worker token): POST /sites/008ee63c-2d03-4721-9257-18c0bc4ebcdf/complaints {\"text\":\"QA worker-privilege probe complaint\",\"severity\":\"LOW\"} -> HTTP 200 {\"complaintId\":\"4c058532-...\",\"loggedBy\":\"aa3699e4...\"}. PRIMARY DB: Complaint row id=4c058532 supervisorId=aa3699e4-95a3-4880-8bff-0c69c49621cb (the WORKER userId stored in the supervisorId column), createdByUserId=aa3699e4, state=OPEN, plus a SITE_COMPLAINT_LOGGED audit + hr.site_complaint outbox. SIDE-EFFECT: initial ComplaintMessage authored by the worker. Cross-tenant attempt to POST to site 8dc9792c (company 7f356290) correctly returned 404 SITE_NOT_FOUND, so tenant isolation holds; the gap is intra-tenant role.",
+    "expected": "Only SUPERVISOR (or HR/OWNER per product) may log complaints; a worker should get 403.",
+    "actual": "Worker creates a complaint with itself recorded as the supervisor; HR sees a worker-fabricated complaint as a real supervisor-logged one."
+  },
+  {
+    "dim": "failure-modes",
+    "severity": "P1",
+    "title": "Generic idempotency wrapper performs side-effects BEFORE recording the key — true concurrency double-inserts (activates at multi-replica launch scale)",
+    "where": "apps/backend/src/lib/idempotency-key.ts:165-212 (withIdempotency: check at :185, handler/side-effect at :196, record at :200) — used by POST /sites/:id/complaints and POST /complaints/:id/messages",
+    "scenario": "Two requests with the same Idempotency-Key arrive concurrently (e.g. a Slow-3G double-tap landing on two replicas, the configuration the founder's own memory notes require before launch). Both pass checkIdempotencyKey (no cache row yet), both run the handler (createComplaintWithInitialMessage has NO internal dedup and always .create()s), then both write the cache row via upsert (which only collapses the CACHE row, not the already-created domain rows).",
+    "evidence": "CODE: idempotency-key.ts:185 read -> :196 handler() runs side effects -> :200 recordIdempotencyKey() writes the key only AFTER. complaint-service.ts createComplaintWithInitialMessage unconditionally tx.complaint.create (no dedup). So the cache row is written too late to stop a concurrent twin. LIVE: I fired 8 concurrent same-key POSTs to /sites/.../complaints on a single Railway replica and got 1 Complaint row (id b8b9a849) — the in-process single-replica handling serialized them, which is exactly why this is latent rather than already-live. The race window is real in code and opens the moment a second replica exists (two replicas both miss the shared IdempotencyKey row before either records it). REQUEST: 8x POST /sites/008ee63c.../complaints Idempotency-Key=qa-race-... -> all HTTP 200, DB count=1 on one replica.",
+    "expected": "Idempotent routes must either record the key transactionally with the side-effect (same tx, unique-constraint-protected) or claim the key BEFORE running the handler, so a concurrent twin on another replica cannot double-insert.",
+    "actual": "Side-effect commits before the idempotency key is recorded; on >1 replica, concurrent same-key requests each create a full Complaint + initial ComplaintMessage + audit + outbox (duplicate complaints / double HR-unread increments)."
+  },
+  {
+    "dim": "failure-modes",
+    "severity": "P1",
+    "title": "ConsentLog dedup is a TOCTOU check with no DB unique constraint — duplicate legal consent rows (13 already exist in prod)",
+    "where": "apps/backend/src/routes/worker-consent.ts:69-94 (findFirst then create, not transactional) + packages/shared-schema/prisma/schema.prisma:1395-1407 (ConsentLog has no unique index on userId+policyVersion)",
+    "scenario": "First-time consent (or any state where no prior row for that (userId, policyVersion) exists) submitted concurrently — common on reinstall / screen refocus retries, and guaranteed reachable once there are multiple replicas. Both requests pass the findFirst existence check (no row yet) and both create a ConsentLog row.",
+    "evidence": "CODE: worker-consent.ts:69 prisma.consentLog.findFirst({userId, policyVersion}) -> if existing return 409 -> :88 prisma.consentLog.create() with NO transaction/lock between them. SCHEMA/DB: `select indexname,indexdef from pg_indexes where tablename='ConsentLog'` returns only ConsentLog_pkey on (id) and non-unique indexes on userId / (userId,acceptedAt) — NO unique on (userId, policyVersion). PRIMARY DB proof the table accepts duplicates: `group by userId,policyVersion having count(*)>1` returns userId=aa3699e4-95a3-4880-8bff-0c69c49621cb, policyVersion=2026-05-21, n=13 — thirteen duplicate immutable legal-consent rows already persisted (acceptedAt spanning 2026-05-31..2026-06-03). The RCA-G 2026-06-04 fix only closes the sequential path; concurrent/multi-replica first-consents still double-write because nothing at the DB level enforces uniqueness. LIVE: 5 concurrent POST /worker/consent for the QA user (which already has a row) all 409'd, consistent with the read-then-409 path — but that only protects the already-exists case.",
+    "expected": "A unique constraint on (userId, policyVersion) (or an upsert) so concurrent first-time consents collapse to exactly one immutable legal record.",
+    "actual": "No DB-level uniqueness; the app-level findFirst-then-create races, and prod already holds 13 duplicate consent rows for one (userId, policyVersion)."
+  },
+  {
+    "dim": "failure-modes",
+    "severity": "P2",
+    "title": "POST /worker/captures/upload 500s on malformed visitId and accepts arbitrary unowned visitIds (visitId not validated, interpolated raw into R2 key)",
+    "where": "apps/backend/src/routes/worker-captures.ts:37-44 (UploadProxyMetaSchema.visitId = z.string().min(1), not UUID) + :202 uploadCaptureObject + apps/backend/src/lib/r2-presign.ts:80-88 (buildObjectKey interpolates visitId raw)",
+    "scenario": "Worker posts a multipart photo with visitId containing path-segment characters (e.g. '../../../evil'). The value is interpolated into the R2 object key v3-captures/{workerId}/{visitId}/... and R2 rejects keys containing '..' segments; the handler catches it as a generic 500 instead of validating up front.",
+    "evidence": "ROUTE: UploadProxyMetaSchema.visitId is z.string().min(1) (no UUID), and there is no check that the visitId is a real visit owned by the caller. REQUEST (live, worker token): POST /worker/captures/upload (multipart: photo=<jpeg>, visitId=../../../evil, phase=before, index=1) -> HTTP 500 {\"error\":\"UPLOAD_FAILED\"} (reproduced 3x). Control: identical request with visitId=11111111-1111-1111-1111-111111111111 -> HTTP 200 {\"objectKey\":\"v3-captures/b0be64f7-.../11111111-.../before-01.jpg\"}, and visitId=cleanvisit123 -> 200, and visitId=/etc -> 200 with key '...//etc/before-01.jpg', and an emoji visitId -> 200 — proving visitId is unvalidated and goes raw into the key, and that arbitrary visitIds not belonging to any real visit are accepted (orphan objects, all under the caller's own workerId prefix so not cross-tenant). The 500 path is a malformed-input -> 500 failure-mode (should be 400). SIDE-EFFECT: orphan R2 objects created under the QA worker prefix (no exposed delete endpoint to clean them).",
+    "expected": "visitId validated as a UUID at the boundary (clean 400 on bad input, matching the global path-param UUID guard), and ideally checked to belong to the calling worker before any R2 write.",
+    "actual": "Malformed visitId yields a 500 UPLOAD_FAILED; non-UUID and unowned visitIds are accepted, writing orphan R2 objects."
+  }
+]
