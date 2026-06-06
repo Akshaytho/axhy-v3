@@ -46,6 +46,12 @@ import {
 
 import { prisma } from '../../lib/prisma.js';
 import { generatePresignedGetUrls } from '../../lib/r2-presign.js';
+import {
+  assertCircuitClosed,
+  recordSuccess as recordCircuitSuccess,
+  recordFailure as recordCircuitFailure,
+  CircuitOpenError,
+} from '../../lib/openai-circuit-breaker.js';
 
 const MODEL = 'gpt-5.4-nano';
 const MODEL_VERSION = `${MODEL}-2026-06`;
@@ -244,6 +250,28 @@ export async function handleAiVerify(payload: unknown, log: FastifyBaseLogger): 
   const siteName = visit.site?.name ?? 'Unknown site';
   const siteAddress = visit.site?.address ?? 'Unknown address';
 
+  // Circuit breaker: if OpenAI is failing across the fleet, skip the call and
+  // defer to manual review instead of hammering a down provider (this verify
+  // path previously bypassed the breaker that chat already uses).
+  try {
+    await assertCircuitClosed();
+  } catch (err) {
+    if (err instanceof CircuitOpenError) {
+      log.warn(
+        { visitId, companyId },
+        'ai.verify: OpenAI circuit open — deferring to manual supervisor review',
+      );
+      await applyOutcome(visitId, companyId, {
+        reasoning:
+          'AI verification temporarily unavailable (provider circuit open); manual review.',
+        recommendation: 'REVIEW',
+        modelVersion: `${MODEL_VERSION}-circuit-open`,
+      });
+      return;
+    }
+    throw err;
+  }
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const content: MultimodalPart[] = [
@@ -368,8 +396,17 @@ export async function handleAiVerify(payload: unknown, log: FastifyBaseLogger): 
         recommendation: result.recommendation,
         modelVersion: MODEL_VERSION,
       });
+      await recordCircuitSuccess();
       return;
     } catch (err) {
+      // Tell the breaker OpenAI failed (best-effort; a Redis blip here must not
+      // mask the verification error below).
+      await recordCircuitFailure().catch((cbErr) =>
+        log.debug(
+          { visitId, err: (cbErr as Error).message },
+          'ai.verify: circuit recordFailure failed',
+        ),
+      );
       log.warn(
         { visitId, attempt, err: err instanceof Error ? err.message : String(err) },
         'ai.verify: call failed',
