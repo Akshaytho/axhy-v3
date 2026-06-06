@@ -19,7 +19,7 @@ export const SuperAdminCreateMembershipInput = z.object({
   companyId: z.string().uuid(),
   phone: z.string().regex(/^\+\d{8,15}$/, 'phone must be E.164'),
   name: z.string().min(1).max(120),
-  baseSalaryPaise: z.number().int().nonnegative(),
+  baseSalaryPaise: z.number().int().nonnegative().max(2_000_000_000),
   bankIfsc: z.string().max(16).optional(),
   bankAcct: z.string().max(40).optional(),
 });

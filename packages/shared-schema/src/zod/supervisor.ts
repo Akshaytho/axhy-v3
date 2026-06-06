@@ -25,7 +25,20 @@ import { z } from 'zod';
  * @derives(data-flow §5)
  * @derives(ADR-0007)
  */
-export const DateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+export const DateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
+  .refine((s) => {
+    // Regex alone accepts impossible dates (e.g. 2026-13-45) that later become
+    // `new Date()` → Invalid Date and crash the attendance/calendar upsert.
+    // Round-trip through Date.UTC and require the components to survive.
+    const parts = s.split('-');
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  }, 'Date is not a real calendar date');
 
 /**
  * Attendance status — one of the documented enum values.
