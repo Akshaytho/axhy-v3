@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Axhy v3 — HR Payroll (scale)</title>
+<link rel="stylesheet" href="tokens.css"/>
+<style>
+  html, body { height: 100%; background: #2a2520; }
+  .stage { min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center;
+    padding: 24px; box-sizing: border-box;
+    background: radial-gradient(circle at 18% 0%, rgba(192,73,42,0.10), transparent 55%),
+      radial-gradient(circle at 100% 100%, rgba(40,30,20,0.4), transparent 50%), #2a2520; }
+  .hr2 { display: flex; height: 100%; background: var(--paper); }
+  .main2 { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .emp-row:hover { background: var(--paper-2) !important; }
+  .toast2 { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--ink); color: var(--card); padding: 11px 18px; border-radius: 10px; font-size: 13.5px;
+    font-weight: 600; font-family: var(--font-sans); box-shadow: var(--sh-3); display: flex; align-items: center; gap: 9px;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 90; }
+  .toast2.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .stub2 { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--ink-3); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(122,107,88,0.3); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+</style>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#f6f1e8"/>
+    <rect x="20" y="26" width="60" height="8" rx="4" fill="#7fae8c"/><rect x="20" y="26" width="34" height="8" rx="4" fill="#c0492a"/>
+    <rect x="20" y="44" width="60" height="5" rx="2.5" fill="#e6dcc8"/><rect x="20" y="55" width="60" height="5" rx="2.5" fill="#e6dcc8"/>
+    <rect x="20" y="66" width="60" height="5" rx="2.5" fill="#e6dcc8"/>
+  </svg>
+</template>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="hr2-core.jsx"></script>
+<script type="text/babel" src="hr2-shell.jsx"></script>
+<script type="text/babel" src="hr2-app.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useMemo, useEffect } = React;
+const PAGE = 40;
+
+const TWEAKS_DEFAULTS = /*EDITMODE-BEGIN*/{ "accent": "#c0492a" }/*EDITMODE-END*/;
+
+function Stub2({ label }) {
+  return (
+    <div className="stub2">
+      <window.Ico d="M3 5h18v14H3zM3 9h18M9 21V9" size={38} color="var(--ink-4)" sw={1.3} />
+      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-2)' }}>{label}</div>
+      <div style={{ fontSize: 13 }}>Out of scope for this exploration — payroll is the focus.</div>
+    </div>
+  );
+}
+
+function PayrollV2() {
+  const roster = useMemo(() => window.buildRoster(), []);
+  const [, force] = useState(0); const tick = () => force((n) => n + 1);
+
+  const [run, setRun] = useState({ status: 'DRAFT', method: null, ref: null, paidOn: null });
+  const [tab, setTab] = useState('review');
+  const [search, setSearch] = useState('');
+  const [density, setDensity] = useState('default');
+  const [page, setPage] = useState(0);
+  const [siteFilter, setSiteFilter] = useState(null);
+  const [selection, setSelection] = useState(new Set());
+  const [reviewed, setReviewed] = useState(new Set());
+  const [drawerId, setDrawerId] = useState(null);
+  const [modal, setModal] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (m) => { setToast(m); clearTimeout(window.__t2); window.__t2 = setTimeout(() => setToast(null), 2400); };
+
+  // aggregates
+  const needsList = useMemo(() => roster.filter((e) => e.needsReview), [roster, force]);
+  const total = roster.length;
+  const needsCount = needsList.length;
+  const cleanCount = total - needsCount;
+  const reviewedCount = useMemo(() => needsList.filter((e) => reviewed.has(e.id)).length, [needsList, reviewed]);
+  const netTotal = useMemo(() => roster.reduce((s, e) => s + e.calc.net, 0), [roster, force]);
+  const lopTotal = useMemo(() => roster.reduce((s, e) => s + e.calc.lop, 0), [roster, force]);
+
+  // filtered rows for the table
+  const q = search.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    let base = tab === 'review' ? needsList : roster;
+    if (siteFilter) base = base.filter((e) => e.site === siteFilter);
+    if (q) base = base.filter((e) => e.name.toLowerCase().includes(q) || e.site.toLowerCase().includes(q));
+    return base;
+  }, [tab, needsList, roster, siteFilter, q, force]);
+
+  const pageRows = tab === 'all' ? filtered.slice(page * PAGE, page * PAGE + PAGE) : filtered;
+  const pages = Math.ceil(filtered.length / PAGE);
+
+  // actions
+  const toggleSel = (id) => setSelection((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => setSelection((s) => {
+    const all = pageRows.every((r) => s.has(r.id));
+    const n = new Set(s); pageRows.forEach((r) => all ? n.delete(r.id) : n.add(r.id)); return n;
+  });
+  const markReviewed = (ids, val = true) => setReviewed((s) => { const n = new Set(s); ids.forEach((id) => val ? n.add(id) : n.delete(id)); return n; });
+  const bulkReview = () => { markReviewed([...selection], true); showToast(`${selection.size} marked reviewed`); setSelection(new Set()); };
+
+  const waive = (e) => { e.waived = !e.waived; window.recalc(e); markReviewed([e.id], true); tick(); showToast(e.waived ? 'LOP waived · reviewed' : 'LOP restored'); };
+  const addAdjust = (e, code, label, amount, sign) => { e.adjustments.push({ id: 'a' + Date.now(), code, label, amount, sign }); window.recalc(e); tick(); showToast('Adjustment added · audit logged'); };
+  const removeAdjust = (e, aid) => { e.adjustments = e.adjustments.filter((a) => a.id !== aid); window.recalc(e); tick(); showToast('Adjustment removed'); };
+  const setMarkReviewed = (e, val) => { markReviewed([e.id], val); showToast(val ? 'Marked reviewed' : 'Review undone'); };
+
+  const approve = () => { setRun((r) => ({ ...r, status: 'APPROVED' })); setModal(null); setSelection(new Set()); showToast('Run approved · locked for payment'); };
+  const markPaid = (method, ref) => { setRun((r) => ({ ...r, status: 'PAID', method, ref, paidOn: '6 Jun 2026' })); setModal(null); showToast(`Paid · ${method} · ${ref}`); };
+
+  const drawerEmp = drawerId ? roster.find((e) => e.id === drawerId) : null;
+  const isDraft = run.status === 'DRAFT';
+
+  return (
+    <div className="main2">
+      {/* header */}
+      <div style={{ padding: '18px 28px 16px', borderBottom: '1px solid var(--paper-3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--ink-3)' }}>Reddy Cleaning Services · monthly run</div>
+            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.4px', color: 'var(--ink)' }}>May 2026 Payroll</div>
+          </div>
+          <window.Pill2 tone={run.status === 'PAID' ? 'ok' : run.status === 'APPROVED' ? 'info' : 'paper'}>
+            {run.status === 'PAID' ? 'Paid' : run.status === 'APPROVED' ? 'Approved' : 'Draft'}
+          </window.Pill2>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {isDraft && <window.Btn2 kind="ghost" icon={<window.Ico d={window.ICON.refresh} size={15} />} onClick={() => showToast('Recomputed from attendance · manual edits preserved')}>Recompute</window.Btn2>}
+          {isDraft && <window.Btn2 kind="primary" onClick={() => setModal('approve')}>Approve run</window.Btn2>}
+          {run.status === 'APPROVED' && <window.Btn2 kind="ghost" onClick={() => { setRun((r) => ({ ...r, status: 'DRAFT' })); showToast('Reopened to draft'); }}>Reopen</window.Btn2>}
+          {run.status === 'APPROVED' && <window.Btn2 kind="accent" icon={<window.Ico d={window.ICON.rupee} size={15} />} onClick={() => setModal('paid')}>Mark paid</window.Btn2>}
+          {run.status === 'PAID' && <window.Btn2 kind="ghost" icon={<window.Ico d={window.ICON.download} size={15} />} onClick={() => showToast('Exported run CSV')}>Export</window.Btn2>}
+        </div>
+      </div>
+
+      <window.RunHero total={total} clean={cleanCount} needs={needsCount} reviewed={reviewedCount}
+        netTotal={netTotal} lopTotal={lopTotal} status={run.status} />
+
+      <window.Toolbar tab={tab} setTab={(t) => { setTab(t); setPage(0); setSelection(new Set()); }}
+        counts={{ needs: needsCount, total, sites: window.SITES.length }}
+        search={search} setSearch={(v) => { setSearch(v); setPage(0); }}
+        density={density} setDensity={setDensity}
+        siteFilter={siteFilter} clearSite={() => setSiteFilter(null)} />
+
+      {tab === 'sites'
+        ? <window.BySite roster={roster} onPick={(s) => { setSiteFilter(s); setTab('all'); setPage(0); }} />
+        : <window.EmpTable rows={pageRows} density={density} tab={tab} selection={selection}
+            toggleSel={toggleSel} toggleAll={toggleAll} reviewed={reviewed} onOpen={setDrawerId} />}
+
+      {/* pagination (all tab) */}
+      {tab === 'all' && (
+        <div style={{ padding: '10px 28px', borderTop: '1px solid var(--paper-3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 13, color: 'var(--ink-3)', fontVariantNumeric: 'tabular-nums' }}>
+            Showing {filtered.length === 0 ? 0 : page * PAGE + 1}–{Math.min((page + 1) * PAGE, filtered.length)} of {filtered.length.toLocaleString('en-IN')}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <window.Btn2 kind="ghost" size="sm" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} icon={<window.Ico d={window.ICON.chevL} size={15} />}>Prev</window.Btn2>
+            <span style={{ fontSize: 13, color: 'var(--ink-2)', fontVariantNumeric: 'tabular-nums' }}>{page + 1} / {pages || 1}</span>
+            <window.Btn2 kind="ghost" size="sm" disabled={page >= pages - 1} onClick={() => setPage((p) => Math.min(pages - 1, p + 1))}>Next <window.Ico d={window.ICON.chevR} size={15} /></window.Btn2>
+          </div>
+        </div>
+      )}
+
+      {isDraft && tab === 'review' && selection.size > 0 && (
+        <window.BulkBar n={selection.size} onReview={bulkReview} onClear={() => setSelection(new Set())} />
+      )}
+
+      {drawerEmp && (
+        <window.Drawer emp={drawerEmp} status={run.status} reviewed={reviewed} onClose={() => setDrawerId(null)}
+          onWaive={waive} onAddAdjust={addAdjust} onRemoveAdjust={removeAdjust} onMarkReviewed={setMarkReviewed} />
+      )}
+
+      {modal === 'approve' && <window.ApproveModal2 onClose={() => setModal(null)} onApprove={approve}
+        total={total} clean={cleanCount} pending={needsCount - reviewedCount} net={netTotal} />}
+      {modal === 'paid' && <window.PaidModal2 onClose={() => setModal(null)} onPaid={markPaid} net={netTotal} />}
+
+      <div className={'toast2' + (toast ? ' show' : '')}>
+        <window.Ico d={window.ICON.check} size={16} sw={2.4} />{toast}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [nav, setNav] = useState('payroll');
+  const [t, setTweak] = window.useTweaks ? window.useTweaks(TWEAKS_DEFAULTS) : [TWEAKS_DEFAULTS, () => {}];
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent', t.accent);
+    document.documentElement.style.setProperty('--accent-2', t.accent);
+  }, [t.accent]);
+
+  return (
+    <>
+      <div className="stage">
+        <window.ChromeWindow width={1360} height={848} tabs={[{ title: 'Axhy HR · Payroll' }, { title: 'Attendance' }]} activeIndex={0} url="console.axhy.app/payroll/may-2026">
+          <div className="hr2">
+            <window.Side2 nav={nav} setNav={setNav} />
+            {nav === 'payroll' ? <PayrollV2 /> : <Stub2 label={{ overview: 'Overview', people: 'People', sites: 'Sites', settings: 'Settings' }[nav]} />}
+          </div>
+        </window.ChromeWindow>
+      </div>
+      {window.TweaksPanel && (
+        <window.TweaksPanel>
+          <window.TweakColor label="Accent" value={t.accent} onChange={(v) => setTweak('accent', v)} options={['#c0492a', '#d83a1e']} />
+        </window.TweaksPanel>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Axhy v3 — Worker App</title>
+<link rel="stylesheet" href="tokens.css"/>
+<style>
+  .cover {
+    width: 1080px;
+    padding: 60px 80px;
+    background:
+      radial-gradient(circle at 100% 0%, rgba(192,73,42,0.08), transparent 60%),
+      radial-gradient(circle at 0% 100%, rgba(40,30,20,0.06), transparent 50%),
+      var(--paper);
+    border-radius: 12px;
+    border: 1px solid var(--card-edge);
+    box-shadow: var(--sh-2);
+    font-family: var(--font-sans);
+  }
+  .cover .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.16em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .cover h1 {
+    font-size: 56px; font-weight: 600; letter-spacing: -1.4px;
+    margin: 14px 0 8px; color: var(--ink); line-height: 1.05;
+    text-wrap: pretty;
+  }
+  .cover .lede {
+    font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 760px;
+    margin: 8px 0 0;
+  }
+  .cover .meta {
+    margin-top: 36px; padding-top: 24px;
+    border-top: 1px solid var(--paper-3);
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;
+  }
+  .cover .meta .k { font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3); }
+  .cover .meta .v { font-size: 14px; color: var(--ink-2); margin-top: 6px; line-height: 1.4; }
+
+  .reasoning {
+    width: 1080px; padding: 32px 80px 0;
+    font-family: var(--font-sans); color: var(--ink-2);
+  }
+  .reasoning .pill {
+    display: inline-block; padding: 4px 10px; border-radius: 4px;
+    background: var(--paper-3); color: var(--ink-2); font-weight: 600;
+    font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; margin-right: 6px;
+  }
+  .reasoning p { font-size: 14px; line-height: 1.6; margin: 8px 0; max-width: 780px; }
+  .reasoning b { color: var(--ink); }
+</style>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#f6f1e8"/>
+    <rect x="36" y="22" width="28" height="56" rx="6" fill="#1a1612"/>
+    <rect x="38" y="24" width="24" height="52" rx="4" fill="#fdfaf3"/>
+    <circle cx="50" cy="50" r="9" fill="#c0492a"/>
+    <rect x="46" y="46" width="8" height="6" rx="1" fill="#fdfaf3"/>
+  </svg>
+</template>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="phone-atoms.jsx"></script>
+<script type="text/babel" src="worker-screens.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const TWEAKS_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#c0492a"
+}/*EDITMODE-END*/;
+
+function Cover() {
+  return (
+    <div className="cover">
+      <div style={{display:'flex', alignItems:'center', gap:14, marginBottom:6}}>
+        <div style={{
+          fontFamily:'var(--font-sans)', fontWeight:800, fontSize:34, letterSpacing:-1,
+          color:'var(--ink)', lineHeight:1, display:'flex', alignItems:'baseline', gap:1,
+        }}>A<span style={{color:'var(--accent)'}}>·</span></div>
+        <div style={{fontFamily:'var(--font-sans)', fontWeight:600, fontSize:17,
+          letterSpacing:'0.02em', color:'var(--ink-2)'}}>AXHY</div>
+      </div>
+      <div className="eyebrow">v3 · Worker mobile · paper-translation of the OLED screens</div>
+      <h1>Mukesh's day, in nine screens.</h1>
+      <p className="lede">
+        The worker app is the data origin for everything else in Axhy — every site visit, every
+        photo, every minute of GPS. These nine screens map the existing React Native screens 1:1
+        onto the locked paper-and-terracotta system: same flow, same vocabulary, same minimum-photos
+        rule, same one-big-button discipline. Black OLED becomes paper; yellow becomes terracotta;
+        nothing else changes.
+      </p>
+      <div className="meta">
+        <div>
+          <div className="k">User</div>
+          <div className="v">Mukesh, cleaning worker. Phones an entry-level Android. Often gloved hands; outdoor light; weak signal.</div>
+        </div>
+        <div>
+          <div className="k">Hard rules</div>
+          <div className="v">≥4 photos before/after, GPS captured throughout, AI verifies in 30s. One big CTA per screen.</div>
+        </div>
+        <div>
+          <div className="k">Visual</div>
+          <div className="v">Paper background. Terracotta replaces yellow. Mono for time/score; OK-green only for verified states.</div>
+        </div>
+        <div>
+          <div className="k">Offline</div>
+          <div className="v">Photos and GPS queue locally; the sync chip on every screen is the user's only signal.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReadingStrip() {
+  return (
+    <div className="reasoning">
+      <div>
+        <span className="pill">Today</span> <b>Home tab</b> — the next site is the only big card.
+        Today's plan is a list of times, not a calendar. Sync state is permanent ambient signal.
+      </div>
+      <div style={{height:8}}/>
+      <div>
+        <span className="pill">Capture</span> <b>QR → Camera → Gallery → Timer → Camera → Review → Success</b>.
+        BEFORE photos are accent terracotta; AFTER photos are OK-green. Reticle stays on viewfinder.
+      </div>
+      <div style={{height:8}}/>
+      <div>
+        <span className="pill">After</span> <b>History &amp; Profile</b> — week selector, timeline of past sites,
+        worker's quality score from AI review. The only personalisation surface in the worker app.
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [t, setTweak] = window.useTweaks
+    ? window.useTweaks(TWEAKS_DEFAULTS)
+    : [TWEAKS_DEFAULTS, () => {}];
+
+  React.useEffect(() => {
+    document.documentElement.style.setProperty('--accent', t.accent);
+    document.documentElement.style.setProperty('--accent-2', t.accent);
+  }, [t.accent]);
+
+  return (
+    <>
+      <DesignCanvas minScale={0.15} maxScale={3}>
+        <DCSection id="cover" title="Axhy v3 · Worker mobile" subtitle="Paper-translation of the existing React Native worker app">
+          <DCArtboard id="cover" label="Brief" width={1080} height={460}>
+            <Cover/>
+          </DCArtboard>
+          <DCArtboard id="reading" label="Reading the screens" width={1080} height={460}>
+            <ReadingStrip/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="anchors" title="Anchor screens"
+          subtitle="What Mukesh sees first &amp; last each day.">
+          <DCArtboard id="today"   label="Today · home" width={412} height={892}>
+            <WorkerToday/>
+          </DCArtboard>
+          <DCArtboard id="history" label="History · last 7 days" width={412} height={892}>
+            <WorkerHistory/>
+          </DCArtboard>
+          <DCArtboard id="profile" label="Profile · score &amp; settings" width={412} height={892}>
+            <WorkerProfile/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="capture" title="Capture flow · one site, end-to-end"
+          subtitle="QR → before → cleaning → after → review → submit. Scan left-to-right.">
+          <DCArtboard id="qr"      label="1 · Scan QR" width={412} height={892}>
+            <WorkerQRScan/>
+          </DCArtboard>
+          <DCArtboard id="camB"    label="2 · BEFORE camera (3 of 4)" width={412} height={892}>
+            <WorkerCamera mode="before"/>
+          </DCArtboard>
+          <DCArtboard id="galB"    label="3 · BEFORE gallery · confirm" width={412} height={892}>
+            <WorkerGallery mode="before"/>
+          </DCArtboard>
+          <DCArtboard id="timer"   label="4 · Cleaning timer · GPS active" width={412} height={892}>
+            <WorkerTimer/>
+          </DCArtboard>
+          <DCArtboard id="camA"    label="5 · AFTER camera (4 of 4)" width={412} height={892}>
+            <WorkerCamera mode="after"/>
+          </DCArtboard>
+          <DCArtboard id="review"  label="6 · Final review · paired pairs" width={412} height={892}>
+            <WorkerFinalReview/>
+          </DCArtboard>
+          <DCArtboard id="success" label="7 · Success · score 92" width={412} height={892}>
+            <WorkerSuccess/>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      {window.TweaksPanel && (
+        <window.TweaksPanel>
+          <window.TweakColor
+            label="Accent"
+            value={t.accent}
+            onChange={(v) => setTweak('accent', v)}
+            options={['#c0492a', '#d83a1e']}
+          />
+        </window.TweaksPanel>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
