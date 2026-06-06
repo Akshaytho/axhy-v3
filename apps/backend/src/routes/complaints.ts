@@ -54,6 +54,7 @@ import {
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import { withIdempotency } from '../lib/idempotency-key.js';
 import {
   appendComplaintMessage,
@@ -150,61 +151,65 @@ type MsgIdParams = FastifyRequest<{ Params: { id: string; messageId: string } }>
  */
 export async function registerComplaintRoutes(app: FastifyInstance): Promise<void> {
   // ── GET /complaints ──────────────────────────────────────────────────────
-  app.get('/complaints', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED' });
-      return;
-    }
-    const parsed = ListComplaintsQuery.safeParse(req.query);
-    if (!parsed.success) {
-      reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
-      return;
-    }
-    const { state, siteId, limit } = parsed.data;
-    const cursor = parsed.data.cursor ? decodeCursor(parsed.data.cursor) : null;
-    if (parsed.data.cursor && !cursor) {
-      reply.code(400).send({ error: 'BAD_CURSOR', message: 'cursor failed to decode' });
-      return;
-    }
+  app.get(
+    '/complaints',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR', 'HR', 'OWNER')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
+      }
+      const parsed = ListComplaintsQuery.safeParse(req.query);
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+        return;
+      }
+      const { state, siteId, limit } = parsed.data;
+      const cursor = parsed.data.cursor ? decodeCursor(parsed.data.cursor) : null;
+      if (parsed.data.cursor && !cursor) {
+        reply.code(400).send({ error: 'BAD_CURSOR', message: 'cursor failed to decode' });
+        return;
+      }
 
-    const rows = await withTenantContext(prisma, auth.companyId, async (tx) =>
-      tx.complaint.findMany({
-        where: {
-          companyId: auth.companyId,
-          createdByUserId: auth.userId,
-          ...(state ? { state } : {}),
-          ...(siteId ? { siteId } : {}),
-          ...(cursor
-            ? {
-                OR: [
-                  { createdAt: { lt: cursor.createdAt } },
-                  { createdAt: cursor.createdAt, id: { lt: cursor.id } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-        include: { site: { select: { name: true } } },
-      }),
-    );
+      const rows = await withTenantContext(prisma, auth.companyId, async (tx) =>
+        tx.complaint.findMany({
+          where: {
+            companyId: auth.companyId,
+            createdByUserId: auth.userId,
+            ...(state ? { state } : {}),
+            ...(siteId ? { siteId } : {}),
+            ...(cursor
+              ? {
+                  OR: [
+                    { createdAt: { lt: cursor.createdAt } },
+                    { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+          include: { site: { select: { name: true } } },
+        }),
+      );
 
-    const hasMore = rows.length > limit;
-    const page = hasMore ? rows.slice(0, limit) : rows;
-    const last = page[page.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const last = page[page.length - 1];
+      const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
 
-    reply.code(200).send({
-      complaints: page.map(toComplaintRow),
-      nextCursor,
-    });
-  });
+      reply.code(200).send({
+        complaints: page.map(toComplaintRow),
+        nextCursor,
+      });
+    },
+  );
 
   // ── GET /complaints/:id ──────────────────────────────────────────────────
   app.get<{ Params: { id: string } }>(
     '/complaints/:id',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR', 'HR', 'OWNER')] },
     async (req: IdParams, reply) => {
       const auth = req.auth;
       if (!auth) {
@@ -266,7 +271,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
   // two ComplaintMessage rows + double-incrementing HR's unread counter.
   app.post<{ Params: { id: string } }>(
     '/complaints/:id/messages',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR', 'HR', 'OWNER')] },
     async (req: IdParams, reply) => {
       const auth = req.auth;
       if (!auth) {
@@ -343,7 +348,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
   // ── POST /complaints/:id/messages/:messageId/read ────────────────────────
   app.post<{ Params: { id: string; messageId: string } }>(
     '/complaints/:id/messages/:messageId/read',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR', 'HR', 'OWNER')] },
     async (req: MsgIdParams, reply) => {
       const auth = req.auth;
       if (!auth) {
@@ -389,7 +394,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
   // ── POST /complaints/:id/resolve ─────────────────────────────────────────
   app.post<{ Params: { id: string } }>(
     '/complaints/:id/resolve',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR', 'HR', 'OWNER')] },
     async (req: IdParams, reply) => {
       const auth = req.auth;
       if (!auth) {

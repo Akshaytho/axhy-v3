@@ -24,6 +24,7 @@ import type { LogComplaintOutput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireRole } from '../middleware/role-gates.js';
 import { getEffectiveBinding } from '../lib/effective-responsibility.js';
 import { withIdempotency } from '../lib/idempotency-key.js';
 import { createComplaintWithInitialMessage } from '../lib/services/complaint-service.js';
@@ -37,7 +38,7 @@ import { createComplaintWithInitialMessage } from '../lib/services/complaint-ser
 export async function registerSitesRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>(
     '/sites/:id/complaints',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requireRole('SUPERVISOR', 'HR', 'OWNER')] },
     async (req, reply) => {
       const auth = req.auth;
       if (!auth) {

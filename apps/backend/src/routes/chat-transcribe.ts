@@ -20,6 +20,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { requireAuth } from '../middleware/tenant-context.js'; // tenant-exempt: pure Whisper proxy, no DB access
+import { requireRole } from '../middleware/role-gates.js';
 
 /** Whisper REST response shape (only `text` is guaranteed; `language` is a
  *  non-standard extension on some wrapper APIs). */
@@ -71,133 +72,137 @@ function deriveConfidence(
 const TRANSCRIBE_AUDIO_LIMIT_BYTES = 10 * 1024 * 1024;
 
 export async function registerChatTranscribeRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/chat/transcribe', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED' });
-      return;
-    }
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      reply.code(500).send({
-        error: 'AI_NOT_CONFIGURED',
-        message: 'OPENAI_API_KEY missing — set it in apps/backend/.env.local',
-      });
-      return;
-    }
-
-    // Parse optional language query param.
-    const rawLang = (req.query as Record<string, string>)['language'];
-    const languageHint: LanguageHint | null = SUPPORTED_LANGUAGES.has(rawLang as LanguageHint)
-      ? (rawLang as LanguageHint)
-      : null;
-
-    // Read the single `audio` multipart field.
-    let audioPart: import('@fastify/multipart').MultipartFile | undefined;
-    try {
-      audioPart = await req.file({ limits: { fileSize: TRANSCRIBE_AUDIO_LIMIT_BYTES } });
-    } catch {
-      reply
-        .code(400)
-        .send({ error: 'MULTIPART_PARSE_ERROR', message: 'Could not parse multipart body' });
-      return;
-    }
-
-    if (!audioPart) {
-      reply
-        .code(400)
-        .send({ error: 'AUDIO_REQUIRED', message: 'Multipart field `audio` is required' });
-      return;
-    }
-
-    if (audioPart.fieldname !== 'audio') {
-      reply
-        .code(400)
-        .send({ error: 'WRONG_FIELD', message: 'Expected multipart field named `audio`' });
-      return;
-    }
-
-    let audioBuffer: Buffer;
-    try {
-      audioBuffer = await audioPart.toBuffer();
-    } catch {
-      reply.code(400).send({ error: 'READ_ERROR', message: 'Could not read audio stream' });
-      return;
-    }
-
-    if (audioBuffer.length === 0) {
-      reply.code(400).send({ error: 'EMPTY_AUDIO', message: 'Audio file is empty' });
-      return;
-    }
-
-    // Build multipart/form-data to forward to OpenAI Whisper.
-    // We construct it manually with fetch's FormData (available in Node 18+)
-    // to avoid adding another npm dependency.
-    const filename =
-      audioPart.filename || `recording.${audioPart.mimetype?.split('/')[1] ?? 'm4a'}`;
-    const formData = new FormData();
-    formData.append('model', 'whisper-1');
-    formData.append(
-      'file',
-      new Blob([audioBuffer], { type: audioPart.mimetype || 'audio/m4a' }),
-      filename,
-    );
-    if (languageHint) {
-      formData.append('language', languageHint);
-    }
-    // Ask Whisper for verbose_json so we can potentially read back detected language.
-    formData.append('response_format', 'verbose_json');
-
-    let whisperRes: Response;
-    try {
-      whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: formData,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Network error reaching OpenAI';
-      reply.code(502).send({ error: 'OPENAI_UNREACHABLE', message: msg });
-      return;
-    }
-
-    if (!whisperRes.ok) {
-      let errMsg = `Whisper returned HTTP ${whisperRes.status}`;
-      try {
-        const errBody = (await whisperRes.json()) as { error?: { message?: string } };
-        if (errBody?.error?.message) errMsg = errBody.error.message;
-      } catch {
-        // ignore parse failure
+  app.post(
+    '/chat/transcribe',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
       }
-      reply.code(502).send({ error: 'WHISPER_ERROR', message: errMsg });
-      return;
-    }
 
-    let whisperData: WhisperResponse;
-    try {
-      whisperData = (await whisperRes.json()) as WhisperResponse;
-    } catch {
-      reply
-        .code(502)
-        .send({ error: 'WHISPER_PARSE_ERROR', message: 'Could not parse Whisper response' });
-      return;
-    }
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        reply.code(500).send({
+          error: 'AI_NOT_CONFIGURED',
+          message: 'OPENAI_API_KEY missing — set it in apps/backend/.env.local',
+        });
+        return;
+      }
 
-    const text = (whisperData.text ?? '').trim();
-    const detectedLanguage = whisperData.language ?? null;
-    const confidence = deriveConfidence(text, languageHint, detectedLanguage);
+      // Parse optional language query param.
+      const rawLang = (req.query as Record<string, string>)['language'];
+      const languageHint: LanguageHint | null = SUPPORTED_LANGUAGES.has(rawLang as LanguageHint)
+        ? (rawLang as LanguageHint)
+        : null;
 
-    const response: TranscribeResponse = {
-      text,
-      confidence,
-      languageDetected: detectedLanguage,
-    };
+      // Read the single `audio` multipart field.
+      let audioPart: import('@fastify/multipart').MultipartFile | undefined;
+      try {
+        audioPart = await req.file({ limits: { fileSize: TRANSCRIBE_AUDIO_LIMIT_BYTES } });
+      } catch {
+        reply
+          .code(400)
+          .send({ error: 'MULTIPART_PARSE_ERROR', message: 'Could not parse multipart body' });
+        return;
+      }
 
-    reply.code(200).send(response);
-  });
+      if (!audioPart) {
+        reply
+          .code(400)
+          .send({ error: 'AUDIO_REQUIRED', message: 'Multipart field `audio` is required' });
+        return;
+      }
+
+      if (audioPart.fieldname !== 'audio') {
+        reply
+          .code(400)
+          .send({ error: 'WRONG_FIELD', message: 'Expected multipart field named `audio`' });
+        return;
+      }
+
+      let audioBuffer: Buffer;
+      try {
+        audioBuffer = await audioPart.toBuffer();
+      } catch {
+        reply.code(400).send({ error: 'READ_ERROR', message: 'Could not read audio stream' });
+        return;
+      }
+
+      if (audioBuffer.length === 0) {
+        reply.code(400).send({ error: 'EMPTY_AUDIO', message: 'Audio file is empty' });
+        return;
+      }
+
+      // Build multipart/form-data to forward to OpenAI Whisper.
+      // We construct it manually with fetch's FormData (available in Node 18+)
+      // to avoid adding another npm dependency.
+      const filename =
+        audioPart.filename || `recording.${audioPart.mimetype?.split('/')[1] ?? 'm4a'}`;
+      const formData = new FormData();
+      formData.append('model', 'whisper-1');
+      formData.append(
+        'file',
+        new Blob([audioBuffer], { type: audioPart.mimetype || 'audio/m4a' }),
+        filename,
+      );
+      if (languageHint) {
+        formData.append('language', languageHint);
+      }
+      // Ask Whisper for verbose_json so we can potentially read back detected language.
+      formData.append('response_format', 'verbose_json');
+
+      let whisperRes: Response;
+      try {
+        whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: formData,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Network error reaching OpenAI';
+        reply.code(502).send({ error: 'OPENAI_UNREACHABLE', message: msg });
+        return;
+      }
+
+      if (!whisperRes.ok) {
+        let errMsg = `Whisper returned HTTP ${whisperRes.status}`;
+        try {
+          const errBody = (await whisperRes.json()) as { error?: { message?: string } };
+          if (errBody?.error?.message) errMsg = errBody.error.message;
+        } catch {
+          // ignore parse failure
+        }
+        reply.code(502).send({ error: 'WHISPER_ERROR', message: errMsg });
+        return;
+      }
+
+      let whisperData: WhisperResponse;
+      try {
+        whisperData = (await whisperRes.json()) as WhisperResponse;
+      } catch {
+        reply
+          .code(502)
+          .send({ error: 'WHISPER_PARSE_ERROR', message: 'Could not parse Whisper response' });
+        return;
+      }
+
+      const text = (whisperData.text ?? '').trim();
+      const detectedLanguage = whisperData.language ?? null;
+      const confidence = deriveConfidence(text, languageHint, detectedLanguage);
+
+      const response: TranscribeResponse = {
+        text,
+        confidence,
+        languageDetected: detectedLanguage,
+      };
+
+      reply.code(200).send(response);
+    },
+  );
 
   // ─────────────────────────────────────────────────────────────────────────
   // POST /chat/transcribe-stream
@@ -238,134 +243,138 @@ export async function registerChatTranscribeRoutes(app: FastifyInstance): Promis
   //          transcript shimmer)
   // @derives(panel-2026-05-18) — Wave 3 backend
   // ─────────────────────────────────────────────────────────────────────────
-  app.post('/chat/transcribe-stream', { preHandler: requireAuth }, async (req, reply) => {
-    const auth = req.auth;
-    if (!auth) {
-      reply.code(401).send({ error: 'AUTH_REQUIRED' });
-      return;
-    }
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      reply.code(500).send({
-        error: 'AI_NOT_CONFIGURED',
-        message: 'OPENAI_API_KEY missing — set it in apps/backend/.env.local',
-      });
-      return;
-    }
-
-    const rawLang = (req.query as Record<string, string>)['language'];
-    const languageHint: LanguageHint | null = SUPPORTED_LANGUAGES.has(rawLang as LanguageHint)
-      ? (rawLang as LanguageHint)
-      : null;
-
-    let audioPart: import('@fastify/multipart').MultipartFile | undefined;
-    try {
-      audioPart = await req.file({ limits: { fileSize: TRANSCRIBE_AUDIO_LIMIT_BYTES } });
-    } catch {
-      reply
-        .code(400)
-        .send({ error: 'MULTIPART_PARSE_ERROR', message: 'Could not parse multipart body' });
-      return;
-    }
-    if (!audioPart) {
-      reply
-        .code(400)
-        .send({ error: 'AUDIO_REQUIRED', message: 'Multipart field `audio` is required' });
-      return;
-    }
-    if (audioPart.fieldname !== 'audio') {
-      reply
-        .code(400)
-        .send({ error: 'WRONG_FIELD', message: 'Expected multipart field named `audio`' });
-      return;
-    }
-
-    let audioBuffer: Buffer;
-    try {
-      audioBuffer = await audioPart.toBuffer();
-    } catch {
-      reply.code(400).send({ error: 'READ_ERROR', message: 'Could not read audio stream' });
-      return;
-    }
-    if (audioBuffer.length === 0) {
-      reply.code(400).send({ error: 'EMPTY_AUDIO', message: 'Audio file is empty' });
-      return;
-    }
-
-    const filename =
-      audioPart.filename || `recording.${audioPart.mimetype?.split('/')[1] ?? 'm4a'}`;
-    const formData = new FormData();
-    formData.append('model', 'whisper-1');
-    formData.append(
-      'file',
-      new Blob([audioBuffer], { type: audioPart.mimetype || 'audio/m4a' }),
-      filename,
-    );
-    if (languageHint) {
-      formData.append('language', languageHint);
-    }
-    formData.append('response_format', 'verbose_json');
-    // Word-level timestamps — drives the mobile shimmer cadence.
-    formData.append('timestamp_granularities[]', 'word');
-    formData.append('timestamp_granularities[]', 'segment');
-
-    let whisperRes: Response;
-    try {
-      whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: formData,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Network error reaching OpenAI';
-      reply.code(502).send({ error: 'OPENAI_UNREACHABLE', message: msg });
-      return;
-    }
-    if (!whisperRes.ok) {
-      let errMsg = `Whisper returned HTTP ${whisperRes.status}`;
-      try {
-        const errBody = (await whisperRes.json()) as { error?: { message?: string } };
-        if (errBody?.error?.message) errMsg = errBody.error.message;
-      } catch {
-        // ignore parse failure
+  app.post(
+    '/chat/transcribe-stream',
+    { preHandler: [requireAuth, requireRole('SUPERVISOR')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
       }
-      reply.code(502).send({ error: 'WHISPER_ERROR', message: errMsg });
-      return;
-    }
 
-    type WhisperVerboseResponse = {
-      text: string;
-      language?: string;
-      duration?: number;
-      words?: Array<{ word: string; start: number; end: number }>;
-    };
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        reply.code(500).send({
+          error: 'AI_NOT_CONFIGURED',
+          message: 'OPENAI_API_KEY missing — set it in apps/backend/.env.local',
+        });
+        return;
+      }
 
-    let whisperData: WhisperVerboseResponse;
-    try {
-      whisperData = (await whisperRes.json()) as WhisperVerboseResponse;
-    } catch {
-      reply
-        .code(502)
-        .send({ error: 'WHISPER_PARSE_ERROR', message: 'Could not parse Whisper response' });
-      return;
-    }
-
-    const text = (whisperData.text ?? '').trim();
-    const detectedLanguage = whisperData.language ?? null;
-    const confidence = deriveConfidence(text, languageHint, detectedLanguage);
-    const words = Array.isArray(whisperData.words) ? whisperData.words : [];
-    const durationSeconds =
-      typeof whisperData.duration === 'number' && whisperData.duration > 0
-        ? whisperData.duration
+      const rawLang = (req.query as Record<string, string>)['language'];
+      const languageHint: LanguageHint | null = SUPPORTED_LANGUAGES.has(rawLang as LanguageHint)
+        ? (rawLang as LanguageHint)
         : null;
 
-    reply.code(200).send({
-      text,
-      confidence,
-      languageDetected: detectedLanguage,
-      words,
-      durationSeconds,
-    });
-  });
+      let audioPart: import('@fastify/multipart').MultipartFile | undefined;
+      try {
+        audioPart = await req.file({ limits: { fileSize: TRANSCRIBE_AUDIO_LIMIT_BYTES } });
+      } catch {
+        reply
+          .code(400)
+          .send({ error: 'MULTIPART_PARSE_ERROR', message: 'Could not parse multipart body' });
+        return;
+      }
+      if (!audioPart) {
+        reply
+          .code(400)
+          .send({ error: 'AUDIO_REQUIRED', message: 'Multipart field `audio` is required' });
+        return;
+      }
+      if (audioPart.fieldname !== 'audio') {
+        reply
+          .code(400)
+          .send({ error: 'WRONG_FIELD', message: 'Expected multipart field named `audio`' });
+        return;
+      }
+
+      let audioBuffer: Buffer;
+      try {
+        audioBuffer = await audioPart.toBuffer();
+      } catch {
+        reply.code(400).send({ error: 'READ_ERROR', message: 'Could not read audio stream' });
+        return;
+      }
+      if (audioBuffer.length === 0) {
+        reply.code(400).send({ error: 'EMPTY_AUDIO', message: 'Audio file is empty' });
+        return;
+      }
+
+      const filename =
+        audioPart.filename || `recording.${audioPart.mimetype?.split('/')[1] ?? 'm4a'}`;
+      const formData = new FormData();
+      formData.append('model', 'whisper-1');
+      formData.append(
+        'file',
+        new Blob([audioBuffer], { type: audioPart.mimetype || 'audio/m4a' }),
+        filename,
+      );
+      if (languageHint) {
+        formData.append('language', languageHint);
+      }
+      formData.append('response_format', 'verbose_json');
+      // Word-level timestamps — drives the mobile shimmer cadence.
+      formData.append('timestamp_granularities[]', 'word');
+      formData.append('timestamp_granularities[]', 'segment');
+
+      let whisperRes: Response;
+      try {
+        whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: formData,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Network error reaching OpenAI';
+        reply.code(502).send({ error: 'OPENAI_UNREACHABLE', message: msg });
+        return;
+      }
+      if (!whisperRes.ok) {
+        let errMsg = `Whisper returned HTTP ${whisperRes.status}`;
+        try {
+          const errBody = (await whisperRes.json()) as { error?: { message?: string } };
+          if (errBody?.error?.message) errMsg = errBody.error.message;
+        } catch {
+          // ignore parse failure
+        }
+        reply.code(502).send({ error: 'WHISPER_ERROR', message: errMsg });
+        return;
+      }
+
+      type WhisperVerboseResponse = {
+        text: string;
+        language?: string;
+        duration?: number;
+        words?: Array<{ word: string; start: number; end: number }>;
+      };
+
+      let whisperData: WhisperVerboseResponse;
+      try {
+        whisperData = (await whisperRes.json()) as WhisperVerboseResponse;
+      } catch {
+        reply
+          .code(502)
+          .send({ error: 'WHISPER_PARSE_ERROR', message: 'Could not parse Whisper response' });
+        return;
+      }
+
+      const text = (whisperData.text ?? '').trim();
+      const detectedLanguage = whisperData.language ?? null;
+      const confidence = deriveConfidence(text, languageHint, detectedLanguage);
+      const words = Array.isArray(whisperData.words) ? whisperData.words : [];
+      const durationSeconds =
+        typeof whisperData.duration === 'number' && whisperData.duration > 0
+          ? whisperData.duration
+          : null;
+
+      reply.code(200).send({
+        text,
+        confidence,
+        languageDetected: detectedLanguage,
+        words,
+        durationSeconds,
+      });
+    },
+  );
 }
