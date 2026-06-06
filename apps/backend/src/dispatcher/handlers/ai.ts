@@ -37,6 +37,12 @@
 
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
+import {
+  assertWithinBudget,
+  tokenCostInrFor,
+  incrementSpend,
+  AICostBudgetError,
+} from '@axhy/ai-tools';
 
 import { prisma } from '../../lib/prisma.js';
 import { generatePresignedGetUrls } from '../../lib/r2-presign.js';
@@ -161,6 +167,34 @@ export async function handleAiVerify(payload: unknown, log: FastifyBaseLogger): 
   // pricing this is comfortably under ₹1. Logged for ops dashboards.
   const estTokensIn = (before.length + after.length) * 1100 + 500;
   const estTokensOut = 500;
+
+  // P0 fix: enforce the tenant's daily AI budget BEFORE spending on OpenAI.
+  // The verify surface previously called OpenAI directly with no budget gate
+  // and never recorded spend, so the ₹/day cap + owner WARN/CAP alerts never
+  // fired for photo verification and the tenant's daily AI spend was
+  // undercounted. incrementSpend() below is the atomic raw-SQL increment.
+  const estCostInr = tokenCostInrFor(MODEL, {
+    inputTokens: estTokensIn,
+    outputTokens: estTokensOut,
+  });
+  try {
+    await assertWithinBudget('ai_verification', estCostInr, { companyId, prisma });
+  } catch (err) {
+    if (err instanceof AICostBudgetError) {
+      log.warn(
+        { visitId, companyId },
+        'ai.verify: daily AI budget reached — deferring to manual supervisor review',
+      );
+      await applyOutcome(visitId, companyId, {
+        reasoning: 'Daily AI verification budget reached; deferred to manual supervisor review.',
+        recommendation: 'REVIEW',
+        modelVersion: `${MODEL_VERSION}-budget-capped`,
+      });
+      return;
+    }
+    throw err;
+  }
+
   log.info(
     {
       visitId,
@@ -298,6 +332,18 @@ export async function handleAiVerify(payload: unknown, log: FastifyBaseLogger): 
         choices?: Array<{ message?: { content?: string } }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
+
+      // P0 fix: record the actual spend for THIS OpenAI call against the
+      // tenant's daily budget (one record per real call — retries count each).
+      await incrementSpend(
+        companyId,
+        tokenCostInrFor(MODEL, {
+          inputTokens: data.usage?.prompt_tokens ?? estTokensIn,
+          outputTokens: data.usage?.completion_tokens ?? estTokensOut,
+        }),
+        prisma,
+      );
+
       const raw = data.choices?.[0]?.message?.content;
       if (!raw) throw new Error('OpenAI returned empty completion');
 
