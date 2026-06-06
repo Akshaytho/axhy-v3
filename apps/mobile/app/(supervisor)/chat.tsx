@@ -253,6 +253,41 @@ export default function ChatScreen(): JSX.Element {
   });
   const supervisorFirstName = me?.user.name?.trim().split(/\s+/)[0] ?? 'there';
 
+  // Restore prior conversation on open — without this the supervisor's AI thread
+  // looks wiped every time they reopen Chat (locked: history persists). Seeds
+  // `messages` ONCE from the most-recent active thread. Guards: hydratedRef
+  // (one-shot) + messages.length (never clobber a message the user sent before
+  // the fetch resolved).
+  type HistoryMsg = {
+    id: string;
+    role: 'user' | 'assistant';
+    text: string;
+    chatMessageId?: string;
+    decisionCard?: DecisionCardData | null;
+  };
+  const { data: history } = useQuery<{ messages: HistoryMsg[] }>({
+    queryKey: ['chat-history'],
+    queryFn: () => apiFetch<{ messages: HistoryMsg[] }>('/chat/history'),
+    staleTime: Infinity,
+  });
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current || messages.length > 0) return;
+    const restored = history?.messages;
+    if (restored && restored.length > 0) {
+      hydratedRef.current = true;
+      setMessages(
+        restored.map((m) => ({
+          id: m.id,
+          role: m.role,
+          text: m.text,
+          chatMessageId: m.chatMessageId,
+          decisionCard: m.decisionCard ?? undefined,
+        })),
+      );
+    }
+  }, [history, messages.length]);
+
   // Supervisor portfolio counts.
   // Cluster 2 fix (QA-walkthrough 2026-05-18): keep sitesActive +
   // workersActive as null until the context query resolves. Pre-fix
