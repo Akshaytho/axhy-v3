@@ -22,7 +22,7 @@ const config = {
   name: 'Axhy',
   slug: 'axhy',
   scheme: 'axhy',
-  version: '0.1.0',
+  version: '0.1.1',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   icon: './assets/icon.png',
@@ -38,11 +38,11 @@ const config = {
   ios: {
     bundleIdentifier: 'app.axhy.mobile',
     supportsTablet: false,
-    buildNumber: '1',
+    buildNumber: '2',
   },
   android: {
     package: 'app.axhy.mobile',
-    versionCode: 1,
+    versionCode: 2,
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#4F46E5',
