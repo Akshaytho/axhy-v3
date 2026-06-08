@@ -123,6 +123,7 @@ export const AuditEventKindSchema = z.enum([
   'WORKER_CREATED',
   'WORKER_ANONYMIZED',
   'SITE_CREATED',
+  'SITE_HR_ASSIGNED',
 ]);
 
 /**

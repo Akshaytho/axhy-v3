@@ -122,3 +122,100 @@ export async function adminCreateBindingService(
 
   return { kind: 'OK', bindingId: binding.id };
 }
+
+/** @derives(master-plan §G) — site-anchored HR ownership (doc 15) */
+export type AdminAssignSiteHrServiceInput = {
+  callerCompanyId: string;
+  callerUserId: string;
+  siteId: string;
+  /** null = unassign (OWNER removes the site's HR owner). */
+  hrUserId: string | null;
+};
+
+/** @derives(master-plan §G) */
+export type AdminAssignSiteHrServiceOutput =
+  | { kind: 'OK'; siteId: string; hrUserId: string | null }
+  | { kind: 'SITE_NOT_FOUND' }
+  | { kind: 'HR_NOT_FOUND' }
+  | { kind: 'WOULD_SPLIT_WORKER'; workerIds: string[] };
+
+/**
+ * OWNER-only direct site→HR ownership assignment (site-anchored model, doc 15).
+ * Upholds the one-worker-one-HR invariant on the reassign path via a split-safety
+ * check: a reassignment can never leave a worker on this site who also works a
+ * site owned by a different HR.
+ *
+ * @derives(master-plan §G) — HR control plane
+ */
+export async function adminAssignSiteHrService(
+  tx: Prisma.TransactionClient,
+  input: AdminAssignSiteHrServiceInput,
+): Promise<AdminAssignSiteHrServiceOutput> {
+  const site = await tx.site.findFirst({
+    where: { id: input.siteId, companyId: input.callerCompanyId },
+    select: { id: true, ownerHrUserId: true },
+  });
+  if (!site) return { kind: 'SITE_NOT_FOUND' };
+
+  if (input.hrUserId !== null) {
+    // Target must be an ACTIVE HR member of this company.
+    const hr = await tx.membership.findFirst({
+      where: {
+        userId: input.hrUserId,
+        companyId: input.callerCompanyId,
+        role: 'HR',
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    if (!hr) return { kind: 'HR_NOT_FOUND' };
+
+    // Split-safety (one worker = one HR): reject if any worker on this site also
+    // works a site owned by a DIFFERENT non-null HR — that worker would be split
+    // across two HRs. (Unassigning to null can never split, so it's skipped.)
+    const splitWorkers = await tx.worker.findMany({
+      where: {
+        companyId: input.callerCompanyId,
+        AND: [
+          { assignments: { some: { siteId: input.siteId } } },
+          {
+            assignments: {
+              some: {
+                site: {
+                  AND: [
+                    { ownerHrUserId: { not: null } },
+                    { ownerHrUserId: { not: input.hrUserId } },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+      take: 20,
+    });
+    if (splitWorkers.length > 0) {
+      return { kind: 'WOULD_SPLIT_WORKER', workerIds: splitWorkers.map((w) => w.id) };
+    }
+  }
+
+  await tx.site.update({
+    where: { id: input.siteId },
+    data: { ownerHrUserId: input.hrUserId },
+  });
+
+  await recordAuditEvent(tx, {
+    companyId: input.callerCompanyId,
+    kind: 'SITE_HR_ASSIGNED',
+    actorId: input.callerUserId,
+    targetId: input.siteId,
+    payload: {
+      siteId: input.siteId,
+      hrUserId: input.hrUserId,
+      previousHrUserId: site.ownerHrUserId,
+    },
+  });
+
+  return { kind: 'OK', siteId: input.siteId, hrUserId: input.hrUserId };
+}

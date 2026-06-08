@@ -23,6 +23,7 @@ import { requireRole } from '../middleware/role-gates.js';
 import {
   adminCreateSiteService,
   adminCreateBindingService,
+  adminAssignSiteHrService,
 } from '../lib/services/admin-site-service.js';
 
 // ─── Cursor encoding ─────────────────────────────────────────────────────────
@@ -317,6 +318,55 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
         return;
       }
       reply.send({ bindingId: out.bindingId });
+    },
+  );
+
+  // PATCH /admin/sites/:id/hr — OWNER-only direct site→HR ownership assignment.
+  // The high-stakes boundary the owner keeps (HR proposes via wave 5b; OWNER
+  // commits here). Body { hrUserId: uuid | null } (null = unassign).
+  app.patch<{ Params: { id: string } }>(
+    '/admin/sites/:id/hr',
+    { preHandler: [requireAuth, requireRole('OWNER')] },
+    async (req, reply) => {
+      const auth = req.auth!;
+      const parsed = z.object({ hrUserId: z.string().uuid().nullable() }).safeParse(req.body);
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+        return;
+      }
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+        adminAssignSiteHrService(tx, {
+          callerCompanyId: auth.companyId,
+          callerUserId: auth.userId,
+          siteId: req.params.id,
+          hrUserId: parsed.data.hrUserId,
+        }),
+      );
+      if (out.kind === 'SITE_NOT_FOUND') {
+        reply
+          .code(404)
+          .send({ error: 'SITE_NOT_FOUND', message: 'Site not found in this company' });
+        return;
+      }
+      if (out.kind === 'HR_NOT_FOUND') {
+        reply
+          .code(404)
+          .send({
+            error: 'HR_NOT_FOUND',
+            message: 'That user is not an active HR in this company',
+          });
+        return;
+      }
+      if (out.kind === 'WOULD_SPLIT_WORKER') {
+        reply.code(409).send({
+          error: 'WOULD_SPLIT_WORKER',
+          message:
+            'Reassigning this site would put a worker under two HRs. Move their other sites first.',
+          workerIds: out.workerIds,
+        });
+        return;
+      }
+      reply.send({ siteId: out.siteId, hrUserId: out.hrUserId });
     },
   );
 }

@@ -11,6 +11,7 @@ import { prisma } from '../src/lib/prisma.js';
 import { withTenantContext } from '../src/middleware/tenant-context.js';
 import { createAssignmentService } from '../src/lib/services/assignment-service.js';
 import { getHrSiteIds } from '../src/middleware/hr-site-scope.js';
+import { adminAssignSiteHrService } from '../src/lib/services/admin-site-service.js';
 
 const uid = (): string => crypto.randomUUID();
 const sfx = crypto.randomBytes(4).toString('hex');
@@ -147,5 +148,32 @@ describe('one-worker-one-HR invariant (site-anchored)', () => {
       expect(r.existingHrUserId).toBe(hrA);
       expect(r.newHrUserId).toBe(hrB);
     }
+  });
+
+  // ── OWNER direct site→HR assignment (wave 5a) ──
+  const assignSiteHr = (siteId: string, hrUserId: string | null) =>
+    withTenantContext(prisma, companyId, (tx) =>
+      adminAssignSiteHrService(tx, {
+        callerCompanyId: companyId,
+        callerUserId: hrA,
+        siteId,
+        hrUserId,
+      }),
+    );
+
+  it('assign-site-hr: a non-HR target is rejected (HR_NOT_FOUND)', async () => {
+    const r = await assignSiteHr(siteNull, workerUserId);
+    expect(r.kind).toBe('HR_NOT_FOUND');
+  });
+
+  it('assign-site-hr: would split a worker across HRs (WOULD_SPLIT_WORKER)', async () => {
+    // workerId is on siteNull AND siteA (hrA); assigning siteNull to hrB splits it.
+    const r = await assignSiteHr(siteNull, hrB);
+    expect(r.kind).toBe('WOULD_SPLIT_WORKER');
+  });
+
+  it('assign-site-hr: same-HR assignment succeeds (OK)', async () => {
+    const r = await assignSiteHr(siteNull, hrA);
+    expect(r.kind).toBe('OK');
   });
 });
