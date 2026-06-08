@@ -67,3 +67,21 @@ Wherever these docs still say "pod," read it as the site-anchored equivalent per
 ## 8. Audit-verified foundation this sits on (from `AUDIT-worker-supervisor/`)
 
 Confirmed present and working in code: `SiteSupervisorBinding` + `effective-responsibility.ts` + `same-day-freeze.ts` + `handoff-package-*` + outbox/dispatcher/notifications + `audit-event.ts` + tenant-scoping + the daily-living-doc + `reload-context-counter.ts` pattern. **The HR site-anchored model reuses these — it invents nothing new.** Open fix the HR build must fold in (per the audit): centralize the `Worker.id` ↔ `User.id` contract (HR leave/anonymize/payroll key on `Worker.id`).
+
+---
+
+## 9. Amendment — 2026-06-08: Further simplification to ONE WORKER = ONE HR (founder)
+
+**Status:** DECISION (founder, 2026-06-08). Simplifies §3 — supersedes the primary-site machinery above.
+
+The §3 model is **further simplified**. The founder decided that **a worker belongs to exactly ONE HR**:
+
+- **`Site.ownerHrUserId`** (one nullable FK on `Site`) is the single anchor — one HR per site. (No `backupHrUserId` for now.)
+- **A worker's sites must all belong to the same HR**, enforced at EVERY assignment-write path (`validateWorkerHrInvariant`, with a `FOR UPDATE` worker lock for concurrency). A worker can therefore never be split across two HRs.
+- **DROPPED / NOT built** (the §3 "3 rules" + claim): `Worker.primarySiteId` daily snapshot, `routedSiteId` on open matters, the soft optimistic claim, the per-worker `hrTerritoryId` override. Because no worker spans two HRs, none of that machinery is needed — routing is unambiguous.
+- HR reads scope to `Site.ownerHrUserId` (`getHrSiteIds`); **OWNER is company-wide**.
+- **Reassignment** = OWNER direct-assign (`PATCH /admin/sites/:id/hr`, OWNER-only, with split-safety) **OR** HR-proposes → OWNER-approves (maker-checker; the delegation layer).
+
+**Standing principle (founder 2026-06-08):** HR does the operational volume DIRECTLY (hire / leave / complaints — no approval); the OWNER approves only the high-stakes few (site→HR reassignment, payroll commit, bank-account changes). High-volume HR actions are never gated (consistent with the locked hiring rule — HR hires directly).
+
+**Implemented (lab-tested):** `Site.ownerHrUserId` schema + migration `20260608_022`; the one-worker-one-HR write invariant on all 4 write paths; site-scoped HR reads; HR leak fixes; OWNER direct-assign + split-safety. Commits `54a4299` / `cec0b6e` / `e590d94` / `0a0c1c1` / `bfcd4aa` / `e8df8fb`. Remaining: the HR-propose→OWNER-approve maker-checker queue. The older pod docs (`workflow-design-closure` §4/§8, `impl-kickoff` HRPod, `hr-a1` pod-scoping) remain historical/superseded by this doc.
