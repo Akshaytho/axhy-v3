@@ -220,6 +220,10 @@ afterAll(async () => {
   await prismaRaw.outbox.deleteMany({
     where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
   });
+  // FK-safe: delete Attendance (written by the approve bridge) before workers.
+  await prismaRaw.attendance.deleteMany({
+    where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
+  });
   await prismaRaw.leaveRequest.deleteMany({
     where: { OR: [{ companyId: companyAId }, { companyId: companyBId }] },
   });
@@ -310,10 +314,21 @@ describe('POST /leave-requests/:id/approve | /reject', () => {
     expect(audits.length).toBeGreaterThan(0);
     expect(audits[0]!.actorId).toBe(supervisorId);
 
+    // Assert the row was ENQUEUED (existence), not that it remains unprocessed —
+    // the in-process dispatcher races to mark stub rows processedAt, which makes
+    // a processedAt:null filter flaky.
     const outbox = await prismaRaw.outbox.findMany({
-      where: { companyId: companyAId, topic: 'worker.leave_approved', processedAt: null },
+      where: { companyId: companyAId, topic: 'worker.leave_approved' },
     });
     expect(outbox.length).toBeGreaterThan(0);
+
+    // Blocker fix: approval must bridge into Attendance so the roster shows the
+    // worker on_leave (today-service maps ABSENT_APPROVED_LEAVE -> on_leave).
+    const leaveAttendance = await prismaRaw.attendance.findMany({
+      where: { companyId: companyAId, workerId: workerAId, status: 'ABSENT_APPROVED_LEAVE' },
+    });
+    expect(leaveAttendance.length).toBeGreaterThan(0);
+    expect(leaveAttendance[0]!.payDeductPaise).toBe(0);
   });
 
   it('reject happy path: REQUESTED → REJECTED + AuditEvent + Outbox', async () => {
@@ -336,9 +351,15 @@ describe('POST /leave-requests/:id/approve | /reject', () => {
     expect(audits.length).toBeGreaterThan(0);
 
     const outbox = await prismaRaw.outbox.findMany({
-      where: { companyId: companyAId, topic: 'worker.leave_rejected', processedAt: null },
+      where: { companyId: companyAId, topic: 'worker.leave_rejected' },
     });
     expect(outbox.length).toBeGreaterThan(0);
+
+    // Reject must NOT bridge into Attendance — only approve does.
+    const rejectAttendance = await prismaRaw.attendance.findMany({
+      where: { companyId: companyAId, workerId: workerBId },
+    });
+    expect(rejectAttendance.length).toBe(0);
   });
 
   it('returns 409 when re-deciding an already-decided leave', async () => {

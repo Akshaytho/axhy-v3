@@ -309,8 +309,9 @@ describe('POST /swap-requests', () => {
     expect(audits.length).toBeGreaterThan(0);
     expect(audits[0]!.actorId).toBe(supervisorId);
 
+    // Existence, not processedAt:null — the in-process dispatcher races to process it.
     const outbox = await prismaRaw.outbox.findMany({
-      where: { companyId: companyAId, topic: 'gupshup.send', processedAt: null },
+      where: { companyId: companyAId, topic: 'gupshup.send' },
     });
     const ours = outbox.filter(
       (row) => (row.payload as { swapRequestId?: string }).swapRequestId === body.swapRequestId,

@@ -73,6 +73,8 @@ export type ValidateResult =
       withinGrace?: boolean;
       compromise?: boolean;
       revoked?: boolean;
+      /** Token is past its absolute expiresAt (H9). Route maps this to 401. */
+      expired?: boolean;
     };
 
 /**
@@ -162,6 +164,11 @@ export function createRefreshTokenStore(prisma: PrismaClient): RefreshTokenStore
         if (byCurrent.revokedAt) {
           return { found: true, family: byCurrent, revoked: true };
         }
+        // H9: enforce absolute expiry — a token past expiresAt is rejected so a
+        // stale/stolen refresh token can no longer be used forever.
+        if (byCurrent.expiresAt.getTime() <= Date.now()) {
+          return { found: true, family: byCurrent, expired: true };
+        }
         return { found: true, family: byCurrent };
       }
 
@@ -172,6 +179,10 @@ export function createRefreshTokenStore(prisma: PrismaClient): RefreshTokenStore
       });
       if (!byPrevious) {
         return { found: false };
+      }
+      // H9: absolute expiry applies on the prev-hash (grace/compromise) path too.
+      if (byPrevious.expiresAt.getTime() <= Date.now()) {
+        return { found: true, family: byPrevious, expired: true };
       }
       const previousAge = byPrevious.previousRotatedAt
         ? Date.now() - byPrevious.previousRotatedAt.getTime()
@@ -188,7 +199,9 @@ export function createRefreshTokenStore(prisma: PrismaClient): RefreshTokenStore
       if (existing.revokedAt) throw new Error(`rotate: family ${familyId} is revoked`);
       const newPlain = mintRawToken();
       const newHash = sha256hex(newPlain);
-      const newExpiry = new Date(Date.now() + REFRESH_TTL_SECONDS * 1000);
+      // H9: do NOT slide the expiry on rotation. The family keeps its ORIGINAL
+      // absolute expiresAt (set at create), so a token refreshed repeatedly still
+      // dies ~30 days after issuance — it cannot be kept alive forever by use.
       await prisma.refreshToken.update({
         where: { id: familyId },
         data: {
@@ -196,12 +209,11 @@ export function createRefreshTokenStore(prisma: PrismaClient): RefreshTokenStore
           previousRotatedAt: new Date(),
           currentTokenHash: newHash,
           lastUsedAt: new Date(),
-          expiresAt: newExpiry,
           ipLast: ipLast?.slice(0, 64) ?? existing.ipLast,
         },
       });
       await warmRedis(familyId, newHash);
-      return { plainToken: newPlain, expiresAt: newExpiry };
+      return { plainToken: newPlain, expiresAt: existing.expiresAt };
     },
 
     async revokeForCompromise(familyId) {

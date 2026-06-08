@@ -119,6 +119,16 @@ export async function registerAuthRefreshRoutes(app: FastifyInstance): Promise<v
       return;
     }
 
+    if (result.expired) {
+      req.log.info(
+        { event: 'refresh.attempt', outcome: 'expired', familyId: result.family.id, ip },
+        'refresh rejected: token past absolute expiry',
+      );
+      // Same opaque 401 as not-found — never signal which condition tripped.
+      reply.code(401).send({ error: 'INVALID_REFRESH', message: 'Invalid refresh token' });
+      return;
+    }
+
     if (result.compromise) {
       req.log.warn(
         {

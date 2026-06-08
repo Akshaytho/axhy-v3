@@ -353,6 +353,62 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
           },
         });
 
+        // BLOCKER fix — bridge approval into the operational system. Approving
+        // leave was previously inert: today-service derives `on_leave` ONLY from
+        // Attendance.status='ABSENT_APPROVED_LEAVE' (today-service.ts:335), so
+        // without these rows the worker stayed "expected", was still markable
+        // absent, and payroll never saw the leave. Write one ABSENT_APPROVED_LEAVE
+        // row per leave day (idempotent on workerId_date; payDeductPaise 0 per
+        // computeDailyDeductPaise) inside this same single-winner approve tx, then
+        // recompute payroll per affected month. The reject path writes nothing.
+        if (action === 'approve') {
+          const toUtcDay = (d: Date) =>
+            new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+          const start = toUtcDay(leave.fromDate);
+          const end = toUtcDay(leave.toDate);
+          const MAX_LEAVE_DAYS = 366;
+          const spanDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+          if (spanDays < 1 || spanDays > MAX_LEAVE_DAYS) {
+            // Malformed range (toDate < fromDate, or an unbounded date from a gap
+            // in leave-creation validation). Roll the whole approval back rather
+            // than write a bogus/huge attendance span.
+            throw Object.assign(
+              new Error(`Leave span ${spanDays} days out of bounds (1..${MAX_LEAVE_DAYS})`),
+              { statusCode: 400 },
+            );
+          }
+          const monthsToRecompute = new Set<string>();
+          for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+            const dayIso = d.toISOString().slice(0, 10);
+            await tx.attendance.upsert({
+              where: { workerId_date: { workerId: leave.workerId, date: new Date(dayIso) } },
+              create: {
+                companyId: auth.companyId,
+                workerId: leave.workerId,
+                date: new Date(dayIso),
+                status: 'ABSENT_APPROVED_LEAVE',
+                markedBySupervisorId: auth.userId,
+                reason: decisionReason ?? 'Approved leave',
+                payDeductPaise: 0,
+              },
+              update: {
+                status: 'ABSENT_APPROVED_LEAVE',
+                markedBySupervisorId: auth.userId,
+                reason: decisionReason ?? 'Approved leave',
+                payDeductPaise: 0,
+              },
+            });
+            monthsToRecompute.add(dayIso.slice(0, 7));
+          }
+          for (const monthOf of monthsToRecompute) {
+            await enqueueOutbox(tx, {
+              companyId: auth.companyId,
+              topic: 'payroll.recompute',
+              payload: { workerId: leave.workerId, monthOf },
+            });
+          }
+        }
+
         return { kind: 'OK' as const, leave: updated };
       });
 

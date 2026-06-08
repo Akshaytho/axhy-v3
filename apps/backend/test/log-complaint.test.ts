@@ -198,8 +198,9 @@ describe('POST /sites/:id/complaints', () => {
     expect(audits.length).toBeGreaterThan(0);
     expect(audits[0]!.actorId).toBe(supervisorId);
 
+    // Existence, not processedAt:null — the in-process dispatcher races to process it.
     const outbox = await prismaRaw.outbox.findMany({
-      where: { companyId: companyAId, topic: 'hr.site_complaint', processedAt: null },
+      where: { companyId: companyAId, topic: 'hr.site_complaint' },
     });
     expect(outbox.length).toBeGreaterThan(0);
     const ours = outbox.find(

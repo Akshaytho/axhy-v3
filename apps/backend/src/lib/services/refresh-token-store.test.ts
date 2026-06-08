@@ -94,14 +94,14 @@ describe('refresh-token-store', () => {
     expect(row!.membershipId).toBeNull();
   });
 
-  it('rotate(): returns a new token, moves old hash to previousTokenHash, slides expiresAt', async () => {
+  it('rotate(): returns a new token, moves old hash to previousTokenHash, PRESERVES the absolute expiresAt (no sliding)', async () => {
     const { membershipId, userId } = await makeEphemeralMembership();
     createdMemberships.push(membershipId);
     const created = await store.create({ userId, membershipId });
     createdFamilies.push(created.familyId);
     const oldHash = sha256hex(created.plainToken);
 
-    // Wait 1s so lastUsedAt / expiresAt deltas are visible.
+    // Wait 1s so the lastUsedAt delta is visible (expiresAt must NOT change — H9).
     await new Promise((r) => setTimeout(r, 1100));
 
     const rotated = await store.rotate({ familyId: created.familyId });
@@ -112,7 +112,23 @@ describe('refresh-token-store', () => {
     expect(row!.currentTokenHash).toBe(sha256hex(rotated.plainToken));
     expect(row!.previousTokenHash).toBe(oldHash);
     expect(row!.previousRotatedAt).not.toBeNull();
-    expect(row!.expiresAt.getTime()).toBeGreaterThan(created.expiresAt.getTime());
+    // H9: rotation preserves the ORIGINAL absolute expiry (no sliding window).
+    expect(row!.expiresAt.getTime()).toBe(created.expiresAt.getTime());
+  });
+
+  it('validate(): rejects a token past its absolute expiresAt (H9)', async () => {
+    const { membershipId, userId } = await makeEphemeralMembership();
+    createdMemberships.push(membershipId);
+    const created = await store.create({ userId, membershipId });
+    createdFamilies.push(created.familyId);
+    // Backdate the family's expiry into the past.
+    await prisma.refreshToken.update({
+      where: { id: created.familyId },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    const result = await store.validate(created.plainToken);
+    expect(result.found).toBe(true);
+    expect((result as { expired?: boolean }).expired).toBe(true);
   });
 
   it.runIf(!!process.env.REDIS_URL)(

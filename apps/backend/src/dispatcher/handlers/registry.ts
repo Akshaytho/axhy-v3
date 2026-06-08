@@ -17,6 +17,8 @@ import {
   handleHrSiteComplaint,
   handleWorkerLeaveApproved,
   handleWorkerLeaveRejected,
+  handleSwapAccepted,
+  handleSwapRejected,
   handleGupshupSend,
 } from './gupshup.js';
 import { handlePayrollRecompute } from './payroll.js';
@@ -31,6 +33,8 @@ export const HANDLERS: Record<string, OutboxHandler> = {
   'hr.site_complaint': handleHrSiteComplaint,
   'worker.leave_approved': handleWorkerLeaveApproved,
   'worker.leave_rejected': handleWorkerLeaveRejected,
+  'swap.accepted': handleSwapAccepted,
+  'swap.rejected': handleSwapRejected,
   'gupshup.send': handleGupshupSend,
   'payroll.recompute': handlePayrollRecompute,
   'ai.verify': handleAiVerify,

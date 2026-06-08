@@ -139,6 +139,20 @@ function complaintRoleFromAuthRole(role: string): ComplaintAuthorRole {
   return 'ADMIN';
 }
 
+// ─── Complaint access scope ──────────────────────────────────────────────────
+//
+// Coherent access predicate shared by EVERY complaint route. SUPERVISOR callers
+// see and act on ONLY the complaints they created; HR and OWNER are trusted
+// company-wide (companyId is always applied separately). This closes the prior
+// incoherence where messages-post/read let HR act on any complaint while
+// list/detail/resolve silently restricted HR to complaints it personally
+// created — so HR could reply to a complaint it could never list or resolve.
+function complaintAccessWhere(auth: { role: string; userId: string }): {
+  createdByUserId?: string;
+} {
+  return auth.role === 'SUPERVISOR' ? { createdByUserId: auth.userId } : {};
+}
+
 // ─── Route registration ─────────────────────────────────────────────────────
 
 type IdParams = FastifyRequest<{ Params: { id: string } }>;
@@ -176,7 +190,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
         tx.complaint.findMany({
           where: {
             companyId: auth.companyId,
-            createdByUserId: auth.userId,
+            ...complaintAccessWhere(auth),
             ...(state ? { state } : {}),
             ...(siteId ? { siteId } : {}),
             ...(cursor
@@ -222,7 +236,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
           where: {
             id: complaintId,
             companyId: auth.companyId,
-            createdByUserId: auth.userId,
+            ...complaintAccessWhere(auth),
           },
           include: { site: { select: { name: true } } },
         });
@@ -304,7 +318,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
               where: {
                 id: complaintId,
                 companyId: auth.companyId,
-                ...(authorRole === 'SUPERVISOR' ? { createdByUserId: auth.userId } : {}),
+                ...complaintAccessWhere(auth),
               },
               select: { id: true },
             });
@@ -360,17 +374,17 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
       const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
         // Ownership gate for supervisor — they can only mark-read messages
         // on complaints they created. HR-future-portal flag stays scoped.
-        if (actorRole === 'SUPERVISOR') {
-          const complaint = await tx.complaint.findFirst({
-            where: {
-              id: complaintId,
-              companyId: auth.companyId,
-              createdByUserId: auth.userId,
-            },
-            select: { id: true },
-          });
-          if (!complaint) return { kind: 'COMPLAINT_NOT_FOUND' as const };
-        }
+        // Coherent access gate for ALL roles: SUPERVISOR only their own
+        // complaints; HR/OWNER any complaint in the company (companyId-scoped).
+        const accessible = await tx.complaint.findFirst({
+          where: {
+            id: complaintId,
+            companyId: auth.companyId,
+            ...complaintAccessWhere(auth),
+          },
+          select: { id: true },
+        });
+        if (!accessible) return { kind: 'COMPLAINT_NOT_FOUND' as const };
         return markComplaintMessageRead(tx, {
           companyId: auth.companyId,
           complaintId,
@@ -407,7 +421,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
           where: {
             id: complaintId,
             companyId: auth.companyId,
-            createdByUserId: auth.userId,
+            ...complaintAccessWhere(auth),
           },
           select: { id: true },
         });

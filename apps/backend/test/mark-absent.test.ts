@@ -347,8 +347,10 @@ describe('POST /workers/:id/mark-absent', () => {
     expect(audits[0]!.actorId).toBe(supervisorId);
 
     // Outbox topics enqueued
+    // Assert the rows were ENQUEUED (existence), not that they remain unprocessed —
+    // the in-process dispatcher races to mark stub rows processedAt (flaky filter).
     const outboxRows = await prismaRaw.outbox.findMany({
-      where: { companyId: companyAId, processedAt: null },
+      where: { companyId: companyAId },
     });
     const topics = outboxRows.map((r) => r.topic);
     expect(topics).toContain('hr.worker_absent');

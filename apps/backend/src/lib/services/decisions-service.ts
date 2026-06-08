@@ -70,6 +70,7 @@ import {
 
 import { getSitesSupervisedByUser } from '../effective-responsibility.js';
 import { deriveWorkerPrimarySiteId } from '../effective-responsibility.js';
+import { prisma } from '../prisma.js';
 
 // ===========================================================================
 // Public types
@@ -116,6 +117,13 @@ export type DecisionSourceContext = {
   at: Date;
   /** Site ids this user is the effective responsible supervisor of at `at`. */
   supervisedSiteIds: Set<string>;
+  /**
+   * Worker ids with ANY assignment to a supervised site — a SUPERSET of
+   * "worker's primary site is supervised". Sources push this into the SQL WHERE
+   * before their take cap so a busy company can never cap away this supervisor's
+   * items; the in-memory loops still refine to the exact primary-site match (H5).
+   */
+  routedWorkerIds: Set<string>;
   /** Memoised worker→primary-site cache; sources may share. */
   workerPrimarySiteCache: Map<string, string | null>;
 };
@@ -198,7 +206,10 @@ const AUTO_SWEEP_BATCH = 100;
 
 /**
  * Auto-dismiss pending SupervisorDecision rows older than the staleness
- * threshold. Runs inside the same tx as the read. Race-safe:
+ * threshold. The dismiss + DWI_EXPIRED audit are wrapped in a single
+ * prisma.$transaction so they commit atomically (the audit can never orphan the
+ * dismiss); that transaction opens ONLY when stale rows exist, so a normal read
+ * pays no transaction overhead. Race-safe:
  *   - The `updateMany` WHERE re-checks `appliedAt IS NULL AND dismissedAt IS NULL`,
  *     so a concurrent manual apply that beats us writes the row first; our
  *     UPDATE sees count 0 and doesn't dismiss it.
@@ -230,40 +241,45 @@ async function autoSweepStaleDecisions(
   if (candidates.length === 0) return 0;
 
   const ids = candidates.map((c) => c.id);
-  const updated = await tx.supervisorDecision.updateMany({
-    where: {
-      id: { in: ids },
-      appliedAt: null,
-      dismissedAt: null,
-    },
-    data: {
-      dismissedAt: at,
-      dismissedReason: 'auto-dismissed: no action for 48h',
-    },
-  });
-  if (updated.count === 0) return 0;
+  // Atomic dismiss + audit — wrapped in ONE transaction so the DWI_EXPIRED audit
+  // can never orphan the dismiss (the H4 integrity fix). Opened only here, after
+  // the candidates.length===0 early-return above, so a normal read with nothing
+  // stale pays no transaction overhead.
+  return await prisma.$transaction(async (txw) => {
+    const updated = await txw.supervisorDecision.updateMany({
+      where: {
+        companyId,
+        id: { in: ids },
+        appliedAt: null,
+        dismissedAt: null,
+      },
+      data: {
+        dismissedAt: at,
+        dismissedReason: 'auto-dismissed: no action for 48h',
+      },
+    });
+    if (updated.count === 0) return 0;
 
-  // Emit one audit event per dismissed row. The actorId is the original
-  // supervisor so the audit timeline reads "Ravi's decision auto-dismissed
-  // after 48h" — keeps accountability with the human who owned the queue.
-  // DWI_EXPIRED is the existing audit-event kind reserved for "the
-  // decision expired by timeout, no supervisor action". Distinct from
-  // DWI_DISMISSED (manual) and DWI_APPLIED (transition).
-  await tx.auditEvent.createMany({
-    data: candidates.map((c) => ({
-      companyId,
-      kind: 'DWI_EXPIRED',
-      actorId: c.supervisorId,
-      targetId: c.id,
-      payload: {
-        reason: 'auto-dismissed: no action for 48h',
-        kind: c.kind,
-        tier: c.tier,
-      } as Prisma.InputJsonValue,
-    })),
-  });
+    // One DWI_EXPIRED audit per dismissed row. actorId is the original supervisor
+    // so the timeline reads "Ravi's decision auto-dismissed after 48h".
+    // DWI_EXPIRED = expired-by-timeout (distinct from DWI_DISMISSED manual and
+    // DWI_APPLIED transition).
+    await txw.auditEvent.createMany({
+      data: candidates.map((c) => ({
+        companyId,
+        kind: 'DWI_EXPIRED',
+        actorId: c.supervisorId,
+        targetId: c.id,
+        payload: {
+          reason: 'auto-dismissed: no action for 48h',
+          kind: c.kind,
+          tier: c.tier,
+        } as Prisma.InputJsonValue,
+      })),
+    });
 
-  return updated.count;
+    return updated.count;
+  });
 }
 
 function encodeCursor(p: DecisionsCursorPayload): string {
@@ -334,11 +350,28 @@ export async function buildDecisionsForSupervisor(
   });
   const supervisedSiteIds = new Set(supervisedSites.map((s) => s.siteId));
 
+  // H5: SUPERSET of workers whose primary site is supervised — every worker with
+  // ANY assignment to a supervised site (no state filter, so it covers
+  // deriveWorkerPrimarySiteId's active/stale/terminated fallback tiers and can
+  // never under-include). Lets each source push routing into the SQL WHERE
+  // BEFORE its take:200 cap, so a >200-pending company cannot silently drop this
+  // supervisor's items. The sources still refine to the exact primary-site match.
+  const routedWorkerIds = new Set<string>();
+  if (supervisedSiteIds.size > 0) {
+    const assignedRows = await tx.assignment.findMany({
+      where: { companyId: args.companyId, siteId: { in: [...supervisedSiteIds] } },
+      select: { workerId: true },
+      distinct: ['workerId'],
+    });
+    for (const r of assignedRows) routedWorkerIds.add(r.workerId);
+  }
+
   const ctx: DecisionSourceContext = {
     companyId: args.companyId,
     userId: args.userId,
     at,
     supervisedSiteIds,
+    routedWorkerIds,
     workerPrimarySiteCache: new Map(),
   };
 
@@ -355,6 +388,9 @@ export async function buildDecisionsForSupervisor(
   //         response. Race-safe (conditional updateMany re-checks lifecycle).
   let autoDismissedThisRead = 0;
   try {
+    // H4: autoSweepStaleDecisions makes its dismiss + audit atomic internally
+    // (prisma.$transaction, opened only when stale rows exist), so a normal read
+    // here stays on the bare client with no added per-request transaction cost.
     autoDismissedThisRead = await autoSweepStaleDecisions(tx, args.companyId, at);
   } catch {
     // Don't fail the whole read if the sweep hits an issue — log via the
@@ -444,6 +480,13 @@ const supervisorDecisionSource: DecisionSource = {
         companyId: ctx.companyId,
         appliedAt: null,
         dismissedAt: null,
+        // H5: cap THIS supervisor's routed set, not the company-wide pool —
+        // origin (own) OR targeted at a supervised site / routed worker. The
+        // in-memory loop below still refines to the exact primary-site match.
+        OR: [
+          { supervisorId: ctx.userId },
+          { targetId: { in: [...ctx.supervisedSiteIds, ...ctx.routedWorkerIds] } },
+        ],
       },
       orderBy: { createdAt: 'asc' },
       take: 200,
@@ -582,6 +625,10 @@ const leaveRequestSource: DecisionSource = {
       where: {
         companyId: ctx.companyId,
         state: 'REQUESTED',
+        // H5: cap THIS supervisor's routed leaves, not the company-wide pool.
+        // Leave routes by the worker's primary site; routedWorkerIds is a
+        // superset of "primary site supervised", and the loop below refines.
+        workerId: { in: [...ctx.routedWorkerIds] },
       },
       include: {
         worker: { select: { id: true, name: true } },

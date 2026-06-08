@@ -106,22 +106,34 @@ export type ImpactCheckV2Result = {
 
 // ─── DB connection (lazy) ───────────────────────────────────────────────────
 
-let _client: pg.Client | null = null;
+let _client: pg.Pool | pg.Client | null = null;
 
-async function getClient(): Promise<pg.Client> {
+async function getClient(): Promise<pg.Pool | pg.Client> {
   if (_client) return _client;
   const url =
     process.env.DATABASE_PUBLIC_URL ?? process.env.DATABASE_URL ?? process.env.AXHY_DB_URL;
   if (!url) throw new Error('DATABASE_URL required for impact-check-v2');
-  _client = new pg.Client({ connectionString: url });
-  // Self-heal: a dropped connection (e.g. Railway proxy idle-close over a long
-  // session) emits 'error'; with NO listener pg treats it as uncaught and kills
-  // the process, and the dead client would otherwise be reused forever. Null the
-  // memo so the next getClient() transparently reconnects.
-  _client.on('error', () => {
-    _client = null;
+  // A single long-lived pg.Client dies on a Railway proxy idle-close — which
+  // often arrives as a clean 'end' (not 'error'), so the previous 'error'-only
+  // self-heal left a dead client memoized and queries threw "Connection
+  // terminated unexpectedly". A Pool is the robust fix: keepAlive stops the
+  // proxy idle-closing in the first place, and the pool transparently evicts a
+  // dead connection and serves the next query a fresh one. Same .query()/.end()
+  // surface, so callers, setClient(), and disconnect() are unchanged.
+  const pool = new pg.Pool({
+    connectionString: url,
+    max: 5,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
   });
-  await _client.connect();
+  // node-postgres requires an 'error' listener on the pool: an error on an idle
+  // pooled connection would otherwise become an uncaught exception and kill the
+  // process. The pool already removes the failed connection; this just prevents
+  // the crash and lets the next query reconnect transparently.
+  pool.on('error', () => {});
+  _client = pool;
   return _client;
 }
 

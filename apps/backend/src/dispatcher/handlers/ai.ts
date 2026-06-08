@@ -361,16 +361,14 @@ export async function handleAiVerify(payload: unknown, log: FastifyBaseLogger): 
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
 
-      // P0 fix: record the actual spend for THIS OpenAI call against the
-      // tenant's daily budget (one record per real call — retries count each).
-      await incrementSpend(
-        companyId,
-        tokenCostInrFor(MODEL, {
-          inputTokens: data.usage?.prompt_tokens ?? estTokensIn,
-          outputTokens: data.usage?.completion_tokens ?? estTokensOut,
-        }),
-        prisma,
-      );
+      // H11: compute the spend for THIS OpenAI call, but DEFER recording it into
+      // applyOutcome's transaction so it is gated behind the first-writer-wins
+      // state claim — a redelivered ai.verify that loses the claim must NOT
+      // re-charge the tenant's daily budget (eliminates the financial double-count).
+      const spendInr = tokenCostInrFor(MODEL, {
+        inputTokens: data.usage?.prompt_tokens ?? estTokensIn,
+        outputTokens: data.usage?.completion_tokens ?? estTokensOut,
+      });
 
       const raw = data.choices?.[0]?.message?.content;
       if (!raw) throw new Error('OpenAI returned empty completion');
@@ -395,6 +393,7 @@ export async function handleAiVerify(payload: unknown, log: FastifyBaseLogger): 
         reasoning: result.reasoning,
         recommendation: result.recommendation,
         modelVersion: MODEL_VERSION,
+        spendInr,
       });
       await recordCircuitSuccess();
       return;
@@ -445,6 +444,10 @@ async function applyOutcome(
     reasoning: string;
     recommendation: 'APPROVE' | 'REVIEW' | 'REJECT';
     modelVersion: string;
+    // H11: when set, the OpenAI spend for this call is recorded atomically with
+    // the state claim below — only the writer that WINS the claim charges the
+    // budget, so a redelivered ai.verify can never double-count daily spend.
+    spendInr?: number;
   },
 ): Promise<void> {
   const photoStatus: 'PASS' | 'FLAGGED' | 'NEEDS_REVIEW' =
@@ -479,6 +482,12 @@ async function applyOutcome(
         aiVerifyText: outcome.reasoning.slice(0, 1500),
       },
     });
+    // H11: charge the tenant's daily AI budget ATOMICALLY with the winning claim.
+    // A redelivery that lost the claim above already returned, so it never reaches
+    // here — no financial double-count. incrementSpend accepts the tx client.
+    if (outcome.spendInr != null) {
+      await incrementSpend(companyId, outcome.spendInr, tx);
+    }
   });
 }
 

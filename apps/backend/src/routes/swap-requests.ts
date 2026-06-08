@@ -200,12 +200,23 @@ export async function registerSwapRequestRoutes(app: FastifyInstance): Promise<v
             parsed.data.decision === 'approve' || parsed.data.decision === 'approve_anyway';
           const newState: 'ACCEPTED' | 'DECLINED' = isApprove ? 'ACCEPTED' : 'DECLINED';
 
-          const updated = await tx.swapRequest.update({
-            where: { id: swap.id },
-            data: {
-              state: newState,
-              decidedAt,
-            },
+          // Race-safe conditional transition (mirrors leave-requests.ts:300-317):
+          // including state='SENT' in the WHERE means two concurrent deciders
+          // cannot both win — PG row-locks the row and re-evaluates the predicate,
+          // so exactly one gets count=1; the loser sees count=0 → ALREADY_DECIDED.
+          const updateResult = await tx.swapRequest.updateMany({
+            where: { id: swap.id, companyId: auth.companyId, state: 'SENT' },
+            data: { state: newState, decidedAt },
+          });
+          if (updateResult.count === 0) {
+            const after = await tx.swapRequest.findFirstOrThrow({
+              where: { id: swap.id, companyId: auth.companyId },
+              select: { state: true },
+            });
+            return { kind: 'ALREADY_DECIDED' as const, state: after.state };
+          }
+          const updated = await tx.swapRequest.findFirstOrThrow({
+            where: { id: swap.id, companyId: auth.companyId },
           });
 
           await recordAuditEvent(tx, {

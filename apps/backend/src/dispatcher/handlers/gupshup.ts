@@ -6,6 +6,8 @@
  *   - hr.site_complaint      → "tell HR a site complaint was logged"
  *   - worker.leave_approved  → "tell worker their leave got approved"
  *   - worker.leave_rejected  → "tell worker their leave was rejected"
+ *   - swap.accepted          → "tell both workers their shift swap was accepted"
+ *   - swap.rejected          → "tell both workers their shift swap was rejected"
  *   - gupshup.send           → "fire a generic Gupshup outbound"
  *
  * All handlers log-only today. Real Gupshup wiring lands in Phase C
@@ -47,4 +49,12 @@ export async function handleWorkerLeaveRejected(
 
 export async function handleGupshupSend(payload: unknown, log: FastifyBaseLogger): Promise<void> {
   log.info({ payload, stub: 'gupshup' }, '[stub] gupshup.send — would fire Gupshup outbound');
+}
+
+export async function handleSwapAccepted(payload: unknown, log: FastifyBaseLogger): Promise<void> {
+  log.info({ payload, stub: 'gupshup' }, '[stub] swap.accepted — would WhatsApp both workers');
+}
+
+export async function handleSwapRejected(payload: unknown, log: FastifyBaseLogger): Promise<void> {
+  log.info({ payload, stub: 'gupshup' }, '[stub] swap.rejected — would WhatsApp both workers');
 }
