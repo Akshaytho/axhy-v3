@@ -6,6 +6,16 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 COGNITIVE_SYSTEM="${AXHY_COGNITIVE_SYSTEM:-$HOME/eclean_workspace/axhy-cognitive-system}"
 export AXHY_REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Source the backend env so the brain/graph rebuild below has DATABASE_URL.
+# Husky runs a bare shell with no project env, so without this post-commit.mjs
+# sees no DB URL and always skips the rebuild (writing a stale marker instead).
+# Guarded + failure-isolated — can never block or fail the commit.
+if [ -f "$AXHY_REPO_ROOT/apps/backend/.env.local" ]; then
+  set -a
+  . "$AXHY_REPO_ROOT/apps/backend/.env.local" 2>/dev/null || true
+  set +a
+fi
+
 # Artifact sentinel — corral stray non-code artifacts (stray .md / screenshots /
 # pdf / word docs added outside the protected allowlist) into the external
 # axhy-artifacts folder. Failure-isolated (|| true) so it can never affect the
