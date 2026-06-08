@@ -58,12 +58,33 @@ export async function registerAssignmentRoutes(app: FastifyInstance): Promise<vo
       // INSIDE its own withTenantContext, so the lifecycle commit + domain
       // write share one Prisma transaction. See assignment-service.ts for
       // the implementation.
-      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
-        createAssignmentService(tx, normalized, {
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        // wave 4b: an HR may only create assignments on a site they own
+        // (OWNER/SUPERVISOR unchanged). Closes the cross-HR assignment hole.
+        if (auth.role === 'HR') {
+          const site = await tx.site.findFirst({
+            where: { id: normalized.siteId, companyId: auth.companyId },
+            select: { ownerHrUserId: true },
+          });
+          if (!site || site.ownerHrUserId !== auth.userId) {
+            return { kind: 'NOT_YOUR_SITE' as const };
+          }
+        }
+        return createAssignmentService(tx, normalized, {
           companyId: auth.companyId,
           userId: auth.userId,
-        }),
-      );
+        });
+      });
+
+      if (out.kind === 'NOT_YOUR_SITE') {
+        reply
+          .code(403)
+          .send({
+            error: 'NOT_YOUR_SITE',
+            message: 'You can only assign workers to sites you own.',
+          });
+        return;
+      }
 
       if (out.kind === 'WORKER_NOT_FOUND') {
         reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
