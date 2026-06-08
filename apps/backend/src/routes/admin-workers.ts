@@ -18,7 +18,7 @@ import { AdminCreateWorkerInput, AdminAnonymizeWorkerInput } from '@axhy/shared-
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
-import { getMyPodIds } from '../middleware/pod-scope.js';
+import { getHrSiteIds } from '../middleware/hr-site-scope.js';
 import { adminCreateWorkerService } from '../lib/services/admin-worker-service.js';
 import { anonymizeWorkerService } from '../lib/services/anonymize-worker-service.js';
 
@@ -85,8 +85,15 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
         role: 'WORKER',
       };
       if (auth.role === 'HR') {
-        const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
-        where.podId = { in: myPodIds };
+        // Site-anchored: HR sees only workers with a live assignment to a site they own.
+        const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
+        where.user = {
+          workerProfile: {
+            assignments: {
+              some: { siteId: { in: mySiteIds }, state: { in: ['ACTIVE', 'DRAFT'] } },
+            },
+          },
+        };
       }
       if (cursor) {
         where.OR = [
@@ -187,12 +194,19 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
       // a pod (404 below). The R3 service preserves Worker.id; this handler
       // returns the row but masks the missing membership fields.
       if (auth.role === 'HR') {
-        if (!membership?.podId) {
-          reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
-          return;
-        }
-        const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
-        if (!myPodIds.includes(membership.podId)) {
+        // Site-anchored: visible only if the worker has a live assignment to an HR-owned site.
+        const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
+        const onMySite =
+          mySiteIds.length > 0 &&
+          (await prisma.assignment.count({
+            where: {
+              workerId: worker.id,
+              companyId: auth.companyId,
+              siteId: { in: mySiteIds },
+              state: { in: ['ACTIVE', 'DRAFT'] },
+            },
+          })) > 0;
+        if (!onMySite) {
           reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
           return;
         }

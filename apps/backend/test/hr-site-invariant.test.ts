@@ -117,6 +117,29 @@ describe('one-worker-one-HR invariant (site-anchored)', () => {
     expect(new Set(b)).toEqual(new Set([siteB]));
   });
 
+  it('worker-via-assignment scoping returns the worker only for the owning HR', async () => {
+    // workerId was assigned to siteA (hrA) by the first test.
+    const workerWhere = (siteIds: string[]) => ({
+      companyId,
+      role: 'WORKER',
+      user: {
+        workerProfile: {
+          assignments: { some: { siteId: { in: siteIds }, state: { in: ['ACTIVE', 'DRAFT'] } } },
+        },
+      },
+    });
+    const aSees = await prisma.membership.findMany({
+      where: workerWhere(await getHrSiteIds(prisma, hrA, companyId)),
+      select: { userId: true },
+    });
+    const bSees = await prisma.membership.findMany({
+      where: workerWhere(await getHrSiteIds(prisma, hrB, companyId)),
+      select: { userId: true },
+    });
+    expect(aSees.map((m) => m.userId)).toContain(workerUserId);
+    expect(bSees.map((m) => m.userId)).not.toContain(workerUserId);
+  });
+
   it('a site under a DIFFERENT HR is rejected (WORKER_DIFFERENT_HR)', async () => {
     const r = await assign(siteB);
     expect(r.kind).toBe('WORKER_DIFFERENT_HR');

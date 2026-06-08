@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
-import { getMyPodIds } from '../middleware/pod-scope.js';
+import { getHrSiteIds } from '../middleware/hr-site-scope.js';
 import { adminCreateMembershipService } from '../lib/services/admin-membership-service.js';
 
 // File-local cursor schema + codec (not exported to avoid axhy/require-derives).
@@ -127,12 +127,25 @@ export async function registerAdminMembershipRoutes(app: FastifyInstance): Promi
       // scoped to memberships in pods they own (primary or backup).
       const where: Record<string, unknown> = { companyId: auth.companyId };
       if (auth.role === 'HR') {
-        const podIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
-        if (podIds.length === 0) {
+        // Site-anchored: memberships of people connected to a site this HR owns —
+        // workers via a live assignment, supervisors via an active site binding.
+        const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
+        if (mySiteIds.length === 0) {
           reply.send({ items: [], nextCursor: null });
           return;
         }
-        where.podId = { in: podIds };
+        where.user = {
+          OR: [
+            {
+              workerProfile: {
+                assignments: {
+                  some: { siteId: { in: mySiteIds }, state: { in: ['ACTIVE', 'DRAFT'] } },
+                },
+              },
+            },
+            { supervisorBindings: { some: { siteId: { in: mySiteIds }, endedAt: null } } },
+          ],
+        };
       }
 
       if (cursor) {

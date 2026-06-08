@@ -34,7 +34,7 @@ import {
   resolveWorkerFromAuth,
 } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
-import { getMyPodIds } from '../middleware/pod-scope.js';
+import { getHrSiteIds } from '../middleware/hr-site-scope.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
 import { enqueueOutbox } from '../lib/outbox.js';
 import { createLeaveRequestService } from '../lib/services/leave-request-service.js';
@@ -201,31 +201,24 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
       // @derives(parent-brief 2026-05-29)
       const leaveForPodCheck = await prisma.leaveRequest.findFirst({
         where: { id: req.params.id, companyId: auth.companyId },
-        select: {
-          worker: {
-            select: {
-              user: {
-                select: {
-                  memberships: {
-                    where: { companyId: auth.companyId, role: 'WORKER' },
-                    select: { podId: true },
-                    take: 1,
-                  },
-                },
-              },
-            },
-          },
-        },
+        select: { workerId: true },
       });
       if (leaveForPodCheck) {
-        const workerPodId = leaveForPodCheck.worker?.user?.memberships?.[0]?.podId ?? null;
-        if (!workerPodId) {
-          reply.code(403).send({ error: 'WORKER_NOT_IN_POD' });
-          return;
-        }
-        const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
-        if (!myPodIds.includes(workerPodId)) {
-          reply.code(403).send({ error: 'NOT_YOUR_POD' });
+        // Site-anchored: this leave is the HR's only if the worker has a live
+        // assignment to a site the HR owns.
+        const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
+        const onMySite =
+          mySiteIds.length > 0 &&
+          (await prisma.assignment.count({
+            where: {
+              workerId: leaveForPodCheck.workerId,
+              companyId: auth.companyId,
+              siteId: { in: mySiteIds },
+              state: { in: ['ACTIVE', 'DRAFT'] },
+            },
+          })) > 0;
+        if (!onMySite) {
+          reply.code(403).send({ error: 'NOT_YOUR_SITE' });
           return;
         }
       }
@@ -474,22 +467,19 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
       // LeaveRequest.workerId IS Worker.id (schema line 524). The prior
       // implementation filtered by `workerId IN <User.ids>` which returned
       // zero rows for every HR caller. Correct path: filter via the
-      // worker relation (Worker → User → Membership in caller pods).
+      // worker relation (Worker → assignment → site owned by this HR).
       // @derives(parent-brief 2026-05-29)
-      const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
+      const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
 
       type LeaveWhere = NonNullable<Parameters<typeof prisma.leaveRequest.findMany>[0]>['where'];
       const where: LeaveWhere = {
         companyId: auth.companyId,
         state: 'REQUESTED',
         worker: {
-          user: {
-            memberships: {
-              some: {
-                companyId: auth.companyId,
-                role: 'WORKER',
-                podId: { in: myPodIds },
-              },
+          assignments: {
+            some: {
+              siteId: { in: mySiteIds },
+              state: { in: ['ACTIVE', 'DRAFT'] },
             },
           },
         },
@@ -570,13 +560,18 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
       }
 
       if (auth.role === 'HR') {
-        const workerPodId = leave.worker?.user?.memberships?.[0]?.podId ?? null;
-        if (!workerPodId) {
-          reply.code(404).send({ error: 'LEAVE_NOT_FOUND' });
-          return;
-        }
-        const myPodIds = await getMyPodIds(prisma, auth.userId, auth.companyId);
-        if (!myPodIds.includes(workerPodId)) {
+        const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
+        const onMySite =
+          mySiteIds.length > 0 &&
+          (await prisma.assignment.count({
+            where: {
+              workerId: leave.workerId,
+              companyId: auth.companyId,
+              siteId: { in: mySiteIds },
+              state: { in: ['ACTIVE', 'DRAFT'] },
+            },
+          })) > 0;
+        if (!onMySite) {
           reply.code(404).send({ error: 'LEAVE_NOT_FOUND' });
           return;
         }
