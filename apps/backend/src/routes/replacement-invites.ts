@@ -196,6 +196,13 @@ export async function registerReplacementInviteRoutes(app: FastifyInstance): Pro
         });
         return;
       }
+      if (out.kind === 'WORKER_DIFFERENT_HR') {
+        reply.code(409).send({
+          error: 'WORKER_DIFFERENT_HR',
+          message: 'This worker already belongs to a different HR. Reassign their sites first.',
+        });
+        return;
+      }
 
       req.log.info(
         {

@@ -163,6 +163,8 @@ function httpStatusForServiceDomainCode(code: string): number {
   // the legacy propose_termination route returned (409) before the L1
   // sentinel-pattern refactor (audit P1 — chat-path audit 2026-05-18).
   if (code === 'ALREADY_TERMINATING') return 409;
+  // One worker = one HR (site-anchored ownership) — assigning across HRs conflicts.
+  if (code === 'WORKER_DIFFERENT_HR') return 409;
   return 400;
 }
 

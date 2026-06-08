@@ -22,6 +22,7 @@
 import type { Assignment, Prisma } from '@prisma/client';
 
 import { recordAuditEvent } from '../audit-event.js';
+import { validateWorkerHrInvariant } from '../hr-site-invariant.js';
 
 /** @derives(F-002.b — assignment service input) */
 export type CreateAssignmentServiceInput = {
@@ -46,7 +47,8 @@ export type CreateAssignmentServiceAuth = {
 export type CreateAssignmentServiceResult =
   | { kind: 'OK'; assignment: Assignment }
   | { kind: 'WORKER_NOT_FOUND' }
-  | { kind: 'SITE_NOT_FOUND' };
+  | { kind: 'SITE_NOT_FOUND' }
+  | { kind: 'WORKER_DIFFERENT_HR'; existingHrUserId: string; newHrUserId: string };
 
 /**
  * Creates an Assignment row inside the caller's transaction. Verifies the
@@ -80,6 +82,21 @@ export async function createAssignmentService(
     where: { id: input.siteId, companyId: auth.companyId },
   });
   if (!site) return { kind: 'SITE_NOT_FOUND' };
+
+  // One-worker-one-HR invariant (site-anchored ownership). Reject assigning a
+  // worker to a site under a different HR than the worker's existing sites.
+  const inv = await validateWorkerHrInvariant(tx, {
+    workerId: input.workerId,
+    newSiteId: input.siteId,
+    companyId: auth.companyId,
+  });
+  if (!inv.ok) {
+    return {
+      kind: 'WORKER_DIFFERENT_HR',
+      existingHrUserId: inv.existingHrUserId,
+      newHrUserId: inv.newHrUserId,
+    };
+  }
 
   const assignment = await tx.assignment.create({
     data: {

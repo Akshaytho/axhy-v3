@@ -25,6 +25,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
+import { validateWorkerHrInvariant } from '../lib/hr-site-invariant.js';
 
 export async function registerCalendarRoutes(app: FastifyInstance): Promise<void> {
   app.post(
@@ -211,6 +212,16 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
         ]);
         if (!pWorker || !pSite) return { kind: 'CANNOT_PROMOTE' as const };
 
+        // One-worker-one-HR invariant (same shared guard as POST /assignments).
+        // Checked BEFORE the promote-claim so a conflict never marks the entry
+        // promoted with no Assignment written.
+        const hrInv = await validateWorkerHrInvariant(tx, {
+          workerId: cp.workerId,
+          newSiteId: cp.siteId,
+          companyId: auth.companyId,
+        });
+        if (!hrInv.ok) return { kind: 'WORKER_DIFFERENT_HR' as const };
+
         // Atomic claim (first-writer-wins): only one concurrent promote may flip
         // promotedAt from NULL, so at most one Assignment is created per entry.
         const claim = await tx.calendarEntry.updateMany({
@@ -288,6 +299,13 @@ export async function registerCalendarRoutes(app: FastifyInstance): Promise<void
       }
       if (out.kind === 'CANNOT_PROMOTE') {
         reply.code(400).send({ error: 'CANNOT_PROMOTE', message: 'kind cannot promote to target' });
+        return;
+      }
+      if (out.kind === 'WORKER_DIFFERENT_HR') {
+        reply.code(409).send({
+          error: 'WORKER_DIFFERENT_HR',
+          message: 'This worker already belongs to a different HR. Reassign their sites first.',
+        });
         return;
       }
       if (out.kind === 'NOT_IMPLEMENTED') {

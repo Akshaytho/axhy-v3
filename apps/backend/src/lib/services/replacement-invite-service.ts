@@ -59,6 +59,7 @@ import {
 } from '@axhy/shared-schema';
 
 import { recordAuditEvent } from '../audit-event.js';
+import { validateWorkerHrInvariant } from '../hr-site-invariant.js';
 
 const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -250,7 +251,8 @@ export type AcceptResult =
   | { kind: 'INVITE_NOT_FOUND' }
   | { kind: 'NOT_YOUR_INVITE' }
   | { kind: 'ALREADY_DECIDED'; status: string }
-  | { kind: 'WORKER_ROW_MISSING' };
+  | { kind: 'WORKER_ROW_MISSING' }
+  | { kind: 'WORKER_DIFFERENT_HR'; existingHrUserId: string; newHrUserId: string };
 
 /**
  * @derives(master-plan §P.4)
@@ -357,6 +359,20 @@ export async function acceptReplacementInvite(
   const shiftStart = `${pad2(invite.scheduledStart.getUTCHours())}:${pad2(invite.scheduledStart.getUTCMinutes())}`;
   const shiftEndDate = new Date(invite.scheduledStart.getTime() + 8 * 60 * 60 * 1000);
   const shiftEnd = `${pad2(shiftEndDate.getUTCHours())}:${pad2(shiftEndDate.getUTCMinutes())}`;
+
+  // One-worker-one-HR invariant (same shared guard as POST /assignments).
+  const hrInv = await validateWorkerHrInvariant(tx, {
+    workerId: worker.id,
+    newSiteId: invite.siteId,
+    companyId: input.companyId,
+  });
+  if (!hrInv.ok) {
+    return {
+      kind: 'WORKER_DIFFERENT_HR',
+      existingHrUserId: hrInv.existingHrUserId,
+      newHrUserId: hrInv.newHrUserId,
+    };
+  }
 
   const assignment = await tx.assignment.create({
     data: {

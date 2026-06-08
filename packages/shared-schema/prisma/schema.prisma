@@ -122,6 +122,8 @@ model User {
   consentLogs                ConsentLog[]
   // F1-b 2026-05-28 — refresh-token families (opaque, rotating).
   refreshTokens              RefreshToken[]
+  // doc 15 site-anchored HR ownership (2026-06-08) — sites this HR owns.
+  hrSites                    Site[]                  @relation("SiteHr")
 
   @@index([companyId])
   @@schema("axhy")
@@ -227,6 +229,9 @@ model Site {
   state     String   @default("DRAFT")
   /// per-site weekly day-pattern override (default = 6-day week)
   workdays  String   @default("MTWTFS") @db.VarChar(7)
+  /// HR user (User.id) who owns this site (one HR per site). NULL = unassigned;
+  /// OWNER-only assigns. Site-anchored HR ownership; replaces dead HRPod (doc 15 §3).
+  ownerHrUserId String? @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -239,9 +244,12 @@ model Site {
   bindings           SiteSupervisorBinding[]
   // F28 ReplacementInvite (2026-05-18 — Wave 1 backend)
   replacementInvites ReplacementInvite[]
+  // doc 15 site-anchored HR ownership (2026-06-08)
+  hr                 User?                   @relation("SiteHr", fields: [ownerHrUserId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([companyId, state])
+  @@index([companyId, ownerHrUserId])
   @@schema("axhy")
 }
 

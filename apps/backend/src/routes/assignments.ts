@@ -73,6 +73,15 @@ export async function registerAssignmentRoutes(app: FastifyInstance): Promise<vo
         reply.code(404).send({ error: 'SITE_NOT_FOUND' });
         return;
       }
+      if (out.kind === 'WORKER_DIFFERENT_HR') {
+        // One worker = one HR (site-anchored ownership): the worker already
+        // belongs to a different HR's sites, so they can't be put on this site.
+        reply.code(409).send({
+          error: 'WORKER_DIFFERENT_HR',
+          message: 'This worker already belongs to a different HR. Reassign their sites first.',
+        });
+        return;
+      }
       reply.code(200).send({
         id: out.assignment.id,
         state: out.assignment.state,
