@@ -51,9 +51,11 @@ import {
   type ComplaintSeverityWaveThree,
   type ComplaintState,
 } from '@axhy/shared-schema';
+import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { getHrSiteIds } from '../middleware/hr-site-scope.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { withIdempotency } from '../lib/idempotency-key.js';
 import {
@@ -147,10 +149,17 @@ function complaintRoleFromAuthRole(role: string): ComplaintAuthorRole {
 // incoherence where messages-post/read let HR act on any complaint while
 // list/detail/resolve silently restricted HR to complaints it personally
 // created — so HR could reply to a complaint it could never list or resolve.
-function complaintAccessWhere(auth: { role: string; userId: string }): {
-  createdByUserId?: string;
-} {
-  return auth.role === 'SUPERVISOR' ? { createdByUserId: auth.userId } : {};
+async function complaintAccessWhere(
+  tx: Prisma.TransactionClient,
+  auth: { role: string; userId: string; companyId: string },
+): Promise<Prisma.ComplaintWhereInput> {
+  if (auth.role === 'SUPERVISOR') return { createdByUserId: auth.userId };
+  if (auth.role === 'HR') {
+    // Site-anchored ownership: HR sees only complaints on sites they own.
+    const siteIds = await getHrSiteIds(tx, auth.userId, auth.companyId);
+    return { siteId: { in: siteIds } };
+  }
+  return {}; // OWNER — company-wide (companyId applied separately).
 }
 
 // ─── Route registration ─────────────────────────────────────────────────────
@@ -190,7 +199,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
         tx.complaint.findMany({
           where: {
             companyId: auth.companyId,
-            ...complaintAccessWhere(auth),
+            ...(await complaintAccessWhere(tx, auth)),
             ...(state ? { state } : {}),
             ...(siteId ? { siteId } : {}),
             ...(cursor
@@ -236,7 +245,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
           where: {
             id: complaintId,
             companyId: auth.companyId,
-            ...complaintAccessWhere(auth),
+            ...(await complaintAccessWhere(tx, auth)),
           },
           include: { site: { select: { name: true } } },
         });
@@ -318,7 +327,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
               where: {
                 id: complaintId,
                 companyId: auth.companyId,
-                ...complaintAccessWhere(auth),
+                ...(await complaintAccessWhere(tx, auth)),
               },
               select: { id: true },
             });
@@ -380,7 +389,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
           where: {
             id: complaintId,
             companyId: auth.companyId,
-            ...complaintAccessWhere(auth),
+            ...(await complaintAccessWhere(tx, auth)),
           },
           select: { id: true },
         });
@@ -421,7 +430,7 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
           where: {
             id: complaintId,
             companyId: auth.companyId,
-            ...complaintAccessWhere(auth),
+            ...(await complaintAccessWhere(tx, auth)),
           },
           select: { id: true },
         });

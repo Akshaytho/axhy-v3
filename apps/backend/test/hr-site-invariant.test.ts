@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '../src/lib/prisma.js';
 import { withTenantContext } from '../src/middleware/tenant-context.js';
 import { createAssignmentService } from '../src/lib/services/assignment-service.js';
+import { getHrSiteIds } from '../src/middleware/hr-site-scope.js';
 
 const uid = (): string => crypto.randomUUID();
 const sfx = crypto.randomBytes(4).toString('hex');
@@ -107,6 +108,13 @@ describe('one-worker-one-HR invariant (site-anchored)', () => {
   it('a NULL-HR (unassigned) site is allowed (no conflict)', async () => {
     const r = await assign(siteNull);
     expect(r.kind).toBe('OK');
+  });
+
+  it('getHrSiteIds returns only the HR-owned sites (read-side scoping)', async () => {
+    const a = await getHrSiteIds(prisma, hrA, companyId);
+    expect(new Set(a)).toEqual(new Set([siteA, siteA2]));
+    const b = await getHrSiteIds(prisma, hrB, companyId);
+    expect(new Set(b)).toEqual(new Set([siteB]));
   });
 
   it('a site under a DIFFERENT HR is rejected (WORKER_DIFFERENT_HR)', async () => {
