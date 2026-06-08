@@ -187,9 +187,15 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
       // Tenant gate via site existence — 404 if cross-tenant or missing.
       const site = await prisma.site.findFirst({
         where: { id: req.params.id, companyId: auth.companyId },
-        select: { id: true },
+        select: { id: true, ownerHrUserId: true },
       });
       if (!site) {
+        reply.code(404).send({ error: 'SITE_NOT_FOUND' });
+        return;
+      }
+      // Site-anchored: an HR may only read bindings for a site they own
+      // (OWNER is company-wide). Same opaque 404 — never leak another HR's roster.
+      if (auth.role === 'HR' && site.ownerHrUserId !== auth.userId) {
         reply.code(404).send({ error: 'SITE_NOT_FOUND' });
         return;
       }
@@ -276,6 +282,18 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
       if (!parsed.success) {
         reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
         return;
+      }
+      // Site-anchored: an HR may only bind supervisors on a site they own
+      // (OWNER is company-wide). Same opaque 404 as a missing site.
+      if (auth.role === 'HR') {
+        const site = await prisma.site.findFirst({
+          where: { id: req.params.id, companyId: auth.companyId },
+          select: { ownerHrUserId: true },
+        });
+        if (!site || site.ownerHrUserId !== auth.userId) {
+          reply.code(404).send({ error: 'SITE_NOT_FOUND' });
+          return;
+        }
       }
       const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
         adminCreateBindingService(tx, {

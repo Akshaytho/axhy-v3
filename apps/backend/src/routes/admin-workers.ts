@@ -270,6 +270,21 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
         reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
         return;
       }
+      // Site-anchored: an HR can only resign workers on a site they own. Any
+      // assignment state counts — a TERMINATION_PENDING worker's assignments may
+      // be mid-termination. Same opaque 404 as not-found (no existence leak).
+      const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
+      const ownsWorker =
+        mySiteIds.length > 0 &&
+        (await prisma.assignment.count({
+          where: { workerId: req.params.id, companyId: auth.companyId, siteId: { in: mySiteIds } },
+        })) > 0;
+      if (!ownsWorker) {
+        reply
+          .code(404)
+          .send({ error: 'WORKER_NOT_FOUND', message: 'Worker not found in this company' });
+        return;
+      }
       const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
         anonymizeWorkerService(tx, {
           workerId: req.params.id,
