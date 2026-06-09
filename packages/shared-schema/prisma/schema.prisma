@@ -569,6 +569,11 @@ model AuditEvent {
   /// structured payload — diff, prior-state, decision-tier, anything the
   /// row's `kind` taxonomy specifies. JSON for forward-compat.
   payload   Json     @default("{}")
+  /// #26 idempotency for redelivered/multi-replica SYSTEM audit writes (owner
+  /// budget alerts, daily AI-spend reset). NULL for all human-action audits, so
+  /// only system writers are constrained (NULLs distinct → tiny effective index).
+  /// @derives(PRODUCTION_BUG_LEDGER.md #26)
+  dedupKey  String?
   createdAt DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -577,6 +582,7 @@ model AuditEvent {
   @@index([companyId, kind])
   @@index([companyId, createdAt])
   @@index([actorId])
+  @@unique([companyId, dedupKey])
   @@schema("axhy")
 }
 

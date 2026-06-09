@@ -85,13 +85,18 @@ export async function maybeResetAiSpend(
         // AI_SPEND_DAILY_RESET audit per tenant is still written — in 1 stmt.
         if (tenants.length > 0) {
           await tx.auditEvent.createMany({
+            // #26: idempotent — a re-run / multi-replica reset for the same day must
+            // not write duplicate AI_SPEND_DAILY_RESET rows. dedupKey is unique per
+            // (company, day); skipDuplicates makes the re-run a no-op.
             data: tenants.map((t) => ({
               companyId: t.id,
               kind: 'AI_SPEND_DAILY_RESET',
               actorId: SYSTEM_ACTOR_ID,
               targetId: null,
               payload: { dateUtc: today },
+              dedupKey: `ai_spend_reset:${today}`,
             })),
+            skipDuplicates: true,
           });
         }
         return tenants.length;

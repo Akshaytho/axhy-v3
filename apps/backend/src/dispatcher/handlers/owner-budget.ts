@@ -57,18 +57,25 @@ async function recordOwnerAlertAudit(
     { event: 'owner_budget_alert', ...payload, stub: 'owner-budget' },
     `[stub] ${payload.topic} fired — Phase D will swap for Slack #axhy-ops + Mr. Reddy WhatsApp via Gupshup`,
   );
-  await prisma.auditEvent.create({
-    data: {
-      companyId: payload.companyId,
-      kind: 'OWNER_BUDGET_ALERT_DISPATCHED',
-      actorId: '00000000-0000-0000-0000-000000000000', // SYSTEM
-      targetId: null,
-      payload: {
-        topic: payload.topic,
-        alertKind: payload.kind,
-        dateUtc: payload.dateUtc,
+  // #26: idempotent — outbox redelivery of the same alert must not write a
+  // duplicate audit row. dedupKey is unique per (company, day, topic); createMany
+  // with skipDuplicates is a no-op (ON CONFLICT DO NOTHING) on redelivery.
+  await prisma.auditEvent.createMany({
+    data: [
+      {
+        companyId: payload.companyId,
+        kind: 'OWNER_BUDGET_ALERT_DISPATCHED',
+        actorId: '00000000-0000-0000-0000-000000000000', // SYSTEM
+        targetId: null,
+        payload: {
+          topic: payload.topic,
+          alertKind: payload.kind,
+          dateUtc: payload.dateUtc,
+        },
+        dedupKey: `owner_budget:${payload.dateUtc}:${payload.topic}`,
       },
-    },
+    ],
+    skipDuplicates: true,
   });
 }
 
