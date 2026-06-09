@@ -80,14 +80,36 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
     return;
   }
 
-  // #33: a token without an `epoch` claim is no longer trusted. The legacy branch
-  // here used to attach req.auth with NO DB verification (no membership/status/role
-  // check, no tokenEpoch revocation check), so a forged or stolen pre-cutover token
-  // bypassed all server-side trust. Reject it — every token the app issues now sets
-  // epoch (auth.ts, auth-refresh.ts), and the refresh path already rejects legacy
-  // refresh tokens, so no legitimate no-epoch access token can still be live.
+  // #33: a token without an `epoch` claim used to be trusted with NO DB check at
+  // all — a forged or stolen pre-cutover token bypassed all server-side trust. It
+  // now MUST pass DB verification: an ACTIVE Membership matching (companyId, userId,
+  // role) must exist. This closes the "skips ALL DB verification" bypass (a forged
+  // token for a non-existent/non-member user, or a SUSPENDED membership, is rejected)
+  // and keeps revocation working via Membership.status. The self-read runs under
+  // withUserContext (axhy.current_user_id GUC + RLS tenant_self_read), like the
+  // strict path. NOTE: no-epoch tokens can't be epoch-revoked, only status-revoked;
+  // production issuers always set epoch (auth.ts, auth-refresh.ts), so a live
+  // no-epoch token is only a legacy/forged artifact. Full strict-only (reject the
+  // claim) + migrating the legacy-format tests to F1 tokens is the planned f1-d end
+  // state.
   if (claims.epoch === undefined) {
-    reply.code(401).send({ error: 'AUTH_INVALID', message: 'Token invalid or expired' });
+    const legacyMembership = await withUserContext(prisma, claims.sub, (tx) =>
+      tx.membership.findFirst({
+        where: { companyId: claims.companyId, userId: claims.sub, role: claims.role },
+        select: { status: true },
+      }),
+    );
+    if (!legacyMembership || legacyMembership.status !== 'ACTIVE') {
+      reply.code(401).send({ error: 'AUTH_INVALID', message: 'Token invalid or expired' });
+      return;
+    }
+    req.auth = {
+      userId: claims.sub,
+      companyId: claims.companyId,
+      role: claims.role,
+      availableRoles: claims.availableRoles,
+      locale: claims.locale,
+    };
     return;
   }
 

@@ -7,7 +7,7 @@ import { requireAuth } from '../src/middleware/tenant-context.js';
 const FOUNDER_USER = '17285e17-9434-4522-9ac1-1cec1cbea31f';
 const QA_COMPANY = '2d2f1ccb-7bf8-4890-ae59-c5cb14b00289';
 
-describe('requireAuth — no-epoch tokens are rejected (#33, strict-only)', () => {
+describe('requireAuth — no-epoch tokens require an ACTIVE membership (#33, DB-verified)', () => {
   let app: FastifyInstance;
   beforeAll(async () => {
     process.env.JWT_SECRET ??= 'test-secret-bytes-32-bytes-min-length-ok';
@@ -20,9 +20,13 @@ describe('requireAuth — no-epoch tokens are rejected (#33, strict-only)', () =
     await app.close();
   });
 
-  it('REJECTS a token with NO epoch claim — #33 (was a no-DB-verification bypass)', async () => {
-    // A no-epoch token used to be trusted outright with zero DB verification,
-    // letting a forged/stolen pre-cutover token skip revocation. It must now 401.
+  it('REJECTS a no-epoch token with NO backing membership — #33 (closes the no-DB-verification bypass)', async () => {
+    // A no-epoch token used to be trusted outright with ZERO DB verification,
+    // letting a forged/stolen pre-cutover token skip all checks. It now must pass
+    // DB verification — an ACTIVE Membership matching (companyId, userId, role) must
+    // exist. FOUNDER_USER here has none, so it 401s. (The accept path — no-epoch +
+    // ACTIVE membership — is exercised by the ~49 integration tests that seed
+    // memberships; full strict-only reject is the planned f1-d end state.)
     const token = await issueAccessToken({
       userId: FOUNDER_USER,
       companyId: QA_COMPANY,
