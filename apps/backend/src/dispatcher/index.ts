@@ -16,9 +16,15 @@
  * Tests use `processOnce()` to drive a single batch deterministically.
  *
  * @derives(ADR-0009) — outbox over Redis until measured pain
- * @derives(master-plan §L) — cascade depth ≤ 3 (enforced when a handler
- *   first emits a downstream outbox row; today all handlers are stubs and
- *   cascade depth is always 1)
+ * @derives(master-plan §L) — cascade depth. NOTE (#35): the "depth ≤ 3
+ *   enforced" claim is ASPIRATIONAL, not implemented — there is no depth
+ *   column and no increment/check anywhere in this loop. It is safe today only
+ *   because NO registered handler emits a downstream Outbox row (observed depth
+ *   is always 1). Before any handler is allowed to re-enqueue, add real depth
+ *   tracking (a depth column + increment-and-check on enqueue-from-handler) or a
+ *   cascade can run unbounded. (The older "all handlers are stubs" note is also
+ *   stale — notifications.ts + owner-budget.ts do real work, but still don't
+ *   re-enqueue.)
  * @derives(panel-2026-05-08) — phase B.6
  */
 

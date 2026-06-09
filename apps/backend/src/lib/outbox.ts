@@ -25,7 +25,9 @@
  *   - gupshup.send              → generic Gupshup outbound
  *
  * @derives(ADR-0009) — outbox over Redis until measured pain
- * @derives(master-plan §L) — cascade depth ≤ 3 enforced in dispatcher
+ * @derives(master-plan §L) — cascade depth: NOT enforced (#35). No depth
+ *   tracking exists; safe today only because no handler re-enqueues. See the
+ *   note in dispatcher/index.ts before adding a re-enqueuing handler.
  * @derives(panel-2026-05-08) — phase B.1 foundation
  */
 
