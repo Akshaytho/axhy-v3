@@ -274,13 +274,20 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
         // gate for SUPERVISOR. HR callers already passed the pod-scope
         // gate above (Task 7 / spec 3.3). @derives(spec 3.3)
         if (auth.role === 'SUPERVISOR') {
+          // #22: anchor authority to the leave window, not "now". Who was
+          // responsible for this worker when the leave BEGINS (leave.fromDate)
+          // decides it — otherwise a supervisor rebound away by decision time is
+          // wrongly blocked, and a newly-bound one who never owned the worker
+          // during the leave can wrongly decide.
           const workerPrimarySiteId = await deriveWorkerPrimarySiteId(tx, {
             companyId: auth.companyId,
             workerId: leave.workerId,
+            at: leave.fromDate,
           });
           const portfolio = await getSitesSupervisedByUser(tx, {
             companyId: auth.companyId,
             userId: auth.userId,
+            at: leave.fromDate,
           });
           const portfolioSiteIds = new Set(portfolio.map((p) => p.siteId));
           const isResponsibleSupervisor =
@@ -596,13 +603,16 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
           prisma,
           auth.companyId,
           async (tx) => {
+            // #22: same leave-window anchoring as the decide gate.
             const primarySiteId = await deriveWorkerPrimarySiteId(tx, {
               companyId: auth.companyId,
               workerId: leave.workerId,
+              at: leave.fromDate,
             });
             const portfolio = await getSitesSupervisedByUser(tx, {
               companyId: auth.companyId,
               userId: auth.userId,
+              at: leave.fromDate,
             });
             return {
               workerPrimarySiteId: primarySiteId,
