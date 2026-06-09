@@ -128,7 +128,11 @@ export async function submitVisit(
       return true;
     });
 
-  await tx.visitPhoto.createMany({ data: photoRows });
+  // #14: idempotent across retries. The @@unique([visitId, r2Key]) constraint +
+  // skipDuplicates (ON CONFLICT DO NOTHING) means a submit that slips past the visit
+  // state-claim cannot insert duplicate evidence rows. Happy path is unchanged (the
+  // rows are already intra-batch-deduped above, so nothing legitimate is skipped).
+  await tx.visitPhoto.createMany({ data: photoRows, skipDuplicates: true });
 
   // BUG-13 / D9: append-only audit of the worker's submit transition, in the
   // same transaction as the state change (commits together or not at all).

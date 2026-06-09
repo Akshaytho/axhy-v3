@@ -1116,6 +1116,9 @@ model VisitPhoto {
   @@index([companyId])
   @@index([visitId])
   @@index([companyId, aiVerifyStatus])
+  // #14: photo inserts are idempotent — r2Key embeds visitId, so a retried submit
+  // cannot create duplicate evidence rows. createMany uses skipDuplicates against this.
+  @@unique([visitId, r2Key])
   @@schema("axhy")
 }
 
