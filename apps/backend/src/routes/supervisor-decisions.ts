@@ -65,13 +65,20 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
 
       const startedAt = Date.now();
       try {
-        // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
-        const out = await buildDecisionsForSupervisor(prisma, {
-          companyId: auth.companyId,
-          userId: auth.userId,
-          cursor: parsedQuery.data.cursor,
-          limit: parsedQuery.data.limit,
-        });
+        // #4 (RLS): the builder reads tenant tables AND auto-sweeps stale rows, so
+        // it must run with the company GUC set or axhy_app RLS fails it closed
+        // (empty queue + no auto-dismiss). withTenantRead sets axhy.current_company_id
+        // with no ACTIVE gate, so a suspended company's supervisor keeps read access
+        // (matches the prior bare-prisma no-gate behavior). The sweep's dismiss+audit
+        // run inside this one tx (see autoSweepStaleDecisions).
+        const out = await withTenantRead(prisma, auth.companyId, (tx) =>
+          buildDecisionsForSupervisor(tx, {
+            companyId: auth.companyId,
+            userId: auth.userId,
+            cursor: parsedQuery.data.cursor,
+            limit: parsedQuery.data.limit,
+          }),
+        );
         req.log.info(
           {
             companyId: auth.companyId,

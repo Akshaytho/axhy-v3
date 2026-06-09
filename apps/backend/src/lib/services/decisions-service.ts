@@ -70,7 +70,6 @@ import {
 
 import { getSitesSupervisedByUser } from '../effective-responsibility.js';
 import { deriveWorkerPrimarySiteId } from '../effective-responsibility.js';
-import { prisma } from '../prisma.js';
 
 // ===========================================================================
 // Public types
@@ -206,10 +205,11 @@ const AUTO_SWEEP_BATCH = 100;
 
 /**
  * Auto-dismiss pending SupervisorDecision rows older than the staleness
- * threshold. The dismiss + DWI_EXPIRED audit are wrapped in a single
- * prisma.$transaction so they commit atomically (the audit can never orphan the
- * dismiss); that transaction opens ONLY when stale rows exist, so a normal read
- * pays no transaction overhead. Race-safe:
+ * threshold. The dismiss + DWI_EXPIRED audit run on the caller's tenant
+ * transaction `tx` (the GET wraps the whole builder in withTenantRead, which
+ * sets the company GUC) so they commit atomically — the audit can never orphan
+ * the dismiss — AND honour axhy_app RLS (#4). The mutation runs ONLY when stale
+ * rows exist (candidates.length===0 early-returns first). Race-safe:
  *   - The `updateMany` WHERE re-checks `appliedAt IS NULL AND dismissedAt IS NULL`,
  *     so a concurrent manual apply that beats us writes the row first; our
  *     UPDATE sees count 0 and doesn't dismiss it.
@@ -241,45 +241,45 @@ async function autoSweepStaleDecisions(
   if (candidates.length === 0) return 0;
 
   const ids = candidates.map((c) => c.id);
-  // Atomic dismiss + audit — wrapped in ONE transaction so the DWI_EXPIRED audit
-  // can never orphan the dismiss (the H4 integrity fix). Opened only here, after
-  // the candidates.length===0 early-return above, so a normal read with nothing
-  // stale pays no transaction overhead.
-  return await prisma.$transaction(async (txw) => {
-    const updated = await txw.supervisorDecision.updateMany({
-      where: {
-        companyId,
-        id: { in: ids },
-        appliedAt: null,
-        dismissedAt: null,
-      },
-      data: {
-        dismissedAt: at,
-        dismissedReason: 'auto-dismissed: no action for 48h',
-      },
-    });
-    if (updated.count === 0) return 0;
-
-    // One DWI_EXPIRED audit per dismissed row. actorId is the original supervisor
-    // so the timeline reads "Ravi's decision auto-dismissed after 48h".
-    // DWI_EXPIRED = expired-by-timeout (distinct from DWI_DISMISSED manual and
-    // DWI_APPLIED transition).
-    await txw.auditEvent.createMany({
-      data: candidates.map((c) => ({
-        companyId,
-        kind: 'DWI_EXPIRED',
-        actorId: c.supervisorId,
-        targetId: c.id,
-        payload: {
-          reason: 'auto-dismissed: no action for 48h',
-          kind: c.kind,
-          tier: c.tier,
-        } as Prisma.InputJsonValue,
-      })),
-    });
-
-    return updated.count;
+  // Atomic dismiss + audit — both run on the caller's tenant transaction `tx`
+  // (the GET wraps the whole builder in withTenantRead, which sets the company
+  // GUC), so the DWI_EXPIRED audit can never orphan the dismiss (the H4 integrity
+  // fix) AND both honour axhy_app RLS. (#4: this previously opened its own GUC-less
+  // prisma.$transaction, which dismisses 0 rows under RLS so stale decisions never
+  // expire.) Reached only after the candidates.length===0 early-return above.
+  const updated = await tx.supervisorDecision.updateMany({
+    where: {
+      companyId,
+      id: { in: ids },
+      appliedAt: null,
+      dismissedAt: null,
+    },
+    data: {
+      dismissedAt: at,
+      dismissedReason: 'auto-dismissed: no action for 48h',
+    },
   });
+  if (updated.count === 0) return 0;
+
+  // One DWI_EXPIRED audit per dismissed row. actorId is the original supervisor
+  // so the timeline reads "Ravi's decision auto-dismissed after 48h".
+  // DWI_EXPIRED = expired-by-timeout (distinct from DWI_DISMISSED manual and
+  // DWI_APPLIED transition).
+  await tx.auditEvent.createMany({
+    data: candidates.map((c) => ({
+      companyId,
+      kind: 'DWI_EXPIRED',
+      actorId: c.supervisorId,
+      targetId: c.id,
+      payload: {
+        reason: 'auto-dismissed: no action for 48h',
+        kind: c.kind,
+        tier: c.tier,
+      } as Prisma.InputJsonValue,
+    })),
+  });
+
+  return updated.count;
 }
 
 function encodeCursor(p: DecisionsCursorPayload): string {
@@ -388,9 +388,9 @@ export async function buildDecisionsForSupervisor(
   //         response. Race-safe (conditional updateMany re-checks lifecycle).
   let autoDismissedThisRead = 0;
   try {
-    // H4: autoSweepStaleDecisions makes its dismiss + audit atomic internally
-    // (prisma.$transaction, opened only when stale rows exist), so a normal read
-    // here stays on the bare client with no added per-request transaction cost.
+    // H4/#4: autoSweepStaleDecisions runs its dismiss + audit on this same tenant
+    // `tx` (GUC-set by the route's withTenantRead), atomic and RLS-honouring; the
+    // mutation only fires when stale rows actually exist.
     autoDismissedThisRead = await autoSweepStaleDecisions(tx, args.companyId, at);
   } catch {
     // Don't fail the whole read if the sweep hits an issue — log via the

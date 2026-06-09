@@ -588,15 +588,28 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
         }
       } else {
         // SUPERVISOR — portfolio binding gate (responsibility-model §5.9).
-        const workerPrimarySiteId = await deriveWorkerPrimarySiteId(prisma, {
-          companyId: auth.companyId,
-          workerId: leave.workerId,
-        });
-        const portfolio = await getSitesSupervisedByUser(prisma, {
-          companyId: auth.companyId,
-          userId: auth.userId,
-        });
-        const portfolioSiteIds = new Set(portfolio.map((p) => p.siteId));
+        // #21 (RLS): both helpers read FORCE-RLS tables (Assignment,
+        // SiteSupervisorBinding); they must run with the company GUC set or
+        // axhy_app returns 0 rows and 404s every supervisor. withTenantRead sets
+        // axhy.current_company_id (read context, no ACTIVE gate).
+        const { workerPrimarySiteId, portfolioSiteIds } = await withTenantRead(
+          prisma,
+          auth.companyId,
+          async (tx) => {
+            const primarySiteId = await deriveWorkerPrimarySiteId(tx, {
+              companyId: auth.companyId,
+              workerId: leave.workerId,
+            });
+            const portfolio = await getSitesSupervisedByUser(tx, {
+              companyId: auth.companyId,
+              userId: auth.userId,
+            });
+            return {
+              workerPrimarySiteId: primarySiteId,
+              portfolioSiteIds: new Set(portfolio.map((p) => p.siteId)),
+            };
+          },
+        );
         const isResponsibleSupervisor =
           workerPrimarySiteId !== null && portfolioSiteIds.has(workerPrimarySiteId);
         if (!isResponsibleSupervisor) {
