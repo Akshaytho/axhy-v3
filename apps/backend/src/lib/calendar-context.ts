@@ -16,6 +16,8 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { CALENDAR_LOOKBACK_DAYS, CALENDAR_MAX_ENTRIES } from '@axhy/business-rules';
 
+import { neuteriseClosingTags } from './prompt-composer.js';
+
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
 export async function loadCalendarTier3(
@@ -41,14 +43,23 @@ export async function loadCalendarTier3(
   });
   if (rows.length === 0) return '';
 
+  // #18: wrap as a DATA block and sanitise the supervisor-authored notes.
+  // r.notes is untrusted free-text — without the <calendar_context> wrapper +
+  // neuteriseClosingTags, a stored note could break out of the block or carry
+  // instructions. The chat system prompt's PROMPT_INJECTION_DEFENSE_SENTENCE
+  // names <calendar_context> so the model treats this as reference data, not
+  // instructions.
   const lines: string[] = [
+    '<calendar_context>',
     `# Recent calendar (last ${CALENDAR_LOOKBACK_DAYS} days, ${rows.length} entries)`,
     '',
   ];
   for (const r of rows) {
     const dateStr = r.date.toISOString().slice(0, 10);
-    const note = r.notes ? ` — ${r.notes}` : '';
+    const safeNote = r.notes ? neuteriseClosingTags(r.notes, 'calendar_context') : '';
+    const note = safeNote ? ` — ${safeNote}` : '';
     lines.push(`- ${dateStr} [${r.kind}]${note}`);
   }
+  lines.push('</calendar_context>');
   return lines.join('\n').trim();
 }
