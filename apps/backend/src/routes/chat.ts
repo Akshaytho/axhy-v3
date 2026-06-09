@@ -5,7 +5,7 @@
  * @derives(master-plan §G)
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
@@ -1260,6 +1260,14 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
               }
               const p = parsedTool.data;
               const observedAt = p.observedAt ? new Date(p.observedAt) : null;
+              // H6: idempotency key for this complaint. Stable across request retries
+              // (the request idempotencyKey) and unique per complaint content
+              // (siteId|kind|text), so a replayed turn dedups to the same Complaint
+              // even if the LLM re-emits the tool call with a fresh tool_call_id.
+              const complaintDedupKey = `${idempotencyKey}:${createHash('sha256')
+                .update(`${p.siteId}|${p.kind}|${p.description.trim()}`)
+                .digest('hex')
+                .slice(0, 16)}`;
               const result = await withTenantContext(prisma, auth.companyId, async (tx) =>
                 createComplaintWithInitialMessage(tx, {
                   companyId: auth.companyId,
@@ -1271,6 +1279,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                   kind: p.kind,
                   observedAt,
                   origin: 'CHAT',
+                  dedupKey: complaintDedupKey,
                 }),
               );
               if (result.kind === 'SITE_NOT_FOUND') {

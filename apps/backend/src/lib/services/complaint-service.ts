@@ -61,6 +61,10 @@ export type CreateComplaintInput = {
   kind: ComplaintKind;
   observedAt: Date | null;
   origin: 'CHAT' | 'BUTTON';
+  /// H6 idempotency: when set, a pre-check returns the existing complaint instead of
+  /// creating a duplicate (chat-driven creation). NULL/undefined for button/form
+  /// complaints, which are never deduped. @derives(PRODUCTION_BUG_LEDGER.md H6)
+  dedupKey?: string | null;
 };
 
 /** @derives(master-plan §G) — supervisor surface */
@@ -94,6 +98,31 @@ export async function createComplaintWithInitialMessage(
   });
   if (!site) return { kind: 'SITE_NOT_FOUND' };
 
+  // H6 idempotency: pre-check by dedupKey BEFORE create. A retried/replayed chat turn
+  // (same idempotencyKey + same complaint content) returns the already-created complaint
+  // instead of inserting a duplicate. We intentionally do NOT catch the unique-index
+  // P2002 inside this interactive tx — a constraint violation aborts the whole tx, so the
+  // pre-check is the idempotency path and the index is only the last-resort backstop.
+  if (input.dedupKey) {
+    const existing = await tx.complaint.findFirst({
+      where: { companyId: input.companyId, dedupKey: input.dedupKey },
+      select: { id: true },
+    });
+    if (existing) {
+      const firstMsg = await tx.complaintMessage.findFirst({
+        where: { complaintId: existing.id, companyId: input.companyId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      return {
+        kind: 'OK',
+        complaintId: existing.id,
+        initialMessageId: firstMsg?.id ?? existing.id,
+        siteName: site.name,
+      };
+    }
+  }
+
   const complaint = await tx.complaint.create({
     data: {
       companyId: input.companyId,
@@ -108,6 +137,7 @@ export async function createComplaintWithInitialMessage(
       // First reply by the supervisor counts as lastReplyAt anchor so the
       // drawer sort works from day 1 (no NULL-sorts-last gymnastics).
       lastReplyAt: new Date(),
+      dedupKey: input.dedupKey ?? null,
     },
     select: { id: true },
   });

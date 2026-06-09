@@ -780,6 +780,12 @@ model Complaint {
   resolvedBy           String?   @db.Uuid
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+  /// H6 idempotency: dedup key for chat-driven complaint creation, set to
+  /// `<idempotencyKey>:<hash(siteId|kind|text)>` so a retried/replayed chat turn
+  /// maps to the SAME complaint (pre-checked before create). NULL for button/form
+  /// complaints — PG treats NULLs as distinct, so they stay unconstrained.
+  /// @derives(PRODUCTION_BUG_LEDGER.md H6)
+  dedupKey             String?
 
   company  Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   site     Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
@@ -792,6 +798,9 @@ model Complaint {
   @@index([companyId, state, createdAt])
   // Supervisor inbox: "complaints this supervisor logged, by state, newest first".
   @@index([companyId, createdByUserId, state, createdAt])
+  // H6: idempotent chat complaint creation — pre-check by dedupKey before create.
+  // Nullable dedupKey + NULLs-distinct means only chat complaints are constrained.
+  @@unique([companyId, dedupKey])
   @@schema("axhy")
 }
 
