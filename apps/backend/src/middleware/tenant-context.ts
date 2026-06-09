@@ -113,10 +113,16 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
     reply.code(401).send({ error: 'AUTH_INVALID', message: 'Membership id missing' });
     return;
   }
-  const membership = await prisma.membership.findUnique({
-    where: { id: claims.membershipId },
-    select: { status: true, role: true, tokenEpoch: true, userId: true, companyId: true },
-  });
+  // Read the caller's own membership under RLS: withUserContext sets the
+  // axhy.current_user_id GUC so the tenant_self_read policy (migration 024) returns
+  // this user's Membership row when the app connects as axhy_app. Also hardens auth —
+  // a forged token referencing another user's membershipId resolves to null here.
+  const membership = await withUserContext(prisma, claims.sub, (tx) =>
+    tx.membership.findUnique({
+      where: { id: claims.membershipId },
+      select: { status: true, role: true, tokenEpoch: true, userId: true, companyId: true },
+    }),
+  );
   if (
     !membership ||
     membership.status !== 'ACTIVE' ||
@@ -209,13 +215,20 @@ export type ResolveWorkerResult =
   | { kind: 'NO_WORKER' };
 
 export async function resolveWorkerFromAuth(
-  db: import('@prisma/client').PrismaClient | import('@prisma/client').Prisma.TransactionClient,
+  db: import('@prisma/client').PrismaClient,
   auth: { userId: string },
 ): Promise<ResolveWorkerResult> {
-  const worker = await db.worker.findUnique({
-    where: { userId: auth.userId },
-    select: { id: true, companyId: true },
-  });
+  // Worker.userId is globally @unique, so this returns at most ONE row — the caller's
+  // own. Under RLS (app as axhy_app) the company is not yet known here, so we set the
+  // axhy.current_user_id GUC (withUserContext) and the tenant_self_read policy
+  // (migration 024) returns the caller's own Worker row by userId. The @unique
+  // constraint keeps cross-tenant leak structurally impossible.
+  const worker = await withUserContext(db, auth.userId, (tx) =>
+    tx.worker.findUnique({
+      where: { userId: auth.userId },
+      select: { id: true, companyId: true },
+    }),
+  );
   if (!worker) return { kind: 'NO_WORKER' };
   return { kind: 'OK', workerId: worker.id, companyId: worker.companyId };
 }
@@ -254,6 +267,57 @@ export async function withTenantContext<T>(
         throw Object.assign(new Error('Company is not ACTIVE'), { statusCode: 403 });
       }
 
+      return await fn(tx);
+    },
+    { timeout: 30_000, maxWait: 10_000 },
+  );
+}
+
+/**
+ * Read-only tenant context: sets the `axhy.current_company_id` GUC for RLS but does
+ * NOT enforce Company.status === 'ACTIVE'. Use for GET/read paths where a SUSPENDED
+ * company must still read its existing data (operational-invariants INVARIANT 2) —
+ * the ACTIVE gate in withTenantContext would wrongly 403 those reads. Writes must
+ * still go through withTenantContext.
+ *
+ * @derives(docs/locked/operational-invariants.md INVARIANT 1 + INVARIANT 2)
+ */
+export async function withTenantRead<T>(
+  prisma: import('@prisma/client').PrismaClient,
+  companyId: string,
+  fn: (tx: import('@prisma/client').Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('axhy.current_company_id', $1, true)`,
+        companyId,
+      );
+      return await fn(tx);
+    },
+    { timeout: 30_000, maxWait: 10_000 },
+  );
+}
+
+/**
+ * Auth-bootstrap context: sets the transaction-local GUC `axhy.current_user_id` so the
+ * RLS self-read policy (tenant_self_read on Membership/Worker, migration 024) returns
+ * the CALLER'S OWN rows across companies — needed where no single company is in scope
+ * yet (login/refresh/me membership enumeration, requireAuth, resolveWorkerFromAuth).
+ * A user only ever sees their own rows by userId, so this is not a cross-tenant leak.
+ * No Company.status gate — the company is not established at this point.
+ *
+ * @derives(docs/locked/operational-invariants.md INVARIANT 1)
+ * @derives(packages/shared-schema/prisma/migrations/20260609_024_rls_auth_self_read)
+ */
+export async function withUserContext<T>(
+  prisma: import('@prisma/client').PrismaClient,
+  userId: string,
+  fn: (tx: import('@prisma/client').Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT set_config('axhy.current_user_id', $1, true)`, userId);
       return await fn(tx);
     },
     { timeout: 30_000, maxWait: 10_000 },
