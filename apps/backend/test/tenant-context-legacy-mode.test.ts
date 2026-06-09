@@ -7,7 +7,7 @@ import { requireAuth } from '../src/middleware/tenant-context.js';
 const FOUNDER_USER = '17285e17-9434-4522-9ac1-1cec1cbea31f';
 const QA_COMPANY = '2d2f1ccb-7bf8-4890-ae59-c5cb14b00289';
 
-describe('requireAuth — legacy-mode (no epoch claim)', () => {
+describe('requireAuth — no-epoch tokens are rejected (#33, strict-only)', () => {
   let app: FastifyInstance;
   beforeAll(async () => {
     process.env.JWT_SECRET ??= 'test-secret-bytes-32-bytes-min-length-ok';
@@ -20,7 +20,9 @@ describe('requireAuth — legacy-mode (no epoch claim)', () => {
     await app.close();
   });
 
-  it('accepts a token with NO epoch claim (legacy emit)', async () => {
+  it('REJECTS a token with NO epoch claim — #33 (was a no-DB-verification bypass)', async () => {
+    // A no-epoch token used to be trusted outright with zero DB verification,
+    // letting a forged/stolen pre-cutover token skip revocation. It must now 401.
     const token = await issueAccessToken({
       userId: FOUNDER_USER,
       companyId: QA_COMPANY,
@@ -33,9 +35,10 @@ describe('requireAuth — legacy-mode (no epoch claim)', () => {
       url: '/echo',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().userId).toBe(FOUNDER_USER);
-    expect(res.json().role).toBe('OWNER');
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe('AUTH_INVALID');
+    // No identity attached for a rejected token.
+    expect(res.json().userId).toBeUndefined();
   });
 
   it('returns 401 AUTH_REQUIRED when Authorization header missing', async () => {

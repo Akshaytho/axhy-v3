@@ -46,18 +46,22 @@ declare module 'fastify' {
 }
 
 /**
- * Verify JWT and attach `req.auth`. Dual-mode during the 30-day F1 cutover:
+ * Verify JWT and attach `req.auth`. Strict-only (the F1 cutover is complete):
  *
- *   - Legacy mode (no `epoch` claim): trust the JWT outright (pre-2026-05-27).
- *   - Strict mode (`epoch` present):
- *       * SUPER_ADMIN: User.is_platform_admin must be true.
- *       * Other roles: Membership row exists, status=ACTIVE, role matches
- *         token, token_epoch matches token, userId+companyId match.
+ *   - A token with no `epoch` claim is REJECTED (401). (#33: this branch used to
+ *     trust the JWT outright with zero DB verification — a forged or stolen
+ *     pre-cutover token could skip all server-side checks including revocation.
+ *     Both issuers now always set epoch, and the refresh path already rejects
+ *     legacy refresh tokens, so legacy access tokens have long since expired.)
+ *   - SUPER_ADMIN: User.is_platform_admin must be true.
+ *   - Other roles: Membership row exists, status=ACTIVE, role matches token,
+ *     token_epoch matches token, userId+companyId match.
  *
- * Any DB mismatch → 401. Flip to strict-only at the f1-d slice.
+ * Any DB mismatch → 401.
  *
  * @derives(ADR-0004)
  * @derives(F1 trust model NEXT_SESSION.md 2026-05-27)
+ * @derives(PRODUCTION_BUG_LEDGER.md #33)
  */
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const header = req.headers.authorization;
@@ -76,15 +80,14 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
     return;
   }
 
-  // Legacy mode — no DB check; preserve pre-cutover behavior.
+  // #33: a token without an `epoch` claim is no longer trusted. The legacy branch
+  // here used to attach req.auth with NO DB verification (no membership/status/role
+  // check, no tokenEpoch revocation check), so a forged or stolen pre-cutover token
+  // bypassed all server-side trust. Reject it — every token the app issues now sets
+  // epoch (auth.ts, auth-refresh.ts), and the refresh path already rejects legacy
+  // refresh tokens, so no legitimate no-epoch access token can still be live.
   if (claims.epoch === undefined) {
-    req.auth = {
-      userId: claims.sub,
-      companyId: claims.companyId,
-      role: claims.role,
-      availableRoles: claims.availableRoles,
-      locale: claims.locale,
-    };
+    reply.code(401).send({ error: 'AUTH_INVALID', message: 'Token invalid or expired' });
     return;
   }
 
