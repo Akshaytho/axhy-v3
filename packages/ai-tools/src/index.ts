@@ -10,7 +10,13 @@
 
 export const PACKAGE_NAME = '@axhy/ai-tools' as const;
 
-export { modelFor, assertWithinBudget, tokenCostInrFor, ALL_SURFACES } from './model-policy.js';
+export {
+  modelFor,
+  assertWithinBudget,
+  assertTenantDailyBudget,
+  tokenCostInrFor,
+  ALL_SURFACES,
+} from './model-policy.js';
 export type { AISurface, AIVendor, ModelChoice, TenantBudgetCtx } from './model-policy.js';
 
 export { AICostBudgetError } from './errors.js';

@@ -28,6 +28,7 @@ import {
   modelFor,
   tokenCostInrFor,
   assertWithinBudget,
+  assertTenantDailyBudget,
   type AISurface,
   type TenantBudgetCtx,
 } from './model-policy.js';
@@ -222,7 +223,10 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
   // spend would breach Spec 2 §9 cap. Caller (chat route) catches and
   // returns HTTP 429 to the client.
   const choice = modelFor(surface);
-  await assertWithinBudget(surface, choice.maxCostPerCallInr, args.tenantCtx);
+  // #16: capture the per-call ceiling before the loop body — inside the loop
+  // `choice` is rebound to the OpenAI response choice (response.choices[0]).
+  const perCallCeilingInr = choice.maxCostPerCallInr;
+  await assertWithinBudget(surface, perCallCeilingInr, args.tenantCtx);
 
   const openai = getOpenAIClient(apiKey);
   const openaiTools = toOpenAITools(tools);
@@ -295,6 +299,19 @@ export async function openaiToolLoop(args: OpenAIToolLoopArgs): Promise<OpenAITo
     // top of each iteration before we make another API call.
     if (args.abortSignal?.aborted) {
       throw new Error('AI_TOOL_LOOP_ABORTED');
+    }
+
+    // #16: re-check the tenant daily budget before each ADDITIONAL model call,
+    // projecting pre-turn spend + this turn's ACCUMULATED real cost + the next
+    // call's ceiling. The pre-loop assertWithinBudget covers iteration 0; this
+    // stops a runaway multi-step turn from overshooting the cap (the once-after
+    // incrementSpend means the pre-turn DB spend doesn't grow mid-turn, so we add
+    // the accumulated cost ourselves). Throws AICostBudgetError → 429 at the route.
+    if (iter > 0 && args.tenantCtx) {
+      await assertTenantDailyBudget(
+        args.tenantCtx,
+        tokenCostInrFor(model, totalUsage) + perCallCeilingInr,
+      );
     }
 
     // Spec 2 §8.2 — `prompt_cache_key` is a real OpenAI request-body param

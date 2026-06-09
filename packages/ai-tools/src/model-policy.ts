@@ -194,19 +194,40 @@ export async function assertWithinBudget(
   }
   if (!ctx) return;
 
-  // Tenant daily-budget check
+  // #16: the cumulative tenant daily-budget projection lives in its own exported
+  // helper so the tool loop can re-check it per iteration with the turn's
+  // ACCUMULATED real cost (not just one pre-call ceiling, checked once).
+  await assertTenantDailyBudget(ctx, estimatedCostInr);
+}
+
+/**
+ * Tenant daily-budget projection. Fetches `Company.aiSpendDailyInr` and projects
+ * `current + projectedAdditionalInr` against the WARN/CAP thresholds:
+ *   - projected ≥ cap → `dispatchBudgetAlert(CAP)` + throw `AICostBudgetError`.
+ *   - just-crossed warn → `dispatchBudgetAlert(WARN)` (idempotent, ≤1/tenant/day).
+ *
+ * Pure READ + (idempotent) alert — it NEVER writes aiSpendDailyInr (incrementSpend
+ * owns that), so it is safe to call repeatedly within a single turn. #16 uses this
+ * to bound a multi-step tool loop: each iteration projects pre-turn spend + the
+ * cost accumulated so far this turn + the next call's ceiling.
+ *
+ * @derives(ADR-0023) @derives(spec-2 §9.2) @derives(PRODUCTION_BUG_LEDGER.md #16)
+ */
+export async function assertTenantDailyBudget(
+  ctx: TenantBudgetCtx,
+  projectedAdditionalInr: number,
+): Promise<void> {
   const company = await ctx.prisma.company.findUnique({
     where: { id: ctx.companyId },
     select: { aiSpendDailyInr: true },
   });
   if (!company) {
-    throw new Error(`assertWithinBudget: company ${ctx.companyId} not found`);
+    throw new Error(`assertTenantDailyBudget: company ${ctx.companyId} not found`);
   }
-  // Prisma returns Decimal; coerce to plain number for arithmetic.
-  // Decimal.toNumber() loses precision past ~15 digits but our values are
-  // bounded (max plausible ₹99M). For the ratio comparison this is exact.
+  // Prisma returns Decimal; coerce to plain number for arithmetic. Values are
+  // bounded (max plausible ₹99M), so toNumber() is exact for this comparison.
   const current = (company.aiSpendDailyInr as unknown as Prisma.Decimal).toNumber();
-  const projected = current + estimatedCostInr;
+  const projected = current + projectedAdditionalInr;
   const warnInr = inrFromPaise(PRICING.aiBudgetDailyWarnPaise);
   const capInr = inrFromPaise(PRICING.aiBudgetDailyCapPaise);
 
@@ -216,7 +237,7 @@ export async function assertWithinBudget(
       companyId: ctx.companyId,
       currentSpendInr: current,
       capInr,
-      attemptedCostInr: estimatedCostInr,
+      attemptedCostInr: projectedAdditionalInr,
     });
   }
 
