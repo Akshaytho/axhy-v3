@@ -68,8 +68,11 @@ import {
   decisionSpecByKind,
 } from '@axhy/shared-schema';
 
-import { getSitesSupervisedByUser } from '../effective-responsibility.js';
-import { deriveWorkerPrimarySiteId } from '../effective-responsibility.js';
+import {
+  deriveWorkerPrimarySiteId,
+  deriveWorkerPrimarySiteIdsBatch,
+  getSitesSupervisedByUser,
+} from '../effective-responsibility.js';
 
 // ===========================================================================
 // Public types
@@ -493,6 +496,22 @@ const supervisorDecisionSource: DecisionSource = {
     });
     if (candidates.length === 0) return [];
 
+    // #15: batch-prime the cache for the worker-TARGETED rows (those not own and
+    // not a supervised-site target), so the per-row getCachedWorkerPrimarySite in
+    // the loop is a cache hit instead of an N+1.
+    await primeWorkerPrimarySiteCache(
+      tx,
+      ctx,
+      candidates
+        .filter(
+          (row) =>
+            row.supervisorId !== ctx.userId &&
+            !!row.targetId &&
+            !ctx.supervisedSiteIds.has(row.targetId),
+        )
+        .map((row) => row.targetId as string),
+    );
+
     const matched: typeof candidates = [];
     for (const row of candidates) {
       if (row.supervisorId === ctx.userId) {
@@ -637,6 +656,14 @@ const leaveRequestSource: DecisionSource = {
       take: 200,
     });
     if (candidates.length === 0) return [];
+
+    // #15: one batched Tier-1 derivation for all candidate workers, instead of a
+    // per-row getCachedWorkerPrimarySite (3 sequential queries each) in the loop.
+    await primeWorkerPrimarySiteCache(
+      tx,
+      ctx,
+      candidates.map((c) => c.workerId),
+    );
 
     // Pre-load supervised site names once (today-service pattern) instead of a
     // per-row tx.site.findFirst — every matched siteId is already proven to be
@@ -868,6 +895,31 @@ async function getCachedWorkerPrimarySite(
   });
   ctx.workerPrimarySiteCache.set(workerId, siteId);
   return siteId;
+}
+
+/**
+ * #15: batch-prime ctx.workerPrimarySiteCache for many workers in ONE query
+ * instead of the per-row N+1 in the source loops. Only Tier-1 hits are cached
+ * (identical to what getCachedWorkerPrimarySite would compute first); workers
+ * with no Tier-1 hit are left un-cached so getCachedWorkerPrimarySite still falls
+ * back to the full deriveWorkerPrimarySiteId (tiers 2/3) for them. Behaviour-
+ * preserving — purely collapses ~N sequential queries into 1.
+ */
+async function primeWorkerPrimarySiteCache(
+  tx: Prisma.TransactionClient,
+  ctx: DecisionSourceContext,
+  workerIds: ReadonlyArray<string>,
+): Promise<void> {
+  const missing = workerIds.filter((id) => !ctx.workerPrimarySiteCache.has(id));
+  if (missing.length === 0) return;
+  const tier1 = await deriveWorkerPrimarySiteIdsBatch(tx, {
+    companyId: ctx.companyId,
+    workerIds: missing,
+    at: ctx.at,
+  });
+  for (const [workerId, siteId] of tier1) {
+    ctx.workerPrimarySiteCache.set(workerId, siteId);
+  }
 }
 
 /**

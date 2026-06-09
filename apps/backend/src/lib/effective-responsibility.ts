@@ -315,3 +315,50 @@ export async function deriveWorkerPrimarySiteId(
   });
   return recentAny?.siteId ?? null;
 }
+
+/**
+ * Batched Tier-1 derivation of worker→primary-site for routing fan-out (#15).
+ *
+ * Runs the SAME Tier-1 predicate as `deriveWorkerPrimarySiteId` (effective-at-T
+ * ACTIVE, most-recent by createdAt) for many workers in ONE query, returning a
+ * Map for the workers that HAVE a Tier-1 hit. Workers with no Tier-1 hit are
+ * ABSENT from the map — the caller MUST fall back to the full
+ * `deriveWorkerPrimarySiteId` (tiers 2/3) for them. This is purely a fan-out
+ * optimisation: for any worker with a Tier-1 assignment the result is identical
+ * to the per-row helper (Tier 1 wins there too), so priming a cache with this is
+ * behaviour-preserving.
+ *
+ * KEEP THE PREDICATE BELOW IN LOCKSTEP with Tier 1 of `deriveWorkerPrimarySiteId`.
+ *
+ * @derives(ADR-0003)
+ * @derives(master-plan §G) — supervisor responsibility model §5.9 (batched fan-out)
+ * @derives(PRODUCTION_BUG_LEDGER.md #15)
+ */
+export async function deriveWorkerPrimarySiteIdsBatch(
+  tx: Prisma.TransactionClient,
+  args: { companyId: string; workerIds: ReadonlyArray<string>; at?: Date },
+): Promise<Map<string, string>> {
+  const at = args.at ?? new Date();
+  const ids = [...new Set(args.workerIds)];
+  if (ids.length === 0) return new Map();
+
+  // Tier 1 ONLY — mirrors deriveWorkerPrimarySiteId's effective-at-T ACTIVE branch.
+  const rows = await tx.assignment.findMany({
+    where: {
+      companyId: args.companyId,
+      workerId: { in: ids },
+      state: 'ACTIVE',
+      validFrom: { lte: at },
+      OR: [{ validUntil: null }, { validUntil: { gte: at } }],
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { workerId: true, siteId: true },
+  });
+
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    // createdAt desc → the first row seen per worker is the most recent (Tier 1).
+    if (!out.has(r.workerId)) out.set(r.workerId, r.siteId);
+  }
+  return out;
+}
