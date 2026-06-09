@@ -13,7 +13,7 @@ import type { MeOutput, Role, NotificationPrefs } from '@axhy/shared-schema';
 import { UpdateNotificationPrefsInput, DEFAULT_NOTIFICATION_PREFS } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth, withTenantContext, withUserContext } from '../middleware/tenant-context.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
 
 /**
@@ -50,10 +50,14 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
     const [user, company, memberships] = await Promise.all([
       prisma.user.findUnique({ where: { id: auth.userId } }),
       prisma.company.findUnique({ where: { id: auth.companyId } }),
-      prisma.membership.findMany({
-        where: { userId: auth.userId, status: 'ACTIVE' },
-        include: { company: true },
-      }),
+      // RLS: User + Company are not tenant-isolated; Membership is — read the
+      // caller's own memberships across companies via tenant_self_read.
+      withUserContext(prisma, auth.userId, (tx) =>
+        tx.membership.findMany({
+          where: { userId: auth.userId, status: 'ACTIVE' },
+          include: { company: true },
+        }),
+      ),
     ]);
 
     if (!user || !company) {

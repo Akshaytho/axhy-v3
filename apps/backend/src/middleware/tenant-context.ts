@@ -187,16 +187,20 @@ export async function requireWorkerRole(req: FastifyRequest, reply: FastifyReply
  * ## Tenant safety guarantee
  *
  * Cross-tenant leak is structurally impossible because the @unique constraint
- * guarantees at most one matching row. This pattern SUPERSEDES the need for
- * `withTenantContext` on worker READS — Worker / Visit / VisitPhoto tables
- * do not have RLS enabled today (only `axhy_chat.turn_embeddings` does, per
- * migration 20260527_017), so `withTenantContext` would add only a
- * `Company.status === 'ACTIVE'` check that conflicts with the product UX
- * of "no assignments today" when the customer's contract ends.
+ * guarantees at most one matching row. We deliberately do NOT use
+ * `withTenantContext` here for two reasons: (1) the company is not yet known
+ * (it is what this lookup DISCOVERS), and (2) its `Company.status === 'ACTIVE'`
+ * gate would conflict with the product UX of "no assignments today" when the
+ * customer's contract ends. Since migration 023 enabled FORCE RLS on Worker
+ * (and Visit/VisitPhoto), this lookup now runs inside `withUserContext`, which
+ * sets the `axhy.current_user_id` GUC so the `tenant_self_read` policy
+ * (migration 024) returns the caller's own Worker row by userId under axhy_app —
+ * with no ACTIVE gate. The @unique constraint keeps it a single, own row.
  *
  * `withTenantContext` IS still used for worker WRITES (worker-submit creates
  * VisitPhoto + Visit rows that belong to a company; the ACTIVE check there
- * legitimately blocks contract-ended writes).
+ * legitimately blocks contract-ended writes, and the company GUC satisfies the
+ * tenant_isolation WITH CHECK).
  *
  * ## Audit recognition
  *

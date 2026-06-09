@@ -28,6 +28,7 @@ import { issueAccessToken } from '../lib/jwt.js';
 import { createRefreshTokenStore, isLegacyToken } from '../lib/services/refresh-token-store.js';
 import { workerOtpVerifiedService } from '../lib/services/worker-otp-verified-service.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
+import { withTenantContext, withUserContext } from '../middleware/tenant-context.js';
 
 /**
  * Register /auth/* routes.
@@ -103,17 +104,21 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     // Pull all memberships. F1 trust model — select id + tokenEpoch so the
     // active row backs the new JWT claims; nested company.name stays in scope
     // for the VerifyOTPOutput mapping below.
-    const memberships = await prisma.membership.findMany({
-      where: { userId: user.id, status: 'ACTIVE' },
-      select: {
-        id: true,
-        companyId: true,
-        role: true,
-        status: true,
-        tokenEpoch: true,
-        company: { select: { name: true } },
-      },
-    });
+    // RLS: a user reads their OWN memberships across companies via the
+    // tenant_self_read policy — withUserContext sets axhy.current_user_id.
+    const memberships = await withUserContext(prisma, user.id, (tx) =>
+      tx.membership.findMany({
+        where: { userId: user.id, status: 'ACTIVE' },
+        select: {
+          id: true,
+          companyId: true,
+          role: true,
+          status: true,
+          tokenEpoch: true,
+          company: { select: { name: true } },
+        },
+      }),
+    );
 
     if (memberships.length === 0) {
       reply.code(403).send({
@@ -138,20 +143,19 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         // Railway proxy (~8s observed in first-call real-DB tests).
         // Warm subsequent calls complete in <1s; this only matters for
         // the first OTP verify in a fresh process.
-        await prisma.$transaction(
-          async (tx) => {
-            const worker = await tx.worker.findFirst({
-              where: { userId: user.id, companyId: active.companyId },
-            });
-            if (!worker) return;
-            await workerOtpVerifiedService(tx, {
-              workerId: worker.id,
-              companyId: active.companyId,
-              userId: user.id,
-            });
-          },
-          { timeout: 15_000, maxWait: 10_000 },
-        );
+        // RLS: writes (worker state transition) need the COMPANY GUC for
+        // tenant_isolation WITH CHECK — withTenantContext(active.companyId).
+        await withTenantContext(prisma, active.companyId, async (tx) => {
+          const worker = await tx.worker.findFirst({
+            where: { userId: user.id, companyId: active.companyId },
+          });
+          if (!worker) return;
+          await workerOtpVerifiedService(tx, {
+            workerId: worker.id,
+            companyId: active.companyId,
+            userId: user.id,
+          });
+        });
       } catch (err) {
         req.log.warn(
           { err, userId: user.id, companyId: active.companyId },
@@ -162,16 +166,18 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         // is now a queryable audit row for ops instead of a log line no one
         // greps. Best-effort: never let the audit write block login.
         try {
-          await recordAuditEvent(prisma, {
-            companyId: active.companyId,
-            kind: 'WORKER_ACTIVATION_TRANSITION_FAILED',
-            actorId: user.id,
-            targetId: user.id,
-            payload: {
-              membershipId: active.id,
-              reason: err instanceof Error ? err.message : String(err),
-            },
-          });
+          await withTenantContext(prisma, active.companyId, (tx) =>
+            recordAuditEvent(tx, {
+              companyId: active.companyId,
+              kind: 'WORKER_ACTIVATION_TRANSITION_FAILED',
+              actorId: user.id,
+              targetId: user.id,
+              payload: {
+                membershipId: active.id,
+                reason: err instanceof Error ? err.message : String(err),
+              },
+            }),
+          );
         } catch (auditErr) {
           req.log.error(
             { auditErr, userId: user.id, companyId: active.companyId },
@@ -188,19 +194,21 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     // (the membership the issued token is for). Best-effort: a failed audit
     // write must never block a legitimate login.
     try {
-      await recordAuditEvent(prisma, {
-        companyId: active.companyId,
-        kind: 'AUTH_LOGIN',
-        actorId: user.id,
-        targetId: user.id,
-        payload: {
-          role: active.role,
-          membershipId: active.id,
-          availableRoles: memberships.map((m) => m.role),
-          via: 'otp',
-          ip: req.ip ? req.ip.slice(0, 64) : null,
-        },
-      });
+      await withTenantContext(prisma, active.companyId, (tx) =>
+        recordAuditEvent(tx, {
+          companyId: active.companyId,
+          kind: 'AUTH_LOGIN',
+          actorId: user.id,
+          targetId: user.id,
+          payload: {
+            role: active.role,
+            membershipId: active.id,
+            availableRoles: memberships.map((m) => m.role),
+            via: 'otp',
+            ip: req.ip ? req.ip.slice(0, 64) : null,
+          },
+        }),
+      );
     } catch (err) {
       req.log.warn({ err, userId: user.id }, 'login audit write failed; auth proceeds');
     }

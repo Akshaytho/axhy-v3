@@ -38,6 +38,7 @@ import { z } from 'zod';
 import type { Role } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
+import { withUserContext } from '../middleware/tenant-context.js';
 import { issueAccessToken } from '../lib/jwt.js';
 import {
   createRefreshTokenStore,
@@ -184,17 +185,22 @@ export async function registerAuthRefreshRoutes(app: FastifyInstance): Promise<v
       epoch = 0;
       isPlatformAdmin = true;
     } else {
-      const membership = await prisma.membership.findUnique({
-        where: { id: family.membershipId },
-        select: {
-          id: true,
-          companyId: true,
-          role: true,
-          status: true,
-          tokenEpoch: true,
-          user: { select: { id: true, locale: true, is_platform_admin: true } },
-        },
-      });
+      // RLS: read the caller's own membership via tenant_self_read (own userId).
+      // membershipId hoisted to a const so its non-null narrowing survives the closure.
+      const membershipId = family.membershipId;
+      const membership = await withUserContext(prisma, family.userId, async (tx) =>
+        tx.membership.findUnique({
+          where: { id: membershipId },
+          select: {
+            id: true,
+            companyId: true,
+            role: true,
+            status: true,
+            tokenEpoch: true,
+            user: { select: { id: true, locale: true, is_platform_admin: true } },
+          },
+        }),
+      );
       if (!membership || membership.status !== 'ACTIVE') {
         req.log.warn(
           {
@@ -209,10 +215,12 @@ export async function registerAuthRefreshRoutes(app: FastifyInstance): Promise<v
         reply.code(401).send({ error: 'INVALID_REFRESH', message: 'Invalid refresh token' });
         return;
       }
-      const allMemberships = await prisma.membership.findMany({
-        where: { userId: membership.user.id, status: 'ACTIVE' },
-        select: { role: true },
-      });
+      const allMemberships = await withUserContext(prisma, membership.user.id, (tx) =>
+        tx.membership.findMany({
+          where: { userId: membership.user.id, status: 'ACTIVE' },
+          select: { role: true },
+        }),
+      );
       companyId = membership.companyId;
       role = membership.role as Role;
       availableRoles = allMemberships.map((m) => m.role as Role);
