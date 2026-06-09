@@ -30,7 +30,7 @@ import type { FastifyInstance } from 'fastify';
 import { DismissDecisionInput, DecisionsQueryInput, decisionSpecByKind } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth, withTenantContext, withTenantRead } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { buildDecisionsForSupervisor } from '../lib/services/decisions-service.js';
 import { dismissProposedDecision, LifecycleError } from '../lib/supervisor-decision-writer.js';
@@ -180,10 +180,12 @@ export async function registerSupervisorDecisionsRoutes(app: FastifyInstance): P
       }
       const { id } = req.params as { id: string };
 
-      const row = await prisma.supervisorDecision.findFirst({
-        where: { id, companyId: auth.companyId },
-        select: { id: true, kind: true, payload: true, appliedAt: true, dismissedAt: true },
-      });
+      const row = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.supervisorDecision.findFirst({
+          where: { id, companyId: auth.companyId },
+          select: { id: true, kind: true, payload: true, appliedAt: true, dismissedAt: true },
+        }),
+      );
       if (!row) {
         reply.code(404).send({ error: 'NOT_FOUND', message: 'Decision not found' });
         return;

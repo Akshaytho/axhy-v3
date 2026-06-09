@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { AdminCreateSiteInput, AdminCreateBindingInput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth, withTenantContext, withTenantRead } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import {
   adminCreateSiteService,
@@ -92,21 +92,23 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
         ];
       }
 
-      const rows = await prisma.site.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-        select: {
-          id: true,
-          name: true,
-          state: true,
-          address: true,
-          latitude: true,
-          longitude: true,
-          workdays: true,
-          createdAt: true,
-        },
-      });
+      const rows = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.site.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+          select: {
+            id: true,
+            name: true,
+            state: true,
+            address: true,
+            latitude: true,
+            longitude: true,
+            workdays: true,
+            createdAt: true,
+          },
+        }),
+      );
       const hasMore = rows.length > limit;
       const sliced = hasMore ? rows.slice(0, limit) : rows;
       const items = sliced.map((s) => ({
@@ -133,20 +135,22 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
     { preHandler: [requireAuth, requireRole('OWNER', 'HR')] },
     async (req, reply) => {
       const auth = req.auth!;
-      const site = await prisma.site.findFirst({
-        where: { id: req.params.id, companyId: auth.companyId },
-        select: {
-          id: true,
-          name: true,
-          state: true,
-          address: true,
-          latitude: true,
-          longitude: true,
-          workdays: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+      const site = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.site.findFirst({
+          where: { id: req.params.id, companyId: auth.companyId },
+          select: {
+            id: true,
+            name: true,
+            state: true,
+            address: true,
+            latitude: true,
+            longitude: true,
+            workdays: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+      );
       if (!site) {
         reply.code(404).send({ error: 'SITE_NOT_FOUND' });
         return;
@@ -186,10 +190,12 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
       }
 
       // Tenant gate via site existence — 404 if cross-tenant or missing.
-      const site = await prisma.site.findFirst({
-        where: { id: req.params.id, companyId: auth.companyId },
-        select: { id: true, ownerHrUserId: true },
-      });
+      const site = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.site.findFirst({
+          where: { id: req.params.id, companyId: auth.companyId },
+          select: { id: true, ownerHrUserId: true },
+        }),
+      );
       if (!site) {
         reply.code(404).send({ error: 'SITE_NOT_FOUND' });
         return;
@@ -214,23 +220,25 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
         ];
       }
 
-      const rows = await prisma.siteSupervisorBinding.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-        select: {
-          id: true,
-          siteId: true,
-          userId: true,
-          actingForUserId: true,
-          effectiveFrom: true,
-          effectiveUntil: true,
-          endedAt: true,
-          reason: true,
-          createdAt: true,
-          supervisor: { select: { name: true, phone: true } },
-        },
-      });
+      const rows = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.siteSupervisorBinding.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+          select: {
+            id: true,
+            siteId: true,
+            userId: true,
+            actingForUserId: true,
+            effectiveFrom: true,
+            effectiveUntil: true,
+            endedAt: true,
+            reason: true,
+            createdAt: true,
+            supervisor: { select: { name: true, phone: true } },
+          },
+        }),
+      );
       const hasMore = rows.length > limit;
       const sliced = hasMore ? rows.slice(0, limit) : rows;
       const items = sliced.map((b) => ({
@@ -287,10 +295,12 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
       // Site-anchored: an HR may only bind supervisors on a site they own
       // (OWNER is company-wide). Same opaque 404 as a missing site.
       if (auth.role === 'HR') {
-        const site = await prisma.site.findFirst({
-          where: { id: req.params.id, companyId: auth.companyId },
-          select: { ownerHrUserId: true },
-        });
+        const site = await withTenantRead(prisma, auth.companyId, (tx) =>
+          tx.site.findFirst({
+            where: { id: req.params.id, companyId: auth.companyId },
+            select: { ownerHrUserId: true },
+          }),
+        );
         if (!site || site.ownerHrUserId !== auth.userId) {
           reply.code(404).send({ error: 'SITE_NOT_FOUND' });
           return;
@@ -349,12 +359,10 @@ export async function registerAdminSiteRoutes(app: FastifyInstance): Promise<voi
         return;
       }
       if (out.kind === 'HR_NOT_FOUND') {
-        reply
-          .code(404)
-          .send({
-            error: 'HR_NOT_FOUND',
-            message: 'That user is not an active HR in this company',
-          });
+        reply.code(404).send({
+          error: 'HR_NOT_FOUND',
+          message: 'That user is not an active HR in this company',
+        });
         return;
       }
       if (out.kind === 'WOULD_SPLIT_WORKER') {

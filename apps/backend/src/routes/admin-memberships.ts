@@ -16,7 +16,7 @@ import { AdminCreateMembershipInput } from '@axhy/shared-schema';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth, withTenantContext, withTenantRead } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { getHrSiteIds } from '../middleware/hr-site-scope.js';
 import { adminCreateMembershipService } from '../lib/services/admin-membership-service.js';
@@ -158,20 +158,22 @@ export async function registerAdminMembershipRoutes(app: FastifyInstance): Promi
       }
 
       // Fetch limit+1 to detect whether another page exists.
-      const rows = await prisma.membership.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-        select: {
-          id: true,
-          userId: true,
-          role: true,
-          status: true,
-          podId: true,
-          createdAt: true,
-          user: { select: { name: true, phone: true } },
-        },
-      });
+      const rows = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.membership.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            status: true,
+            podId: true,
+            createdAt: true,
+            user: { select: { name: true, phone: true } },
+          },
+        }),
+      );
 
       let nextCursor: string | null = null;
       let page = rows;

@@ -22,6 +22,7 @@ import { prisma } from '../lib/prisma.js';
 import {
   requireWorkerRole,
   withTenantContext,
+  withTenantRead,
   resolveWorkerFromAuth,
 } from '../middleware/tenant-context.js';
 import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
@@ -147,10 +148,18 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
 
       const { visitId } = req.params as { visitId: string };
 
-      const visit = await prisma.visit.findUnique({
-        where: { id: visitId },
-        select: { id: true, workerId: true, companyId: true, state: true, verificationText: true },
-      });
+      const visit = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.visit.findUnique({
+          where: { id: visitId },
+          select: {
+            id: true,
+            workerId: true,
+            companyId: true,
+            state: true,
+            verificationText: true,
+          },
+        }),
+      );
 
       if (!visit || visit.companyId !== auth.companyId) {
         reply.code(404).send({ error: 'VISIT_NOT_FOUND', message: 'Visit not found.' });
@@ -166,11 +175,13 @@ export async function registerWorkerSubmitRoutes(app: FastifyInstance): Promise<
         return;
       }
 
-      const photos = await prisma.visitPhoto.findMany({
-        where: { visitId, companyId: auth.companyId },
-        select: { id: true, side: true, aiVerifyStatus: true },
-        orderBy: { createdAt: 'asc' },
-      });
+      const photos = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.visitPhoto.findMany({
+          where: { visitId, companyId: auth.companyId },
+          select: { id: true, side: true, aiVerifyStatus: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+      );
 
       reply.send({
         visitId,
