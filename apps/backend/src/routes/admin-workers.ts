@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { AdminCreateWorkerInput, AdminAnonymizeWorkerInput } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth, withTenantContext, withTenantRead } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { getHrSiteIds } from '../middleware/hr-site-scope.js';
 import { adminCreateWorkerService } from '../lib/services/admin-worker-service.js';
@@ -103,25 +103,27 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
       }
 
       // [ORCHESTRATOR_EXCEPTION] worker-identity contract — expose Worker.id not User.id; skip memberships without Worker row
-      const rows = await prisma.membership.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-        select: {
-          id: true,
-          userId: true,
-          status: true,
-          podId: true,
-          createdAt: true,
-          user: {
-            select: {
-              name: true,
-              phone: true,
-              workerProfile: { select: { id: true } },
+      const rows = await withTenantRead(prisma, auth.companyId, async (tx) =>
+        tx.membership.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+          select: {
+            id: true,
+            userId: true,
+            status: true,
+            podId: true,
+            createdAt: true,
+            user: {
+              select: {
+                name: true,
+                phone: true,
+                workerProfile: { select: { id: true } },
+              },
             },
           },
-        },
-      });
+        }),
+      );
       const hasMore = rows.length > limit;
       const sliced = hasMore ? rows.slice(0, limit) : rows;
       // Worker-identity contract (parent-brief 2026-05-29): every workerId
