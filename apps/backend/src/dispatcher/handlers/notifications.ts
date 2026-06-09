@@ -29,8 +29,9 @@
  */
 
 import type { FastifyBaseLogger } from 'fastify';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
+import { prisma } from '../../lib/prisma.js';
 import {
   composeSupervisorChangeNotifications,
   type ComposedSupervisorChangeAudience,
@@ -43,7 +44,9 @@ import {
   type SupervisorChangeNotificationPayload,
 } from '../../lib/notification-payload.js';
 
-const prisma = new PrismaClient();
+// #25: use the shared Prisma singleton (lib/prisma) instead of a private
+// `new PrismaClient()` — one pool per process, lifecycle-managed, honors the
+// AXHY_DB_URL/DATABASE_URL fallback. Matches every other dispatcher handler.
 
 /** v11 round-1 channel set per pick 5. */
 const ALL_CHANNELS: ReadonlyArray<'push' | 'in_app_banner'> = ['push', 'in_app_banner'];
