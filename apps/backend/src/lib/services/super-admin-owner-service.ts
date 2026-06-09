@@ -52,6 +52,14 @@ export async function superAdminCreateOwnerService(
     throw err;
   }
 
+  // RLS: scope this provisioning tx to the target company so the OWNER Membership
+  // INSERT satisfies tenant_isolation WITH CHECK when the app connects as axhy_app.
+  // No-op under the superuser postgres connection.
+  await tx.$executeRawUnsafe(
+    `SELECT set_config('axhy.current_company_id', $1, true)`,
+    input.body.companyId,
+  );
+
   const company = await tx.company.findUnique({
     where: { id: input.body.companyId },
     select: { id: true, status: true },

@@ -79,6 +79,11 @@ export async function superAdminCreateCompanyService(
     throw err;
   }
 
+  // RLS: now that the new company row exists, scope the rest of this tx to it so the
+  // COMPANY_CREATED audit + the bootstrap OWNER Membership INSERTs satisfy
+  // tenant_isolation WITH CHECK when the app connects as axhy_app. No-op under postgres.
+  await tx.$executeRawUnsafe(`SELECT set_config('axhy.current_company_id', $1, true)`, company.id);
+
   await recordAuditEvent(tx, {
     companyId: company.id,
     kind: 'COMPANY_CREATED',
