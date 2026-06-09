@@ -34,7 +34,7 @@ Makes operational-invariants INVARIANT 1 DB-enforced. App is `axhy_app`-ready; o
 
 ## RLS + DB prod activation runbook (FOUNDER)
 
-1. Apply, as DB superuser, in order: `20260609_023` → `024` → `025` → `026` → `027` → `028` (raw SQL).
+1. Apply, as DB superuser, in order: `20260609_023` → `024` → `025` → `026` → `027` → `028` → `029` (raw SQL). (029 = AuditEvent.dedupKey + unique index; builds instantly on the small pre-launch table, CONCURRENTLY noted if ever large.)
    Verify: `pg_policy` has 27 `tenant_isolation` + 2 `tenant_self_read`; `QueueItem` reloptions `{security_invoker=true}`; `Membership.notificationPrefs` exists; `VisitPhoto_visitId_r2Key_key` unique index exists.
    NOTE 028 (VisitPhoto unique) assumes no pre-existing duplicate (visitId,r2Key) rows; if it fails, de-dup deliberately first (evidence rows — do not blind-delete).
 2. `ALTER ROLE axhy_app WITH PASSWORD '…'`.
@@ -44,7 +44,13 @@ Makes operational-invariants INVARIANT 1 DB-enforced. App is `axhy_app`-ready; o
 ## What is genuinely incomplete
 
 - **RLS:** code done; founder prod activation only (above).
-- **Remaining ledger (lower priority):** MEDIUM/LOW in `axhy-artifacts/reports/PRODUCTION_BUG_LEDGER.md`. Bounded, good autonomous candidates: **#14** VisitPhoto unique (visitId,r2Key), **#25** notifications.ts uses its own PrismaClient (use shared singleton), **#26** owner-budget/reset audit dedup, **#13** mark-absent rate-limit/idempotency, **#19** idempotency-reservation-released-on-transient-error. **Need founder design (do NOT auto-grind):** **#20** build leave/swap/complaint state machines, **#23** global default-deny auth hook. LOW (#28–38) are mostly verified-low / opportunistic.
+- **DONE this session (committed + lab-tested):** #14 VisitPhoto unique (mig 028), #25 notifications shared Prisma singleton, #13 mark-absent idempotency+rate-limit, #19 chat idempotency-reservation hold, #16 AI budget per-iteration re-check, #26 AuditEvent system-write dedup (mig 029). Plus all RLS + BLOCKER #3 + H6 + #37.
+- **REMAINING ledger (honestly scoped):**
+  - **#23 default-deny auth** — recommend the SAFE half: a session-audit/CI check that fails the build if a route module lacks requireAuth and isn't on the public allowlist (/health, /auth/otp/\*, /auth/refresh, /auth/sign-out). The runtime global onRequest hook is riskier (touches every route's auth + needs removing per-route requireAuth) — defer/optional.
+  - **#20 leave/swap/complaint state machines** — LARGE: build 3 machines in packages/state-machines (mirror assignment/worker pattern) + route all lifecycle transitions through them + real-DB transition tests. Locked-rule-mandated (state-machines.md) but a multi-file refactor; its own focused session. Acute correctness (double-decide races) already fixed in 43509bd.
+  - **swap-apply [2]** — deferred [P2] per spec §7.3 (build on supervisor-approve, effectiveAt-dated, only if you want it pre-launch).
+  - LOW (#28–38) — verified-low / opportunistic.
+- **FINAL deep emulator QA (founder-mandated end-gate):** principal-QA walkthrough on the Android EMULATOR + dev tools only (adb / expo run:android / uiautomator), verifying against PROD backend/DB/Redis; even deeper than sop_qa_enterprise_walk + the 10-section strict standard; worker + supervisor personas; /verify + /smart-explore. HEAVY live-env phase (build app, boot emulator, drive flows) — its own session once the environment is up (see reference_emulator_qa_env_quirks: host LAN IP, -gpu host, OTP 123456).
 - HIGH items [4][5][7][8][9][11] were closed earlier (commit 43509bd); [12] HRPod is obsolete (HR moved to site-anchored — pods dead-but-present by design).
 
 ## First action next session
