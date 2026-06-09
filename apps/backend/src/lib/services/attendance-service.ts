@@ -112,6 +112,17 @@ export async function markAbsentService(
   }
   const payDeductPaise = computeDailyDeductPaise(baseSalaryPaise, input.status);
 
+  // #13 idempotency: only emit notifications + payroll recompute when this mark
+  // actually CHANGES the attendance (status or deduction). A repeated identical
+  // mark (retry / double-click) upserts the same row but must NOT re-fire the
+  // hr.worker_absent + payroll.recompute outbox at scale.
+  const existing = await tx.attendance.findUnique({
+    where: { workerId_date: { workerId: input.workerId, date: new Date(input.date) } },
+    select: { status: true, payDeductPaise: true },
+  });
+  const changed =
+    !existing || existing.status !== input.status || existing.payDeductPaise !== payDeductPaise;
+
   const attendance = await tx.attendance.upsert({
     where: { workerId_date: { workerId: input.workerId, date: new Date(input.date) } },
     create: {
@@ -131,42 +142,46 @@ export async function markAbsentService(
     },
   });
 
-  await recordAuditEvent(tx, {
-    companyId: auth.companyId,
-    kind: 'WORKER_MARKED_ABSENT',
-    actorId: auth.userId,
-    targetId: input.workerId,
-    payload: {
-      date: input.date,
-      status: input.status,
-      reason: input.reason,
-      payDeductPaise,
-      workerName: worker.name,
-    },
-  });
+  // #13: emit the audit + outbox only when the mark changed something. A no-op
+  // re-mark (same status + same deduction) returns OK without re-firing anything.
+  if (changed) {
+    await recordAuditEvent(tx, {
+      companyId: auth.companyId,
+      kind: 'WORKER_MARKED_ABSENT',
+      actorId: auth.userId,
+      targetId: input.workerId,
+      payload: {
+        date: input.date,
+        status: input.status,
+        reason: input.reason,
+        payDeductPaise,
+        workerName: worker.name,
+      },
+    });
 
-  await enqueueOutbox(tx, {
-    companyId: auth.companyId,
-    topic: 'hr.worker_absent',
-    payload: {
-      workerId: input.workerId,
-      workerName: worker.name,
-      workerPhone: worker.phone,
-      supervisorId: auth.userId,
-      date: input.date,
-      status: input.status,
-      payDeductPaise,
-    },
-  });
+    await enqueueOutbox(tx, {
+      companyId: auth.companyId,
+      topic: 'hr.worker_absent',
+      payload: {
+        workerId: input.workerId,
+        workerName: worker.name,
+        workerPhone: worker.phone,
+        supervisorId: auth.userId,
+        date: input.date,
+        status: input.status,
+        payDeductPaise,
+      },
+    });
 
-  // Always recompute payroll on a mark — a correction back to a zero-deduction
-  // status (e.g. ABSENT→PRESENT) must RESTORE a prior deduction, not only fire
-  // when the new value is positive. The recompute is a month-level tally.
-  await enqueueOutbox(tx, {
-    companyId: auth.companyId,
-    topic: 'payroll.recompute',
-    payload: { workerId: input.workerId, monthOf: input.date.slice(0, 7) },
-  });
+    // Recompute payroll whenever the mark changed — a correction back to a
+    // zero-deduction status (e.g. ABSENT→PRESENT) changes payDeductPaise, so
+    // `changed` is true and the prior deduction is RESTORED. Month-level tally.
+    await enqueueOutbox(tx, {
+      companyId: auth.companyId,
+      topic: 'payroll.recompute',
+      payload: { workerId: input.workerId, monthOf: input.date.slice(0, 7) },
+    });
+  }
 
   return { kind: 'OK', attendance };
 }

@@ -27,6 +27,7 @@ import type { MarkAbsentOutput } from '@axhy/shared-schema';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { markAbsentService } from '../lib/services/attendance-service.js';
+import { checkAndConsumeRateLimit } from '../lib/redis-rate-limit.js';
 
 /**
  * Register worker-scoped supervisor routes on the given Fastify app.
@@ -42,6 +43,23 @@ export async function registerWorkerRoutes(app: FastifyInstance): Promise<void> 
       const auth = req.auth;
       if (!auth) {
         reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+        return;
+      }
+
+      // #13: per-supervisor rate limit (multi-replica-safe via Redis; fails OPEN on
+      // Redis-down so a blip never blocks legitimate marks). 60/min is generous for a
+      // human supervisor and caps retry/double-click storms that would re-hit the service.
+      const rl = await checkAndConsumeRateLimit({
+        route: 'workers:mark_absent',
+        subject: auth.userId,
+        limit: 60,
+        windowMs: 60_000,
+      });
+      if (!rl.ok) {
+        reply
+          .code(429)
+          .header('Retry-After', String(Math.ceil(rl.retryAfterMs / 1000)))
+          .send({ error: 'RATE_LIMITED', message: 'Too many requests. Please wait a moment.' });
         return;
       }
 
