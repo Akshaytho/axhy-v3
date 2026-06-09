@@ -25,15 +25,18 @@ Makes operational-invariants INVARIANT 1 DB-enforced. App is `axhy_app`-ready; o
 - **H6 (HIGH) — chat `log_complaint` idempotency** (025): `Complaint.dedupKey` + unique `(companyId,dedupKey)` + service pre-check (no P2002-in-tx); chat passes `${idempotencyKey}:hash(siteId|kind|text)`. Lab 3/3.
 - **#37 — QueueItem view RLS bypass** (026): recreated `WITH (security_invoker=true)` so the view honors RLS. Verified as `axhy_app`: GUC=A → only A's rows; no GUC → 0.
 - **BLOCKER #3 — Membership.notificationPrefs migration** (027): column was in schema.prisma + lab (db push) but had no migration → prod `/me` 500s. Added idempotent `ADD COLUMN IF NOT EXISTS … jsonb NOT NULL DEFAULT '{}'`. Verified backfill on a clone.
+- **MEDIUM #14 — VisitPhoto idempotent inserts** (028): `@@unique([visitId, r2Key])` + `createMany({skipDuplicates:true})` so a retried submit can't duplicate evidence rows. Lab 2/2. (028 assumes no pre-existing dups — fails loudly if so.)
+- **MEDIUM #25 — notifications.ts shared Prisma singleton**: removed its private `new PrismaClient()` (leaked 2nd pool); now uses `lib/prisma` like every other dispatcher handler. tsc clean (no migration).
 
 ### C. Autopilot (founder-requested)
 
-`Stop` hook (`.claude/autopilot/stop-hook.mjs` + `state.json`) registered by founder in `.claude/settings.json`, **armed** this session (`engaged:true`). Auto-continues at terminal stops; Telegram-pings (`~/.axhy_notify.sh`) on `blocked`/`done`/iteration-cap. Disarm: `state.json engaged:false`. The agent cannot self-register/self-arm via settings.json (classifier blocks self-modification of startup config) — founder-registered.
+`Stop` hook (`.claude/autopilot/stop-hook.mjs` + `state.json`) registered by founder in `.claude/settings.json`. Armed mid-session (`engaged:true`), then **paused (`engaged:false`) by the agent at this milestone** after clearing all launch-critical work — the remaining items touch sensitive hot-paths / need founder design (see below). Auto-continues at terminal stops; Telegram-pings (`~/.axhy_notify.sh`) on `blocked`/`done`/cap. **Re-arm:** set `state.json engaged:true` + `goal`/`next`. The agent cannot self-register via settings.json (classifier blocks startup-config self-modification) — founder-registered.
 
 ## RLS + DB prod activation runbook (FOUNDER)
 
-1. Apply, as DB superuser, in order: `20260609_023` → `024` → `025` → `026` → `027` (raw SQL).
-   Verify: `pg_policy` has 27 `tenant_isolation` + 2 `tenant_self_read`; `QueueItem` reloptions `{security_invoker=true}`; `Membership.notificationPrefs` exists.
+1. Apply, as DB superuser, in order: `20260609_023` → `024` → `025` → `026` → `027` → `028` (raw SQL).
+   Verify: `pg_policy` has 27 `tenant_isolation` + 2 `tenant_self_read`; `QueueItem` reloptions `{security_invoker=true}`; `Membership.notificationPrefs` exists; `VisitPhoto_visitId_r2Key_key` unique index exists.
+   NOTE 028 (VisitPhoto unique) assumes no pre-existing duplicate (visitId,r2Key) rows; if it fails, de-dup deliberately first (evidence rows — do not blind-delete).
 2. `ALTER ROLE axhy_app WITH PASSWORD '…'`.
 3. Flip the **API** service `DATABASE_URL` → `axhy_app` URL. **Dispatcher/worker stays on `postgres`** (trusted background, no user input). Smoke: login → /me → GET /admin/sites → worker read → a super-admin create.
 4. Rollback: revert API `DATABASE_URL` (RLS inert again); each migration has an embedded rollback block.
