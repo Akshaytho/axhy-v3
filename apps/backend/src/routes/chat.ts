@@ -1452,26 +1452,22 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           // OpenAI budget cap isn't an OpenAI outage — don't tick the circuit.
           return;
         }
-        // Friend review #2 (CRITICAL): each cleanup gets its own .catch.
-        // If `recordCircuitFailure` throws (Redis blip), `releaseIdempotency`
-        // MUST still run — otherwise the supervisor is locked out of chat
-        // for 10 minutes (TTL) because the slot stays PROCESSING. Both
-        // cleanups happen in parallel via Promise.allSettled so neither
-        // blocks the other.
-        await Promise.allSettled([
-          recordCircuitFailure().catch((cleanupErr) => {
-            req.log.warn(
-              { event: 'chat.cleanup.circuit_record_failed', err: errMsg(cleanupErr) },
-              'chat: recordCircuitFailure failed during error cleanup',
-            );
-          }),
-          releaseIdempotency(auth.companyId, idempotencyKey).catch((cleanupErr) => {
-            req.log.warn(
-              { event: 'chat.cleanup.release_idempotency_failed', err: errMsg(cleanupErr) },
-              'chat: releaseIdempotency failed during error cleanup',
-            );
-          }),
-        ]);
+        // #19: do NOT release the idempotency reservation in this general
+        // (unexpected / transient) error path. It can be reached AFTER the AI tool
+        // loop committed side effects (AI spend, audit, livingdoc; log_complaint is
+        // already H6-dedup'd). Releasing would defeat the in-flight guard and let a
+        // mobile retry storm re-run the turn → duplicate side effects. We instead let
+        // the reservation expire on its own 120s TTL (#18), so a retry within that
+        // window gets the in-flight signal (CHAT_BUSY) rather than re-executing.
+        // The provably-pre-write branches above (AI_BUDGET_EXCEEDED /
+        // AI_NOT_CONFIGURED / CHAT_BUSY) still release explicitly — no side effect
+        // can have committed there. recordCircuitFailure still runs (own .catch).
+        await recordCircuitFailure().catch((cleanupErr) => {
+          req.log.warn(
+            { event: 'chat.cleanup.circuit_record_failed', err: errMsg(cleanupErr) },
+            'chat: recordCircuitFailure failed during error cleanup',
+          );
+        });
         throw err;
       } finally {
         await releaseChatSlot(chatSlot).catch((cleanupErr) => {
