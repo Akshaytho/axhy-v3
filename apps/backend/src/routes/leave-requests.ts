@@ -31,6 +31,7 @@ import { prisma } from '../lib/prisma.js';
 import {
   requireAuth,
   withTenantContext,
+  withTenantRead,
   resolveWorkerFromAuth,
 } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
@@ -199,24 +200,28 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
       // current pod assignment. The prior implementation used workerId as
       // User.id which silently returned null podId for every leave.
       // @derives(parent-brief 2026-05-29)
-      const leaveForPodCheck = await prisma.leaveRequest.findFirst({
-        where: { id: req.params.id, companyId: auth.companyId },
-        select: { workerId: true },
-      });
+      const leaveForPodCheck = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.leaveRequest.findFirst({
+          where: { id: req.params.id, companyId: auth.companyId },
+          select: { workerId: true },
+        }),
+      );
       if (leaveForPodCheck) {
         // Site-anchored: this leave is the HR's only if the worker has a live
         // assignment to a site the HR owns.
         const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
         const onMySite =
           mySiteIds.length > 0 &&
-          (await prisma.assignment.count({
-            where: {
-              workerId: leaveForPodCheck.workerId,
-              companyId: auth.companyId,
-              siteId: { in: mySiteIds },
-              state: { in: ['ACTIVE', 'DRAFT'] },
-            },
-          })) > 0;
+          (await withTenantRead(prisma, auth.companyId, (tx) =>
+            tx.assignment.count({
+              where: {
+                workerId: leaveForPodCheck.workerId,
+                companyId: auth.companyId,
+                siteId: { in: mySiteIds },
+                state: { in: ['ACTIVE', 'DRAFT'] },
+              },
+            }),
+          )) > 0;
         if (!onMySite) {
           reply.code(403).send({ error: 'NOT_YOUR_SITE' });
           return;
@@ -492,11 +497,13 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
           },
         ];
       }
-      const rows = await prisma.leaveRequest.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-      });
+      const rows = await withTenantRead(prisma, auth.companyId, (tx) =>
+        tx.leaveRequest.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+        }),
+      );
       const hasMore = rows.length > limit;
       const page = hasMore ? rows.slice(0, limit) : rows;
       const items = page.map((r) => ({
@@ -532,28 +539,30 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
       // Fetch leave with worker join (worker name+phone needed for response)
       // plus the worker's WORKER membership in this company (for HR pod gate).
       // @derives(parent-brief 2026-05-29)
-      const leave = await prisma.leaveRequest.findFirst({
-        where: { id: req.params.id, companyId: auth.companyId },
-        include: {
-          worker: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-              userId: true,
-              user: {
-                select: {
-                  memberships: {
-                    where: { companyId: auth.companyId, role: 'WORKER' },
-                    select: { podId: true },
-                    take: 1,
+      const leave = await withTenantRead(prisma, auth.companyId, async (tx) =>
+        tx.leaveRequest.findFirst({
+          where: { id: req.params.id, companyId: auth.companyId },
+          include: {
+            worker: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+                userId: true,
+                user: {
+                  select: {
+                    memberships: {
+                      where: { companyId: auth.companyId, role: 'WORKER' },
+                      select: { podId: true },
+                      take: 1,
+                    },
                   },
                 },
               },
             },
           },
-        },
-      });
+        }),
+      );
       if (!leave) {
         reply.code(404).send({ error: 'LEAVE_NOT_FOUND' });
         return;
@@ -563,14 +572,16 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
         const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
         const onMySite =
           mySiteIds.length > 0 &&
-          (await prisma.assignment.count({
-            where: {
-              workerId: leave.workerId,
-              companyId: auth.companyId,
-              siteId: { in: mySiteIds },
-              state: { in: ['ACTIVE', 'DRAFT'] },
-            },
-          })) > 0;
+          (await withTenantRead(prisma, auth.companyId, (tx) =>
+            tx.assignment.count({
+              where: {
+                workerId: leave.workerId,
+                companyId: auth.companyId,
+                siteId: { in: mySiteIds },
+                state: { in: ['ACTIVE', 'DRAFT'] },
+              },
+            }),
+          )) > 0;
         if (!onMySite) {
           reply.code(404).send({ error: 'LEAVE_NOT_FOUND' });
           return;

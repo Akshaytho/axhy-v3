@@ -166,26 +166,28 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
     { preHandler: [requireAuth, requireRole('OWNER', 'HR')] },
     async (req, reply) => {
       const auth = req.auth!;
-      const worker = await prisma.worker.findFirst({
-        where: { id: req.params.id, companyId: auth.companyId },
-        select: {
-          id: true,
-          userId: true,
-          name: true,
-          phone: true,
-          state: true,
-          user: {
-            select: {
-              memberships: {
-                where: { companyId: auth.companyId, role: 'WORKER' },
-                select: { id: true, status: true, podId: true, createdAt: true },
-                orderBy: { createdAt: 'desc' },
-                take: 1,
+      const worker = await withTenantRead(prisma, auth.companyId, async (tx) =>
+        tx.worker.findFirst({
+          where: { id: req.params.id, companyId: auth.companyId },
+          select: {
+            id: true,
+            userId: true,
+            name: true,
+            phone: true,
+            state: true,
+            user: {
+              select: {
+                memberships: {
+                  where: { companyId: auth.companyId, role: 'WORKER' },
+                  select: { id: true, status: true, podId: true, createdAt: true },
+                  orderBy: { createdAt: 'desc' },
+                  take: 1,
+                },
               },
             },
           },
-        },
-      });
+        }),
+      );
       if (!worker) {
         reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
         return;
@@ -200,14 +202,16 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
         const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
         const onMySite =
           mySiteIds.length > 0 &&
-          (await prisma.assignment.count({
-            where: {
-              workerId: worker.id,
-              companyId: auth.companyId,
-              siteId: { in: mySiteIds },
-              state: { in: ['ACTIVE', 'DRAFT'] },
-            },
-          })) > 0;
+          (await withTenantRead(prisma, auth.companyId, (tx) =>
+            tx.assignment.count({
+              where: {
+                workerId: worker.id,
+                companyId: auth.companyId,
+                siteId: { in: mySiteIds },
+                state: { in: ['ACTIVE', 'DRAFT'] },
+              },
+            }),
+          )) > 0;
         if (!onMySite) {
           reply.code(404).send({ error: 'WORKER_NOT_FOUND' });
           return;
@@ -278,9 +282,15 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
       const mySiteIds = await getHrSiteIds(prisma, auth.userId, auth.companyId);
       const ownsWorker =
         mySiteIds.length > 0 &&
-        (await prisma.assignment.count({
-          where: { workerId: req.params.id, companyId: auth.companyId, siteId: { in: mySiteIds } },
-        })) > 0;
+        (await withTenantRead(prisma, auth.companyId, (tx) =>
+          tx.assignment.count({
+            where: {
+              workerId: req.params.id,
+              companyId: auth.companyId,
+              siteId: { in: mySiteIds },
+            },
+          }),
+        )) > 0;
       if (!ownsWorker) {
         reply
           .code(404)
