@@ -172,6 +172,9 @@ model Membership {
   @@index([companyId])
   @@index([userId])
   @@index([companyId, podId])
+  // #38: covering index for the worker-roster keyset page
+  // (where companyId+role, orderBy createdAt desc, id desc) at 2000-worker scale.
+  @@index([companyId, role, createdAt, id])
   @@schema("axhy")
 }
 
@@ -227,8 +230,11 @@ model Site {
   longitude Decimal? @db.Decimal(9, 6)
   /// 14-state SiteState machine (placeholder string until state-machines wires it)
   state     String   @default("DRAFT")
-  /// per-site weekly day-pattern override (default = 6-day week)
-  workdays  String   @default("MTWTFS") @db.VarChar(7)
+  /// per-site weekly day-pattern override. 7-char mask (Mon..Sun), each
+  /// position the day-letter or '_' (off). Default = 6-day week (Sun off).
+  /// #36: was 'MTWTFS' (6 chars) which violated this column's VarChar(7) +
+  /// the admin-sites /^[MTWFSU_]{7}$/ contract; 'MTWTFS_' is what the service writes.
+  workdays  String   @default("MTWTFS_") @db.VarChar(7)
   /// HR user (User.id) who owns this site (one HR per site). NULL = unassigned;
   /// OWNER-only assigns. Site-anchored HR ownership; replaces dead HRPod (doc 15 §3).
   ownerHrUserId String? @db.Uuid
