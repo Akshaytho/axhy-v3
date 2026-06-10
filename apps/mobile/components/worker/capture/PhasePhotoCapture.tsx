@@ -18,7 +18,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { useKeepAwake } from 'expo-keep-awake';
 import { File } from 'expo-file-system';
 import { tokens } from '@axhy/ui-tokens';
 import type { PhotoPhase } from '@axhy/shared-schema';
@@ -69,9 +68,29 @@ function nextStepPath(visitId: string, current: CaptureStep): string {
  *  navigator.wakeLock behind a user gesture (Playwright headless Chromium,
  *  some Safari modes), pushing a fullscreen dev-error overlay that intercepts
  *  pointer events. Web has no genuine screen-sleep concern for the capture
- *  surface, so the hook only mounts on native. */
+ *  surface, so the hook only mounts on native.
+ *
+ *  Guarded like timer.tsx:56-64 (walk 2026-06-10-2345 bug #4 hygiene): the
+ *  bare useKeepAwake() hook has no error handling, so a failed activation
+ *  becomes an unhandled promise rejection. Activation failure is harmless
+ *  (screen may sleep) and must never throw. */
 function KeepDeviceAwake(): null {
-  useKeepAwake();
+  useEffect(() => {
+    let deactivate: (() => void) | undefined;
+    let mounted = true;
+    import('expo-keep-awake').then(({ activateKeepAwakeAsync, deactivateKeepAwake }) => {
+      if (!mounted) return;
+      const tag = 'phase-photo-capture';
+      activateKeepAwakeAsync(tag).catch((e) => {
+        console.warn('[capture] keep-awake denied', e);
+      });
+      deactivate = () => deactivateKeepAwake(tag);
+    });
+    return () => {
+      mounted = false;
+      deactivate?.();
+    };
+  }, []);
   return null;
 }
 

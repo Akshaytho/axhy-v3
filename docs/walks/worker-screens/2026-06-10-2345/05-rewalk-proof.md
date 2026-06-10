@@ -1,26 +1,29 @@
 # 05 — Re-walk proof
 
-**PARTIAL — covers root C-B only** (C-A fixes await founder placement choices + capture phase; this file completes when the full walk re-runs).
+**FULL.** C-B re-walk 2026-06-11 01:36-01:39 IST · fix-batch re-walk 2026-06-11 03:26-03:29 IST · emulator vs PROD.
 
-**Re-walk started:** 2026-06-11 01:36 IST · **Finished:** 2026-06-11 01:39 IST
+| Step                                  | Previously failed bug # | Re-walk result                                                                                                                                                                                                                                                                                                                                 | DB proof                                         | Screenshot                        |
+| ------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------- |
+| Wrong OTP (999999)                    | #5                      | **FIXED** — stays on OTP screen, inline "Wrong code. Check the SMS and try again.", resend countdown intact                                                                                                                                                                                                                                    | negative path, no rows                           | evidence/walk_42.png              |
+| Correct OTP after wrong attempt       | — regression            | **PASS** — login proceeds to permissions                                                                                                                                                                                                                                                                                                       | RefreshToken family created                      | evidence/walk_44.png              |
+| History reachable (You → Past visits) | #1                      | **FIXED** — "MY RECORD → Past visits" row opens the history screen with REAL prod data: 1 Verified / 6 Flagged / 7 Total (30 days), today's flagged visit on top                                                                                                                                                                               | screen matches /worker/history over prod         | evidence/walk_64.png, walk_65.png |
+| Profile identity                      | O1/O2                   | **FIXED** — "Akshay / +919381378257" from GET /me (was "Worker / masked")                                                                                                                                                                                                                                                                      | /me returns User.name+phone (routes/me.ts:51)    | evidence/walk_64.png              |
+| My leave on profile                   | #2                      | **Route proven in-process vs PROD DB: HTTP 200, 4 items** (Offline test 14 Jun, Temple visit 13 Jun, Family functiony 12 Jun, Uu 9 Jun — exactly the walk's rows). Live profile shows the graceful fallback ("Couldn't load leave right now") until the backend deploys — no crash, honest copy. **Activates at next founder backend deploy.** | in-process buildServer inject + psql cross-check | evidence/walk_64.png              |
+| Help page                             | #3                      | Code-complete: /help page builds (admin-web tsc 0), content uses only verified-real channels. **Activates at next admin-web deploy** — drawer URL then resolves instead of redirecting to /login                                                                                                                                               | curl baseline recorded pre-fix                   | —                                 |
+| Keep-awake hygiene                    | #4                      | PhasePhotoCapture guarded like timer.tsx; vitest 109/109; no toast during the entire capture phase                                                                                                                                                                                                                                             | —                                                | —                                 |
 
-Same path, same persona, same scenario as the 01:18 IST failure — after the root fix (`lib/api.ts:283` path-guard, mirroring :261).
-
-| Step                                         | Previously failed bug #                      | Re-walk result                                                                                                                             | DB proof                                                         | Screenshot           |
-| -------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | -------------------- |
-| Wrong OTP (999999) on /auth/otp/verify       | #5 (silent bounce to phone screen, no error) | **FIXED** — stays on Enter OTP screen, inline red error "Wrong code. Check the SMS and try again.", code editable, resend countdown intact | no row changes expected (negative path) — none observed          | evidence/walk_42.png |
-| Correct OTP (123456) after the wrong attempt | — (regression check)                         | **PASS** — login proceeds normally to permissions screen; success path unaffected                                                          | new RefreshToken family on login (same contract as Step 3 proof) | evidence/walk_44.png |
-
-Unit suite: `npx vitest run lib/api.test.ts lib/api-budget.test.ts` → **11/11 pass** (01:35 IST), including both refresh-interceptor contracts ("transient refresh failure … without logging out", "refresh failing on every attempt surfaces the error WITHOUT logging out") — authenticated-path 401 behavior provably unchanged.
+Unit/typecheck gauntlet: backend tsc 0 · mobile tsc 0 · admin-web tsc 0 · mobile vitest **109/109** (incl. all api 401/refresh contracts).
 
 ## Regression sweep
 
-Did the root fix break anything that PASSED before? Steps re-checked:
+| Step                                      | Still PASS?                                               |
+| ----------------------------------------- | --------------------------------------------------------- |
+| Login (correct code)                      | ✅ walk_44 + fix-batch session login                      |
+| Home with visit card                      | ✅ walk_63 (NEEDS ATTENTION intact)                       |
+| Profile TODAY/Sync/Support cards          | ✅ walk_64 (all present alongside the new MY RECORD card) |
+| Full capture loop (pre-fix run)           | ✅ steps 7-17 proofs in 02-walk-log                       |
+| api.test.ts refresh-interceptor contracts | ✅ 11/11 within the 109                                   |
 
-| Step                                                                                                         | Still PASS?  |
-| ------------------------------------------------------------------------------------------------------------ | ------------ |
-| Correct-code login (Step 3 path)                                                                             | ✅ (walk_44) |
-| Sign-out → Sign in (Step 21 path, exercised during re-walk setup)                                            | ✅ (walk_41) |
-| api.test.ts refresh-interceptor contracts (authenticated 401 → refresh → retry → wipe-on-definitive-failure) | ✅ 11/11     |
+**Deploy dependencies (founder):** next backend deploy activates GET /worker/leave-requests (profile "My leave" goes live); next admin-web deploy activates /help. Both code-complete and verified on the branch.
 
-**Evidence note:** durable copies of all proof screenshots live in `evidence/` inside this walk folder (12 files; /tmp copies are session-scoped).
+**Evidence:** 23 screenshots in `evidence/` (durable).

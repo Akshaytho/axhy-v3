@@ -112,17 +112,54 @@ Live phase run 2026-06-11 00:10–00:52 IST · emulator `eclean_test` (cold boot
 
 - At: 2026-06-11 01:22 IST — `consent.tsx:35` → `https://axhy.app/privacy` → curl -L: HTTP 200, no redirect. Page EXISTS (content quality = findings-doc O6, separate). Help (/help) remains the only broken external link.
 
+## CAPTURE PHASE — steps 7-17 (run 2026-06-11 02:55-03:08 IST, after founder grants + visit seed c4fee06b)
+
+### Step 6b — Home with work — as Suresh
+
+- At: 02:55 IST · Hero card "NEXT SITE: QA Launch Site · 9:00 AM" + big "Scan QR · check in"; 0 DONE / 1 PLANNED / 1 SITE — matches the single DB row exactly (walk_51). **PASS**
+
+### Step 8 — QR check-in — as Suresh
+
+- At: 02:56 IST · Site has no QR configured → screen says so HONESTLY: "QR check-in isn't set up for this site yet. Tap Continue to begin with your before photos." No fake scan, no dead end (walk_52). **PASS** (the no-QR truth path)
+
+### Step 9-10 — BEFORE photos + review — as Suresh
+
+- At: 02:56-02:59 IST · Camera (orange BEFORE accent): "Step 2 of 8 · 0 OF 8 · MIN 3"; shutter needs ~5-7s between shots (camera busy — first 3 fast taps yielded 1 photo; real-world OK, rapid-tap is QA-only). 3 captured → "Done — review before photos" appears only at min (walk_55). Review: all 3 "Uploaded" — **real presigned PUTs to prod R2 succeeded** (gate's R2 item now ✅); delete X + Add more present; honest "Uploads finish in the background" (walk_56). **PASS**
+
+### Step 11 — Clock-in → timer — as Suresh
+
+- At: 03:00 IST · "Start cleaning" → timer ring live at 00:05, "Cleaning in progress", site name (walk_57). DB proof: `Visit IN_PROGRESS, startedAt=21:30:34Z (=03:00 IST)`. NO keep-awake error with timer.tsx's guarded KeepAwake mounted. **PASS**
+
+### Step 12-13 — Clock-out → AFTER photos — as Suresh
+
+- At: 03:02 IST · "Done — take AFTER photos" → DB: `PHOTOS_PENDING, completedAt=21:32:04Z` (~90s honest duration). AFTER camera flips accent to GREEN — phase confusion impossible for a tired worker (walk_58). 3 photos, all "Uploaded". **PASS**
+
+### Step 14-15 — Review & submit — as Suresh
+
+- At: 03:04-03:06 IST · "Review & submit: Cleaned 1 min · 6 photos · 3 BEFORE / 3 AFTER / 6 UPLOADED" with all thumbnails (walk_59); claim on screen: "AI will verify within 30 seconds". Submit confirmation screen ("Submit your work") → Submit photos.
+- DB proof (atomic, one tx): `Visit AWAITING_VERIFICATION` + `VisitPhoto 6 rows (3 BEFORE + 3 AFTER, all PENDING)` + `Outbox ai.verify 1 row`. **PASS — the submit transaction is exactly as designed**
+
+### Step 16-17 — AI verdict (prod OpenAI) — as Suresh + the AI
+
+- At: 03:06-03:07 IST · Verdict within ~30-40s of submit: `state=FLAGGED, model=gpt-5.4-nano-2026-06` — **NO -fallback suffix: the prod OpenAI call SUCCEEDED** (the 3 historical June 3-6 verifications were all `-fallback` failures; today's pipeline is healthy — keep watching). Reasoning: "All provided images appear essentially black/blank with only timestamps visible… cannot be verified and may be staged." — **the AI correctly REJECTED the emulator's garbage photos.** Photos → FLAGGED. Fraud-defense works in prod.
+- Worker-facing outcome (walk_61): "Flagged for review / Needs supervisor review" + full reasoning + "VISIT SUBMITTED — AWAITING REVIEW" chip + Back to home. Goldenrod, not accusatory red. → observation O7 on the "may be staged" wording.
+- Home after (walk_62): "NEEDS ATTENTION: 9:00 AM QA Launch Site" — flagged state surfaces honestly. **PASS**
+
+### Capture-phase keep-awake check (bug #4 retest)
+
+- Both keep-awake call sites mounted during this phase (timer KeepAwake + PhasePhotoCapture useKeepAwake). ZERO error toasts → walk_33's sign-out toast re-attributed to expo-dev-client noise. Hygiene fix (guard PhasePhotoCapture like timer) still queued in the batch.
+
 ## Bad-day scenarios run (minimum set from the protocol + open loopholes)
 
-| Scenario                                                                              | At (IST)           | Result                                                                                                                                                                                                                                                                            | Bug # |
-| ------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| No signal during OTP request (emulator network dead)                                  | 2026-06-11 00:10   | Clear inline error "Could not send OTP. Check your connection and try again."; full recovery after network returned; no crash, no stuck spinner                                                                                                                                   | —     |
-| Double/triple-tap Send on leave (slow-network double-submit)                          | 2026-06-11 00:50   | Exactly 1 LeaveRequest row created (`leave rows last 3 min: 1`) — button disables in flight                                                                                                                                                                                       | —     |
-| App killed mid-session (battery death) → reopen                                       | 2026-06-11 00:52   | Relaunch lands directly on Home, still signed in (SecureStore tokens survive), data correct (walk_31)                                                                                                                                                                             | —     |
-| Typo in reason field (fat fingers)                                                    | 2026-06-11 00:47   | "Family functiony" accepted; no validation block on free text — acceptable                                                                                                                                                                                                        | —     |
-| Wrong OTP code (999999)                                                               | 2026-06-11 01:18   | FAIL — silent bounce to phone screen, no error; root api.ts:283                                                                                                                                                                                                                   | #5    |
-| OFFLINE WRITE: airplane mode → submit leave → reconnect → Try again                   | 2026-06-11 01:29   | PASS — clean "Network request failed" banner + Try again, form fully preserved; after reconnect exactly 1 row in prod (`jun14 leave rows: 1`) — exactly-once. Copy nit: "Network request failed" is technical; "No internet — check your connection" fits Suresh better (walk_39) | —     |
-| No signal mid-capture / app killed mid-capture / two-visits-same-time / QR wrong site | pending visit seed | —                                                                                                                                                                                                                                                                                 | —     |
+| Scenario                                                            | At (IST)         | Result                                                                                                                                                                                                                                                                            | Bug # |
+| ------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| No signal during OTP request (emulator network dead)                | 2026-06-11 00:10 | Clear inline error "Could not send OTP. Check your connection and try again."; full recovery after network returned; no crash, no stuck spinner                                                                                                                                   | —     |
+| Double/triple-tap Send on leave (slow-network double-submit)        | 2026-06-11 00:50 | Exactly 1 LeaveRequest row created (`leave rows last 3 min: 1`) — button disables in flight                                                                                                                                                                                       | —     |
+| App killed mid-session (battery death) → reopen                     | 2026-06-11 00:52 | Relaunch lands directly on Home, still signed in (SecureStore tokens survive), data correct (walk_31)                                                                                                                                                                             | —     |
+| Typo in reason field (fat fingers)                                  | 2026-06-11 00:47 | "Family functiony" accepted; no validation block on free text — acceptable                                                                                                                                                                                                        | —     |
+| Wrong OTP code (999999)                                             | 2026-06-11 01:18 | FAIL — silent bounce to phone screen, no error; root api.ts:283                                                                                                                                                                                                                   | #5    |
+| OFFLINE WRITE: airplane mode → submit leave → reconnect → Try again | 2026-06-11 01:29 | PASS — clean "Network request failed" banner + Try again, form fully preserved; after reconnect exactly 1 row in prod (`jun14 leave rows: 1`) — exactly-once. Copy nit: "Network request failed" is technical; "No internet — check your connection" fits Suresh better (walk_39) | —     |
+| Capture: black/garbage photos submitted (fraud attempt analog)      | 2026-06-11 03:06 | AI correctly FLAGGED the visit (REJECT) — fraud path proven in prod; remaining capture bad-days (kill mid-capture, two visits, QR wrong site) deferred to next walk with a fresh visit                                                                                            | —     |
 
 ## Environment incidents during walk (not product bugs — recorded for MAP §8)
 

@@ -166,6 +166,8 @@ Every walk lives in its own folder under **`docs/walks/<feature-slug>/<YYYY-MM-D
 
 **PRE-WALK GATE (founder-mandated 2026-06-10 23:30 IST):** no walk starts until (1) the working tree is clean and ALL commits are pushed to the branch upstream (`git log @{u}..HEAD` empty; main merges stay founder-owned), and (2) the connected stack is verified alive — prod backend `/health` = 200 with postgres ok + redis ok, plus one real login proving the auth path; external services (R2 etc.) checked if the feature uses them. Gate results + timestamps go in 00-scope.md. Pushed code makes the walked-commit anchor real; a live stack prevents fake bugs.
 
+**FOUNDER STANDING GRANTS (2026-06-11 ~02:15 IST — full text in docs/walks/README.md):** (1) production server + data fully open for walks — current prod data is FAKE/QA, use freely (re-confirm at first real customer); (2) UI-FIRST seeding — if a UI exists to create something, create it through the UI only; scripts/SQL seeding allowed solely where no UI exists yet (today: parts of web admin/HR/super-admin + system rows like Visits); (3) FIX AUTONOMY — never ask the founder to pick between fix options: decide via brain/master-plan/locked rules first, else proven+verified internet research, complete under /goal, test, and record the decision + evidence in 04-rca-and-fix.md for after-the-fact review.
+
 ---
 
 ## Session-start defaults (so the founder doesn't have to answer every time)

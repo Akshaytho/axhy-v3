@@ -5,7 +5,7 @@
 | Feature              | worker-screens (full worker persona surface: onboarding → home → capture → visit detail → history → profile → leave-request) |
 | Walk started         | 2026-06-10 23:45 IST                                                                                                         |
 | Walk closed          | (open)                                                                                                                       |
-| State                | IN_PROGRESS                                                                                                                  |
+| State                | REWALK_PASSED (2 deploy-deps pending founder deploy)                                                                         |
 | Walker               | session (founder-ordered: "now take worker screens and with it")                                                             |
 | Git commit walked    | `02eae2f` (pushed to origin/chore/handoff-late-2026-05-31)                                                                   |
 | App version (mobile) | dev build from 02eae2f (no release APK yet)                                                                                  |
@@ -35,6 +35,11 @@ Gate note: push was initially BLOCKED (invalid GitHub token, 23:35 IST) — foun
 - 2026-06-11 00:52 IST — steps 1-6, 19-20 + 4 bad-day scenarios complete; 2 bugs collected; steps 7-17 (capture) BLOCKED on founder visit-seed authorization (Telegram pinged 00:41 IST)
 - 2026-06-11 01:18 IST — negative tests + offline-write scenario added; bugs #3-#5 collected (5 total → 2 RCA roots)
 - 2026-06-11 01:39 IST — root C-B FIXED (api.ts:283 path-guard) + tests 11/11 + re-walk proven (05-rewalk-proof.md); C-A awaits founder placement choices; capture awaits seed OK
+- 2026-06-11 02:20 IST — FOUNDER STANDING GRANTS received (docs/walks/README.md): prod fully open (data is fake/QA), UI-first seeding (seed allowed where no UI), FIX AUTONOMY (decide via brain→verified research, no founder choice needed). Capture phase UNBLOCKED; C-A decisions now session-owned.
+- 2026-06-11 02:20 IST — branch-vs-prod clarification (founder asked): walked branch chore/handoff-late-2026-05-31 is 78 commits AHEAD of origin/main, 0 behind (main tip 1e03d4d) — nothing missing from the branch; prod BACKEND runs the deployed Railway build (deploys are founder-owned), mobile JS under walk came live from the branch via Metro — i.e. newest app code against the real deployed server, the same combination a real worker gets
+- 2026-06-11 03:08 IST — CAPTURE PHASE COMPLETE (steps 7-17): all four-layer proofs PASS; prod AI verify SUCCEEDED (no -fallback) and correctly FLAGGED garbage photos; zero new bugs; walk state → BUGS_OPEN (full pass done) → fix batch begins under FIX AUTONOMY
+- 2026-06-11 03:25 IST — ROOTS_FIXED: all 5 fixes implemented (C-B earlier; F1 history row; F2 route+UI; F3 /help page; F4 /me identity; F5 keep-awake guard); tsc 0 ×3 apps; vitest 109/109
+- 2026-06-11 03:29 IST — REWALK_PASSED: F1+F4 live-proven (walk_64/65); F2 route proven in-process vs prod DB (200, 4 items) + graceful fallback live; C-B re-walk held. TWO DEPLOY-DEPENDENCIES for the founder: next backend deploy activates /worker/leave-requests; next admin-web deploy activates /help
 
 ## Step 0 — Open loopholes from LOOPHOLES.md this walk MUST check
 

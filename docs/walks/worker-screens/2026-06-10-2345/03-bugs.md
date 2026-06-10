@@ -19,6 +19,8 @@
 - O4 (00:37 IST): Dev-build toasts covered the permissions Continue button — dev-only; verify release build has no equivalent overlay.
 - O5 (01:27 IST): Permissions + consent screens re-shown on EVERY fresh login (API dedups consent via 409; permission grants remembered with honest "Granted ✓" but the screen still interposes). Legally conservative; adds two taps to every re-login — consider skip-if-already-done routing.
 - O6 (01:29 IST): Offline-error copy "Network request failed" is engineer-speak; "No internet — check your connection and try again" fits the worker better.
+- O7 (03:07 IST): Worker-facing flagged screen shows the raw AI reasoning incl. "may be staged or improperly uploaded" — accurate but reads as an accusation to a worker; consider a softer worker-facing line ("We couldn't see your work clearly — your supervisor will check it") while supervisors keep the full reasoning.
+- BUG #4 RE-ATTRIBUTION (03:08 IST): entire capture phase ran with BOTH keep-awake call sites mounted — zero error toasts. walk_33's sign-out toast = expo-dev-client noise (dev builds only), NOT product code. Bug #4 downgraded to hygiene: standardize PhasePhotoCapture.tsx:74 to the guarded pattern.
 
 Severity: BLOCKER (user stuck / data wrong) · MAJOR (works but wrong/scary) · MINOR (friction/ugly) · TRUST (screen lied).
 "Feeling impact" = what it does to the person (fear about pay, confusion, distrust) — founder-mandated column.

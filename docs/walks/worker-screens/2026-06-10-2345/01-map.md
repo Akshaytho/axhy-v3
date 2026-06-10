@@ -2,6 +2,67 @@
 
 **Mapped at:** 2026-06-10 23:50 IST · Snapshot of [../MAP.md](../MAP.md) at commit `02eae2f` — full footprint/API/DB tables live there; this file freezes the walk-order path + Step 1b findings.
 
+## Visual map
+
+Use Markdown preview for this section first. It shows the worker journey as a connected UI path, with secondary routes and the hidden history screen called out separately.
+
+```mermaid
+flowchart TD
+    A[App Open<br/>index.tsx] --> B[Phone Entry<br/>(auth)/phone.tsx]
+    B --> C[OTP Entry<br/>(auth)/otp.tsx]
+    C --> D[Permissions<br/>(auth)/permissions.tsx]
+    D --> E[Consent<br/>(auth)/consent.tsx]
+    E --> F[Home / Today<br/>(worker)/(tabs)/index.tsx]
+
+    F -->|tap visit card| G[Visit Detail<br/>(worker)/visit/[id].tsx]
+    F -->|resume capture pointer| H[Capture Entry<br/>capture/[visitId]/qr-scan.tsx]
+    G --> H
+
+    H --> I[Before Photos]
+    I --> J[Before Review]
+    J --> K[Timer / Clock In]
+    K --> L[Clock Out]
+    L --> M[After Photos]
+    M --> N[After Review]
+    N --> O[Final Review]
+    O --> P[Submit]
+    P --> Q[Verify Wait / Polling]
+    Q --> R[Async AI Verdict]
+    R --> S[Supervisor Flag Surface]
+
+    F --> T[Worker Drawer]
+    T --> U[Profile<br/>(tabs)/profile.tsx]
+    T --> V[Leave Request<br/>(worker)/leave-request.tsx]
+    T --> W[Sign Out]
+
+    X[History<br/>(tabs)/history.tsx]:::orphan
+    F -. no visible tap path .-> X
+
+    classDef orphan fill:#ffe5e5,stroke:#b42318,stroke-width:2px,color:#7a271a;
+```
+
+### Side-system connections
+
+```mermaid
+flowchart LR
+    A[Worker Submit] --> B[VisitPhoto rows created]
+    A --> C[Visit state<br/>AWAITING_VERIFICATION]
+    A --> D[Outbox ai.verify]
+
+    D --> E[Dispatcher]
+    E --> F[OpenAI Vision]
+    F --> G[Visit verdict<br/>VERIFIED or FLAGGED]
+    F --> H[Photo verdicts<br/>PASS or NEEDS_REVIEW or FLAGGED]
+    F --> I[Company.aiSpendDailyInr]
+
+    G --> J[Supervisor decisions surface]
+    G --> K[Worker history]
+    G --> L[Payroll / billing correctness]
+
+    M[HR portal setup] --> N[Worker + Site + Assignment]
+    N --> O[Home / Today becomes non-empty]
+```
+
 ## Full path (walk order, real-tap navigation only)
 
 | #   | Step                     | Screen (file, under apps/mobile/app)                         | Route(s) called                                              | DB tables touched                                                                       | Side-effects                       |

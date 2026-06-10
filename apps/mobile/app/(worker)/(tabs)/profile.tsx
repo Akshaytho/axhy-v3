@@ -21,17 +21,25 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { jwtDecode } from 'jwt-decode';
+import { router } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 
-import { getTokens } from '../../../lib/auth-store';
 import { WCard } from '../../../components/worker/WCard';
 import { SyncPill, type SyncState } from '../../../components/worker/SyncPill';
 import { useWorkerDrawer } from '../../../components/worker/WorkerDrawer';
 import { r2UploadQueue, type QueueItem } from '../../../lib/r2-upload-queue';
 import { useWorkerTodayQuery } from '../../../lib/queries/use-worker-today';
+import { apiFetch } from '../../../lib/api';
+import { API_ROUTES, NAV_ROUTES } from '../../../lib/api-routes';
+import { listMyLeaveRequests, type MyLeaveRow } from '../../../lib/api-leave';
 
-interface JwtPayload {
+/**
+ * Identity comes from GET /me (real DB values). The previous implementation
+ * jwt-decoded `name`/`phone` claims that the backend never issues (JWTClaims
+ * has neither), so every worker showed as "Worker / +91 ••••• •••••".
+ * @derives(walk worker-screens 2026-06-10-2345 observations O1+O2)
+ */
+interface MeIdentity {
   phone?: string;
   name?: string;
 }
@@ -74,18 +82,40 @@ export default function WorkerProfile(): React.JSX.Element {
   const { openDrawer } = useWorkerDrawer();
   const { data, isLoading, isError, refetch, isRefetching } = useWorkerTodayQuery();
   const { state: syncState, pendingCount } = useQueueSummary();
-  const [payload, setPayload] = useState<JwtPayload | null>(null);
+  const [payload, setPayload] = useState<MeIdentity | null>(null);
+  const [myLeaves, setMyLeaves] = useState<MyLeaveRow[] | null>(null);
+  const [leavesError, setLeavesError] = useState(false);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
-      const t = await getTokens();
-      if (!t) return;
       try {
-        setPayload(jwtDecode<JwtPayload>(t.accessToken));
+        const me = await apiFetch<{ user?: { name?: string | null; phone?: string | null } }>(
+          API_ROUTES.me,
+        );
+        if (!alive) return;
+        setPayload({
+          name: me.user?.name ?? undefined,
+          phone: me.user?.phone ?? undefined,
+        });
       } catch {
-        // ignore decode errors
+        // identity stays at the safe fallback ("Worker" / masked)
       }
     })();
+    (async () => {
+      try {
+        const res = await listMyLeaveRequests();
+        if (!alive) return;
+        setMyLeaves(res.items);
+      } catch {
+        if (!alive) return;
+        setLeavesError(true);
+        setMyLeaves([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const visits = data?.visits ?? [];
@@ -200,6 +230,68 @@ export default function WorkerProfile(): React.JSX.Element {
               </View>
             </WCard>
           )}
+        </View>
+
+        <View style={s.section}>
+          <WCard padding={16}>
+            <Text style={s.sectionMono}>MY RECORD</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="See your past visits"
+              onPress={() => router.push(NAV_ROUTES.workerHistory as never)}
+              style={({ pressed }) => [s.recordRow, pressed && { opacity: 0.85 }]}
+            >
+              <Feather name="clock" size={18} color={tokens.color.ink.secondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardTitle}>Past visits</Text>
+                <Text style={s.cardBody}>Proof of the work you finished.</Text>
+              </View>
+              <Feather name="chevron-right" size={20} color={tokens.color.ink.tertiary} />
+            </Pressable>
+
+            <View style={s.recordDivider} />
+            <Text style={s.cardTitle}>My leave</Text>
+            {myLeaves === null ? (
+              <Text style={s.cardBody}>Loading your leave…</Text>
+            ) : leavesError ? (
+              <Text style={s.cardBody}>
+                Couldn&apos;t load leave right now. Pull to retry later.
+              </Text>
+            ) : myLeaves.length === 0 ? (
+              <Text style={s.cardBody}>No leave requests yet.</Text>
+            ) : (
+              myLeaves.slice(0, 3).map((lv) => {
+                const approved = lv.state === 'APPROVED';
+                const rejected = lv.state === 'REJECTED';
+                const chipBg = approved
+                  ? tokens.color.semantic.okSoft
+                  : rejected
+                    ? tokens.color.semantic.warnSoft
+                    : tokens.color.surface.paper3;
+                const chipFg = approved
+                  ? '#2e5037'
+                  : rejected
+                    ? tokens.color.semantic.warn
+                    : tokens.color.ink.secondary;
+                const label = approved ? 'Approved' : rejected ? 'Rejected' : 'Waiting';
+                return (
+                  <View key={lv.id} style={s.leaveRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.cardTitle}>
+                        {lv.fromDate === lv.toDate ? lv.fromDate : `${lv.fromDate} → ${lv.toDate}`}
+                      </Text>
+                      <Text style={s.cardBody} numberOfLines={1}>
+                        {lv.reason}
+                      </Text>
+                    </View>
+                    <View style={[s.leaveChip, { backgroundColor: chipBg }]}>
+                      <Text style={[s.leaveChipText, { color: chipFg }]}>{label}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </WCard>
         </View>
 
         <View style={s.section}>
@@ -333,6 +425,32 @@ const s = StyleSheet.create({
     letterSpacing: 1,
     color: tokens.color.ink.tertiary,
     marginBottom: 10,
+  },
+  recordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 48,
+  },
+  recordDivider: {
+    height: 1,
+    backgroundColor: tokens.color.surface.paper3,
+    marginVertical: 12,
+  },
+  leaveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  leaveChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  leaveChipText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   statsRow: {
     flexDirection: 'row',

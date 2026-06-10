@@ -42,7 +42,8 @@ export type WorkerRateLimitKey =
   | 'verifyStatus'
   | 'consent'
   | 'clockIn'
-  | 'clockOut';
+  | 'clockOut'
+  | 'leaveList';
 
 type RateLimitConfig = {
   readonly route: string;
@@ -104,6 +105,12 @@ function configFor(key: WorkerRateLimitKey): RateLimitConfig {
       return {
         route: 'worker:clock-out',
         limit: envLimit('RATE_LIMIT_WORKER_CLOCK_OUT_PER_MIN', 20),
+        windowMs: WINDOW_MS,
+      };
+    case 'leaveList':
+      return {
+        route: 'worker:leave-list',
+        limit: envLimit('RATE_LIMIT_WORKER_LEAVE_LIST_PER_MIN', 30),
         windowMs: WINDOW_MS,
       };
   }

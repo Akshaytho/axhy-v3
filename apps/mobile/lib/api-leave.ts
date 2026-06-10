@@ -54,3 +54,32 @@ export function submitLeaveRequest(
     body: input,
   });
 }
+
+/**
+ * One row of the worker's OWN leave history (GET /worker/leave-requests).
+ * @derives(walk worker-screens 2026-06-10-2345 bug #2)
+ */
+export interface MyLeaveRow {
+  id: string;
+  /** 'YYYY-MM-DD' inclusive. */
+  fromDate: string;
+  /** 'YYYY-MM-DD' inclusive. */
+  toDate: string;
+  reason: string;
+  /** REQUESTED | APPROVED | REJECTED | CANCELLED. */
+  state: string;
+  /** Supervisor/HR note on decision, if any. */
+  decisionNote: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * Fetch the signed-in worker's own leave requests (newest first, max 10).
+ * Self-scoped server-side — no ids travel from the client.
+ *
+ * @derives(walk worker-screens 2026-06-10-2345 bug #2)
+ */
+export function listMyLeaveRequests(): Promise<{ items: MyLeaveRow[] }> {
+  return apiFetch<{ items: MyLeaveRow[] }>(API_ROUTES.workerLeaveList);
+}

@@ -64,6 +64,7 @@ import { registerChatReloadContextRoutes } from './routes/chat-reload-context.js
 import { registerChatHistoryRoutes } from './routes/chat-history.js';
 import { registerWorkerSubmitRoutes } from './routes/worker-submit.js';
 import { registerWorkerLifecycleRoutes } from './routes/worker-lifecycle.js';
+import { registerWorkerLeaveRoutes } from './routes/worker-leave.js';
 import { registerAdminMembershipRoutes } from './routes/admin-memberships.js';
 import { registerAdminWorkerRoutes } from './routes/admin-workers.js';
 import { registerAdminSiteRoutes } from './routes/admin-sites.js';
@@ -245,6 +246,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerChatHistoryRoutes(app);
   await registerWorkerSubmitRoutes(app);
   await registerWorkerLifecycleRoutes(app);
+  await registerWorkerLeaveRoutes(app);
   await registerAdminMembershipRoutes(app);
   await registerAdminWorkerRoutes(app);
   await registerAdminSiteRoutes(app);

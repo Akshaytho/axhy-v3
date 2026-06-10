@@ -32,6 +32,10 @@ export const API_ROUTES = {
   // Worker self-service time-off. A worker POSTs their own Worker.id; the
   // backend binds the caller to self (403 otherwise). HR/supervisor decide.
   leaveRequests: apiPath('leave-requests'),
+  // The worker's OWN leave list (newest first) — backs the profile "My leave"
+  // section so the leave-success promise is true. Self-scoped server-side.
+  // @derives(walk worker-screens 2026-06-10-2345 bug #2)
+  workerLeaveList: apiPath('worker', 'leave-requests'),
 } as const;
 
 /** Capture-flow step names, in the order the worker traverses them.
@@ -63,5 +67,11 @@ export const NAV_ROUTES = {
   workerCaptureEntry: (visitId: string): string =>
     navPath('(worker)', 'capture', visitId, 'qr-scan'),
   workerLeaveRequest: navPath('(worker)', 'leave-request'),
+  // History lives in the (tabs) group with `href: null` (hidden from the tab
+  // bar by design — 3-tab cognitive-load rule). It is reached from the
+  // profile "Past visits" row. Group segments are URL-invisible, so this
+  // resolves to app/(worker)/(tabs)/history.tsx.
+  // @derives(walk worker-screens 2026-06-10-2345 bug #1)
+  workerHistory: navPath('(worker)', 'history'),
   supervisorMe: navPath('(supervisor)', 'me'),
 } as const;
