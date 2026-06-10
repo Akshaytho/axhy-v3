@@ -17,6 +17,8 @@
 - O2 (00:43 IST): Display name is generic "Worker" — seeded data, but check fallback behavior when User.name is null.
 - O3 (00:45 IST): IST date handling CORRECT on home + leave screens at 00:39-00:45 IST (inside the UTC danger window) — the C1 UTC-default bug did NOT reproduce on these screens (it lives in chat mark-absent defaults, different surface).
 - O4 (00:37 IST): Dev-build toasts covered the permissions Continue button — dev-only; verify release build has no equivalent overlay.
+- O5 (01:27 IST): Permissions + consent screens re-shown on EVERY fresh login (API dedups consent via 409; permission grants remembered with honest "Granted ✓" but the screen still interposes). Legally conservative; adds two taps to every re-login — consider skip-if-already-done routing.
+- O6 (01:29 IST): Offline-error copy "Network request failed" is engineer-speak; "No internet — check your connection and try again" fits the worker better.
 
 Severity: BLOCKER (user stuck / data wrong) · MAJOR (works but wrong/scary) · MINOR (friction/ugly) · TRUST (screen lied).
 "Feeling impact" = what it does to the person (fear about pay, confusion, distrust) — founder-mandated column.
