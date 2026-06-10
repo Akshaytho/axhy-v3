@@ -16,21 +16,23 @@
 
 ## PRE-WALK GATE results (founder rule 2026-06-10)
 
-| Check                | Result                                                                           | At (IST)             |
-| -------------------- | -------------------------------------------------------------------------------- | -------------------- |
-| Working tree clean   | ✅ `git status` empty                                                            | 2026-06-10 23:42 IST |
-| All commits pushed   | ✅ `a7b961b..02eae2f` → origin; `git log @{u}..HEAD` = 0                         | 2026-06-10 23:42 IST |
-| Backend /health      | ✅ HTTP 200 in 1.15s                                                             | 2026-06-10 23:37 IST |
-| Postgres             | ✅ `ok`                                                                          | 2026-06-10 23:37 IST |
-| Redis                | ✅ `ok`                                                                          | 2026-06-10 23:37 IST |
-| Real login proof     | ⏳ pending — runs as the first step of the live emulator walk (OTP bypass phone) |
-| R2 (feature uses it) | ⏳ pending — proven implicitly by first photo upload in live walk                |
+| Check                | Result                                                                                              | At (IST)             |
+| -------------------- | --------------------------------------------------------------------------------------------------- | -------------------- |
+| Working tree clean   | ✅ `git status` empty                                                                               | 2026-06-10 23:42 IST |
+| All commits pushed   | ✅ `a7b961b..02eae2f` → origin; `git log @{u}..HEAD` = 0                                            | 2026-06-10 23:42 IST |
+| Backend /health      | ✅ HTTP 200 in 1.15s                                                                                | 2026-06-10 23:37 IST |
+| Postgres             | ✅ `ok`                                                                                             | 2026-06-10 23:37 IST |
+| Redis                | ✅ `ok`                                                                                             | 2026-06-10 23:37 IST |
+| Real login proof     | ✅ PASSED — OTP login on emulator vs prod; AUTH_LOGIN audit + RefreshToken rows verified in prod DB | 2026-06-11 00:34 IST |
+| R2 (feature uses it) | ⏳ pending — proven implicitly by first photo upload in live walk (capture phase awaits visit seed) |
 
 Gate note: push was initially BLOCKED (invalid GitHub token, 23:35 IST) — founder re-authenticated, push landed 23:42 IST. The gate caught real unpushed work on its first use.
 
 ## State change log
 
 - 2026-06-10 23:45 IST — IN_PROGRESS (walk started; code-traced phase)
+- 2026-06-11 00:30 IST — live emulator phase started (cold-booted eclean_test, prod backend)
+- 2026-06-11 00:52 IST — steps 1-6, 19-20 + 4 bad-day scenarios complete; 2 bugs collected; steps 7-17 (capture) BLOCKED on founder visit-seed authorization (Telegram pinged 00:41 IST)
 
 ## Step 0 — Open loopholes from LOOPHOLES.md this walk MUST check
 

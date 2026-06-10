@@ -116,9 +116,12 @@ OTP login (WhatsApp or bypass phone) → tokens (SecureStore) → /me routes wor
 6. OTP verify lacks per-phone attempt cap (S1).
 7. One-active-timer rule (ACTIVE_TIMER_EXISTS 409) — test two visits same day.
 8. Resume-capture pointer (RESUME_PRIORITY in worker-today-service) must match mobile's step routing.
+9. **Emulator env (2026-06-11 live walk):** snapshot-resume boots with DEAD network — wifi toggle insufficient, airplane toggle temporary, **cold boot (`-no-snapshot-load`) is the reliable fix**; stale `~/.android/avd/eclean_test.avd/*.lock` files block relaunch after kill; keep several GB disk free (gradle caches + android/app/build are safe purges when no build is needed — app already installed); prod backend reachable directly from emulator over the internet (the LAN-IP trick is ONLY for local backends); Metro reachable via 10.0.2.2 on cold boot.
+10. Leave success card promises "result on your profile" — profile must grow a leave-status section (walk bug #2) or the promise must change.
 
 ## Change log (never delete lines)
 
-| At (IST)             | By                             | What changed                                                                   |
-| -------------------- | ------------------------------ | ------------------------------------------------------------------------------ |
-| 2026-06-10 23:45 IST | walk 2026-06-10-2345 (session) | created from template; footprint/API/DB filled from code verified this session |
+| At (IST)             | By                             | What changed                                                                            |
+| -------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
+| 2026-06-10 23:45 IST | walk 2026-06-10-2345 (session) | created from template; footprint/API/DB filled from code verified this session          |
+| 2026-06-11 00:55 IST | walk 2026-06-10-2345 (session) | sharp edges 9-10 added from live phase (emulator env quirks; leave→profile promise gap) |

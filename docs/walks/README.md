@@ -86,11 +86,11 @@ So that scanning THIS folder — without asking anyone — answers: what has bee
 
 ## SCOREBOARD — product readiness at a glance
 
-**Last updated: 2026-06-10 23:55 IST**
+**Last updated: 2026-06-11 00:57 IST**
 
-| Feature                                                                            | Last walk (start time)                                                    | State                                                           | Bugs found                       | Roots fixed | Re-walk | In brain | Market-ready verdict |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------- | ----------- | ------- | -------- | -------------------- |
-| **worker-screens** (umbrella: onboarding+home+capture+visit+history+profile+leave) | [2026-06-10-2345](worker-screens/2026-06-10-2345/) (2026-06-10 23:45 IST) | IN_PROGRESS (code-traced map done; live emulator phase pending) | 1 so far (orphan history screen) | —           | —       | no       | BROKEN (bugs open)   |
+| Feature                                                                            | Last walk (start time)                                                    | State                                                                                                             | Bugs found                                       | Roots fixed | Re-walk | In brain | Market-ready verdict |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------- | ------- | -------- | -------------------- |
+| **worker-screens** (umbrella: onboarding+home+capture+visit+history+profile+leave) | [2026-06-10-2345](worker-screens/2026-06-10-2345/) (2026-06-10 23:45 IST) | IN_PROGRESS (live vs prod: steps 1-6,19-20 + 4 bad-day scenarios DONE; capture 7-17 awaits founder visit-seed OK) | 2 (orphan history; leave→profile broken promise) | —           | —       | no       | BROKEN (bugs open)   |
 
 | Feature                              | Last walk (start time) | State | Bugs found | Roots fixed | Re-walk | In brain | Market-ready verdict |
 | ------------------------------------ | ---------------------- | ----- | ---------- | ----------- | ------- | -------- | -------------------- |
