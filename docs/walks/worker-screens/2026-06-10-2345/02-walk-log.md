@@ -100,6 +100,18 @@ Live phase run 2026-06-11 00:10–00:52 IST · emulator `eclean_test` (cold boot
 - DB proof (prod): latest RefreshToken `revokedReason=LOGOUT` ✅ — the token family is genuinely dead, not just the screen reset.
 - Verdict: **PASS on core behavior** + bug #4 (minor)
 
+## Negative test — wrong OTP code — as Suresh
+
+- At: 2026-06-11 01:18 IST
+- Becoming them: 6 AM, half-awake, I read the code wrong and type 999999.
+- UI: app silently bounces to the PHONE screen, no error anywhere (walk_36). The correct inline error ("Wrong code. Check the SMS and try again.", otp.tsx:98-99) exists in code but never renders.
+- Root traced live: `api.ts:283-285` blanket-401 → handleUnauthorized() navigates first; line 261's /auth exemption covers only the refresh attempt, not the fall-through.
+- Verdict: **FAIL** → bug #5
+
+## Sibling check — consent privacy link
+
+- At: 2026-06-11 01:22 IST — `consent.tsx:35` → `https://axhy.app/privacy` → curl -L: HTTP 200, no redirect. Page EXISTS (content quality = findings-doc O6, separate). Help (/help) remains the only broken external link.
+
 ## Bad-day scenarios run (minimum set from the protocol + open loopholes)
 
 | Scenario                                                                              | At (IST)           | Result                                                                                                                                          | Bug # |
