@@ -1,20 +1,30 @@
 # 04 — RCA clusters and root fixes
 
-**Clustered at:** YYYY-MM-DD HH:MM IST
+**Clustered at:** 2026-06-11 01:08 IST — **PRELIMINARY** (capture steps 7-17 still pending founder seed-OK; final clustering after the full walk. No fixes applied yet — collection-then-cluster per protocol.)
 
 ## Clusters (N bugs → M roots; M must be ≪ N)
 
-| Cluster | Bugs included (#) | Common root cause (file:line / function / assumption) | Why one root explains them all |
-| ------- | ----------------- | ----------------------------------------------------- | ------------------------------ |
+| Cluster                                                   | Bugs included (#)         | Common root cause (file:line / function / assumption)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Why one root explains them all                                                                                                                                                                                   |
+| --------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **C-A: "Promised-but-unwired worker secondary surfaces"** | 1, 2, 3 (ALL bugs so far) | Worker PRIMARY flows (login→home→capture→submit, leave POST) shipped complete, but the SECONDARY surfaces the UI references were left unbuilt/unlinked, and the referencing UI was never reconciled: history screen exists but unlinked (`(tabs)/_layout.tsx:96` `href: null`, no NAV_ROUTES entry); leave-status section promised by success copy (leave success card) but absent from `profile.tsx`; help page promised by drawer (`WorkerDrawer.tsx:121`) but `axhy.app/help` doesn't exist (redirects to admin /login). One assumption broke three ways: "the secondary surface will land later" — and the UI shipped speaking as if it already had. | 3 bugs → 1 root. Matches founder's standing rule feedback_vertical_slices_not_backend_first: a slice is done only when the consumer surface closes the loop. The same drift pattern, three instances, one cause. |
 
 ## Sibling check (founder rule: if one is broken, its siblings are broken)
 
-For each root: what ELSE shares this code/data and was checked even though no bug was reported there yet?
-
-| Root | Siblings checked | Result |
-| ---- | ---------------- | ------ |
+| Root | Siblings checked                                                                                                       | Result                                                                                                                                                           |
+| ---- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C-A  | Other UI references to not-yet-built surfaces in the worker app: profile support card text ("contact your supervisor") | Partially honest — it says "Supervisor contact is not configured yet" when data missing (GOOD pattern, the model for the fix)                                    |
+| C-A  | Consent screen "Read the full privacy notice →" link target                                                            | TO VERIFY in capture phase — likely the same axhy.app pattern as /help; if axhy.app/privacy is the placeholder page (O6 of the findings doc), it at least EXISTS |
+| C-A  | Drawer items (4/4 now tested: profile ✅, leave ✅, help ❌, sign-out pending at walk end)                             | help is the only broken one                                                                                                                                      |
+| C-A  | Backend route /worker/history                                                                                          | Works (called only by the unreachable screen) — backend half of bug #1 is healthy; the wiring is the gap                                                         |
 
 ## Batch fix plan (roots only — no symptom patches, no refactors)
 
-| Root | Minimal fix | Files touched | Fixed at (IST) | Commit |
-| ---- | ----------- | ------------- | -------------- | ------ |
+**DRAFT — final after capture phase. One root → one coordinated fix set (still ONE decision, three small diffs):**
+
+| Root                       | Minimal fix                                                                                                                                                                                                                                           | Files touched                                                        | Fixed at (IST) | Commit |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------- | ------ |
+| C-A (part 1: history)      | Un-hide the history tab (remove `href: null`) OR add a "Past visits" row linking to it from profile — founder picks placement; add NAV_ROUTES.workerHistory                                                                                           | (tabs)/\_layout.tsx, lib/api-routes.ts (+ profile.tsx if row option) | pending        | —      |
+| C-A (part 2: leave status) | Add a small "Your leave requests" section to profile.tsx (reads existing GET data — may need a tiny GET /leave-requests/mine endpoint, verify) OR change the success copy to a true statement ("Your supervisor will see it") until the section ships | profile.tsx (+ possibly one backend route) or leave-request.tsx copy | pending        | —      |
+| C-A (part 3: help)         | Point the drawer at a real destination: WhatsApp deep link to supervisor/support number, or ship a one-page /help on axhy.app; until then remove/relabel the item — a button must not promise what doesn't exist                                      | WorkerDrawer.tsx:121 (+ admin-web /help page if chosen)              | pending        | —      |
+
+**Fix-order rule honored:** nothing fixed mid-walk; this plan executes only after the walk completes (capture phase) and the founder confirms the three placement choices above (all three have a product decision embedded: tab vs profile-row; build section vs soften copy; WhatsApp vs web page).

@@ -83,6 +83,23 @@ Live phase run 2026-06-11 00:10–00:52 IST · emulator `eclean_test` (cold boot
 - BUT the success card's promise "You'll see the result on your profile" is FALSE — profile (walk_29) has NO leave section at all → **Bug #2 (TRUST)**.
 - Verdict: **PASS on data truth · FAIL on promise** → bug #2
 
+## Drawer — Help & support — as Suresh
+
+- At: 2026-06-11 01:01 IST
+- Becoming them: something went wrong and I don't want to call my supervisor — let me try "Help".
+- UI: opens the browser to `https://axhy.app/help` → **redirects to the admin-web login page** (curl-proven: HTTP 200, final URL `/login`); rendered as a blank tab on-device (walk_32).
+- Route: WorkerDrawer.tsx:121 `Linking.openURL('https://axhy.app/help')`; admin-web has no /help route.
+- Verdict: **FAIL** → bug #3
+
+## Step 21 — Sign out — as Suresh
+
+- At: 2026-06-11 01:06 IST
+- Becoming them: end of day, maybe sharing the phone with a brother — sign-out must really sign me out.
+- UI: drawer → Sign out → lands on Sign in (walk_33). BUT a dev toast fired: "Uncaught (in promise) Error: Unable to activate keep awake" — unhandled promise rejection during sign-out (logcat: `Unable to activate keep awake`, expo-keep-awake racing unmount). Silent in prod builds but it's a real unhandled error → bug #4 (MINOR).
+- Route: POST /auth/sign-out.
+- DB proof (prod): latest RefreshToken `revokedReason=LOGOUT` ✅ — the token family is genuinely dead, not just the screen reset.
+- Verdict: **PASS on core behavior** + bug #4 (minor)
+
 ## Bad-day scenarios run (minimum set from the protocol + open loopholes)
 
 | Scenario                                                                              | At (IST)           | Result                                                                                                                                          | Bug # |
