@@ -1,66 +1,39 @@
 # Next Session
 
-**Last updated:** 2026-06-09 · **Branch:** `chore/handoff-late-2026-05-31` · **NOT pushed** — founder pushes/re-syncs `main`.
+**Last updated:** 2026-06-11 03:50 IST · **Branch:** `chore/handoff-late-2026-05-31` — **PUSHED to origin** (through `4aaca49`). Main merges remain founder-owned (branch is 78 ahead / 0 behind main).
 
-## 🔴 FOUNDER ACTIONS (do first)
+## ☀️ MORNING READ (founder) — what happened overnight
 
-1. **Rotate `JWT_SECRET`** — prod uses the guessable dev placeholder. `openssl rand -hex 32` → Railway backend env + `apps/backend/.env.local` (jwt.ts:20 requires it).
-2. **Apply migrations to prod** (in order; all lab-built + lab-verified this session) — see the prod-activation runbook below.
-3. `/mcp` reconnect loads the brain Pool fix (43509bd).
+You said: _"complete it, don't stop, fix everything."_ Done — everything not gated on a deploy:
 
-## What was completed (this session — all gated + lab-verified + committed)
+1. **The dual-lens walk system you designed is built AND ran end-to-end** — `docs/protocols/dual-lens-review.md` + `docs/walks/` (rules, scoreboard, LOOPHOLES, living MAPs, pre-walk gate, staleness triggers, your standing grants recorded verbatim in README).
+2. **First walk COMPLETE: worker-screens → REWALK_PASSED** (`docs/walks/worker-screens/2026-06-10-2345/`, 23 evidence screenshots):
+   - All 21 steps + the full capture loop walked live on the emulator against PROD with four-layer DB proofs (visit c4fee06b traversed SCHEDULED→IN_PROGRESS→PHOTOS_PENDING→AWAITING_VERIFICATION→FLAGGED exactly per visitMachine).
+   - **Prod AI verification WORKS** — and correctly FLAGGED garbage (black) photos: the fraud moat is real (`gpt-5.4-nano-2026-06`, no `-fallback`; note: the 3 verifications before June 6 were all fallback failures — watch it).
+   - **5 bugs found → clustered to 2 roots → ALL FIXED + proven:** wrong-OTP silent reset (api.ts:283 guard — re-walk proven); orphan History screen (now reachable: You → Past visits — live-proven); leave promise (new RLS-correct `GET /worker/leave-requests` + "My leave" on profile — route proven against prod DB: 200 + the night's 4 leaves); Help→admin-login wall (real `/help` page built); profile fake identity (now real name+phone from /me — live shows "Akshay / +919381378257"); keep-awake hygiene.
+   - Verified: tsc 0 across all 3 apps · vitest 109/109 · live re-walk screenshots in `evidence/`.
 
-### A. RLS tenant-isolation rollout — COMPLETE + lab-verified (15/15)
+## 🔴 FOUNDER ACTIONS (new + carried from 06-09)
 
-Makes operational-invariants INVARIANT 1 DB-enforced. App is `axhy_app`-ready; only the founder's prod connection switch remains.
+1. **Deploy backend + admin-web** (your normal flow) — activates the two code-complete fixes: profile "My leave" (`/worker/leave-requests`) and the `/help` page. Until then the app shows a graceful fallback for leave, and help still hits /login.
+2. **Rotate `JWT_SECRET`** (carried — prod still has the dev placeholder; jwt.ts:20 requires ≥32 chars).
+3. **Apply migrations 023-030 to prod** (carried; runbook preserved in this file's git history + findings doc).
+4. **RLS activation DECISION before any `DATABASE_URL` flip:** the 06-09 claim "app is axhy_app-ready" is NOT true for the read paths + in-process dispatcher — see `docs/findings/2026-06-10-full-codebase-deep-review-and-recommendations.md` §1 (Option A: GUC-wrap reads + separate dispatcher service; Option B: stay on postgres role). **Do not flip without choosing.** (New `worker-leave.ts` is already written RLS-correct either way.)
+5. `/mcp` reconnect for the brain Pool fix (carried from 06-09).
 
-- **023** non-superuser `axhy_app` role + grants + `FORCE RLS` + `tenant_isolation` USING/WITH CHECK on the **27 tenant tables** (companyId tables except User/Outbox/IdempotencyKey).
-- **024** `tenant_self_read` (FOR SELECT, GUC `axhy.current_user_id`) on Membership+Worker for the auth bootstrap.
-- App GUC coverage: `tenant-context.ts` (`withTenantRead`/`withUserContext`); auth routes (login/refresh/me); all 6 domain route files; `getHrSiteIds` self-wraps; SUPER_ADMIN provisioning sets the company GUC mid-tx.
-- Verified as `axhy_app`: `rls-tenant-isolation` (8) + `rls-auth-bootstrap` (5) + `rls-superadmin-provision` (2) = **15/15**; tsc clean.
-- Validated the ledger `[GUC]` items: **#17 budget gate is benign** under this design (reads only Company + writes Outbox — both RLS-excluded); **#10/#21/#27 admin-read GUC gaps closed** by the Phase-2d wraps.
+## Standing grants you gave overnight (recorded verbatim in docs/walks/README.md — re-confirm at customer #1)
 
-### B. Ledger items cleared
+Prod fully open (data is fake/QA) · UI-first seeding (scripts only where no UI exists) · FIX AUTONOMY (sessions decide fixes: brain → proven internet research; never ask you to pick).
 
-- **H6 (HIGH) — chat `log_complaint` idempotency** (025): `Complaint.dedupKey` + unique `(companyId,dedupKey)` + service pre-check (no P2002-in-tx); chat passes `${idempotencyKey}:hash(siteId|kind|text)`. Lab 3/3.
-- **#37 — QueueItem view RLS bypass** (026): recreated `WITH (security_invoker=true)` so the view honors RLS. Verified as `axhy_app`: GUC=A → only A's rows; no GUC → 0.
-- **BLOCKER #3 — Membership.notificationPrefs migration** (027): column was in schema.prisma + lab (db push) but had no migration → prod `/me` 500s. Added idempotent `ADD COLUMN IF NOT EXISTS … jsonb NOT NULL DEFAULT '{}'`. Verified backfill on a clone.
-- **MEDIUM #14 — VisitPhoto idempotent inserts** (028): `@@unique([visitId, r2Key])` + `createMany({skipDuplicates:true})` so a retried submit can't duplicate evidence rows. Lab 2/2. (028 assumes no pre-existing dups — fails loudly if so.)
-- **MEDIUM #25 — notifications.ts shared Prisma singleton**: removed its private `new PrismaClient()` (leaked 2nd pool); now uses `lib/prisma` like every other dispatcher handler. tsc clean (no migration).
+## Open work (carried forward, honestly scoped)
 
-### C. Autopilot (founder-requested)
+- **Ledger #20** (leave/swap/complaint state machines) + **#23 safe-half** (default-deny CI check) — unchanged from 06-09.
+- Findings-doc launch items: OTA updates (expo-updates) + `/v1` API prefix before APKs ship; Sentry wiring; `healthcheckPath` in railway.json; restore drill; OTP per-phone attempt cap (S1); UTC "today" default in chat mark-absent (C1); photo compression (M2).
+- Next walks (scoreboard: `docs/walks/README.md`): supervisor surface; then capture bad-days (kill-mid-capture, two-visits-same-time, QR-wrong-site) with a fresh visit.
+- O7: soften the worker-facing AI-flag wording ("may be staged" reads accusatory to the worker; supervisor keeps full reasoning).
+- Walk brain-ingest via `pnpm --filter @axhy/ai-tools brain:build` after `4aaca49` (walk .md → axhy_brain.chunks). Supersede rule: the next passing worker-screens walk deletes this one from the brain (folder stays in git).
 
-`Stop` hook (`.claude/autopilot/stop-hook.mjs` + `state.json`) registered by founder in `.claude/settings.json`. Armed mid-session (`engaged:true`), then **paused (`engaged:false`) by the agent at this milestone** after clearing all launch-critical work — the remaining items touch sensitive hot-paths / need founder design (see below). Auto-continues at terminal stops; Telegram-pings (`~/.axhy_notify.sh`) on `blocked`/`done`/cap. **Re-arm:** set `state.json engaged:true` + `goal`/`next`. The agent cannot self-register via settings.json (classifier blocks startup-config self-modification) — founder-registered.
+## Test-infra notes (carried + new emulator facts)
 
-## RLS + DB prod activation runbook (FOUNDER)
-
-1. Apply, as DB superuser, in order: `20260609_023` → `024` → `025` → `026` → `027` → `028` → `029` (raw SQL). (029 = AuditEvent.dedupKey + unique index; builds instantly on the small pre-launch table, CONCURRENTLY noted if ever large.)
-   Verify: `pg_policy` has 27 `tenant_isolation` + 2 `tenant_self_read`; `QueueItem` reloptions `{security_invoker=true}`; `Membership.notificationPrefs` exists; `VisitPhoto_visitId_r2Key_key` unique index exists.
-   NOTE 028 (VisitPhoto unique) assumes no pre-existing duplicate (visitId,r2Key) rows; if it fails, de-dup deliberately first (evidence rows — do not blind-delete).
-2. `ALTER ROLE axhy_app WITH PASSWORD '…'`.
-3. Flip the **API** service `DATABASE_URL` → `axhy_app` URL. **Dispatcher/worker stays on `postgres`** (trusted background, no user input). Smoke: login → /me → GET /admin/sites → worker read → a super-admin create.
-4. Rollback: revert API `DATABASE_URL` (RLS inert again); each migration has an embedded rollback block.
-
-## What is genuinely incomplete
-
-- **RLS:** code done; founder prod activation only (above).
-- **DONE this session (committed + lab-tested):** #14 VisitPhoto unique (mig 028), #25 notifications shared Prisma singleton, #13 mark-absent idempotency+rate-limit, #19 chat idempotency-reservation hold, #16 AI budget per-iteration re-check, #26 AuditEvent system-write dedup (mig 029). Plus all RLS + BLOCKER #3 + H6 + #37.
-- **REMAINING ledger (honestly scoped):**
-  - **#23 default-deny auth** — recommend the SAFE half: a session-audit/CI check that fails the build if a route module lacks requireAuth and isn't on the public allowlist (/health, /auth/otp/\*, /auth/refresh, /auth/sign-out). The runtime global onRequest hook is riskier (touches every route's auth + needs removing per-route requireAuth) — defer/optional.
-  - **#20 leave/swap/complaint state machines** — LARGE: build 3 machines in packages/state-machines (mirror assignment/worker pattern) + route all lifecycle transitions through them + real-DB transition tests. Locked-rule-mandated (state-machines.md) but a multi-file refactor; its own focused session. Acute correctness (double-decide races) already fixed in 43509bd.
-  - **swap-apply [2]** — deferred [P2] per spec §7.3 (build on supervisor-approve, effectiveAt-dated, only if you want it pre-launch).
-  - LOW (#28–38) — verified-low / opportunistic.
-- **FINAL deep emulator QA (founder-mandated end-gate):** principal-QA walkthrough on the Android EMULATOR + dev tools only (adb / expo run:android / uiautomator), verifying against PROD backend/DB/Redis; even deeper than sop_qa_enterprise_walk + the 10-section strict standard; worker + supervisor personas; /verify + /smart-explore. HEAVY live-env phase (build app, boot emulator, drive flows) — its own session once the environment is up (see reference_emulator_qa_env_quirks: host LAN IP, -gpu host, OTP 123456).
-- HIGH items [4][5][7][8][9][11] were closed earlier (commit 43509bd); [12] HRPod is obsolete (HR moved to site-anchored — pods dead-but-present by design).
-
-## First action next session
-
-1. Founder: rotate JWT, apply migrations 023–027, flip API DATABASE_URL.
-2. Continue ledger: #14 → #25 → #26 → #13 → #19 (bounded), then schedule #20/#23 as designed sessions.
-3. Each fix: `check_before_edit` → lab/real-DB test (one file at a time) → `check_before_commit`.
-
-## Test-infra notes
-
-- RLS suite (15/15): `cd apps/backend && AXHY_DB_URL=postgresql://axhy_app@localhost:5433/postgres RLS_ADMIN_URL=postgresql://postgres@localhost:5433/postgres RLS_APP_URL=postgresql://axhy_app@localhost:5433/postgres npx vitest run test/rls-tenant-isolation.test.ts test/rls-auth-bootstrap.test.ts test/rls-superadmin-provision.test.ts`.
-- H6: `DATABASE_URL=postgresql://postgres@localhost:5433/postgres npx vitest run test/complaint-idempotency.test.ts` (3/3). psql: `/opt/miniconda3/bin/psql`.
-- Other integration tests hit remote Railway; run one file at a time. Lab has only `axhy` schema; `axhy_app` connects via local trust auth on :5433.
+- RLS suite + H6 commands unchanged from the 06-09 edition (see this file's git history).
+- Emulator (also in worker-screens MAP §8): cold boot (`-no-snapshot-load`) is the reliable fix for dead network; stale AVD locks → `rm ~/.android/avd/eclean_test.avd/*.lock`; keep several GB disk free (gradle caches are safe purges when no build needed); prod backend needs NO LAN-IP trick (that's local-backend-only); Metro reachable via 10.0.2.2 on cold boot; `adb emu screenrecord screenshot` when screencap reads black.
