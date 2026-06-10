@@ -33,6 +33,8 @@ Gate note: push was initially BLOCKED (invalid GitHub token, 23:35 IST) — foun
 - 2026-06-10 23:45 IST — IN_PROGRESS (walk started; code-traced phase)
 - 2026-06-11 00:30 IST — live emulator phase started (cold-booted eclean_test, prod backend)
 - 2026-06-11 00:52 IST — steps 1-6, 19-20 + 4 bad-day scenarios complete; 2 bugs collected; steps 7-17 (capture) BLOCKED on founder visit-seed authorization (Telegram pinged 00:41 IST)
+- 2026-06-11 01:18 IST — negative tests + offline-write scenario added; bugs #3-#5 collected (5 total → 2 RCA roots)
+- 2026-06-11 01:39 IST — root C-B FIXED (api.ts:283 path-guard) + tests 11/11 + re-walk proven (05-rewalk-proof.md); C-A awaits founder placement choices; capture awaits seed OK
 
 ## Step 0 — Open loopholes from LOOPHOLES.md this walk MUST check
 

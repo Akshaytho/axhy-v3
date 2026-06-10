@@ -280,7 +280,14 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     }
   }
 
-  if (res.status === 401) {
+  // Wipe+redirect ONLY for authenticated, non-/auth/* requests (mirrors the
+  // refresh guard above). An /auth/* or auth:false 401 — e.g. a wrong OTP code
+  // on /auth/otp/verify — is a CALLER-handled failure, not a dead session:
+  // it falls through to the ApiError construction below so otp.tsx can show
+  // "Wrong code. Check the SMS and try again." instead of silently bouncing
+  // the worker to the phone screen and burning their OTP quota.
+  // @derives(walk worker-screens 2026-06-10-2345 bug #5 / RCA cluster C-B)
+  if (res.status === 401 && auth && !path.startsWith('/auth/')) {
     await handleUnauthorized();
   }
 
