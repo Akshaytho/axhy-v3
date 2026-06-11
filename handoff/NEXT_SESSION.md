@@ -25,13 +25,22 @@ You said: _"complete it, don't stop, fix everything."_ Done — everything not g
 
 Prod fully open (data is fake/QA) · UI-first seeding (scripts only where no UI exists) · FIX AUTONOMY (sessions decide fixes: brain → proven internet research; never ask you to pick).
 
+## DONE overnight — second batch (commit `fb6f635`, all gated + verified + pushed)
+
+- **C1** — chat mark-absent "today" default now IST (`isoDateIST`), both call sites. No more wrong-day absences at 4 AM IST.
+- **S1** — per-phone OTP wrong-attempt cap (5 / 15 min → stored OTPs invalidated; success clears it; bypass paths untouched). Proven against real Redis.
+- **O7** — flagged-visit screen leads with calm copy; raw AI reasoning ("may be staged") demoted to a small "AI note" but still shown.
+- **O2** — `healthcheckPath: /health` in railway.json + new admin-web `/health` route (shared config needs both services to answer).
+- **C6** — production error log when `WHATSAPP_*` env missing (was a silent no-op returning 200 while delivering nothing).
+- **#23 safe-half** — `scripts/check-default-deny.mjs` + CI `default-deny` job: build fails if any backend route lacks an auth gate and a justified `auth-exempt` marker (clean tree 40/40; mutation test caught a fake route).
+- **M2** — capture photos downscaled to 1600px JPEG 0.7 before upload (~3-5× less worker data). Live-proven: persisted photo 946×1600. Done-memos in `docs/done-memos/2026-06-11-*`.
+
 ## Open work (carried forward, honestly scoped)
 
-- **Ledger #20** (leave/swap/complaint state machines) + **#23 safe-half** (default-deny CI check) — unchanged from 06-09.
-- Findings-doc launch items: OTA updates (expo-updates) + `/v1` API prefix before APKs ship; Sentry wiring; `healthcheckPath` in railway.json; restore drill; OTP per-phone attempt cap (S1); UTC "today" default in chat mark-absent (C1); photo compression (M2).
+- **Ledger #20** (leave/swap/complaint state machines) — LARGE locked-rule-mandated multi-file refactor; its own focused session (acute races already fixed; inline guards verified race-safe in the walk). NOT attempted overnight by design.
+- Findings-doc launch items still open: OTA updates (expo-updates) + `/v1` API prefix before APKs ship; Sentry wiring; restore drill (backup-db.sh exists, restore untested). [C1/S1/O7/O2/C6/M2 now DONE — see above.]
 - Next walks (scoreboard: `docs/walks/README.md`): supervisor surface; then capture bad-days (kill-mid-capture, two-visits-same-time, QR-wrong-site) with a fresh visit.
-- O7: soften the worker-facing AI-flag wording ("may be staged" reads accusatory to the worker; supervisor keeps full reasoning).
-- Walk brain-ingest via `pnpm --filter @axhy/ai-tools brain:build` after `4aaca49` (walk .md → axhy_brain.chunks). Supersede rule: the next passing worker-screens walk deletes this one from the brain (folder stays in git).
+- Walk brain-ingest via `pnpm --filter @axhy/ai-tools brain:build` (ran post-`4aaca49`; re-run after `fb6f635`). Supersede rule: the next passing worker-screens walk deletes this one from the brain (folder stays in git).
 
 ## Test-infra notes (carried + new emulator facts)
 
