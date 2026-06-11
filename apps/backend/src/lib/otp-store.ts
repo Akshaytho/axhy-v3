@@ -28,6 +28,11 @@ const OTP_TTL_MS = 5 * 60 * 1000; // 5 min validity
 const RL_WINDOW_MS = 15 * 60 * 1000;
 const PROD_MAX_OTPS_PER_15MIN = 3;
 const DEV_MAX_OTPS_PER_15MIN = 100;
+// S1 (findings 2026-06-10): wrong-verify attempts allowed per phone per
+// window before the stored OTPs are invalidated. 5 covers every honest
+// retry pattern; a brute-forcer gets 5 of 1,000,000 guesses per issuance.
+const OTP_MAX_VERIFY_ATTEMPTS = Number(process.env.AXHY_OTP_MAX_VERIFY_ATTEMPTS ?? 5);
+const OTP_VERIFY_ATTEMPT_WINDOW_S = 15 * 60;
 
 function maxOtpsPer15Min(): number {
   return process.env.AXHY_OTP_BYPASS === '1' ? DEV_MAX_OTPS_PER_15MIN : PROD_MAX_OTPS_PER_15MIN;
@@ -166,6 +171,22 @@ export async function verifyOtp(phone: string, code: string): Promise<boolean> {
     return true;
   }
 
+  // S1 (findings 2026-06-10): per-phone wrong-attempt cap. The edge per-IP
+  // limiter is per-replica and IP-distributed attackers sidestep it; a
+  // 6-digit code needs an attempt ceiling per phone. Counted BEFORE the
+  // comparison so a miss always pays; cleared on success; when the cap is
+  // crossed the stored OTPs are deleted so even the correct code is dead
+  // until the worker requests a fresh one. The bypass paths above never
+  // reach this counter (founder/test logins unaffected). Fail-closed like
+  // the rest of this store: a Redis error here fails verification.
+  const attemptsKey = RedisKeys.otpVerifyAttempts(phone);
+  const attempts = await redis.incr(attemptsKey);
+  if (attempts === 1) await redis.expire(attemptsKey, OTP_VERIFY_ATTEMPT_WINDOW_S);
+  if (attempts > OTP_MAX_VERIFY_ATTEMPTS) {
+    await redis.del(RedisKeys.otpStore(phone)).catch(() => undefined);
+    return false;
+  }
+
   const entries = await redis.hgetall(RedisKeys.otpStore(phone));
   const now = Date.now();
   for (const [issuedAtRaw, fieldValue] of Object.entries(entries)) {
@@ -183,7 +204,10 @@ export async function verifyOtp(phone: string, code: string): Promise<boolean> {
     if (!crypto.timingSafeEqual(a, b)) continue;
 
     const deleted = await redis.hdel(RedisKeys.otpStore(phone), issuedAtRaw);
-    if (deleted >= 1) return true;
+    if (deleted >= 1) {
+      await redis.del(attemptsKey).catch(() => undefined);
+      return true;
+    }
     return false; // lost race
   }
   return false;

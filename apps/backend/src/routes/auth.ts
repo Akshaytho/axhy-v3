@@ -1,3 +1,8 @@
+// auth-exempt — the login bootstrap itself: /auth/otp/request and /auth/otp/verify
+// MUST be public (no token exists yet); /auth/sign-out validates the refresh token
+// it receives (see refreshTokenStore.validate below). Guarded instead by per-phone
+// issuance limits (otp-store.ts), the S1 wrong-verify attempt cap, and the per-IP
+// edge limiter. Checked by scripts/check-default-deny.mjs (ledger #23 safe half).
 /**
  * /auth/* routes
  *

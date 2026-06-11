@@ -193,8 +193,40 @@ export function PhasePhotoCapture({
       reservedSlotsRef.current.add(slotIndex);
 
       try {
+        // M2 (findings 2026-06-10): downscale to a 1600px long edge JPEG 0.7
+        // before disk-write/upload — a 6-photo visit drops ~3-5× in bytes on
+        // the worker's metered data, and uploads survive weak networks far
+        // better. 1600px is ample for the AI verification surface. Fallback
+        // contract: ANY manipulation failure keeps the ORIGINAL capture — a
+        // worker can never lose a photo to compression. Native-only (same
+        // canPersistCaptures() gate as the disk write). No upscaling: photos
+        // already at/below target pass through untouched.
+        let sourceUri = photo.uri;
+        if (canPersistCaptures()) {
+          try {
+            const longEdge = Math.max(photo.width ?? 0, photo.height ?? 0);
+            if (longEdge > 1600) {
+              const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+              const resize =
+                (photo.width ?? 0) >= (photo.height ?? 0) ? { width: 1600 } : { height: 1600 };
+              const compressed = await manipulateAsync(photo.uri, [{ resize }], {
+                compress: 0.7,
+                format: SaveFormat.JPEG,
+              });
+              if (compressed?.uri) sourceUri = compressed.uri;
+            }
+          } catch (compressionErr) {
+            if (__DEV__) {
+              console.warn(
+                '[capture] compression failed — keeping original photo',
+                compressionErr instanceof Error ? compressionErr.message : String(compressionErr),
+              );
+            }
+          }
+        }
+
         const localUri = canPersistCaptures()
-          ? await writePhoto(workerId, visitId, phase, slotIndex, photo.uri)
+          ? await writePhoto(workerId, visitId, phase, slotIndex, sourceUri)
           : photo.uri;
 
         // Server-side hint for rate-limiting + observability. Read actual size

@@ -73,6 +73,21 @@ export function todayISTBounds(): { gte: Date; lt: Date } {
 }
 
 /**
+ * Calendar date string 'YYYY-MM-DD' for the IST day containing `d`.
+ * Use this for any "today" DEFAULT shown to or recorded for Indian users —
+ * `new Date().toISOString().slice(0,10)` is the UTC day and is one day
+ * behind between 00:00-05:29 IST (findings 2026-06-10 C1; walk fix batch).
+ * @derives(master-plan §G) — supervisor surface
+ */
+export function isoDateIST(d: Date = new Date()): string {
+  const ist = toIST(d);
+  const y = ist.getUTCFullYear();
+  const m = String(ist.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(ist.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
  * IST bounds for "yesterday".
  * @derives(master-plan §G) — supervisor surface
  */

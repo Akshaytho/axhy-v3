@@ -42,6 +42,7 @@ import { detectConflicts } from '@axhy/state-machines';
 import { CreateAssignmentInput as CreateAssignmentInputSchema } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
+import { isoDateIST } from '../lib/ist-date.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
@@ -1099,7 +1100,10 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                 tx.worker.findFirst({ where: { id: wid, companyId: auth.companyId } }),
               );
               if (!worker) return { output: { error: 'WORKER_NOT_FOUND' } };
-              const dateStr = date ?? new Date().toISOString().slice(0, 10);
+              // C1: "today" default must be the IST day, not UTC — at 4 AM IST
+              // the UTC date is still yesterday and "Mukesh absent today" would
+              // record the wrong day (findings 2026-06-10 C1).
+              const dateStr = date ?? isoDateIST();
               return {
                 output: {
                   proposed: true,
@@ -1629,7 +1633,8 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
             .filter((v) => typeof v === 'string' && v.length > 0)
             .join(': ') || undefined;
         const parsedTool = MarkAbsentInput.safeParse({
-          date: ti.date ?? new Date().toISOString().slice(0, 10),
+          // C1: IST day default — see the propose_mark_absent handler note.
+          date: ti.date ?? isoDateIST(),
           status: 'ABSENT_NO_CALL',
           ...(reasonRaw ? { reason: reasonRaw } : {}),
         });

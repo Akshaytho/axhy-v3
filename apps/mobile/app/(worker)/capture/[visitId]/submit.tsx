@@ -358,11 +358,18 @@ export default function SubmitStep(): React.JSX.Element {
               <Text style={[s.statusValue, { color: tokens.color.semantic.warn }]}>
                 Needs supervisor review
               </Text>
+              {/* O7 (walk 2026-06-10-2345): lead with a calm, non-accusatory
+                  line — the raw AI reasoning can read like an accusation
+                  ("may be staged") to the worker who just did the work. The
+                  reasoning stays visible below (smaller) so nothing is hidden;
+                  the supervisor surface keeps it first-class. */}
               <Text style={s.scoreRating}>
-                {outcome?.reason
-                  ? outcome.reason
-                  : 'Your supervisor will review the photos and reach out if anything needs to be redone. No action needed from you right now.'}
+                We couldn&apos;t confirm the work from these photos, so your supervisor will take a
+                look. Your visit is saved — no action needed from you right now.
               </Text>
+              {outcome?.reason ? (
+                <Text style={[s.scoreRating, s.aiDetailNote]}>AI note: {outcome.reason}</Text>
+              ) : null}
             </WCard>
 
             <View style={[s.completedStrip, { backgroundColor: tokens.color.semantic.warn }]}>
@@ -595,6 +602,13 @@ const s = StyleSheet.create({
     color: tokens.color.ink.secondary,
     marginTop: 8,
     marginBottom: 16,
+  },
+  aiDetailNote: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: tokens.color.ink.tertiary,
+    marginTop: 0,
+    marginBottom: 8,
   },
   scoreDivider: {
     height: 1,

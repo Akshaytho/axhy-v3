@@ -71,6 +71,16 @@ export async function sendOtpWhatsApp(input: { phone: string; code: string }): P
 
   if (!token || !phoneNumberId || !templateName) {
     // Pilot / dev mode — caller reads the code through the OTP store.
+    // C6 (findings 2026-06-10): in PRODUCTION this silent no-op means real
+    // customers never receive OTPs while every request returns 200 — make
+    // the misconfiguration loud in logs so ops sees it immediately.
+    if (process.env.NODE_ENV === 'production') {
+      console.error(
+        '[whatsapp-otp] WHATSAPP_* env missing in production — OTP for %s NOT delivered. ' +
+          'Set WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_OTP_TEMPLATE_NAME.',
+        input.phone.slice(0, 6) + '…',
+      );
+    }
     return;
   }
 
