@@ -1,6 +1,17 @@
 # Next Session
 
-**Last updated:** 2026-06-11 03:50 IST · **Branch:** `chore/handoff-late-2026-05-31` — **PUSHED to origin** (through `4aaca49`). Main merges remain founder-owned (branch is 78 ahead / 0 behind main).
+**Last updated:** 2026-06-11 21:30 IST · **Branch:** `chore/handoff-late-2026-05-31` — **PUSHED to origin** (through `b225a50`). Main merges remain founder-owned.
+
+## 🌙 EVENING UPDATE (2026-06-11) — supervisor walk DONE; 3 BLOCKERs found, the worst root already fixed + live-proven
+
+1. **Supervisor OTP bypass — self-served via Railway** (+919778087087 added to the allowlist, redeployed, curl-proven). The "founder must allowlist" blocker never reached you.
+2. **SUPERVISOR LIVE WALK COMPLETE** (`docs/walks/supervisor-screens/2026-06-11-1030/`, 15 evidence shots, 4-layer proofs): login → Today (the worker walk's FLAGGED visit surfaced to the supervisor with the AI's words — the cross-persona fraud moat is REAL) → flagged review → REJECT (Visit→REJECTED + audit proven) → Decisions → Activity → REVERSE bad-day → AI chat (mark-absent + sick-leave both extracted; Hinglish reply) → profile/drawer/memory/sites.
+   - **10 bugs → 4 roots**; the 3 BLOCKERs in plain words: (i) the 30-minute UNDO is a dead end — the app computes the window with wrong timezone math so it always says "closed", then the server refuses the HR fallback because the window is actually OPEN; (ii) decisions the AI creates in chat were INVISIBLE in the Decisions tab until an app restart; (iii) tapping "Mark absent" always failed with a bare "status 400" — real reason: the QA worker is on no site roster, the AI proposed something the rules must refuse, and the app hid the explanation.
+   - **The decision-pipeline root (C-D) is FIXED + LIVE RE-WALK-PROVEN tonight** (`b225a50`): decisions now appear the moment chat creates them (badge updated while still on the Chat tab — evidence/14-15); apply errors speak plain words ("This worker is not on any of your site rosters… Ask HR to assign them first" — evidence/13); the AI now refuses unrostered mark-absents at propose time; cards get worker names. The two backend halves activate at your next deploy. Verified: tsc ×2 clean, 24/24 real-DB suites, live emulator re-walk.
+   - **Still open from this walk:** C-C (make the server the only undo-window authority; kill the client math + "soft-flag" jargon) and C-E (word-truth copy: dev note instead of photo thumbnails on the review sheet, "notifies HR" with no notification behind it, "Dwi expired." jargon, US dates, phantom "60-sec video"). Scoped in 04-rca-and-fix.md.
+3. **Sentry wired env-gated** (ADR-0027, `a89af2f`): 5xx hook + fatal-startup capture, PII off. Inert until you set `SENTRY_DSN` on Railway — zero behavior change until then.
+4. **Backup restore drill PASSED** (`docs/ops/restore-drill-2026-06-11.md`): all 39 tables restored, row counts match prod. Runbook: pre-install the pg extensions (esp. pgvector) on the target; use pg18 binaries.
+5. **RLS Option-A is now mechanical**: a 48-file audit produced the exact 30-call-site fix list with per-site wrappers (worst find: under axhy_app the AI-verify dispatcher would SILENTLY no-op — visits stuck unverified, AI spend uncharged). The flip decision still yours; the code work is a checklist now (audit JSON preserved in the session transcript; key sites: dispatcher ai/notifications/owner-budget + 3 sweeps, refresh-token-store epoch bump, 6 supervisor read routes, 3 worker read routes, turn-embedder).
 
 ## ☀️ MORNING READ (founder) — what happened overnight
 

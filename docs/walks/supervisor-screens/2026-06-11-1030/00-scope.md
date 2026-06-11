@@ -25,6 +25,7 @@
 - 2026-06-11 10:30 IST — IN_PROGRESS (code-traced phase: MAP + nav graph + Step 1b)
 - 2026-06-11 19:23 IST — live phase started (OTP bypass for +919778087087 added via Railway this session; login curl-proven 200 BEFORE driving the app — pre-walk gate "real login proof" now ✅)
 - 2026-06-11 20:35 IST — BUGS_OPEN (10 bugs: 2 code-traced orphans + 8 live; clustered to 4 roots C-A2/C-C/C-D/C-E in 04)
+- 2026-06-11 21:15 IST — C-D root FIXED (`b225a50`): all three sub-fixes landed; mobile halves LIVE re-walk-proven (evidence/13-15), backend halves 24/24 real-DB + deploy-pending. C-C + C-E still open → state stays BUGS_OPEN until they land.
 
 ## Step 0 — Open loopholes from LOOPHOLES.md this walk MUST check
 
