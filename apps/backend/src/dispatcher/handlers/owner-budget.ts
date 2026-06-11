@@ -23,7 +23,11 @@
 
 import type { FastifyBaseLogger } from 'fastify';
 
-import { prisma } from '../../lib/prisma.js';
+// RLS Option-A: dispatcher handlers use the dispatcher client (RLS-bypassing
+// role post-flip) — under axhy_app the AuditEvent insert is policy-blocked
+// (dispatcher/db.ts). Same object as the singleton until
+// DISPATCHER_DATABASE_URL is set.
+import { dispatcherPrisma as prisma } from '../db.js';
 
 type BudgetAlertPayload = {
   kind: 'WARN' | 'CAP';

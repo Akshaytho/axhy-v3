@@ -31,7 +31,12 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { Prisma } from '@prisma/client';
 
-import { prisma } from '../../lib/prisma.js';
+// RLS Option-A: dispatcher handlers use the dispatcher client (RLS-bypassing
+// role post-flip) — under axhy_app every read here returns null (notification
+// silently dropped) and the Notification insert is policy-blocked
+// (dispatcher/db.ts). Same object as the singleton until
+// DISPATCHER_DATABASE_URL is set.
+import { dispatcherPrisma as prisma } from '../db.js';
 import {
   composeSupervisorChangeNotifications,
   type ComposedSupervisorChangeAudience,

@@ -4,7 +4,8 @@
  * GET /supervisor/updates
  *   Returns HR policy updates visible to the calling supervisor, split into
  *   `needsAck` and `recentAcked` sections. JWT-implicit; never accepts
- *   `companyId` from the client. Wrapped in `withTenantContext` for RLS.
+ *   `companyId` from the client. RLS via `tenantReadClient` (company GUC per
+ *   query, pool parallelism kept); the ack POST writes via withTenantContext.
  *
  * POST /supervisor/updates/:id/acknowledge
  *   Records the supervisor's 5-word own-voice acknowledgement of an HR update.
@@ -31,7 +32,7 @@ import type { FastifyInstance } from 'fastify';
 import { HRAckRequestBody } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
+import { requireAuth, tenantReadClient, withTenantContext } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { buildHRUpdatesForSupervisor } from '../lib/services/hr-updates-service.js';
 
@@ -71,8 +72,10 @@ export async function registerSupervisorUpdatesRoutes(app: FastifyInstance): Pro
       }
 
       try {
-        // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
-        const out = await buildHRUpdatesForSupervisor(prisma, {
+        // RLS Option-A + Cluster-1 latency fix together: tenantReadClient sets
+        // the company GUC per query in its own batch tx — HRUpdate reads pass
+        // RLS under axhy_app while staying parallel on the pool.
+        const out = await buildHRUpdatesForSupervisor(tenantReadClient(prisma, auth.companyId), {
           companyId: auth.companyId,
           userId: auth.userId,
         });

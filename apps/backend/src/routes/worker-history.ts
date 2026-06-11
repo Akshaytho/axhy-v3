@@ -13,7 +13,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireWorkerRole } from '../middleware/tenant-context.js';
+import { requireWorkerRole, withWorkerTenantRead } from '../middleware/tenant-context.js';
 import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { getWorkerHistory } from '../lib/services/worker-today-service.js';
 
@@ -42,13 +42,17 @@ export async function registerWorkerHistoryRoutes(app: FastifyInstance): Promise
           ? Number(windowDaysRaw)
           : undefined;
 
-      // Worker READS must NOT use withTenantContext — same rule as worker-today.ts:20
-      // and worker-visit.ts:23. withTenantContext enforces Company.status==='ACTIVE'
+      // Worker READS must NOT use withTenantContext — same rule as worker-today.ts
+      // and worker-visit.ts. withTenantContext enforces Company.status==='ACTIVE'
       // and would 403 a suspended company's worker reading their own history, which
       // operational-invariants INV 2 explicitly permits (suspended companies CAN read).
-      // Tenant safety here is Worker.userId @unique + the userId filter in the service.
+      // RLS Option-A: withWorkerTenantRead sets the user GUC (own-Worker self-read,
+      // migration 024) + the company GUC in ONE transaction — no ACTIVE gate.
+      // Tenant safety: Worker.userId @unique + the userId filter in the service.
       // 15s timeout covers Railway cold-call; warm calls < 1s (matches worker-today).
-      const result = await prisma.$transaction(
+      const result = await withWorkerTenantRead(
+        prisma,
+        auth.userId,
         (tx) => getWorkerHistory(tx, { userId: auth.userId, windowDays }),
         { timeout: 15_000, maxWait: 10_000 },
       );

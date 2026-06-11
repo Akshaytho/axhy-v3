@@ -2,7 +2,8 @@
  * GET /supervisor/activity — read-only feed of the caller's audit events.
  *
  * JWT-implicit via `requireAuth`; never accepts `companyId` from the
- * client. Wrapped in `withTenantContext` for RLS.
+ * client. RLS via `tenantReadClient` — every query carries the company GUC
+ * in its own batch transaction, keeping pool parallelism (Cluster 1).
  *
  * Accepted query params:
  *   `?limit=`    — page size (1..200, default 50)
@@ -21,7 +22,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireAuth, tenantReadClient } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import {
   buildActivityForSupervisor,
@@ -82,8 +83,10 @@ export async function registerSupervisorActivityRoutes(app: FastifyInstance): Pr
         : 'all';
 
       try {
-        // Read-path latency fix (Cluster 1) — bare prisma → parallel queries.
-        const out = await buildActivityForSupervisor(prisma, {
+        // RLS Option-A + Cluster-1 latency fix together: tenantReadClient sets
+        // the company GUC per query in its own batch tx, so AuditEvent reads
+        // pass RLS under axhy_app while staying parallel on the pool.
+        const out = await buildActivityForSupervisor(tenantReadClient(prisma, auth.companyId), {
           companyId: auth.companyId,
           userId: auth.userId,
           limit,

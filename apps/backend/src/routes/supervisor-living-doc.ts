@@ -12,9 +12,13 @@
  * uses them only when answering ABOUT that worker), so they must never reach
  * the supervisor's Memory screen.
  *
- * Pattern mirrors `supervisor-context.ts` — preHandler auth, read-only bare
- * prisma, try/catch. getLivingDoc already scopes by the composite key
- * {companyId, supervisorId} and returns ACTIVE-only sections.
+ * Pattern mirrors `supervisor-context.ts` — preHandler auth, tenantReadClient
+ * (the company GUC rides each query; getLivingDoc's lazy upsert passes the
+ * RLS WITH CHECK under axhy_app), try/catch. getLivingDoc already scopes by
+ * the composite key {companyId, supervisorId} and returns ACTIVE-only
+ * sections. Deliberately NOT withTenantContext: its ACTIVE gate would 403 a
+ * suspended company's supervisor reading their own Memory screen
+ * (operational-invariants INVARIANT 2).
  *
  * @derives(docs/locked/livingdoc-extraction-rules.md)
  * @derives(master-plan §G) — supervisor surface
@@ -24,7 +28,7 @@ import type { FastifyInstance } from 'fastify';
 import { LivingDocResponse, type LivingDocRule } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireAuth, tenantReadClient } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { getLivingDoc } from '../lib/living-doc.js';
 
@@ -50,9 +54,15 @@ export async function registerSupervisorLivingDocRoutes(app: FastifyInstance): P
       }
 
       try {
-        // tenant-exempt: read-only, bare prisma; getLivingDoc keys on
-        // {companyId, supervisorId=auth.userId} so isolation holds.
-        const doc = await getLivingDoc(prisma, auth.companyId, auth.userId, req.log);
+        // RLS Option-A: tenantReadClient carries the company GUC, so the lazy
+        // LivingDoc upsert passes both USING and WITH CHECK under axhy_app.
+        // getLivingDoc keys on {companyId, supervisorId=auth.userId}.
+        const doc = await getLivingDoc(
+          tenantReadClient(prisma, auth.companyId),
+          auth.companyId,
+          auth.userId,
+          req.log,
+        );
         const out = LivingDocResponse.parse({
           id: doc.id,
           companyId: doc.companyId,

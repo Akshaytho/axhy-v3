@@ -17,13 +17,15 @@
  * `@unique` index on `userId` (schema.prisma:188). At most one active Worker
  * exists per User globally (anonymization on leave sets `userId` to null —
  * founder-confirmed 2026-05-25), so cross-tenant leak is structurally
- * impossible. `withTenantContext` is NOT used on this read path because
- * Worker / Visit / Site tables do not have RLS enabled today (only
- * `axhy_chat.turn_embeddings` does, per migration 20260527_017), and its
+ * impossible. RLS (migration 023 FORCE-RLS on Worker/Visit/Site +
+ * SiteSupervisorBinding): reads run inside `withWorkerTenantRead`, which sets
+ * the user GUC (own-Worker self-read, migration 024), resolves the caller's
+ * companyId, sets the company GUC, then runs the service — all one
+ * transaction. Deliberately NOT `withTenantContext`: its
  * `Company.status === 'ACTIVE'` check would conflict with the "no
- * assignments today" UX when a customer's contract ends. New worker routes
- * that need a Worker lookup should use `resolveWorkerFromAuth` in
- * middleware/tenant-context.ts.
+ * assignments today" UX when a customer's contract ends
+ * (operational-invariants INVARIANT 2). New worker routes that need a Worker
+ * lookup should use `resolveWorkerFromAuth` in middleware/tenant-context.ts.
  *
  * @derives(WORKER_MVP_SLICE_2A_PLAN.md §1)
  * @derives(F-006b worker-shell)
@@ -33,7 +35,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireWorkerRole } from '../middleware/tenant-context.js';
+import { requireWorkerRole, withWorkerTenantRead } from '../middleware/tenant-context.js';
 import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { getWorkerToday } from '../lib/services/worker-today-service.js';
 
@@ -57,7 +59,10 @@ export async function registerWorkerTodayRoutes(app: FastifyInstance): Promise<v
       }
 
       // 15s timeout covers Railway cold-call (~5-8s observed); warm calls < 1s.
-      const result = await prisma.$transaction(
+      // RLS Option-A: both GUCs set inside the same transaction (see header).
+      const result = await withWorkerTenantRead(
+        prisma,
+        auth.userId,
         (tx) => getWorkerToday(tx, { userId: auth.userId }),
         { timeout: 15_000, maxWait: 10_000 },
       );

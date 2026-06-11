@@ -32,11 +32,11 @@ import type { Outbox, PrismaClient } from '@prisma/client';
 import type { FastifyBaseLogger } from 'fastify';
 import pino from 'pino';
 
-import { prisma } from '../lib/prisma.js';
 import { maybeResetAiSpend } from '../jobs/reset-ai-spend.js';
 import { maybeRunBindingExpireSweep } from '../jobs/binding-expire-sweep.js';
 import { maybeRunReplacementInviteExpirySweep } from '../jobs/replacement-invite-expiry-sweep.js';
 
+import { dispatcherPrisma } from './db.js';
 import { HANDLERS, REGISTERED_TOPICS } from './handlers/registry.js';
 
 /** Maximum failCount before a row is quarantined (no further attempts). */
@@ -180,6 +180,46 @@ async function markFailed(
 }
 
 /**
+ * One-time probe: the dispatcher's role MUST be able to bypass RLS
+ * (postgres superuser or a BYPASSRLS role). Under `axhy_app` every handler
+ * and sweep would SILENTLY no-op — visits stuck AWAITING_VERIFICATION, AI
+ * spend uncharged, notifications dropped (2026-06-11 RLS audit, worst
+ * finding). Definitive "role cannot bypass" → loud crash naming the fix;
+ * transient query errors → retry on the next tick, never exit.
+ */
+let rlsBypassVerified = false;
+async function ensureDispatcherRlsBypass(
+  client: PrismaClient,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  if (rlsBypassVerified) return;
+  let role = 'unknown';
+  let ok: boolean;
+  try {
+    const rows = await client.$queryRawUnsafe<Array<{ rolname: string; ok: boolean }>>(
+      `SELECT rolname, (rolsuper OR rolbypassrls) AS ok FROM pg_roles WHERE rolname = current_user`,
+    );
+    if (rows.length === 0 || rows[0] === undefined) return; // catalog oddity — retry next tick
+    role = rows[0].rolname;
+    ok = rows[0].ok;
+  } catch (err) {
+    log.error({ err }, 'dispatcher RLS-bypass probe failed — retrying next tick');
+    return;
+  }
+  if (!ok) {
+    log.fatal(
+      { role },
+      `dispatcher connected as role "${role}" which CANNOT bypass RLS — handlers and sweeps ` +
+        `would silently no-op (visits stuck, spend uncharged). Set DISPATCHER_DATABASE_URL to ` +
+        `an RLS-bypassing connection (the postgres URL) before flipping DATABASE_URL to axhy_app.`,
+    );
+    process.exit(1);
+  }
+  rlsBypassVerified = true;
+  log.info({ role }, 'dispatcher RLS-bypass probe OK');
+}
+
+/**
  * Start the long-running dispatcher loop. Returns a `stop()` function that
  * waits for the in-flight batch to complete and then stops polling.
  *
@@ -192,7 +232,7 @@ export function startDispatcher(opts?: {
 }): { stop: () => Promise<void> } {
   const intervalMs =
     opts?.pollIntervalMs ?? Number(process.env.OUTBOX_POLL_INTERVAL_MS ?? DEFAULT_POLL_INTERVAL_MS);
-  const client = opts?.client ?? prisma;
+  const client = opts?.client ?? dispatcherPrisma;
   const log =
     opts?.log ??
     (pino({
@@ -205,6 +245,9 @@ export function startDispatcher(opts?: {
 
   const tick = async (): Promise<void> => {
     if (stopped) return;
+    // RLS Option-A guard: definitive non-bypass role → loud crash; transient
+    // probe errors retry here next tick without blocking the batch below.
+    await ensureDispatcherRlsBypass(client, log);
     // Spec 2 §9.3 — daily AI spend reset, piggybacked on dispatcher tick.
     // No new cron lib; reuses long-running process. Idempotent + failure-
     // tolerant inside maybeResetAiSpend so a reset failure never breaks
@@ -254,7 +297,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     console.log(`[dispatcher] received ${signal}, draining…`);
     await handle.stop();
-    await prisma.$disconnect();
+    await dispatcherPrisma.$disconnect();
     process.exit(0);
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));

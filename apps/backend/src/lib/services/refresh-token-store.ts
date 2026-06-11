@@ -219,12 +219,39 @@ export function createRefreshTokenStore(prisma: PrismaClient): RefreshTokenStore
     async revokeForCompromise(familyId) {
       const row = await prisma.refreshToken.findUnique({ where: { id: familyId } });
       if (!row) return;
+      // RLS Option-A: Membership is FORCE-RLS and the 024 tenant_self_read
+      // policy is SELECT-only, so the tokenEpoch bump needs the company GUC.
+      // Sequence inside ONE transaction: user GUC → self-read the membership's
+      // companyId (the RefreshToken row carries its own userId) → company GUC
+      // → both writes. set_config(..., true) is transaction-local. Also fixes
+      // a pre-existing bug: a deleted membership used to throw P2025 and roll
+      // back the token revoke too — now the revoke always lands and the epoch
+      // bump is skipped only when the row is genuinely gone (a deleted
+      // membership cannot authenticate anyway).
       await prisma.$transaction(async (tx) => {
+        let membershipCompanyId: string | null = null;
+        if (row.membershipId) {
+          await tx.$executeRawUnsafe(
+            `SELECT set_config('axhy.current_user_id', $1, true)`,
+            row.userId,
+          );
+          const membership = await tx.membership.findUnique({
+            where: { id: row.membershipId },
+            select: { companyId: true },
+          });
+          membershipCompanyId = membership?.companyId ?? null;
+          if (membershipCompanyId) {
+            await tx.$executeRawUnsafe(
+              `SELECT set_config('axhy.current_company_id', $1, true)`,
+              membershipCompanyId,
+            );
+          }
+        }
         await tx.refreshToken.update({
           where: { id: familyId },
           data: { revokedAt: new Date(), revokedReason: 'COMPROMISE' },
         });
-        if (row.membershipId) {
+        if (row.membershipId && membershipCompanyId) {
           await tx.membership.update({
             where: { id: row.membershipId },
             data: { tokenEpoch: { increment: 1 } },

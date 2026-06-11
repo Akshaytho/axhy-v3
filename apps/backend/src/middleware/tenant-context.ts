@@ -352,3 +352,102 @@ export async function withUserContext<T>(
     { timeout: 30_000, maxWait: 10_000 },
   );
 }
+
+/**
+ * Parallel-preserving tenant READ client (RLS Option A).
+ *
+ * Returns a client whose every MODEL operation runs as its own 2-statement
+ * batch transaction: [ set_config('axhy.current_company_id', companyId, true),
+ * the query ]. Because each operation is an independent transaction on the
+ * connection pool, `Promise.all` fan-outs in the read services stay genuinely
+ * parallel — unlike withTenantRead, which serialises everything onto one
+ * interactive-transaction connection (the Cluster-1 latency fix on
+ * /supervisor/today went 12s → ~3s by removing exactly that serialisation).
+ *
+ * Use ONLY for read paths. There is no Company.status ACTIVE gate here
+ * (operational-invariants INVARIANT 2 — suspended companies still read their
+ * data); writes must keep going through withTenantContext.
+ *
+ * Scope caveat: the `$allModels` hook covers model delegates only. A raw
+ * `$queryRaw`/`$executeRaw` on this client would run WITHOUT the GUC and
+ * fail closed (0 rows) under axhy_app — safe direction, but if a read
+ * service ever adds raw SQL, wrap that call explicitly.
+ *
+ * The cast back to PrismaClient is sound for how callers use it: read
+ * services only touch model delegates, which the extended client implements
+ * with identical signatures; $transaction/$connect delegate to the base.
+ *
+ * Pattern source (proven + verified): Prisma's official client-extensions
+ * row-level-security example ($allModels.$allOperations + batch
+ * $transaction([set_config, query(args)])).
+ *
+ * @derives(ADR-0004)
+ * @derives(docs/locked/operational-invariants.md INVARIANT 1 + INVARIANT 2)
+ */
+export function tenantReadClient(
+  base: import('@prisma/client').PrismaClient,
+  companyId: string,
+): import('@prisma/client').PrismaClient {
+  return base.$extends({
+    query: {
+      $allModels: {
+        async $allOperations({ args, query }) {
+          const [, result] = await base.$transaction([
+            base.$executeRawUnsafe(
+              `SELECT set_config('axhy.current_company_id', $1, true)`,
+              companyId,
+            ),
+            query(args) as import('@prisma/client').Prisma.PrismaPromise<unknown>,
+          ]);
+          return result;
+        },
+      },
+    },
+  }) as unknown as import('@prisma/client').PrismaClient;
+}
+
+/**
+ * Worker read context (RLS Option A): one interactive transaction that
+ *   1. sets `axhy.current_user_id` (so the migration-024 tenant_self_read
+ *      policy returns the caller's OWN Worker row),
+ *   2. resolves the caller's companyId from that Worker row
+ *      (Worker.userId is globally @unique — at most one row, the caller's own),
+ *   3. sets `axhy.current_company_id` for the rest of the transaction,
+ *   4. runs `fn(tx)`.
+ *
+ * For worker READ routes (today/history/visit) whose services do their own
+ * Worker lookup and need Visit/Site/SiteSupervisorBinding rows — tables the
+ * self-read policy does NOT cover, so the company GUC is required under
+ * axhy_app. If the user has no active Worker row, the company GUC stays unset
+ * and the service's own lookup returns null exactly as before
+ * (NO_WORKER_PROFILE behavior preserved). Deliberately NO Company.status
+ * ACTIVE gate — a suspended company's worker must still read their own data
+ * (operational-invariants INVARIANT 2; same rationale as withTenantRead).
+ *
+ * @derives(docs/locked/operational-invariants.md INVARIANT 1 + INVARIANT 2)
+ * @derives(packages/shared-schema/prisma/migrations/20260609_024_rls_auth_self_read)
+ */
+export async function withWorkerTenantRead<T>(
+  prisma: import('@prisma/client').PrismaClient,
+  userId: string,
+  fn: (tx: import('@prisma/client').Prisma.TransactionClient) => Promise<T>,
+  opts?: { timeout?: number; maxWait?: number },
+): Promise<T> {
+  return await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT set_config('axhy.current_user_id', $1, true)`, userId);
+      const worker = await tx.worker.findUnique({
+        where: { userId },
+        select: { companyId: true },
+      });
+      if (worker) {
+        await tx.$executeRawUnsafe(
+          `SELECT set_config('axhy.current_company_id', $1, true)`,
+          worker.companyId,
+        );
+      }
+      return await fn(tx);
+    },
+    { timeout: opts?.timeout ?? 30_000, maxWait: opts?.maxWait ?? 10_000 },
+  );
+}

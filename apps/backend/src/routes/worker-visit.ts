@@ -19,8 +19,10 @@
  * column-level `@unique` index on Worker.userId (schema.prisma:188). At
  * most one active Worker exists per User globally per the anonymization
  * model (founder direction 2026-05-25), so cross-tenant leak is
- * structurally impossible. See worker-today.ts for the full rationale on
- * why `withTenantContext` is NOT used on worker reads.
+ * structurally impossible. RLS Option-A: reads run inside
+ * `withWorkerTenantRead` (user GUC + company GUC, one transaction, no
+ * ACTIVE gate). See worker-today.ts for the full rationale on why
+ * `withTenantContext` is NOT used on worker reads.
  *
  * @derives(WORKER_MVP_SLICE_2A_PLAN.md §1)
  * @derives(F-006b worker-shell)
@@ -30,7 +32,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireWorkerRole } from '../middleware/tenant-context.js';
+import { requireWorkerRole, withWorkerTenantRead } from '../middleware/tenant-context.js';
 import { consumeWorkerRateLimit } from '../lib/worker-rate-limits.js';
 import { getWorkerVisitDetail } from '../lib/services/worker-today-service.js';
 
@@ -63,7 +65,10 @@ export async function registerWorkerVisitRoutes(app: FastifyInstance): Promise<v
         }
 
         // 15s timeout covers Railway cold-call (~5-8s observed); warm calls < 1s.
-        const result = await prisma.$transaction(
+        // RLS Option-A: both GUCs set inside the same transaction (see header).
+        const result = await withWorkerTenantRead(
+          prisma,
+          auth.userId,
           (tx) => getWorkerVisitDetail(tx, { visitId, callerUserId: auth.userId }),
           { timeout: 15_000, maxWait: 10_000 },
         );

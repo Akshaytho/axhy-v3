@@ -11,7 +11,11 @@
    - **Still open from this walk:** C-C (make the server the only undo-window authority; kill the client math + "soft-flag" jargon) and C-E (word-truth copy: dev note instead of photo thumbnails on the review sheet, "notifies HR" with no notification behind it, "Dwi expired." jargon, US dates, phantom "60-sec video"). Scoped in 04-rca-and-fix.md.
 3. **Sentry wired env-gated** (ADR-0027, `a89af2f`): 5xx hook + fatal-startup capture, PII off. Inert until you set `SENTRY_DSN` on Railway — zero behavior change until then.
 4. **Backup restore drill PASSED** (`docs/ops/restore-drill-2026-06-11.md`): all 39 tables restored, row counts match prod. Runbook: pre-install the pg extensions (esp. pgvector) on the target; use pg18 binaries.
-5. **RLS Option-A is now mechanical**: a 48-file audit produced the exact 30-call-site fix list with per-site wrappers (worst find: under axhy_app the AI-verify dispatcher would SILENTLY no-op — visits stuck unverified, AI spend uncharged). The flip decision still yours; the code work is a checklist now (audit JSON preserved in the session transcript; key sites: dispatcher ai/notifications/owner-budget + 3 sweeps, refresh-token-store epoch bump, 6 supervisor read routes, 3 worker read routes, turn-embedder).
+5. **RLS Option-A is WIRED + LAB-PROVEN (you approved "wire RLS" at ~21:50 IST)**: all 30 audit sites fixed in code (`docs/done-memos/2026-06-11-rls-option-a-wiring.md`):
+   - **Dispatcher split** (the 06-09 decision, now real): new `dispatcher/db.ts` client — same singleton today, dedicated client when `DISPATCHER_DATABASE_URL` is set; ai/notifications/owner-budget handlers + all 3 sweeps ride it; a startup probe CRASHES LOUDLY if the dispatcher ever connects as a non-RLS-bypass role (the audit's silent-no-op nightmare made impossible).
+   - **6 supervisor read routes** via new `tenantReadClient` (official Prisma RLS extension — company GUC per query in its own batch tx, so the 12s→3s Cluster-1 parallelism fix is PRESERVED). **3 worker read routes** via new `withWorkerTenantRead` (user GUC → own-Worker self-read → company GUC, one tx, no ACTIVE gate). **revokeForCompromise** now bumps tokenEpoch under RLS (and no longer loses the token revoke when a membership was deleted). **turn-embedder anonymize** wrapped.
+   - **PROOF as axhy_app on a fresh prod-restore lab**: new `test/rls-option-a-routes.test.ts` 8/8 — including NEGATIVE CONTROLS showing the bare client really does return empty Today payloads / false NO_WORKER 404s (the audit bugs were real), then the wrapped paths returning the seeded data. Existing RLS suites 18/18 on the same lab. tsc + eslint clean.
+   - **Two prod gaps found during wiring** (now in your runbook below): `axhy_app` in prod is NOLOGIN with NO password, and has ZERO grants on schema `axhy_chat` — without those grants the flip breaks chat-turn embeddings.
 
 ## ☀️ MORNING READ (founder) — what happened overnight
 
@@ -29,7 +33,23 @@ You said: _"complete it, don't stop, fix everything."_ Done — everything not g
 1. **Deploy backend + admin-web** (your normal flow) — activates the branch's code-complete fixes (profile "My leave", `/help` page, and the #20 route adoption + machines once main has them). NOTE: I rotated JWT via a railway env-set which already redeployed the **backend** once (deploy `33ee65e6` SUCCESS) — but that built from the currently-connected source; a deliberate deploy from your merged main is still your call.
 2. ~~Rotate `JWT_SECRET`~~ — **DONE this session** (you authorized it): new 64-hex secret set on the `backend` Railway service; redeploy `33ee65e6` SUCCESS; login verified (OTP→200 + valid token). admin-web has no `JWT_SECRET` var, so nothing to sync there. Local `.env.local` (backend+admin-web) updated to match.
 3. ~~Apply migrations 023-030~~ — **DONE this session** (you authorized it): **022-030 applied** to prod (fresh 79M backup first at `backups/axhy-prod-20260611-1146-pre-migration.sql.gz`); migration **022 had a PG18 bug** (`min(uuid)` absent) — fixed to `array_agg[1]` and committed (`8c6d368`); `/health` 200 throughout.
-4. **RLS activation DECISION before any `DATABASE_URL` flip** — THE ONE REMAINING GATE. Migrations 023/024 put the RLS infra in place but it is **inert** because the app connects as the `postgres` superuser (bypasses RLS). Flipping to `axhy_app` needs your Option A/B choice — see `docs/findings/2026-06-10-...md` §1 (Option A: GUC-wrap the read paths + split the dispatcher; Option B: stay on postgres). **Do not flip without choosing.**
+4. **RLS ACTIVATION RUNBOOK** — you chose Option A ("wire RLS", 2026-06-11 ~21:50 IST); the code is wired + lab-proven (8/8 as axhy_app + 18/18 existing RLS suites). RLS stays **inert** until you run these steps **IN THIS ORDER** (order matters — flipping before deploying the wired code breaks prod):
+   1. **Deploy the backend from this branch's code** (your normal flow). The wired code is behavior-neutral under the current postgres connection — safe to deploy any time.
+   2. **Run this SQL on prod as postgres** (I was permission-blocked from prod role changes — these are yours):
+      ```sql
+      ALTER ROLE axhy_app LOGIN PASSWORD '<generate a strong one>';
+      GRANT USAGE ON SCHEMA axhy_chat TO axhy_app;
+      GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA axhy_chat TO axhy_app;
+      GRANT USAGE ON ALL SEQUENCES IN SCHEMA axhy_chat TO axhy_app;
+      ```
+      (Verified against the prod catalog tonight: axhy_app already has its 156 axhy-schema grants + 29 policies + 27 FORCE-RLS tables; it is missing ONLY login+password and the axhy_chat grants — without those grants the flip breaks chat-turn embeddings.)
+   3. **On the Railway backend service, set `DISPATCHER_DATABASE_URL`** = the CURRENT postgres `DATABASE_URL` value (the dispatcher keeps the RLS-bypassing connection — your 06-09 decision; its sweeps are cross-tenant by design).
+   4. **Flip `DATABASE_URL`** to the axhy_app URL (same host/db, user axhy_app + the new password).
+   5. **Smoke**: `/health` 200 → OTP login → `/supervisor/today` returns real sites (not empty) → one visit submit→AI-verify end-to-end. If logs ever show the deliberate crash "dispatcher connected as role axhy_app … CANNOT bypass RLS", step 3 was missed — that fail-fast replaces the silent no-op the audit found.
+   6. **Rollback** = revert `DATABASE_URL` to the postgres URL. One env var.
+
+   Ops note: the CLI embedding sweeps (`scripts/sweep-turn-embeddings.ts`, `scripts/backfill-turn-embeddings.ts`) are cross-tenant — keep running them with the postgres URL.
+
 5. `/mcp` reconnect for the brain Pool fix (carried from 06-09).
 
 ## Standing grants you gave overnight (recorded verbatim in docs/walks/README.md — re-confirm at customer #1)

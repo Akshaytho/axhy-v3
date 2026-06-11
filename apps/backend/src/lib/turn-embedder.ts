@@ -187,13 +187,21 @@ export async function embedTurnAsync(input: EmbedTurnInput): Promise<void> {
  * Returns the number of rows anonymized.
  */
 export async function anonymizeTurnEmbeddings(companyId: string): Promise<number> {
-  const result = await prisma.$executeRawUnsafe(
-    `UPDATE "axhy_chat"."turn_embeddings"
-        SET combined_text = '[anonymized]',
-            embedding     = $2::vector
-      WHERE company_id = $1::uuid`,
-    companyId,
-    ZERO_VECTOR_LITERAL,
-  );
+  // RLS Option-A: migration 017's tenant_isolation policy on turn_embeddings
+  // is keyed on the company GUC — a bare UPDATE under axhy_app would silently
+  // match 0 rows and the DPDP erasure would no-op. Same set_config-then-execute
+  // transaction pattern as the INSERT above (locked
+  // vector-rag-context-assembly.md §3.3).
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('axhy.current_company_id', ${companyId}, true)`;
+    return await tx.$executeRawUnsafe(
+      `UPDATE "axhy_chat"."turn_embeddings"
+          SET combined_text = '[anonymized]',
+              embedding     = $2::vector
+        WHERE company_id = $1::uuid`,
+      companyId,
+      ZERO_VECTOR_LITERAL,
+    );
+  });
   return result;
 }

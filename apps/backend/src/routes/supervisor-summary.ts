@@ -3,10 +3,10 @@
  *
  *   GET /supervisor/summary
  *     Returns the supervisor's end-of-day digest payload at request time.
- *     JWT-implicit; never accepts `companyId` from the client. `userId` is
- *     taken from `req.auth.userId` and used both for tenant scoping (via
- *     `withTenantContext`) and portfolio resolution (via
- *     `buildSummaryForSupervisor` → `getSitesSupervisedByUser`).
+ *     JWT-implicit; never accepts `companyId` from the client. RLS via
+ *     `tenantReadClient` (company GUC per query, pool parallelism kept);
+ *     portfolio resolution via `buildSummaryForSupervisor` →
+ *     `getSitesSupervisedByUser`.
  *
  * Pattern mirrors `supervisor-today.ts` — preHandler auth, tenant tx,
  * domain composition. No Zod request body (GET). Response shape is
@@ -20,7 +20,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireAuth, tenantReadClient } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { buildSummaryForSupervisor } from '../lib/services/summary-service.js';
 
@@ -36,9 +36,11 @@ export async function registerSupervisorSummaryRoutes(app: FastifyInstance): Pro
       }
 
       try {
-        // Read-path latency fix (Cluster 1, QA-walkthrough 2026-05-18):
-        // bare prisma client → genuine query parallelism via connection pool.
-        const out = await buildSummaryForSupervisor(prisma, {
+        // RLS Option-A + Cluster-1 latency fix together: tenantReadClient sets
+        // the company GUC per query in its own batch tx — the five RLS models
+        // this digest reads stay visible under axhy_app AND queries stay
+        // parallel on the connection pool.
+        const out = await buildSummaryForSupervisor(tenantReadClient(prisma, auth.companyId), {
           companyId: auth.companyId,
           userId: auth.userId,
         });

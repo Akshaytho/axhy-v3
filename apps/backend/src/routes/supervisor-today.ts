@@ -3,10 +3,9 @@
  *
  *   GET /supervisor/today
  *     Returns the supervisor's Today payload at request time. JWT-implicit;
- *     never accepts `companyId` from the client. `userId` is taken from
- *     `req.auth.userId` and used both for tenant scoping (via
- *     `withTenantContext`) and supervisor portfolio resolution (via
- *     `buildTodayForSupervisor` → `getSitesSupervisedByUser`).
+ *     never accepts `companyId` from the client. RLS via `tenantReadClient`
+ *     (company GUC per query, pool parallelism kept); supervisor portfolio
+ *     resolution via `buildTodayForSupervisor` → `getSitesSupervisedByUser`.
  *
  * Pattern mirrors `calendar.ts:278-326` — preHandler auth, tenant tx,
  * domain composition. No Zod request body (GET). Response shape is
@@ -21,7 +20,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireAuth, tenantReadClient } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { buildTodayForSupervisor } from '../lib/services/today-service.js';
 
@@ -37,16 +36,14 @@ export async function registerSupervisorTodayRoutes(app: FastifyInstance): Promi
       }
 
       try {
-        // Perf-fix (Cluster 1, QA-walkthrough 2026-05-18): read paths
-        // pass the bare `prisma` client so Promise.all queries land on
-        // separate pooled connections (genuine parallelism). The previous
-        // `withTenantContext` wrapper put everything inside one Prisma
-        // transaction, which serialises queries on a single connection
-        // and adds 1 RTT per query × Mac↔Railway distance. Result was
-        // 12s cold / 3.4s warm for /supervisor/today. Every read query
-        // already filters by `companyId` explicitly so app-level isolation
-        // is unchanged; we trade RLS-as-defense-in-depth for ~3-4× speed.
-        const out = await buildTodayForSupervisor(prisma, {
+        // Perf-fix (Cluster 1, QA-walkthrough 2026-05-18) + RLS Option-A
+        // together: `tenantReadClient` runs each query as its OWN batch
+        // transaction [set company GUC, query] on the pool, so Promise.all
+        // queries still land on separate pooled connections (the 12s→3.4s
+        // serialisation fix is preserved) AND every read passes RLS under
+        // axhy_app. Every read query also keeps its explicit `companyId`
+        // filter — app-level isolation unchanged, defense in depth restored.
+        const out = await buildTodayForSupervisor(tenantReadClient(prisma, auth.companyId), {
           companyId: auth.companyId,
           userId: auth.userId,
         });

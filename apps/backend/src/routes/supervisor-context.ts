@@ -15,7 +15,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/tenant-context.js';
+import { requireAuth, tenantReadClient } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { buildSupervisorContext } from '../lib/services/supervisor-context-service.js';
 
@@ -36,8 +36,10 @@ export async function registerSupervisorContextRoutes(app: FastifyInstance): Pro
       }
 
       try {
-        // tenant-exempt: read-only, bare prisma for parallel query dispatch.
-        const out = await buildSupervisorContext(prisma, {
+        // RLS Option-A: tenantReadClient sets the company GUC per query in its
+        // own batch tx — Assignment/SiteSupervisorBinding reads pass RLS under
+        // axhy_app while parallel query dispatch is preserved.
+        const out = await buildSupervisorContext(tenantReadClient(prisma, auth.companyId), {
           companyId: auth.companyId,
           userId: auth.userId,
         });
