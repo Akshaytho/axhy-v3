@@ -19,7 +19,10 @@ CREATE INDEX "Site_companyId_ownerHrUserId_idx" ON "axhy"."Site"("companyId", "o
 UPDATE "axhy"."Site" s
 SET "ownerHrUserId" = sole.user_id
 FROM (
-  SELECT m."companyId" AS company_id, MIN(m."userId") AS user_id
+  -- (array_agg(...))[1] not MIN(uuid): Postgres 18 has no min(uuid) aggregate,
+  -- and HAVING COUNT(*) = 1 below guarantees exactly one row per group, so the
+  -- two are equivalent here. (Fixed 2026-06-11 — original MIN errored on PG18.)
+  SELECT m."companyId" AS company_id, (array_agg(m."userId"))[1] AS user_id
   FROM "axhy"."Membership" m
   WHERE m.role = 'HR' AND m.status = 'ACTIVE'
   GROUP BY m."companyId"

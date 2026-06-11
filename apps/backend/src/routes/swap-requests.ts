@@ -26,6 +26,7 @@ import {
   type SwapDecisionOutputT,
 } from '@axhy/shared-schema';
 import type { CreateSwapRequestOutput } from '@axhy/shared-schema';
+import { swapRequest as swapRequestMachine, type SwapRequestState } from '@axhy/state-machines';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
@@ -178,7 +179,10 @@ export async function registerSwapRequestRoutes(app: FastifyInstance): Promise<v
             },
           });
           if (!swap) return { kind: 'NOT_FOUND' as const };
-          if (swap.state !== 'SENT') {
+          // Ledger #20: the SwapRequest machine is the legality authority.
+          // SENT is the only non-terminal state, so isTerminal() is equivalent
+          // to the prior `state !== 'SENT'` decidability check.
+          if (swapRequestMachine.isTerminal(swap.state as SwapRequestState)) {
             return { kind: 'ALREADY_DECIDED' as const, state: swap.state };
           }
 

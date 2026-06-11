@@ -26,6 +26,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { CreateLeaveRequestInput, LeaveDecisionInput } from '@axhy/shared-schema';
 import type { LeaveDecisionOutput } from '@axhy/shared-schema';
+import { leaveRequest as leaveRequestMachine, type LeaveRequestState } from '@axhy/state-machines';
 
 import { prisma } from '../lib/prisma.js';
 import {
@@ -263,7 +264,11 @@ export async function registerLeaveRequestRoutes(app: FastifyInstance): Promise<
         if (!leave) {
           return { kind: 'NOT_FOUND' as const };
         }
-        if (leave.state !== 'REQUESTED') {
+        // Ledger #20: the LeaveRequest machine is the single authority for
+        // legal transitions. canTransition is true only from REQUESTED, so this
+        // is equivalent to the prior `state !== 'REQUESTED'` check, now sourced
+        // from the machine.
+        if (!leaveRequestMachine.canTransition(leave.state as LeaveRequestState, newState)) {
           return { kind: 'ALREADY_DECIDED' as const, state: leave.state };
         }
 
