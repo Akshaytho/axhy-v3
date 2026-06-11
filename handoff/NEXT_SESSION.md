@@ -35,9 +35,14 @@ Prod fully open (data is fake/QA) · UI-first seeding (scripts only where no UI 
 - **#23 safe-half** — `scripts/check-default-deny.mjs` + CI `default-deny` job: build fails if any backend route lacks an auth gate and a justified `auth-exempt` marker (clean tree 40/40; mutation test caught a fake route).
 - **M2** — capture photos downscaled to 1600px JPEG 0.7 before upload (~3-5× less worker data). Live-proven: persisted photo 946×1600. Done-memos in `docs/done-memos/2026-06-11-*`.
 
+## DONE overnight — third batch
+
+- **Ledger #20 slice 1** (`c1bf5a4`) — the three missing state machines now EXIST + tested: `leave-request.ts`, `swap-request.ts`, `complaint.ts` in packages/state-machines (pure canTransition/assertTransition/isTerminal, namespaced in index). 31/31 exhaustive tests; pkg + backend tsc 0. The locked-rule "typed machine per entity" half is satisfied; states verified against the live route predicates. Done-memo: `docs/done-memos/2026-06-11-ledger-20-machines.md`.
+- **Supervisor-screens walk** code-traced phase (`affb27d`) — found 2 more orphan screens (`summary`, `updates`: built + backend-backed but zero navigation) and confirmed the worker `/help` fix also covers the supervisor drawer. Walk folder: `docs/walks/supervisor-screens/2026-06-11-1030/`. Live phase pending (it drives the paid AI-chat surface — left for founder visibility).
+
 ## Open work (carried forward, honestly scoped)
 
-- **Ledger #20** (leave/swap/complaint state machines) — LARGE locked-rule-mandated multi-file refactor; its own focused session (acute races already fixed; inline guards verified race-safe in the walk). NOT attempted overnight by design.
+- **Ledger #20 ROUTE ADOPTION** (the remaining half) — wire `assertTransition` into leave-requests.ts / swap-requests.ts / complaints.ts / chat-apply before their conditional updateMany, each with a real-DB transition test (locked-rule requirement for wired paths). Behavior-preserving refactor of already-race-safe code; the machines (slice 1) make it mechanical. Touches LIVE decision paths → best with founder visibility; its own gated slice.
 - Findings-doc launch items still open: OTA updates (expo-updates) + `/v1` API prefix before APKs ship; Sentry wiring; restore drill (backup-db.sh exists, restore untested). [C1/S1/O7/O2/C6/M2 now DONE — see above.]
 - Next walks (scoreboard: `docs/walks/README.md`): supervisor surface; then capture bad-days (kill-mid-capture, two-visits-same-time, QR-wrong-site) with a fresh visit.
 - Walk brain-ingest via `pnpm --filter @axhy/ai-tools brain:build` (ran post-`4aaca49`; re-run after `fb6f635`). Supersede rule: the next passing worker-screens walk deletes this one from the brain (folder stays in git).
