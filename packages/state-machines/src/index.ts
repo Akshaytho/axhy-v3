@@ -32,3 +32,14 @@ export type {
 export * from './calendar.js';
 export * from './assignment.js';
 export * from './conflicts.js';
+
+// Ledger #20 — LeaveRequest / SwapRequest / Complaint machines. Namespaced
+// because each exposes canTransition/assertTransition/isTerminal (same names
+// as assignment.ts). Consumers call e.g. `leaveRequest.assertTransition(...)`.
+// Types are re-exported directly (names are unique, no collision).
+export * as leaveRequest from './leave-request.js';
+export * as swapRequest from './swap-request.js';
+export * as complaint from './complaint.js';
+export type { LeaveRequestState } from './leave-request.js';
+export type { SwapRequestState } from './swap-request.js';
+export type { ComplaintState } from './complaint.js';
