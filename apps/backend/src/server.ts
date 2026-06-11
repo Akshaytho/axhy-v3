@@ -31,6 +31,7 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 
 import { startDispatcher } from './dispatcher/index.js';
+import { captureError } from './lib/sentry.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAuthRefreshRoutes } from './routes/auth-refresh.js';
 import { registerMeRoutes } from './routes/me.js';
@@ -183,6 +184,21 @@ export async function buildServer(): Promise<FastifyInstance> {
           message: `Path parameter "${key}" must be a valid UUID.`,
         });
       }
+    }
+  });
+
+  // Sentry capture is an onError HOOK, not a setErrorHandler replacement:
+  // hooks are observational, so Fastify's default error responses (shape,
+  // status, validation 400s) are untouched. Only 5xx — client errors are
+  // expected traffic, not incidents. No-op until SENTRY_DSN is set.
+  app.addHook('onError', async (req, _reply, error) => {
+    const status = (error as { statusCode?: number }).statusCode ?? 500;
+    if (status >= 500) {
+      captureError(error, {
+        route: req.routeOptions?.url ?? req.url,
+        method: req.method,
+        status,
+      });
     }
   });
 

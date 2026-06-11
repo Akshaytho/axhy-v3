@@ -6,9 +6,17 @@
  * @derives(ADR-0004)
  */
 
+import { initSentry, captureError, flushSentry } from './lib/sentry.js';
 import { startServer } from './server.js';
 
-startServer().catch((err) => {
+// Init before the server boots so default integrations catch
+// uncaughtException/unhandledRejection too. No-op without SENTRY_DSN.
+const sentryOn = initSentry();
+if (sentryOn) console.log('[axhy-backend] sentry enabled');
+
+startServer().catch(async (err) => {
   console.error('[axhy-backend] fatal startup error:', err);
+  captureError(err, { phase: 'startup' });
+  await flushSentry();
   process.exit(1);
 });
