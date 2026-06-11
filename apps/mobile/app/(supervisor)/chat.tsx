@@ -81,6 +81,7 @@ import { AmendModeBanner } from '../../components/chat/AmendModeBanner';
 import { ComplaintConfirmationBubble } from '../../components/chat/ComplaintConfirmationBubble';
 import { ClarifyChips } from '../../components/chat/ClarifyChips';
 import { sendChatMessage, type ChatAttachment, type DecisionCardData } from '../../lib/chat-api';
+import { useInvalidateDecisions } from '../../lib/queries/use-decisions';
 import { generateIdempotencyKey } from '../../lib/idempotency-key';
 import { apiFetch, isAIBudgetExceededError } from '../../lib/api';
 import { useSupervisorContextQuery } from '../../lib/queries/use-supervisor-context';
@@ -218,6 +219,7 @@ export default function ChatScreen(): JSX.Element {
   }, [initialAmendId]);
 
   // ─── Chat state ────────────────────────────────────────────────────────────
+  const invalidateDecisions = useInvalidateDecisions();
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -452,6 +454,14 @@ export default function ChatScreen(): JSX.Element {
           },
         ]);
 
+        // Walk 2026-06-11 bug #8: tab screens stay mounted, so the Decisions
+        // queue never refetched after chat created a decision — "review in
+        // Decisions" pointed at a stale "All caught up". Invalidate the queue
+        // whenever this response carries a decision card.
+        if (res.decisionCard || (res.decisionCards?.length ?? 0) > 0) {
+          void invalidateDecisions();
+        }
+
         // Amend completion: gate on the server's `didAmend` flag — the
         // backend only sets it to true when it (a) validated the amend
         // target belongs to this supervisor in this tenant and (b)
@@ -485,7 +495,7 @@ export default function ChatScreen(): JSX.Element {
         setThinking(false);
       }
     },
-    [amendTargetId, attachments, budgetCapped],
+    [amendTargetId, attachments, budgetCapped, invalidateDecisions],
   );
 
   const handleSend = useCallback(() => {

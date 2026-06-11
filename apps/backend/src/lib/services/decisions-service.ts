@@ -531,8 +531,39 @@ const supervisorDecisionSource: DecisionSource = {
       }
     }
 
+    // Walk 2026-06-11 bug #9: chat-extracted payloads carry workerId, never
+    // workerName, so every card read "Mark worker absent" with no name. One
+    // batched lookup decorates the payloads; an explicit payload.workerName
+    // (if a future writer sets one) still wins.
+    const payloadWorkerIds = [
+      ...new Set(
+        matched
+          .map((row) => ((row.payload ?? {}) as Record<string, unknown>).workerId)
+          .filter((v): v is string => typeof v === 'string'),
+      ),
+    ];
+    const workerNameById = new Map<string, string>();
+    if (payloadWorkerIds.length > 0) {
+      const workers = await tx.worker.findMany({
+        where: { companyId: ctx.companyId, id: { in: payloadWorkerIds } },
+        select: { id: true, name: true },
+      });
+      for (const w of workers) {
+        if (w.name) workerNameById.set(w.id, w.name);
+      }
+    }
+
     return matched.map((row) => {
-      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      const rawPayload = (row.payload ?? {}) as Record<string, unknown>;
+      const resolvedWorkerName =
+        typeof rawPayload.workerName === 'string'
+          ? rawPayload.workerName
+          : typeof rawPayload.workerId === 'string'
+            ? (workerNameById.get(rawPayload.workerId) ?? null)
+            : null;
+      const payload = resolvedWorkerName
+        ? { ...rawPayload, workerName: resolvedWorkerName }
+        : rawPayload;
       const tier = mapTier(row.tier);
       const section = assignSectionForTier(tier);
       const isEmployment = row.tier === 'EMPLOYMENT';
@@ -545,7 +576,7 @@ const supervisorDecisionSource: DecisionSource = {
         kind: row.kind,
         title: deriveSupervisorDecisionTitle(row.kind, payload),
         body: deriveSupervisorDecisionBody(row.kind, row.tier, payload),
-        workerName: typeof payload.workerName === 'string' ? payload.workerName : null,
+        workerName: resolvedWorkerName,
         siteName: typeof payload.siteName === 'string' ? payload.siteName : null,
         proposedAt: row.createdAt.toISOString(),
         summaryText: null,

@@ -122,8 +122,9 @@ via Railway this session (env-set + redeploy, login curl-proven before the walk)
   honest "unknown") + banner "**1 decision added — review in Decisions**".
   Evidence: `evidence/11-chat-mark-absent-decision.png`.
 - DB proof: SupervisorDecision `dcf0845c` MARK_ABSENT, OPERATIONAL, pending,
-  payload `{fields:{date 2026-06-11, workerId b0be64f7…}, sourceChatThreadId,
-sourceChatMessageId}`; ChatThread + ChatMessage rows referenced. ✓
+  payload FLAT `{date 2026-06-11, workerId b0be64f7, reason, reasonDetail}`;
+  the `{fields,…}` envelope lives in `originContext` (with sourceChatThreadId
+  - sourceChatMessageId referencing real ChatThread/ChatMessage rows). ✓
 - Verdict: AI extraction **PASS** — model parsed messy input correctly.
 
 ## Step 10 — Decisions after chat — THE BROKEN PROMISE

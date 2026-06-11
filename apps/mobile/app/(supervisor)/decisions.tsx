@@ -44,14 +44,19 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { tokens } from '@axhy/ui-tokens';
 import type { DecisionRowT, DecisionSectionT } from '@axhy/shared-schema';
 
 import { TopAppBar } from '../../components/today/TopAppBar';
 import { SectionHeader } from '../../components/decisions/SectionHeader';
 import { DecisionCard } from '../../components/decisions/DecisionCard';
-import { useDecisionsQuery, useDismissDecision } from '../../lib/queries/use-decisions';
+import {
+  DECISIONS_QUERY_KEY,
+  useDecisionsQuery,
+  useDismissDecision,
+} from '../../lib/queries/use-decisions';
 import { useLocaleStrings } from '../../lib/i18n/use-locale';
 
 // ---------------------------------------------------------------------------
@@ -91,6 +96,18 @@ export default function DecisionsScreen() {
   const q = useDecisionsQuery();
   const dismiss = useDismissDecision();
   const strings = useLocaleStrings();
+  const queryClient = useQueryClient();
+
+  // Walk 2026-06-11 bug #8: expo-router tab screens stay MOUNTED, so this
+  // query never refetched on tab switches — a decision created in Chat was
+  // invisible here until app restart. Invalidate on every tab focus so the
+  // queue is fresh each time the supervisor opens it (one ~100ms request;
+  // queryClient is a stable singleton so this runs once per focus gain).
+  useFocusEffect(
+    useCallback(() => {
+      void queryClient.invalidateQueries({ queryKey: DECISIONS_QUERY_KEY });
+    }, [queryClient]),
+  );
 
   const params = useLocalSearchParams<{
     focus?: string | string[];

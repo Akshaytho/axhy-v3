@@ -61,8 +61,35 @@ import {
   useDecisionAction,
   type DecisionActionInvocation,
 } from '../../lib/queries/use-decision-action';
+import { ApiError } from '../../lib/api';
 
 import { TierChip } from './TierChip';
+
+/**
+ * Plain-words mapping for apply/dismiss failures. Walk 2026-06-11 bug #10:
+ * the card showed "Request failed with status 400" — the server's reason
+ * (e.g. NOT_SUPERVISOR for an unrostered worker) never reached the
+ * supervisor, leaving them with no path forward.
+ */
+function humanizeActionError(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case 'NOT_SUPERVISOR':
+        return 'This worker is not on any of your site rosters, so you cannot decide this. Ask HR to assign them to a site first.';
+      case 'WORKER_NOT_FOUND':
+        return 'This worker no longer exists in your company. Dismiss this card.';
+      case 'ALREADY_APPLIED':
+        return 'Already done — this decision was applied earlier. Pull down to refresh.';
+      case 'ALREADY_DISMISSED':
+        return 'This decision was already dismissed. Pull down to refresh.';
+      case 'TIMEOUT':
+        return 'Network is slow. Check your connection and try again.';
+      default:
+        break;
+    }
+  }
+  return err instanceof Error ? err.message : 'Action failed. Pull to refresh and try again.';
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -601,9 +628,7 @@ function ServerDrivenActionsFooter({ row, faded }: ServerDrivenActionsFooterProp
       runAction.mutate(invocation, {
         onSuccess: () => resetTransientState(),
         onError: (err) => {
-          const message =
-            err instanceof Error ? err.message : 'Action failed. Pull to refresh and try again.';
-          setErrorMessage(message);
+          setErrorMessage(humanizeActionError(err));
         },
       });
     },

@@ -61,6 +61,7 @@ import {
   CircuitOpenError,
 } from '../lib/openai-circuit-breaker.js';
 import { getLivingDoc } from '../lib/living-doc.js';
+import { assertCallerSupervisesWorker } from '../lib/authorization/supervises-worker.js';
 import { formatLivingDocPrompt } from '../lib/living-doc-prompt.js';
 import { loadCalendarTier3 } from '../lib/calendar-context.js';
 import { loadCompanyRules, loadHrRules } from '../lib/policy-rules-loader.js';
@@ -1096,10 +1097,36 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
                 reason?: string;
                 reasonDetail?: string;
               };
-              const worker = await withTenantContext(prisma, auth.companyId, async (tx) =>
-                tx.worker.findFirst({ where: { id: wid, companyId: auth.companyId } }),
-              );
+              // Walk 2026-06-11 bug #10: the apply path refuses workers the
+              // caller doesn't supervise (attendance-service Q2=B), so check
+              // the SAME authz at propose time — otherwise the AI says
+              // "marked absent" and writes a decision that can never apply.
+              const proposeCheck = await withTenantContext(prisma, auth.companyId, async (tx) => {
+                const w = await tx.worker.findFirst({
+                  where: { id: wid, companyId: auth.companyId },
+                });
+                if (!w) return { worker: null, roster: null } as const;
+                const roster = await assertCallerSupervisesWorker(tx, {
+                  companyId: auth.companyId,
+                  callerUserId: auth.userId,
+                  workerId: wid,
+                });
+                return { worker: w, roster } as const;
+              });
+              const worker = proposeCheck.worker;
               if (!worker) return { output: { error: 'WORKER_NOT_FOUND' } };
+              if (proposeCheck.roster && proposeCheck.roster.kind !== 'OK') {
+                return {
+                  output: {
+                    error: 'WORKER_NOT_ON_CALLER_ROSTER',
+                    workerName: worker.name,
+                    detail:
+                      proposeCheck.roster.kind === 'FORBIDDEN'
+                        ? 'Another supervisor is responsible for this worker.'
+                        : 'This worker is not assigned to any of your sites, so you cannot mark them absent. Ask HR to add them to a site roster first.',
+                  },
+                };
+              }
               // C1: "today" default must be the IST day, not UTC — at 4 AM IST
               // the UTC date is still yesterday and "Mukesh absent today" would
               // record the wrong day (findings 2026-06-10 C1).
