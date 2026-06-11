@@ -154,13 +154,22 @@ sourceChatMessageId}`; ChatThread + ChatMessage rows referenced. ✓
   **bug #10 (CRITICAL)**.
 - Route proof (railway): POST /decisions/dcf0845c/apply → adapter inject →
   POST /chat/apply → **400** (both logged 14:45 UTC).
-- Code RCA: supervisor-decisions.ts:253 forwards `row.payload` AS `toolInput`,
-  but the chat extractor stores an ENVELOPE `{fields:{…}, capturedAt,
-sourceChatThreadId, sourceChatMessageId}` — /chat/apply's tool schema needs
-  the FLAT fields (workerId etc.) → BAD_INPUT. Chat-extracted decisions can
-  NEVER be applied from the Decisions tab. Cross-route contract drift, the
-  exact class the persona-graph audit predicts.
-- Verdict: FAIL → bugs #9, #10.
+- Code RCA — CORRECTED after curl repro (first theory was payload-envelope
+  drift; DISPROVEN — supervisor-decision-writer.ts:170 stores `payload =
+input.fields` FLAT, the envelope lives in `originContext` only):
+  repro returned **`{"error":"NOT_SUPERVISOR"}`**. Chain:
+  markAbsentService → `assertCallerSupervisesWorker` → the QA worker has
+  **zero Assignment rows** (the site honestly showed "0 of 0") →
+  `NO_PRIMARY_SITE` → `NOT_SUPERVISOR` → 400 (attendance-service.ts:87-97).
+  The authz integrity is CORRECT. The product bugs are:
+  (a) **propose/apply asymmetry** — chat.ts's propose_mark_absent branch runs
+  NO roster precheck, so the AI replies "Marked QA Worker Prod absent for
+  today." (a DONE claim for something only proposed AND destined to be
+  refused) and writes a decision that can never be applied;
+  (b) **raw error surfacing** — the card shows "Request failed with status
+  400", hiding the server's reason; the supervisor gets no path forward
+  (the real fix for THEM: assign the worker to the site roster first).
+- Verdict: FAIL → bugs #9, #10 (re-rooted).
 
 ## Step 12 — Drawer + Memory & rules + My sites
 
