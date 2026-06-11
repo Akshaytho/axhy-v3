@@ -46,6 +46,7 @@ import {
   type ComplaintKind,
   type ComplaintSeverityWaveThree,
 } from '@axhy/shared-schema';
+import { complaint as complaintMachine, type ComplaintState } from '@axhy/state-machines';
 
 import { recordAuditEvent } from '../audit-event.js';
 import { enqueueOutbox } from '../outbox.js';
@@ -236,7 +237,9 @@ export async function appendComplaintMessage(
     select: { id: true, state: true },
   });
   if (!complaint) return { kind: 'COMPLAINT_NOT_FOUND' };
-  if (complaint.state === 'RESOLVED' || complaint.state === 'DISMISSED') {
+  // Ledger #20: the Complaint machine owns terminal-state legality.
+  // isTerminal is true for exactly RESOLVED + DISMISSED.
+  if (complaintMachine.isTerminal(complaint.state as ComplaintState)) {
     return { kind: 'COMPLAINT_TERMINAL', state: complaint.state };
   }
 
@@ -403,7 +406,8 @@ export async function resolveComplaint(
     select: { id: true, state: true },
   });
   if (!complaint) return { kind: 'COMPLAINT_NOT_FOUND' };
-  if (complaint.state === 'RESOLVED' || complaint.state === 'DISMISSED') {
+  // Ledger #20: Complaint machine owns terminal-state legality (RESOLVED+DISMISSED).
+  if (complaintMachine.isTerminal(complaint.state as ComplaintState)) {
     return { kind: 'ALREADY_TERMINAL', state: complaint.state };
   }
 
