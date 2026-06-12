@@ -325,7 +325,9 @@ model Visit {
   correctionReason String?
   correctionNote   String?
 
-  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Restrict (migration 031, INVARIANT 11 "history forever"): a company with
+  /// visit history can never be hard-deleted — offboarding = status change.
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
   worker             Worker              @relation(fields: [workerId], references: [id], onDelete: Cascade)
   site               Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
   photos             VisitPhoto[]
@@ -582,7 +584,9 @@ model AuditEvent {
   dedupKey  String?
   createdAt DateTime @default(now())
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Restrict (migration 031, INVARIANT 9 "audit immutable"): matches actorId's
+  /// own "audit must persist" rule above — no deletion path may erase audit rows.
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([companyId])
   @@index([companyId, kind])
@@ -727,7 +731,9 @@ model Attendance {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Restrict (migration 031, INVARIANT 11 + DPDP archive): matches
+  /// markedBySupervisorId's "fact must persist" rule above.
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
   worker  Worker  @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
   @@unique([workerId, date])
