@@ -1,0 +1,10 @@
+# Nixpacks injects its OWN install phase (stage-0 8/12: `pnpm i --frozen-lockfile`)
+# BEFORE railway.json's buildCommand ever runs. On services that set
+# NODE_ENV=production as a variable (admin-web), that phase skips
+# devDependencies — no typescript — and every workspace package build dies
+# with "sh: 1: tsc: not found" (deployments 6d36e3b7, c47fbe94, 4de762b2).
+# Pinning the phase itself is the only repo-side fix; the buildCommand layer
+# runs too late to repair node_modules. Runtime NODE_ENV is untouched —
+# `next start` forces production mode regardless.
+[phases.install]
+cmds = ["NODE_ENV=development pnpm i --frozen-lockfile --prod=false"]
