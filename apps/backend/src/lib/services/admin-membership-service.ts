@@ -92,6 +92,36 @@ export async function adminCreateMembershipService(
       },
     });
 
+    // GAP 7 (docs/locked/security-gaps-to-fix.md:59-63) — notify every
+    // ACTIVE OWNER when an admin adds an HR/SUPERVISOR membership, in the
+    // SAME tx as the create (rollback leaves no orphan rows). Mirrors the
+    // policy-write emission in policy-service.ts:124-164, including the
+    // actor-skip: an owner adding someone is not notified about themself.
+    const owners = await tx.membership.findMany({
+      where: { companyId: input.callerCompanyId, role: 'OWNER', status: 'ACTIVE' },
+      select: { userId: true },
+    });
+    if (owners.length > 0) {
+      await tx.notification.createMany({
+        data: owners
+          .filter((m) => m.userId !== input.callerUserId)
+          .map((m) => ({
+            companyId: input.callerCompanyId,
+            audienceUserId: m.userId,
+            kind: 'membership_created',
+            channel: 'in_app_banner',
+            priority: 'STANDARD',
+            payload: {
+              membershipId: membership.id,
+              targetUserId: user.id,
+              targetRole: input.body.role,
+              createdName: input.body.name,
+              actorUserId: input.callerUserId,
+            },
+          })),
+      });
+    }
+
     return {
       kind: 'OK',
       membershipId: membership.id,
