@@ -55,7 +55,7 @@ export type PhotoAttachStripProps = {
   readonly onRetry: (id: string) => void;
 };
 
-export function PhotoAttachStrip(props: PhotoAttachStripProps): JSX.Element | null {
+export function PhotoAttachStrip(props: PhotoAttachStripProps): React.JSX.Element | null {
   if (props.attachments.length === 0) return null;
 
   return (

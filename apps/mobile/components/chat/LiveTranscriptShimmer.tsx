@@ -63,13 +63,13 @@ export type LiveTranscriptShimmerProps = {
  * Inline shimmer overlay rendered above the chat capture footer while
  * transcription is in flight. Self-cleans its animation timers on unmount.
  */
-export function LiveTranscriptShimmer(props: LiveTranscriptShimmerProps): JSX.Element {
+export function LiveTranscriptShimmer(props: LiveTranscriptShimmerProps): React.JSX.Element {
   return props.text ? <RevealMode text={props.text} words={props.words} /> : <UploadingMode />;
 }
 
 // ─── "uploading" mode ────────────────────────────────────────────────────────
 
-function UploadingMode(): JSX.Element {
+function UploadingMode(): React.JSX.Element {
   // Three dots, each one running an offset loop. Animated.Value drives
   // opacity which is one of the natively-driveable props.
   const dotOne = useRef(new Animated.Value(0.3)).current;
@@ -155,7 +155,10 @@ function buildWordAnims(text: string, words: ReadonlyArray<TranscribeWord>): Wor
   }));
 }
 
-function RevealMode(props: { text: string; words: ReadonlyArray<TranscribeWord> }): JSX.Element {
+function RevealMode(props: {
+  text: string;
+  words: ReadonlyArray<TranscribeWord>;
+}): React.JSX.Element {
   // Recompute anims when the input changes. Use a memo so animated values
   // are stable across re-renders of the same input.
   const [anims, setAnims] = useState<WordAnim[]>(() => buildWordAnims(props.text, props.words));

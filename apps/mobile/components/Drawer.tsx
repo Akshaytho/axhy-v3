@@ -229,7 +229,12 @@ export function Drawer({ open, onClose }: DrawerProps) {
 
   async function handleSignOut() {
     onClose();
-    await onAppLogout();
+    try {
+      await onAppLogout();
+    } catch {
+      // Best-effort — even if logout cleanup errors we still navigate to auth;
+      // the cold-start gate defensively re-runs logout on bad tokens.
+    }
     router.replace('/(auth)/phone');
   }
 

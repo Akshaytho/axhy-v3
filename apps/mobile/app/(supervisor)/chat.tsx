@@ -198,7 +198,7 @@ function readClarifyCard(
 }
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
-export default function ChatScreen(): JSX.Element {
+export default function ChatScreen(): React.JSX.Element {
   const strings = useLocaleStrings();
   const localeCode = useLocaleCode();
 

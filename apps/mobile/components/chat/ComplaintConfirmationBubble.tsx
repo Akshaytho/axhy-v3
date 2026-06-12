@@ -42,7 +42,9 @@ export type ComplaintConfirmationBubbleProps = {
   readonly onOpenThread: (complaintId: string) => void;
 };
 
-export function ComplaintConfirmationBubble(props: ComplaintConfirmationBubbleProps): JSX.Element {
+export function ComplaintConfirmationBubble(
+  props: ComplaintConfirmationBubbleProps,
+): React.JSX.Element {
   return (
     <View style={s.root} accessibilityLabel={props.summary}>
       <View style={s.iconWrap}>

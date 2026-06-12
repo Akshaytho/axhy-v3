@@ -30,7 +30,7 @@ export type AmendModeBannerProps = {
   readonly onDismiss: () => void;
 };
 
-export function AmendModeBanner(props: AmendModeBannerProps): JSX.Element {
+export function AmendModeBanner(props: AmendModeBannerProps): React.JSX.Element {
   return (
     <View
       style={s.root}

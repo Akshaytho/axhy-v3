@@ -355,7 +355,7 @@ const modal = StyleSheet.create({
  * Per founder lock 2026-05-18 PM: "all things on side bar should be
  * working as expected" — every drawer screen must expose the drawer.
  */
-function MenuButton(): JSX.Element {
+function MenuButton(): React.JSX.Element {
   const { openDrawer } = useDrawer();
   return (
     <TouchableOpacity
@@ -432,7 +432,12 @@ export default function ProfileScreen() {
 
   // ── Sign-out ────────────────────────────────────────────────────────────────
   async function handleSignOut() {
-    await onAppLogout();
+    try {
+      await onAppLogout();
+    } catch {
+      // Best-effort — even if logout cleanup errors we still navigate to auth;
+      // the cold-start gate defensively re-runs logout on bad tokens.
+    }
     router.replace('/(auth)/phone');
   }
 

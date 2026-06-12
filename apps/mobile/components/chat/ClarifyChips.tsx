@@ -36,7 +36,7 @@ export type ClarifyChipsProps = {
   readonly onSelect: (option: string) => void;
 };
 
-export function ClarifyChips(props: ClarifyChipsProps): JSX.Element {
+export function ClarifyChips(props: ClarifyChipsProps): React.JSX.Element {
   const [selected, setSelected] = useState<string | null>(null);
 
   const handle = (option: string): void => {
