@@ -47,7 +47,15 @@ const REJECT_PHRASE = 'REJECT';
 export function FlaggedReviewSheet({ visit, onClose }: FlaggedReviewSheetProps) {
   const strings = useLocaleStrings();
   const visible = visit !== null;
-  const when = visit ? new Date(visit.when).toLocaleString() : '';
+  const when = visit
+    ? new Date(visit.when).toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
   const [screen, setScreen] = useState<SheetScreen>('REVIEW');
   const [resolveReason, setResolveReason] = useState('');
@@ -210,8 +218,10 @@ function ReviewScreen({
 
       <View style={s.photoStrip}>
         <View style={s.photoTile}>
-          <Text style={s.photoLabel}>{visit?.photoCount ?? 0} photos</Text>
-          <Text style={s.photoHint}>Inline thumbnails ship with the photo CDN slice.</Text>
+          <Text style={s.photoLabel}>{visit?.photoCount ?? 0} photos captured</Text>
+          <Text style={s.photoHint}>
+            Not shown in the app yet — judge from the AI&apos;s reason below.
+          </Text>
         </View>
       </View>
 
@@ -373,8 +383,8 @@ function ConfirmRejectScreen({
       <Text style={s.eyebrowDanger}>REJECT FLAGGED VISIT</Text>
       <Text style={s.title}>Reject this visit?</Text>
       <Text style={s.subtitle}>
-        {workerName} at {siteName} — moves the visit to REJECTED and notifies HR. This cannot be
-        undone from this screen.
+        {workerName} at {siteName} — moves the visit to REJECTED and records it in the audit trail.
+        This cannot be undone from this screen.
       </Text>
 
       <Text style={s.fieldLabel}>Why are you rejecting?</Text>

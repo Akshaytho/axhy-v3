@@ -117,7 +117,7 @@ function buildDrawerItems(
     { icon: 'map', label: 'My sites', sub: null },
     { icon: 'globe', label: 'Language', sub: 'English · हिन्दी · తెలుగు' },
     { icon: 'bell', label: 'Notifications', sub: 'Push · WhatsApp · Email' },
-    { icon: 'help-circle', label: 'How to use Axhy', sub: '60-sec video · examples' },
+    { icon: 'help-circle', label: 'How to use Axhy', sub: 'Quick guide' },
     { icon: 'pause', label: 'Temporary mode', sub: null },
     { icon: 'log-out', label: 'Sign out', sub: null },
   ];

@@ -41,3 +41,20 @@
   2. Backend: `softFlagActivity` returns WINDOW_OPEN only when the kind IS reversible (non-reversible kinds may go to HR anytime — it is their only path); fix the lying comment.
   3. Backend copy: reverse route :94 → "The 30-minute undo window has passed. Send it to HR for review instead."; soft-flag route :196 → "This can still be undone directly — use Reverse."
   4. Tests: real-DB cases for (non-reversible kind, in-window soft-flag → OK) and (reversible kind, in-window soft-flag → WINDOW_OPEN); then live emulator re-walk of the REVERSE bad-day.
+
+## RESOLUTION — 2026-06-12 (C-C + C-E done)
+
+**C-C — server is now the sole reverse-window authority.**
+
+- **Backend** (`activity-reverse-service.ts`): `softFlagActivity` rejects `WINDOW_OPEN` only when `isReversibleActivityKind(source.kind)` — a non-reversible kind is accepted at any time (HR is its only path), closing the both-walls-422 dead end. The lying doc-comment (≈:443) is replaced with the accurate kind-aware rule. Route copy de-jargoned: reverse `WINDOW_CLOSED` → "The 30-minute undo window has passed. Send it to HR for review instead."; soft-flag `WINDOW_OPEN` → "This can still be undone directly — use Reverse." **Proven:** new real-DB case in `test/activity-reverse-regression.test.ts` (non-reversible `SITE_COMPLAINT_LOGGED` in-window: `/reverse`→422 `KIND_NOT_REVERSIBLE` AND, before the fix, `/soft-flag`→422 `WINDOW_OPEN`; after the fix `/soft-flag`→200 with a `LATE_REVERSAL_REQUEST` row). Suite 1/1 green against `DATABASE_PUBLIC_URL`; §8 reversible-in-window→`WINDOW_OPEN` still asserted (no regression). Decision check: the 2026-05-18 sprint-2 audit called the `WINDOW_OPEN` rejection "intentional," but its reasoning assumed `/reverse` is the alternative — which only exists for reversible kinds; the fix preserves that intent and only fills the non-reversible gap.
+- **Mobile** (`app/(supervisor)/activity.tsx`): deleted `isWithinReverseWindow` (the timezone-naive `Date.now()-new Date(iso)` math that false-closed the window on IST devices). Reverse routes on KIND only — reversible → `ReverseConfirmModal` (and on a server `WINDOW_CLOSED` it auto-opens the HR sheet for the same row via the `ApiError.code` branch); non-reversible → HR sheet directly. `SoftFlagConfirmModal` copy parameterized by `reason` ('window-closed' vs 'needs-hr') so it never claims "window closed" for a kind that has no window. Drawer Reverse button no longer time-greyed. Stale doc-comments corrected. **Proven live** (re-walk 2026-06-12, evidence/rewalk-2026-06-12): always-active Reverse + the honest "can't be undone directly" HR sheet.
+
+**C-E — word-truth pass.**
+
+- `FlaggedReviewSheet.tsx`: dev note "Inline thumbnails ship with the photo CDN slice." → "{n} photos captured / Not shown in the app yet — judge from the AI's reason below."; false "and notifies HR" → "and records it in the audit trail" (grep-verified: reject path writes only the `VISIT_REJECTED` audit, no outbox/Notification); `when` date → `toLocaleString('en-IN', …)` (was US `m/d/y`).
+- `audit-summary.ts`: added `DWI_EXPIRED` case → "A proposed decision expired unanswered after 48 hours." (was the generic humanizer's "Dwi expired." jargon).
+- `Drawer.tsx`: "How to use Axhy" sub "60-sec video · examples" → "Quick guide" (the /help page has no video). **Proven live** (evidence/rewalk-2026-06-12/03).
+
+**Deploy-gated:** the backend halves (soft-flag gate, route copy, DWI humanizer) run on prod and activate at the founder's next backend deploy from this branch; they are proven by the real-DB regression suite, not yet by a prod walk. **Live-verification deferred (honest):** FlaggedReviewSheet copy (no flagged visit in QA data) and the reversible-in-window ReverseConfirmModal path (QA worker has no roster) — see 05-rewalk-proof.md.
+
+**C-A2** (orphan `summary`/`updates` screens) remains the one open product decision for the founder (placement) — unchanged from 06-verdict.

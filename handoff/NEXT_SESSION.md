@@ -1,6 +1,17 @@
 # Next Session
 
-**Last updated:** 2026-06-11 21:30 IST · **Branch:** `chore/handoff-late-2026-05-31` — **PUSHED to origin** (through `b225a50`). Main merges remain founder-owned.
+**Last updated:** 2026-06-12 10:30 IST · **Branch:** `chore/handoff-late-2026-05-31`. Main merges remain founder-owned.
+
+## ☀️ 2026-06-12 — supervisor walk's last two roots CLOSED (C-C + C-E)
+
+The supervisor walk had three roots left open after the evening of 06-11: C-D was already fixed (`b225a50`); **C-C and C-E are now done this session.** Details in `docs/done-memos/2026-06-12-cc-ce-supervisor-walk-fixes.md` and the RESOLUTION section of `docs/walks/supervisor-screens/2026-06-11-1030/04-rca-and-fix.md`.
+
+1. **C-C — the server is the sole authority on the 30-min reverse window** (the worst remaining BLOCKER, #6/#7). The client used timezone-naive math that false-closed the window on IST devices, then offered a path the server refused — a dead-end loop; scouting found it was worse (a non-reversible kind in-window had NO path: both `/reverse` and `/soft-flag` returned 422).
+   - **Backend** (`activity-reverse-service.ts` + route `activity.ts`): `softFlagActivity` rejects `WINDOW_OPEN` only for reversible kinds; a non-reversible kind reaches HR anytime (its only path). De-jargoned the reverse/soft-flag copy; fixed the lying doc-comment. **Proven: real-DB regression `activity-reverse-regression.test.ts` 1/1** (new non-reversible-in-window→200 case + the reversible-in-window→422 no-regression check) against `DATABASE_PUBLIC_URL`.
+   - **Mobile** (`app/(supervisor)/activity.tsx`): deleted the client window math; Reverse routes on KIND only and falls back to the HR sheet on a server `WINDOW_CLOSED`; HR-sheet copy parameterized by reason so it never says "window closed" for a kind that has no window. **Live re-walked** (`evidence/rewalk-2026-06-12/`): Reverse always-active + the honest "can't be undone directly" HR sheet.
+2. **C-E — word-truth pass:** FlaggedReviewSheet (dev-note photo hint → honest; false "notifies HR" → "records it in the audit trail", grep-verified; US date → en-IN); `audit-summary.ts` DWI_EXPIRED → "A proposed decision expired unanswered after 48 hours." (was "Dwi expired."); Drawer "60-sec video" → "Quick guide" (live-proven).
+3. **Honest boundaries:** the backend halves activate on your next deploy (proven by the regression test, not yet a prod walk). FlaggedReviewSheet copy + the reversible-in-window ReverseConfirmModal path are code-complete + tsc-clean but NOT live-screenshotted this session — no flagged visit and no rostered worker in current QA data (data boundary, not a defect). `tsc --noEmit` EXIT 0 both apps.
+4. **Only C-A2 remains** from this walk: the orphan `summary` + `updates` supervisor screens (built + backend-backed, zero navigation) — a founder placement decision, recorded in 06-verdict. Not wired silently.
 
 ## 🌙 EVENING UPDATE (2026-06-11) — supervisor walk DONE; 3 BLOCKERs found, the worst root already fixed + live-proven
 

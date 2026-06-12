@@ -9,11 +9,13 @@
  *       422 KIND_NOT_REVERSIBLE for kinds outside the reversible set.
  *
  *   POST /activity/:id/soft-flag
- *       Beyond the 30-minute window: create a LATE_REVERSAL_REQUEST
- *       SupervisorDecision row that HR will surface in the HR portal
- *       (once it lands). Body: `{ note?: string | null }`. Idempotency-Key
- *       supported. Rejects requests inside the window with 422 WINDOW_OPEN
- *       so the supervisor uses Reverse when they CAN.
+ *       Create a LATE_REVERSAL_REQUEST SupervisorDecision row that HR will
+ *       surface in the HR portal (once it lands). Body: `{ note?: string |
+ *       null }`. Idempotency-Key supported. Window rule is kind-aware: a
+ *       REVERSIBLE kind inside the 30-min window is rejected with 422
+ *       WINDOW_OPEN so the supervisor uses Reverse when they CAN; a
+ *       non-reversible kind (no direct undo) is accepted at any time, since
+ *       HR review is its only path.
  *
  * Both routes require role=SUPERVISOR. Cross-tenant attempts return 404.
  * Self-only — the caller must be the originating supervisor on the source
@@ -91,7 +93,7 @@ export async function registerActivityRoutes(app: FastifyInstance): Promise<void
               status: 422,
               body: {
                 error: 'WINDOW_CLOSED',
-                message: 'Reversal window has closed. Use soft-flag to request HR review.',
+                message: 'The 30-minute undo window has passed. Send it to HR for review instead.',
                 windowMs: out.windowMs,
                 elapsedMs: out.elapsedMs,
               },
@@ -192,7 +194,7 @@ export async function registerActivityRoutes(app: FastifyInstance): Promise<void
               status: 422,
               body: {
                 error: 'WINDOW_OPEN',
-                message: 'Reversal window is still open; use Reverse instead of soft-flag.',
+                message: 'This can still be undone directly — use Reverse.',
                 windowMs: out.windowMs,
                 elapsedMs: out.elapsedMs,
               },

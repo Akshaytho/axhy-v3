@@ -440,19 +440,19 @@ export async function reverseActivity(
  * Same authorization story as Reverse: caller must be the originating
  * supervisor (AuditEvent.actorId match).
  *
- * NOTE: the route allows soft-flag from inside the window TOO — the
- * supervisor may genuinely want HR review on a fresh action (e.g., "I
- * marked Ravi absent but his wife just called — please reverse and
- * mark approved leave"). In that case Window state is OPEN; we still
- * accept the request and emit the decision. The product UX greys the
- * soft-flag button while reverse is the primary CTA, but the API
- * remains permissive.
- *
- * UPDATE on review: per the plan §3 Wave 4 lock — "Beyond 30 min →
- * button currently greys with text 'Window closed — soft-flag for HR'".
- * The window-closed path is the canonical soft-flag entry. The window-
- * open path is rejected (WINDOW_OPEN → 422) so the supervisor uses
- * Reverse when they CAN. HR queue stays focused on cases that need it.
+ * Window rule (kind-aware):
+ *   - REVERSIBLE kind, INSIDE the 30-min window → reject WINDOW_OPEN (422).
+ *     The supervisor should use Reverse while they still can; pushing a
+ *     reversible action to HR would clutter the queue (2026-05-18 §3 Wave 4
+ *     lock — "use Reverse when you CAN, HR queue stays focused").
+ *   - NON-reversible kind → accept at any time (window open OR closed). Such
+ *     a kind has no direct undo, so HR review is its ONLY path. Before this
+ *     gate existed, a non-reversible kind inside the window dead-ended on
+ *     BOTH routes: /reverse → KIND_NOT_REVERSIBLE and /soft-flag →
+ *     WINDOW_OPEN, leaving the supervisor stuck (C-C, supervisor walk
+ *     2026-06-11).
+ *   - Any kind, PAST the window → accept. Late reversal review is exactly
+ *     what the HR queue is for.
  */
 export async function softFlagActivity(
   tx: Prisma.TransactionClient,
@@ -467,8 +467,12 @@ export async function softFlagActivity(
   if (!source) return { kind: 'AUDIT_NOT_FOUND' };
   if (source.actorId !== input.supervisorUserId) return { kind: 'NOT_OWN_EVENT' };
 
+  // Only a REVERSIBLE kind is blocked while the window is open — it should
+  // be Reversed instead. A non-reversible kind has no direct undo, so HR is
+  // its only path and we accept it regardless of the window (see the
+  // kind-aware window rule in the doc-comment above).
   const elapsedMs = now.getTime() - source.createdAt.getTime();
-  if (elapsedMs < ACTIVITY_REVERSE_WINDOW_MS) {
+  if (isReversibleActivityKind(source.kind) && elapsedMs < ACTIVITY_REVERSE_WINDOW_MS) {
     return { kind: 'WINDOW_OPEN', windowMs: ACTIVITY_REVERSE_WINDOW_MS, elapsedMs };
   }
 

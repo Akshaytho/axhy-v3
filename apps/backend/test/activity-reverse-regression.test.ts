@@ -338,6 +338,67 @@ describe('Wave 4 — POST /activity/:id/{reverse,soft-flag} regression', () => {
         expect(softOpen.statusCode).toBe(422);
         expect((softOpen.json() as { error: string }).error).toBe('WINDOW_OPEN');
 
+        // ── 8b. C-C dead-end fix (walk 2026-06-11): a NON-reversible kind
+        //      INSIDE the window must have a path. Before the fix it hit a
+        //      wall on BOTH endpoints — /reverse → 422 KIND_NOT_REVERSIBLE
+        //      AND /soft-flag → 422 WINDOW_OPEN — leaving the supervisor with
+        //      no way to escalate. HR review is the ONLY path for a kind that
+        //      has no direct undo, so soft-flag must accept it regardless of
+        //      the window. (Reversible kinds keep the WINDOW_OPEN rejection —
+        //      proven by §8 above — so they use Reverse while they can.)
+        const inWindowComplaint = await prisma.auditEvent.create({
+          data: {
+            companyId: tenantA.companyId,
+            kind: 'SITE_COMPLAINT_LOGGED', // not in REVERSIBLE_ACTIVITY_KINDS
+            actorId: supA.userId,
+            targetId: site.id,
+            payload: { note: 'gate left unlocked' },
+            createdAt: new Date(Date.now() - 2 * 60 * 1000), // 2 min ago — in window
+          },
+        });
+
+        // Wall 1 — /reverse refuses a non-reversible kind (no direct undo).
+        const ccReverse = await app.inject({
+          method: 'POST',
+          url: `/activity/${inWindowComplaint.id}/reverse`,
+          headers: { authorization: `Bearer ${supA.accessToken}` },
+          payload: {},
+        });
+        expect(ccReverse.statusCode).toBe(422);
+        expect((ccReverse.json() as { error: string }).error).toBe('KIND_NOT_REVERSIBLE');
+
+        // Wall 2 (now a door) — /soft-flag accepts it even though the window
+        // is open, because HR is the only path for this kind.
+        const ccSoft = await app.inject({
+          method: 'POST',
+          url: `/activity/${inWindowComplaint.id}/soft-flag`,
+          headers: {
+            authorization: `Bearer ${supA.accessToken}`,
+            'Idempotency-Key': `cc-soft-${inWindowComplaint.id}-1`,
+          },
+          payload: { note: 'Please review — logged in error.' },
+        });
+        expect(ccSoft.statusCode).toBe(200);
+        const ccSoftBody = ccSoft.json() as {
+          ok: true;
+          decisionId: string;
+          sourceAuditEventId: string;
+          sourceKind: string;
+        };
+        expect(ccSoftBody.sourceAuditEventId).toBe(inWindowComplaint.id);
+        expect(ccSoftBody.sourceKind).toBe('SITE_COMPLAINT_LOGGED');
+
+        // The HR-review decision row really exists with the right shape.
+        const ccDecision = await prisma.supervisorDecision.findUniqueOrThrow({
+          where: { id: ccSoftBody.decisionId },
+        });
+        expect(ccDecision.kind).toBe('LATE_REVERSAL_REQUEST');
+        expect(ccDecision.tier).toBe('OPERATIONAL');
+        expect(ccDecision.targetId).toBe(inWindowComplaint.id);
+        expect((ccDecision.payload as Record<string, unknown>).sourceKind).toBe(
+          'SITE_COMPLAINT_LOGGED',
+        );
+
         // ── 9. Bad input (extra unknown key) → 400 ─────────────────────
         const badInput = await app.inject({
           method: 'POST',

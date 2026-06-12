@@ -7,16 +7,18 @@
  *
  * Tapping a row expands an action drawer with two buttons:
  *   - Share to WhatsApp — opens wa.me deeplink with composed message text.
- *   - Reverse — enabled within 30 min; beyond that, greyed + "Window closed".
+ *   - Reverse — always tappable; the server decides if the window is open.
  *
- * Reverse flow (Wave 4 compliance, 2026-05-18):
- *   - Within the 30-min window  → typed-phrase ("REVERSE") confirmation
- *     sheet → POST /activity/:id/reverse. Backend dispatches per-kind
- *     compensating writer (ATTENDANCE_REVERSED, LEAVE_REVERSED, …).
- *   - Beyond the window         → plain confirmation sheet "Send to HR for
- *     review?" → POST /activity/:id/soft-flag. Backend creates a
- *     LATE_REVERSAL_REQUEST SupervisorDecision row HR will surface in the
- *     HR portal once it lands.
+ * Reverse flow (Wave 4 compliance, 2026-05-18; server-authority C-C 2026-06-11):
+ *   - Reversible kind → typed-phrase ("REVERSE") confirmation sheet → POST
+ *     /activity/:id/reverse. Backend dispatches the per-kind compensating
+ *     writer (ATTENDANCE_REVERSED, LEAVE_REVERSED, …). If the backend answers
+ *     WINDOW_CLOSED, the client hands off to the HR sheet for the same row.
+ *   - Non-reversible kind → plain "Send to HR for review?" sheet → POST
+ *     /activity/:id/soft-flag. Backend creates a LATE_REVERSAL_REQUEST
+ *     SupervisorDecision row HR will surface in the HR portal once it lands.
+ *   The client no longer computes the 30-min window (timezone-naive math used
+ *   to false-close it on IST devices); the server is the sole authority.
  *
  * Filter chips are wired to the backend: tapping any chip updates the
  * query key + URL params, triggering a TanStack Query refetch for the
@@ -53,6 +55,7 @@ import type { ActivityRowT } from '@axhy/shared-schema';
 import { isReversibleActivityKind } from '@axhy/shared-schema';
 
 import { TopAppBar } from '../../components/today/TopAppBar';
+import { ApiError } from '../../lib/api';
 import { useActivityQuery } from '../../lib/queries/use-activity';
 import { useTodayQuery } from '../../lib/queries/use-today';
 import { useReverseActivity, useSoftFlagActivity } from '../../lib/queries/use-activity-reverse';
@@ -104,13 +107,16 @@ function formatHHMM(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Reverse-window helper
+// Soft-flag (HR-review) sheet — why the supervisor landed there
 // ---------------------------------------------------------------------------
 
-/** Returns true when the row is within the 30-minute reversal window. */
-function isWithinReverseWindow(isoWhen: string): boolean {
-  return Date.now() - new Date(isoWhen).getTime() < 30 * 60 * 1000;
-}
+/**
+ * Why the HR-review sheet opened. The server is the sole authority on the
+ * 30-min window, so the client never decides "window closed" itself — it
+ * either knows the kind has no direct undo, or it heard WINDOW_CLOSED back
+ * from the reverse attempt. The reason drives honest sheet copy.
+ */
+type SoftFlagReason = 'window-closed' | 'needs-hr';
 
 // ---------------------------------------------------------------------------
 // WhatsApp share helper
@@ -191,18 +197,20 @@ const chipS = StyleSheet.create({
 
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 type ActionDrawerProps = {
-  row: ActivityRowT;
   onSharePress: () => void;
   onReversePress: () => void;
 };
 
 /**
- * Two-button drawer that appears below an expanded activity row.
- * Share is always active; Reverse is greyed when the 30-min window has closed.
+ * Two-button drawer that appears below an expanded activity row. Both
+ * buttons are always active. The server is the sole authority on whether a
+ * reverse is still allowed, so the client never greys Reverse on its own —
+ * timezone-naive client math used to false-grey it and dead-end the
+ * supervisor (C-C, supervisor walk 2026-06-11). Tapping Reverse routes to
+ * the right sheet by kind, and falls back to the HR sheet if the server
+ * says the window has closed (see handleReverse / submitReverse).
  */
-function ActionDrawer({ row, onSharePress, onReversePress }: ActionDrawerProps) {
-  const canReverse = isWithinReverseWindow(row.when);
-
+function ActionDrawer({ onSharePress, onReversePress }: ActionDrawerProps) {
   return (
     <View style={drawerS.container}>
       {/* Share to WhatsApp */}
@@ -218,34 +226,16 @@ function ActionDrawer({ row, onSharePress, onReversePress }: ActionDrawerProps) 
 
       <View style={drawerS.divider} />
 
-      {/* Reverse */}
+      {/* Reverse — always active; the backend decides if the window is open */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={canReverse ? 'Reverse this action' : 'Reverse window closed'}
+        accessibilityLabel="Reverse this action"
         onPress={onReversePress}
-        style={({ pressed }) => [
-          drawerS.btn,
-          pressed && drawerS.btnPressed,
-          !canReverse && drawerS.btnDisabled,
-        ]}
+        style={({ pressed }) => [drawerS.btn, pressed && drawerS.btnPressed]}
       >
-        <Feather
-          name="rotate-ccw"
-          size={13}
-          color={canReverse ? tokens.color.semantic.warn : tokens.color.ink.placeholder}
-        />
+        <Feather name="rotate-ccw" size={13} color={tokens.color.semantic.warn} />
         <View style={drawerS.reverseLabelWrap}>
-          <Text
-            style={[
-              drawerS.btnLabel,
-              canReverse ? drawerS.reverseLabelActive : drawerS.reverseLabelDisabled,
-            ]}
-          >
-            REVERSE
-          </Text>
-          {!canReverse && (
-            <Text style={drawerS.reverseSubtext}>Window closed · soft-flag for HR</Text>
-          )}
+          <Text style={[drawerS.btnLabel, drawerS.reverseLabelActive]}>REVERSE</Text>
         </View>
       </Pressable>
     </View>
@@ -270,9 +260,6 @@ const drawerS = StyleSheet.create({
   btnPressed: {
     opacity: 0.65,
   },
-  btnDisabled: {
-    opacity: 0.6,
-  },
   btnLabel: {
     fontSize: 11,
     fontWeight: String(tokens.weight.semibold) as '600',
@@ -284,15 +271,6 @@ const drawerS = StyleSheet.create({
   },
   reverseLabelActive: {
     color: tokens.color.semantic.warn,
-  },
-  reverseLabelDisabled: {
-    color: tokens.color.ink.placeholder,
-  },
-  reverseSubtext: {
-    fontSize: 9,
-    color: tokens.color.ink.placeholder,
-    marginTop: 1,
-    fontFamily: tokens.font.mono,
   },
   divider: {
     width: 1,
@@ -368,7 +346,7 @@ const EventRow = memo(function EventRow({
         </View>
       </Pressable>
 
-      {expanded && <ActionDrawer row={row} onSharePress={onShare} onReversePress={onReverse} />}
+      {expanded && <ActionDrawer onSharePress={onShare} onReversePress={onReverse} />}
     </View>
   );
 });
@@ -566,6 +544,7 @@ function ReverseConfirmModal({
 /** @derives(ADR-0003) @derives(master-plan §G) — supervisor surface */
 type SoftFlagConfirmModalProps = {
   row: ActivityRowT | null;
+  reason: SoftFlagReason;
   isPending: boolean;
   error: string | null;
   onClose: () => void;
@@ -573,12 +552,15 @@ type SoftFlagConfirmModalProps = {
 };
 
 /**
- * Plain confirmation sheet for the beyond-window soft-flag action.
- * Optional free-form note is forwarded to HR. No typed-phrase guard —
- * soft-flag is non-destructive (just creates an HR-review row).
+ * Plain confirmation sheet for the HR-review (soft-flag) action. Optional
+ * free-form note is forwarded to HR. No typed-phrase guard — soft-flag is
+ * non-destructive (just creates an HR-review row). Copy is parameterized by
+ * `reason` so the sheet never claims "window closed" when the real reason is
+ * a kind that has no direct undo at all (C-C, supervisor walk 2026-06-11).
  */
 function SoftFlagConfirmModal({
   row,
+  reason,
   isPending,
   error,
   onClose,
@@ -602,6 +584,14 @@ function SoftFlagConfirmModal({
 
   const summary = row?.summary ?? '';
 
+  // Honest copy per arrival reason — the server, not the client, decided the
+  // window was closed; for a non-reversible kind there was never a window.
+  const eyebrow = reason === 'window-closed' ? 'WINDOW CLOSED · HR REVIEW' : 'HR REVIEW';
+  const explainer =
+    reason === 'window-closed'
+      ? 'The 30-minute undo window has passed. HR will see this in their queue and decide whether to apply the reversal.'
+      : "This kind of action can't be undone directly. HR will see this in their queue and decide what to do.";
+
   return (
     <Modal
       visible={row !== null}
@@ -617,13 +607,10 @@ function SoftFlagConfirmModal({
             /* absorb tap */
           }}
         >
-          <Text style={modalS.eyebrowWarn}>WINDOW CLOSED · HR REVIEW</Text>
+          <Text style={modalS.eyebrowWarn}>{eyebrow}</Text>
           <Text style={modalS.title}>Send to HR for review?</Text>
           <Text style={modalS.body}>{summary}</Text>
-          <Text style={modalS.bodyMuted}>
-            The 30-minute reversal window has closed. HR will see this request in their queue and
-            decide whether to apply the reversal.
-          </Text>
+          <Text style={modalS.bodyMuted}>{explainer}</Text>
 
           <Text style={modalS.fieldLabel}>Optional note for HR</Text>
           <TextInput
@@ -862,10 +849,10 @@ const KIND_CHIP_TO_PARAM: Record<KindChip, string> = {
  *
  * Row tap → expand action drawer (Share to WhatsApp + Reverse).
  * Share taps open a WhatsApp deeplink with composed message text.
- * Reverse taps route to one of two confirmation modals based on the
- * row's age + kind:
- *   - in-window + reversible kind   → ReverseConfirmModal (typed-phrase)
- *   - past-window or non-reversible → SoftFlagConfirmModal (plain confirm)
+ * Reverse taps route by KIND (the server owns the window):
+ *   - reversible kind     → ReverseConfirmModal (typed-phrase); falls back
+ *                           to the HR sheet if the server says WINDOW_CLOSED
+ *   - non-reversible kind → SoftFlagConfirmModal (HR review, its only path)
  *
  * Filter chips are fully wired to the backend via `useActivityQuery`.
  *
@@ -921,6 +908,9 @@ export default function ActivityScreen() {
   const [reverseRow, setReverseRow] = useState<ActivityRowT | null>(null);
   // Soft-flag modal — holds the row whose HR-review confirm sheet is open.
   const [softFlagRow, setSoftFlagRow] = useState<ActivityRowT | null>(null);
+  // Why the HR sheet opened — drives its copy. Always set before the sheet
+  // is shown (kind-needs-HR at route time, or window-closed on reverse error).
+  const [softFlagReason, setSoftFlagReason] = useState<SoftFlagReason>('window-closed');
 
   const reverseMutation = useReverseActivity();
   const softFlagMutation = useSoftFlagActivity();
@@ -947,23 +937,19 @@ export default function ActivityScreen() {
   }, []);
 
   /**
-   * Routes a Reverse tap to the right confirmation modal.
-   *
-   * Decision matrix:
-   *   - Row is within the 30-min window AND its kind is in
-   *     REVERSIBLE_ACTIVITY_KINDS                       → ReverseConfirmModal
-   *   - Otherwise (past window OR non-reversible kind)  → SoftFlagConfirmModal
-   *
-   * The backend enforces the same window + kind gates; this routing is
-   * purely a UX optimisation so the supervisor sees the right copy from
-   * the start instead of an error toast.
+   * Routes a Reverse tap to the right confirmation sheet — by KIND only.
+   * The server owns the 30-min window, so the client no longer computes it:
+   *   - Reversible kind   → ReverseConfirmModal (typed-phrase). If the server
+   *     then says the window has closed, submitReverse hands off to the HR
+   *     sheet for the same row.
+   *   - Non-reversible kind → SoftFlagConfirmModal directly (HR is its only
+   *     path), with honest "can't be undone directly" copy.
    */
   const handleReverse = useCallback((row: ActivityRowT) => {
-    const inWindow = isWithinReverseWindow(row.when);
-    const isReversibleKind = isReversibleActivityKind(row.kind);
-    if (inWindow && isReversibleKind) {
+    if (isReversibleActivityKind(row.kind)) {
       setReverseRow(row);
     } else {
+      setSoftFlagReason('needs-hr');
       setSoftFlagRow(row);
     }
   }, []);
@@ -975,6 +961,18 @@ export default function ActivityScreen() {
         {
           onSuccess: () => {
             setReverseRow(null);
+          },
+          onError: (err) => {
+            // The server is the sole window authority. If it says the window
+            // has closed, hand the supervisor straight to the HR sheet for the
+            // same row instead of leaving them at a dead end. Any other error
+            // stays visible in the Reverse sheet via its error prop.
+            if (err instanceof ApiError && err.code === 'WINDOW_CLOSED') {
+              reverseMutation.reset();
+              setReverseRow(null);
+              setSoftFlagReason('window-closed');
+              setSoftFlagRow(row);
+            }
           },
         },
       );
@@ -1149,6 +1147,7 @@ export default function ActivityScreen() {
       />
       <SoftFlagConfirmModal
         row={softFlagRow}
+        reason={softFlagReason}
         isPending={softFlagMutation.isPending}
         error={softFlagMutation.error instanceof Error ? softFlagMutation.error.message : null}
         onClose={closeSoftFlagModal}

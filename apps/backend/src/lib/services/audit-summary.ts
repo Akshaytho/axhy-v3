@@ -71,6 +71,8 @@ export function summarizeAuditKind(kind: string, payload: unknown): string {
       return 'Applied a decision.';
     case 'DWI_DISMISSED':
       return 'Dismissed a decision.';
+    case 'DWI_EXPIRED':
+      return 'A proposed decision expired unanswered after 48 hours.';
     default:
       return humanizeKind(kind);
   }
