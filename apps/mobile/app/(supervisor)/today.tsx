@@ -26,6 +26,7 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { tokens } from '@axhy/ui-tokens';
 import type { TodayFlaggedVisitT, TodayWorkerT } from '@axhy/shared-schema';
 
@@ -40,6 +41,7 @@ import { WorkerActionSheet } from '../../components/today/WorkerActionSheet';
 import { useLocaleStrings } from '../../lib/i18n/use-locale';
 
 export default function TodayScreen() {
+  const router = useRouter();
   const today = useTodayQuery();
   const strings = useLocaleStrings();
   const [markAbsentTarget, setMarkAbsentTarget] = useState<TodayWorkerT | null>(null);
@@ -162,6 +164,18 @@ export default function TodayScreen() {
                 ))}
               </View>
             ) : null}
+
+            {/* R6: Summary is a secondary surface entered from Today at end-of-shift. */}
+            <Pressable
+              onPress={() => router.push('/(supervisor)/summary')}
+              style={({ pressed }) => [s.summaryRow, pressed ? s.summaryRowPressed : null]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={s.summaryTitle}>Today's summary</Text>
+                <Text style={s.summarySub}>End-of-day digest · changes, flags, tomorrow</Text>
+              </View>
+              <Text style={s.summaryChevron}>›</Text>
+            </Pressable>
 
             <Text style={s.footerHint}>Pull down to refresh</Text>
           </>
@@ -289,5 +303,33 @@ const s = StyleSheet.create({
     color: tokens.color.ink.placeholder,
     letterSpacing: 0.4,
     marginTop: 12,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: tokens.color.surface.card,
+    borderWidth: 1,
+    borderColor: tokens.color.surface.cardEdge,
+    borderRadius: tokens.radius.r2,
+    marginTop: 12,
+  },
+  summaryRowPressed: { backgroundColor: tokens.color.surface.paper2 },
+  summaryTitle: {
+    fontSize: 14,
+    fontWeight: String(tokens.weight.semibold) as '600',
+    color: tokens.color.ink.primary,
+  },
+  summarySub: {
+    fontSize: 12,
+    color: tokens.color.ink.tertiary,
+    marginTop: 2,
+  },
+  summaryChevron: {
+    fontSize: 22,
+    color: tokens.color.ink.tertiary,
+    marginTop: -2,
   },
 });

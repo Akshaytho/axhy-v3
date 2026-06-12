@@ -115,6 +115,7 @@ function buildDrawerItems(
     { icon: 'zap', label: 'Memory & rules', sub: null },
     { icon: 'refresh-cw', label: 'Reload context', sub: reloadSub },
     { icon: 'map', label: 'My sites', sub: null },
+    { icon: 'inbox', label: 'Company updates', sub: 'HR notices' },
     { icon: 'globe', label: 'Language', sub: 'English · हिन्दी · తెలుగు' },
     { icon: 'bell', label: 'Notifications', sub: 'Push · WhatsApp · Email' },
     { icon: 'help-circle', label: 'How to use Axhy', sub: 'Quick guide' },
@@ -278,6 +279,10 @@ export function Drawer({ open, onClose }: DrawerProps) {
         return;
       case 'My sites':
         router.push('/(supervisor)/sites');
+        onClose();
+        return;
+      case 'Company updates':
+        router.push('/(supervisor)/updates');
         onClose();
         return;
       case 'Language':
