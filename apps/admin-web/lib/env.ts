@@ -56,7 +56,15 @@ function readPublicEnv(): z.infer<typeof PublicEnvSchema> {
         `Set these in apps/admin-web/.env.local (dev) and Railway service vars (production).`,
     );
   }
-  return parsed.data;
+  // ADR-0028: every backend call is pinned to the /v1 contract here — the
+  // single transform point, so the env var stays the raw base URL while all
+  // consumers (login page, lib/api.ts) get the versioned surface. The
+  // backend aliases /v1/X → /X (server.ts rewriteUrl). Deploy ordering:
+  // backend must deploy before/with admin-web (handoff runbook).
+  return {
+    ...parsed.data,
+    NEXT_PUBLIC_AXHY_API_URL: parsed.data.NEXT_PUBLIC_AXHY_API_URL.replace(/\/$/, '') + '/v1',
+  };
 }
 
 export const env = readPublicEnv();

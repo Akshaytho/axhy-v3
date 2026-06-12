@@ -19,10 +19,12 @@ import { router } from 'expo-router';
 
 import { clearTokens, getTokens, replaceTokens } from './auth-store';
 
-export const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:4000').replace(
-  /\/$/,
-  '',
-);
+// ADR-0028: every API call is pinned to the /v1 contract. The backend
+// aliases /v1/X → /X (server.ts rewriteUrl), so a shipped APK keeps a
+// stable, versioned surface — a future breaking change mounts /v2 while
+// /v1 keeps serving installed clients.
+export const API_BASE =
+  (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:4000').replace(/\/$/, '') + '/v1';
 
 /** @derives(ADR-0007) */
 export class ApiError extends Error {

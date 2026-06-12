@@ -23,6 +23,13 @@ const config = {
   slug: 'axhy',
   scheme: 'axhy',
   version: '0.1.1',
+  // ADR-0028 OTA: ties update compatibility to the app version — an OTA
+  // bundle built for 0.1.1 never applies to a different native runtime (the
+  // classic OTA crash vector). Any native change (new library, permission)
+  // MUST bump `version` so older installs keep their embedded bundle until a
+  // real APK reaches them. `updates.url` + the EAS projectId are injected by
+  // `eas update:configure` (needs EAS login — founder step, see ADR-0028).
+  runtimeVersion: { policy: 'appVersion' as const },
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   icon: './assets/icon.png',

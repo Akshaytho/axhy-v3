@@ -1,6 +1,29 @@
 # Next Session
 
-**Last updated:** 2026-06-12 10:30 IST · **Branch:** `chore/handoff-late-2026-05-31`. Main merges remain founder-owned.
+**Last updated:** 2026-06-12 14:50 IST · **Branch:** `chore/handoff-late-2026-05-31`. Main merges remain founder-owned.
+
+## What was completed
+
+**Afternoon autonomous session (founder away, Telegram protocol active):**
+
+1. **Both pre-APK launch blockers CLOSED (ADR-0028, `docs/decisions/0028-v1-api-prefix-and-ota.md`):**
+   - **/v1 API versioning** — backend aliases `/v1/X`→`/X` via Fastify `rewriteUrl` (pre-routing; the only correct point — onRequest hooks run after the router). Bare paths stay accepted (compat window), so the installed QA dev-client + deployed admin-web never break. Mobile pins `API_BASE+'/v1'` (api.ts:22); admin-web pins once in `lib/env.ts` (and `lib/api.ts` now consumes the validated env, fixing a fail-loud-rule violation). **Proven:** new `test/v1-prefix.test.ts` 4/4 TDD (parity, handler depth, no `/v1abc` bleed, querystrings) + live curl chain: /v1 OTP login → admin session cookie 200 → `/hr` with WORKER cookie → `/forbidden` (role gate intact over /v1).
+   - **OTA updates** — `expo-updates@~29.0.18` installed, `runtimeVersion {policy:'appVersion'}` in app.config.ts (native change ⇒ bump version), `channel: production/preview` in eas.json. **One founder step remains** (EAS is logged out on this Mac): `cd apps/mobile && npx eas-cli login && npx eas-cli update:configure`, then commit the injected updates.url/projectId.
+2. **admin-web typecheck 38→0** (@types/react/-dom ^18→^19 to match react 19) — all THREE apps now `tsc --noEmit` clean + `next build` passes.
+3. **Supervisor walk CLOSED to ROOTS_FIXED** (00-scope, 06-verdict, scoreboard README updated): all 4 roots fixed (C-D `b225a50`, C-C+C-E `242eb6b`, dedup `2dbbd33`); verdict READY-PENDING-DEPLOY; path to REWALK_PASSED = deploy → seed flagged visit + rostered worker → 30-min re-walk of the 2 deferred paths.
+4. **Morning session (same day):** C-C server-authority reverse window + C-E word-truth copy + post-commit adversarial review (6 findings → 1 real → soft-flag dedup guard). See `docs/done-memos/2026-06-12-cc-ce-supervisor-walk-fixes.md`.
+
+## What is genuinely incomplete
+
+1. **HR-portal screenshots → Telegram (founder request) — STAGED, blocked on your one-word reply.** The May-30 QA HR account (Anita +919900001111) no longer exists (login says NO_MEMBERSHIPS); the security layer correctly requires your explicit OK to seed a new QA HR membership. **Reply `YES SEED` on Telegram** → screenshots in ~3 min (local admin-web on :3300 → local backend on :4000 with bypass are both running; Playwright spec `apps/admin-web/e2e/hr-screenshots.spec.ts` is the proven probe). Alternative: reply `HR <phone>` with a real HR-role phone.
+2. **Emulator in-app /v1 smoke** — blocked by a QA-env quirk, not a product bug: the installed Jun-6 dev-client blocks cleartext http at APP level (proof: guest BROWSER reaches `http://10.0.2.2:4000/health` — backend log counts it; the app's fetch never arrives). Prod path is https and unaffected. Fix for next QA: build the next dev-client with `expo-build-properties` `usesCleartextTraffic: true`, or just smoke against prod https after your deploy (1 minute).
+3. **Full local vitest vs prod DB: 105 pre-existing failures (43 files)** — NOT from today's diff (baseline-proven: worker-captures fails identically with today's changes stashed). CI's fresh-Postgres container is the real full-suite gate. Worth a dedicated triage session if you want laptop-full-suite green; the repo's verification practice (targeted real-DB suites) is unaffected.
+4. Supervisor walk REWALK_PASSED + C-A2 placement; HR-portal/owner walks; cascade-delete decision (C2); swap-apply gap — all unchanged from the readiness assessment.
+
+## First action next session
+
+1. Check Telegram for the founder's `YES SEED` / `HR <phone>` reply → if present, run the staged HR screenshots and send them (everything is staged; see incomplete #1).
+2. Then continue the founder deploy-runbook below (unchanged) — note it now includes the `/v1` deploy-ordering: **backend first, then admin-web**, then `eas update:configure`, then APK build last.
 
 ## ☀️ 2026-06-12 — supervisor walk's last two roots CLOSED (C-C + C-E)
 

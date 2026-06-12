@@ -120,6 +120,21 @@ export async function buildServer(): Promise<FastifyInstance> {
         : { level: 'debug', transport: { target: 'pino-pretty' } },
     disableRequestLogging: false,
     bodyLimit: 5 * 1024 * 1024, // 5MB — voice notes upload via signed URL, not JSON
+    // ADR-0028 /v1 API alias (launch blocker LB2). Shipped APKs pin
+    // `${API_BASE}/v1`; this strips the version segment BEFORE routing so
+    // /v1/X and /X hit the identical handler (auth, tenant, idempotency all
+    // shared — /v1 is an alias, not a second operation space). rewriteUrl is
+    // the only pre-routing rewrite point in Fastify (onRequest hooks run
+    // after the router has matched). Bare paths stay accepted during the
+    // compat window so already-installed clients keep working; dropping the
+    // bare form post-pilot is a deliberate later step. Only the exact
+    // '/v1/' segment aliases — '/v1abc' must NOT match.
+    rewriteUrl(req) {
+      const url = req.url ?? '/';
+      if (url === '/v1' || url === '/v1/') return '/';
+      if (url.startsWith('/v1/')) return url.slice(3);
+      return url;
+    },
   });
 
   // Friend review #6 (HIGH): CORS whitelist in production. The previous

@@ -16,7 +16,12 @@
 
 import { cookies } from 'next/headers';
 
-const BASE = process.env.NEXT_PUBLIC_AXHY_API_URL ?? 'http://localhost:3000';
+import { env } from './env';
+
+// ADR-0028: env.ts pins '/v1' onto the validated base URL — every HR-portal
+// server call rides the versioned contract. The previous raw process.env
+// read with a localhost fallback contradicted env.ts's own fail-loud rule.
+const BASE = env.NEXT_PUBLIC_AXHY_API_URL;
 
 /**
  * Classified HTTP error from a backend call. `code` is the backend's
