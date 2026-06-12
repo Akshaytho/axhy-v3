@@ -254,6 +254,19 @@ describe('identity-lifecycle — onAppLogout', () => {
     expect(body.refreshToken).toBe('axrt_stored_refresh');
   });
 
+  // Cross-user cache safety (live-walk finding 2026-06-12): the singleton
+  // React Query cache must NOT outlive the session, or the next login is
+  // served the previous user's ['me'] (staleTime 5min) as fresh data.
+  it("clears the React Query cache so the next login cannot see the previous user's data", async () => {
+    const { queryClient } = await import('./query-client');
+    queryClient.setQueryData(['me'], { user: { name: 'Previous User' } });
+    expect(queryClient.getQueryData(['me'])).toBeDefined();
+
+    await onAppLogout();
+
+    expect(queryClient.getQueryData(['me'])).toBeUndefined();
+  });
+
   // sign-out failure: clearTokens still runs
   it('still calls clearTokens when /auth/sign-out throws', async () => {
     mockedFetch.mockRejectedValue(new Error('network down'));

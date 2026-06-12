@@ -43,6 +43,7 @@ import { jwtDecode } from 'jwt-decode';
 import { RoleSchema, type VerifyOTPOutput } from '@axhy/shared-schema';
 
 import { setTokens, clearTokens, getTokens, type StoredTokens } from './auth-store';
+import { queryClient } from './query-client';
 import { API_ROUTES } from './api-routes';
 import { fetchWithTimeout } from './uploads/r2-put';
 
@@ -363,6 +364,12 @@ export async function onAppLogout(): Promise<void> {
   }
 
   await clearTokens();
+
+  // Cross-user cache safety: the singleton React Query cache outlives the
+  // session — without this, the next login on the same device is served the
+  // PREVIOUS user's ['me'] (staleTime 5 min) and any other staleTime-fresh
+  // query as their own data (live-walk finding 2026-06-12, DB-proven).
+  queryClient.clear();
 }
 
 /**
