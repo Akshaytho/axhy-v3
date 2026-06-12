@@ -770,7 +770,16 @@ function checkRouteLayerCompleteness() {
       content.includes('requireAuth') ||
       /\brequire[A-Z]\w*Role\b/.test(content) ||
       content.includes('// auth-exempt');
-    const hasTenant = content.includes('withTenantContext') || content.includes('// tenant-exempt');
+    // RLS Option-A wrappers (middleware/tenant-context.ts) set the tenant GUC
+    // per query so postgres FORCE RLS enforces company scoping — accepted as
+    // satisfying D5 (lab-proven by test/rls-option-a-routes.test.ts as axhy_app).
+    const hasTenant =
+      content.includes('withTenantContext') ||
+      content.includes('tenantReadClient') ||
+      content.includes('withTenantRead') ||
+      content.includes('withWorkerTenantRead') ||
+      content.includes('withUserContext') ||
+      content.includes('// tenant-exempt');
     const hasZod =
       content.includes('.parse(') || content.includes('.safeParse(') || content.includes('z.');
 

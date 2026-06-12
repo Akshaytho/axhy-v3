@@ -43,6 +43,9 @@ const UploadProxyMetaSchema = z.object({
     .regex(/^image\/(jpeg|png|webp)$/, 'contentType must be image/jpeg, image/png, or image/webp'),
 });
 
+// tenant-exempt: R2 presign only — this route runs zero tenant DB queries;
+// isolation comes from the requireWorkerRole gate + Worker.id-namespaced R2
+// object keys (see "Tenant safety" in the header above).
 /** @derives(master-plan §G) */
 export async function registerWorkerCapturesRoutes(app: FastifyInstance): Promise<void> {
   // @fastify/multipart is registered once globally in server.ts (it publishes

@@ -21,6 +21,8 @@ import { requireAuth } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { superAdminCreateCompanyService } from '../lib/services/super-admin-company-service.js';
 
+// tenant-exempt: SUPER_ADMIN onboarding — this route CREATES the tenant, so
+// no tenant context can exist yet (see "Tenant-exempt by design" header note).
 /** @derives(ADR-0026) */
 export async function registerSuperAdminCompanyRoutes(app: FastifyInstance): Promise<void> {
   app.post(

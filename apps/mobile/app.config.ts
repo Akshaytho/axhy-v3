@@ -18,11 +18,17 @@
  */
 const oneSignalAppId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? '';
 
+// Dev-client builds only (APP_VARIANT=development — set by eas.json's
+// development profile and by local `expo run:android` QA builds). Allows the
+// emulator dev-client to reach http:// hosts (local backend / 10.0.2.2);
+// release and preview APKs never set the variant, so they stay cleartext-locked.
+const isDevClientBuild = process.env.APP_VARIANT === 'development';
+
 const config = {
   name: 'Axhy',
   slug: 'axhy',
   scheme: 'axhy',
-  version: '0.1.1',
+  version: '0.1.2',
   // ADR-0028 OTA: ties update compatibility to the app version — an OTA
   // bundle built for 0.1.1 never applies to a different native runtime (the
   // classic OTA crash vector). Any native change (new library, permission)
@@ -49,7 +55,7 @@ const config = {
   },
   android: {
     package: 'app.axhy.mobile',
-    versionCode: 2,
+    versionCode: 3,
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#4F46E5',
@@ -59,6 +65,15 @@ const config = {
     'expo-localization',
     'expo-router',
     'expo-secure-store',
+    // Cleartext http for DEV-CLIENT builds only (emulator QA against local
+    // backends — the Jun-6 dev-client blocked app-level http while the
+    // emulator browser could reach it; see handoff 2026-06-12 incomplete #2).
+    [
+      'expo-build-properties',
+      {
+        android: { usesCleartextTraffic: isDevClientBuild },
+      },
+    ] as [string, { android: { usesCleartextTraffic: boolean } }],
     // expo-audio plugin — registers microphone permission strings + native
     // audio session config. Required for the voice-capture mic in Chat.
     [
