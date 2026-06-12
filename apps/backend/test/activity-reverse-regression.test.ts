@@ -399,6 +399,36 @@ describe('Wave 4 — POST /activity/:id/{reverse,soft-flag} regression', () => {
           'SITE_COMPLAINT_LOGGED',
         );
 
+        // ── 8c. Duplicate guard (adversarial review of 242eb6b): a second
+        //      soft-flag of the SAME source — with a DIFFERENT Idempotency-Key,
+        //      as the mobile app sends on every deliberate re-tap — must NOT
+        //      pile up a second LATE_REVERSAL_REQUEST. It returns the existing
+        //      OPEN decision idempotently, leaving exactly one row. (Reverse has
+        //      its ALREADY_REVERSED guard; soft-flag had none.)
+        const ccSoftAgain = await app.inject({
+          method: 'POST',
+          url: `/activity/${inWindowComplaint.id}/soft-flag`,
+          headers: {
+            authorization: `Bearer ${supA.accessToken}`,
+            'Idempotency-Key': `cc-soft-${inWindowComplaint.id}-2`, // DIFFERENT key
+          },
+          payload: { note: 'tapped again by mistake' },
+        });
+        expect(ccSoftAgain.statusCode).toBe(200);
+        // Same decision returned — not a fresh one.
+        expect((ccSoftAgain.json() as { decisionId: string }).decisionId).toBe(
+          ccSoftBody.decisionId,
+        );
+        // DB: exactly ONE LATE_REVERSAL_REQUEST decision for this source.
+        const ccDupeCount = await prisma.supervisorDecision.count({
+          where: {
+            companyId: tenantA.companyId,
+            kind: 'LATE_REVERSAL_REQUEST',
+            targetId: inWindowComplaint.id,
+          },
+        });
+        expect(ccDupeCount).toBe(1);
+
         // ── 9. Bad input (extra unknown key) → 400 ─────────────────────
         const badInput = await app.inject({
           method: 'POST',

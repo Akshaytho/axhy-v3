@@ -36,12 +36,22 @@ The walked BLOCKER (#6/#7): 8 minutes after a reject, REVERSE said "the 30-minut
 1. Deploy the backend from this branch → activates the C-C/C-E backend halves (plus the prior code-complete items in the handoff). Then a quick prod walk confirms the non-reversible-in-window→HR path and the humanized DWI line.
 2. C-A2 (orphan `summary` + `updates` supervisor screens) — placement decision, recorded in `06-verdict`.
 
+## Follow-up (post-commit adversarial review of 242eb6b)
+
+I ran a 5-dimension adversarial review workflow over the commit (each finding put through a refutation-skeptic). **6 findings → 1 confirmed real, 5 refuted.** The 5 refuted were correctly dismissed — notably the "soft-flag any non-reversible kind to HR" and "Notifications channels not delivered" findings, which the skeptic proved are **pre-existing** (this commit only removed the 30-min delay; the Drawer Notifications line wasn't even touched).
+
+**Confirmed + fixed:** `softFlagActivity` had no duplicate guard (the reverse path has `ALREADY_REVERSED`; soft-flag had nothing). Because the source AuditEvent is unchanged by soft-flag, the row stays in the feed, and the mobile mutation sends a fresh `Idempotency-Key` per tap — so a supervisor re-tapping "Send to HR" piled up duplicate `LATE_REVERSAL_REQUEST` rows for one action (data-quality, not state corruption; all writes companyId-scoped). Pre-existing, but in the function this branch just touched.
+
+- **Fix** (`activity-reverse-service.ts`): before the `supervisorDecision.create`, `findFirst` an **OPEN** prior `LATE_REVERSAL_REQUEST` for the same source (`appliedAt: null, dismissedAt: null` — the schema's PROPOSED-state discriminator) and return it idempotently. Once HR applies/dismisses it, a fresh request is legitimate.
+- **Proven** (`activity-reverse-regression.test.ts` §8c, TDD): a second soft-flag of the same source with a **different** Idempotency-Key returned a new decisionId before the fix (FAIL) and returns the existing id with exactly one row after (PASS). Suite 1/1 green; backend tsc 0.
+- **Residual (NOT fixed — for the founder):** `findFirst`-then-`create` has a TOCTOU window under genuinely concurrent submits. It's near-unreachable from the UI (the sheet closes on the first success, so there's no second in-flight submit), and the realistic sequential re-tap is fully closed. A hard guarantee would need a partial-unique index on `SupervisorDecision(companyId, targetId) WHERE kind='LATE_REVERSAL_REQUEST' AND appliedAt IS NULL AND dismissedAt IS NULL` + a P2002 catch — the same pattern as migration `20260519_f003_binding_ended_auto_dedup_index` — which is a founder-applied schema migration, deferred as disproportionate for a minor pre-existing bug.
+
 ## Files touched
 
-- `apps/backend/src/lib/services/activity-reverse-service.ts`
+- `apps/backend/src/lib/services/activity-reverse-service.ts` (C-C gate + soft-flag dedup guard)
 - `apps/backend/src/routes/activity.ts`
 - `apps/backend/src/lib/services/audit-summary.ts`
-- `apps/backend/test/activity-reverse-regression.test.ts`
+- `apps/backend/test/activity-reverse-regression.test.ts` (§8b dead-end + §8c dedup)
 - `apps/mobile/app/(supervisor)/activity.tsx`
 - `apps/mobile/components/today/FlaggedReviewSheet.tsx`
 - `apps/mobile/components/Drawer.tsx`

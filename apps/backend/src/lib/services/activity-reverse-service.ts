@@ -476,6 +476,38 @@ export async function softFlagActivity(
     return { kind: 'WINDOW_OPEN', windowMs: ACTIVITY_REVERSE_WINDOW_MS, elapsedMs };
   }
 
+  // Idempotency guard — mirrors reverseActivity's ALREADY_REVERSED guard
+  // (above). soft-flag does not mutate the source AuditEvent, so the row stays
+  // in the supervisor's feed and a second deliberate tap on "Send to HR"
+  // (which carries a fresh Idempotency-Key, so withIdempotency does not catch
+  // it) would otherwise pile up duplicate HR-review rows for one action. If an
+  // OPEN late-reversal request already exists for this source, return it
+  // instead of creating another. "Open" = the PROPOSED-state discriminator
+  // (appliedAt IS NULL AND dismissedAt IS NULL); once HR applies or dismisses
+  // it, a fresh request is legitimate. NOTE: this is findFirst-then-create, so
+  // two genuinely concurrent submits could still both insert — a hard barrier
+  // would need a partial-unique index (founder-applied migration). The
+  // realistic trigger (sequential re-taps; the sheet closes on success) is
+  // fully covered here.
+  const priorOpenFlag = await tx.supervisorDecision.findFirst({
+    where: {
+      companyId: input.companyId,
+      kind: 'LATE_REVERSAL_REQUEST',
+      targetId: source.id,
+      appliedAt: null,
+      dismissedAt: null,
+    },
+    select: { id: true },
+  });
+  if (priorOpenFlag) {
+    return {
+      kind: 'OK',
+      decisionId: priorOpenFlag.id,
+      sourceAuditEventId: source.id,
+      sourceKind: source.kind,
+    };
+  }
+
   const decision = await tx.supervisorDecision.create({
     data: {
       companyId: input.companyId,
