@@ -23,6 +23,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -87,7 +89,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (coId) {
     await prismaRaw.membership.deleteMany({ where: { companyId: coId } });
-    await prismaRaw.company.deleteMany({ where: { id: coId } });
+    await deleteCompanyDeep(prismaRaw, { ids: [coId] });
   }
   await prismaRaw.user.deleteMany({ where: { phone: { in: [SUP_PHONE, WRK_PHONE] } } });
   await prismaRaw.$executeRawUnsafe(

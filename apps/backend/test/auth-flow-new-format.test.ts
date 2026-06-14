@@ -8,6 +8,8 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { decodeJwt } from 'jose';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -46,7 +48,7 @@ afterAll(async () => {
   if (membershipId)
     await prismaRaw.membership.deleteMany({ where: { id: membershipId } }).catch(() => {});
   if (userId) await prismaRaw.user.deleteMany({ where: { id: userId } }).catch(() => {});
-  await prismaRaw.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+  await deleteCompanyDeep(prismaRaw, { slugPrefix: TEST_PREFIX });
   await prismaRaw.$disconnect();
 });
 

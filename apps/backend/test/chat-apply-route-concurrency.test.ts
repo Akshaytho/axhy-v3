@@ -33,6 +33,8 @@ import {
 } from '../src/lib/supervisor-decision-writer.js';
 import { withTenantContext } from '../src/middleware/tenant-context.js';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -148,7 +150,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+  await deleteCompanyDeep(prisma, { slugPrefix: TEST_PREFIX });
   await app.close();
   await prisma.$disconnect();
 });

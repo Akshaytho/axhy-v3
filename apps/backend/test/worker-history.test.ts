@@ -16,6 +16,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -155,7 +157,7 @@ afterAll(async () => {
     if (uid) await prismaRaw.user.deleteMany({ where: { id: uid } }).catch(() => undefined);
   }
   if (companyId) {
-    await prismaRaw.company.deleteMany({ where: { id: companyId } }).catch(() => undefined);
+    await deleteCompanyDeep(prismaRaw, { ids: [companyId] }).catch(() => undefined);
   }
   // RCA-D suspended-company fixture cleanup
   if (suspendedCompanyId) {
@@ -170,9 +172,7 @@ afterAll(async () => {
         .deleteMany({ where: { id: suspendedWorkerUserId } })
         .catch(() => undefined);
     }
-    await prismaRaw.company
-      .deleteMany({ where: { id: suspendedCompanyId } })
-      .catch(() => undefined);
+    await deleteCompanyDeep(prismaRaw, { ids: [suspendedCompanyId] }).catch(() => undefined);
   }
   await prismaRaw.$disconnect();
   await app.close();

@@ -24,6 +24,8 @@ import { PrismaClient } from '@prisma/client';
 
 import { buildObjectKey } from '../src/lib/r2-presign.js';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -162,7 +164,7 @@ afterAll(async () => {
     `DELETE FROM axhy.otp_attempts WHERE phone = ANY($1::text[])`,
     phones,
   );
-  await prismaRaw.company.deleteMany({ where: { id: { in: [companyA, companyB] } } });
+  await deleteCompanyDeep(prismaRaw, { ids: [companyA, companyB] });
   await prismaRaw.$disconnect();
   await app.close();
 });

@@ -20,6 +20,8 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { SignJWT } from 'jose';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 // Force test mode BEFORE buildServer / prisma client load
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
@@ -61,7 +63,7 @@ afterAll(async () => {
     where: { company: { slug: { startsWith: TEST_PREFIX } } },
   });
   if (userId) await prismaRaw.user.deleteMany({ where: { id: userId } });
-  await prismaRaw.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+  await deleteCompanyDeep(prismaRaw, { slugPrefix: TEST_PREFIX });
   await prismaRaw.$disconnect();
 });
 
@@ -264,7 +266,7 @@ describe('worker OTP activation (F-006b)', () => {
       `DELETE FROM axhy.otp_attempts WHERE phone = $1`,
       WORKER_PHONE,
     );
-    await prismaRaw.company.deleteMany({ where: { id: workerCompanyId } });
+    await deleteCompanyDeep(prismaRaw, { ids: [workerCompanyId] });
   });
 
   it('PENDING_ACTIVATION worker transitions to DOC_PENDING on OTP verify (machine event fires)', async () => {

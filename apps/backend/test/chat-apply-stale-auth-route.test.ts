@@ -35,6 +35,8 @@ import { PrismaClient } from '@prisma/client';
 
 import { __setCommitApplyTestHook } from '../src/lib/supervisor-decision-writer.js';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -145,7 +147,7 @@ afterEach(() => {
 
 afterAll(async () => {
   __setCommitApplyTestHook(null);
-  await prisma.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+  await deleteCompanyDeep(prisma, { slugPrefix: TEST_PREFIX });
   await app.close();
   await prisma.$disconnect();
 });

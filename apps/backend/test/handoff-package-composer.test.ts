@@ -41,6 +41,8 @@ import { reassignPermanentBinding } from '../src/lib/site-supervisor-binding.js'
 import { writeHandoffPackage } from '../src/lib/handoff-package-writer.js';
 import { withTenantContext } from '../src/middleware/tenant-context.js';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 type JsonObject = Record<string, unknown>;
 const asPayload = (v: Prisma.JsonValue | null): HandoffPackagePayload =>
   v as unknown as HandoffPackagePayload;
@@ -110,7 +112,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+  await deleteCompanyDeep(prisma, { slugPrefix: TEST_PREFIX });
   await prisma.$disconnect();
 });
 

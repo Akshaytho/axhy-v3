@@ -19,6 +19,8 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { SummaryResponse } from '@axhy/shared-schema';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -183,7 +185,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Cascade-delete via company row (all child rows follow via onDelete:Cascade).
-  await prismaRaw.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+  await deleteCompanyDeep(prismaRaw, { slugPrefix: TEST_PREFIX });
   await prismaRaw.$disconnect();
   await app.close();
 });

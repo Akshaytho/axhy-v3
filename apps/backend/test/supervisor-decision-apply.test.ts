@@ -24,6 +24,8 @@ import { PrismaClient } from '@prisma/client';
 import { applyProposedDecision, LifecycleError } from '../src/lib/supervisor-decision-writer.js';
 import { withTenantContext } from '../src/middleware/tenant-context.js';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 const dbUrl =
   process.env.AXHY_DB_URL ?? process.env.DATABASE_PUBLIC_URL ?? process.env.DATABASE_URL ?? '';
 
@@ -118,7 +120,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+  await deleteCompanyDeep(prisma, { slugPrefix: TEST_PREFIX });
   await prisma.$disconnect();
 });
 

@@ -22,6 +22,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 
+import { deleteCompanyDeep } from './delete-company-deep.js';
+
 export type Supervisor = {
   userId: string;
   phone: string;
@@ -169,7 +171,10 @@ export async function withMultipleTenants(
       if (userIdFilter.in.length > 0) {
         await prisma.user.deleteMany({ where: { id: userIdFilter } });
       }
-      await prisma.company.deleteMany({ where: { id: companyIdFilter } });
+      // Migration 031: Visit/Attendance/AuditEvent company FKs are RESTRICT.
+      // deleteCompanyDeep clears those legal-trail tables (e.g. visits a test
+      // created inside the closure) before deleting the company.
+      await deleteCompanyDeep(prisma, { ids: createdCompanyIds });
     } catch (cleanupErr) {
       // Surface but don't rethrow — leak debugging > masking original error.
 

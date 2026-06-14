@@ -19,6 +19,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -132,7 +134,7 @@ afterAll(async () => {
     S1_PHONE,
     S2_PHONE,
   );
-  await prismaRaw.company.deleteMany({ where: { id: { in: [co1Id, co2Id] } } });
+  await deleteCompanyDeep(prismaRaw, { ids: [co1Id, co2Id] });
   await prismaRaw.$disconnect();
   await app.close();
 });

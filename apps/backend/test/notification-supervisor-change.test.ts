@@ -33,6 +33,8 @@ import {
   escapeMessageVar,
 } from '../src/lib/notification-payload.js';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 type JsonObject = Record<string, unknown>;
 
 const dbUrl =
@@ -124,7 +126,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.company.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
+  await deleteCompanyDeep(prisma, { slugPrefix: TEST_PREFIX });
   await prisma.$disconnect();
 });
 

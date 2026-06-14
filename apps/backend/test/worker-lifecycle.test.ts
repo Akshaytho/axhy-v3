@@ -15,6 +15,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 process.env.AXHY_OTP_BYPASS = '1';
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 
@@ -184,7 +186,7 @@ afterAll(async () => {
     OTHER_WORKER_PHONE,
   );
   await prismaRaw.site.deleteMany({ where: { companyId } });
-  await prismaRaw.company.deleteMany({ where: { id: companyId } });
+  await deleteCompanyDeep(prismaRaw, { ids: [companyId] });
   await prismaRaw.$disconnect();
   await app.close();
 });
@@ -422,7 +424,7 @@ describe('POST /worker/visits/:visitId/clock-in', { timeout: 20_000 }, () => {
       await prismaRaw.user.deleteMany({ where: { id: isoUser.id } });
       await prismaRaw.$executeRawUnsafe(`DELETE FROM axhy.otp_attempts WHERE phone = $1`, isoPhone);
       await prismaRaw.site.deleteMany({ where: { companyId: isoCo.id } });
-      await prismaRaw.company.deleteMany({ where: { id: isoCo.id } });
+      await deleteCompanyDeep(prismaRaw, { ids: [isoCo.id] });
     }
   }, 60_000);
 });

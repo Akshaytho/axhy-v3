@@ -20,6 +20,8 @@ import { prisma } from '../src/lib/prisma.js';
 import { withTenantContext } from '../src/middleware/tenant-context.js';
 import { createComplaintWithInitialMessage } from '../src/lib/services/complaint-service.js';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 const uid = (): string => crypto.randomUUID();
 const sfx = crypto.randomBytes(4).toString('hex');
 
@@ -56,7 +58,7 @@ describe('H6 — chat complaint idempotency (dedupKey)', () => {
     await prisma.complaintMessage.deleteMany({ where: { companyId } });
     await prisma.complaint.deleteMany({ where: { companyId } });
     await prisma.site.deleteMany({ where: { companyId } });
-    await prisma.company.deleteMany({ where: { id: companyId } });
+    await deleteCompanyDeep(prisma, { ids: [companyId] });
     await prisma.$disconnect();
   });
 

@@ -33,6 +33,8 @@ import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { SignJWT } from 'jose';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 // Ensure JWT_SECRET is set before any module that reads it at import time.
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'a'.repeat(64);
 process.env.AXHY_OTP_BYPASS = process.env.AXHY_OTP_BYPASS ?? '1';
@@ -149,7 +151,11 @@ export async function buildTestApp(): Promise<TestCtx> {
         await prisma.user.deleteMany({ where: { id: { in: userIds } } });
       }
       if (companyIds.length > 0) {
-        await prisma.company.deleteMany({ where: { id: { in: companyIds } } });
+        // Migration 031: Visit/AuditEvent/Attendance company FKs are RESTRICT,
+        // so clear the legal-trail tables before the parent delete (the worker
+        // delete above already cascaded visits/attendance; auditEvent is the
+        // one that survives and would otherwise block this).
+        await deleteCompanyDeep(prisma, { ids: companyIds });
       }
 
       // Clear tracking so a subsequent reseed inside the same file starts fresh.

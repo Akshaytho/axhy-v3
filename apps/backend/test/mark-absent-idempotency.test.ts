@@ -20,6 +20,8 @@ import { prisma } from '../src/lib/prisma.js';
 import { withTenantContext } from '../src/middleware/tenant-context.js';
 import { markAbsentService } from '../src/lib/services/attendance-service.js';
 
+import { deleteCompanyDeep } from './_helpers/delete-company-deep.js';
+
 const uid = (): string => crypto.randomUUID();
 const sfx = crypto.randomBytes(4).toString('hex');
 
@@ -82,7 +84,7 @@ describe('#13 — mark-absent outbox idempotency', () => {
     await prisma.assignment.deleteMany({ where: { companyId } });
     await prisma.worker.deleteMany({ where: { companyId } });
     await prisma.site.deleteMany({ where: { companyId } });
-    await prisma.company.deleteMany({ where: { id: companyId } });
+    await deleteCompanyDeep(prisma, { ids: [companyId] });
     await prisma.user.deleteMany({ where: { id: supervisorUserId } });
     await prisma.$disconnect();
   });
