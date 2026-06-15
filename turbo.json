@@ -1,6 +1,23 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["**/.env.*local", "tsconfig.base.json"],
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "DATABASE_PUBLIC_URL",
+    "AXHY_DB_URL",
+    "DISPATCHER_DATABASE_URL",
+    "REDIS_URL",
+    "JWT_SECRET",
+    "AXHY_OTP_BYPASS",
+    "NODE_ENV",
+    "CI",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "SARVAM_API_KEY",
+    "NEXT_PUBLIC_AXHY_API_URL",
+    "NEXT_PUBLIC_AXHY_WHATSAPP",
+    "NEXT_PUBLIC_POSTHOG_KEY"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
