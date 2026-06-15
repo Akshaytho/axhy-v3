@@ -387,13 +387,19 @@ function ackChip(u: UpdateRow) {
         Awaiting ack
       </Chip>
     );
-  return u.acknowledgedBy ? (
-    <Chip tone="neutral" sm dot={false}>
-      Last acked by 1
-    </Chip>
-  ) : (
-    <Chip tone="neutral" sm dot={false}>
-      No acks yet
+  return (
+    <Chip
+      tone={
+        u.expectedAcks > 0 && u.ackCount >= u.expectedAcks
+          ? 'ok'
+          : u.ackCount > 0
+            ? 'warn'
+            : 'neutral'
+      }
+      sm
+      dot={false}
+    >
+      {u.ackCount} of {u.expectedAcks} acked
     </Chip>
   );
 }
@@ -543,76 +549,60 @@ function AckReport({
           )}
         </div>
       ) : (
-        <>
-          <div className="effect-note" style={{ alignItems: 'flex-start' }}>
-            <Icon name="info" size={17} style={{ marginTop: 1 }} />
-            <div>
-              A full who-acknowledged report needs a per-supervisor ack table that isn&rsquo;t built
-              yet. Today the system stores the most recent acknowledgement for a company-wide
-              update, so the list below is the <b>design preview</b> of what ships when that table
-              lands. <b>Targeted updates show correctly today.</b>
-            </div>
-          </div>
-          <AckMatrixPreview u={u} supervisors={supervisors} />
-        </>
+        <AckMatrix u={u} supervisors={supervisors} />
       )}
     </div>
   );
 }
 
-function AckMatrixPreview({ u, supervisors }: { u: UpdateRow; supervisors: Supervisor[] }) {
-  // Design preview: the one stored acknowledger (if any) shows acked; the rest pending.
-  const ackedName = u.acknowledgedByName;
-  const acked = ackedName
-    ? [
-        {
-          name: ackedName,
-          phrase: u.acknowledgmentPhrase ?? 'Understood, will brief my team',
-          at: u.acknowledgedAt ?? u.createdAt,
-        },
-      ]
-    : [];
-  const pending = supervisors.filter((s) => s.name !== ackedName);
+function AckMatrix({ u, supervisors }: { u: UpdateRow; supervisors: Supervisor[] }) {
+  // Real who-acked report from HRUpdateAck (u.acks). Acked = the supervisors who
+  // replied in their own words; pending = the supervisors you manage who haven't.
+  // The headline count uses expectedAcks (active supervisors) from the server.
+  const acked = u.acks;
+  const ackedIds = new Set(acked.map((a) => a.supervisorUserId));
+  const pending = supervisors.filter((s) => !ackedIds.has(s.userId));
   return (
-    <div style={{ marginTop: 18, opacity: 0.92 }}>
+    <div style={{ marginTop: 18 }}>
       <div className="rec-label" style={{ marginBottom: 10 }}>
-        {acked.length} of {supervisors.length} acknowledged{' '}
-        <span className="dim" style={{ fontWeight: 400 }}>
-          · design preview
-        </span>
+        {u.ackCount} of {u.expectedAcks} acknowledged
       </div>
       {acked.length > 0 && (
         <div className="panel" style={{ marginBottom: 14 }}>
-          {acked.map((a, i) => (
-            <div key={i} className="activity-row" style={{ cursor: 'default' }}>
-              <Avatar name={a.name} size="sm" />
+          {acked.map((a) => (
+            <div key={a.supervisorUserId} className="activity-row" style={{ cursor: 'default' }}>
+              <Avatar name={a.supervisorName} size="sm" />
               <div className="act-body">
                 <div className="act-text" style={{ fontWeight: 600 }}>
-                  {a.name}
+                  {a.supervisorName}
                 </div>
                 <div className="ack-quote" style={{ marginTop: 4 }}>
-                  “{a.phrase}”
+                  “{a.ackText}”
                 </div>
               </div>
-              <span className="act-time">{fmtDateTime(a.at)}</span>
+              <span className="act-time">{fmtDateTime(a.ackedAt)}</span>
             </div>
           ))}
         </div>
       )}
-      <div className="rec-label" style={{ marginBottom: 10 }}>
-        Not yet acknowledged
-      </div>
-      <div className="panel">
-        {pending.map((p, i) => (
-          <div key={i} className="activity-row" style={{ cursor: 'default' }}>
-            <Avatar name={p.name} size="sm" neutral />
-            <div className="act-body">
-              <div className="act-text">{p.name}</div>
-              <div className="act-time">waiting since {fmtDateTime(u.createdAt)}</div>
-            </div>
+      {pending.length > 0 && (
+        <>
+          <div className="rec-label" style={{ marginBottom: 10 }}>
+            Not yet acknowledged
           </div>
-        ))}
-      </div>
+          <div className="panel">
+            {pending.map((p) => (
+              <div key={p.userId} className="activity-row" style={{ cursor: 'default' }}>
+                <Avatar name={p.name} size="sm" neutral />
+                <div className="act-body">
+                  <div className="act-text">{p.name}</div>
+                  <div className="act-time">waiting since {fmtDateTime(u.createdAt)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

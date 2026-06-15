@@ -563,6 +563,13 @@ export type UpdateRow = {
   acknowledgedByName: string | null;
   acknowledgedAt: string | null;
   createdAt: string;
+  /** Real per-supervisor acks (HRUpdateAck). For a company-wide update this lists
+   * every supervisor who acknowledged — the basis of the who-acked report. */
+  acks: { supervisorUserId: string; supervisorName: string; ackText: string; ackedAt: string }[];
+  /** How many supervisors have acknowledged this update. */
+  ackCount: number;
+  /** Expected acks: 1 for a targeted update; the active-supervisor count company-wide. */
+  expectedAcks: number;
 };
 
 /** The HR's published updates + ack status, newest first (GET /hr/updates).
