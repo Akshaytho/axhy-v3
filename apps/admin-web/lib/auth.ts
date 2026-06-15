@@ -16,9 +16,15 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { verifyAccessToken, type AccessTokenPayload } from '@axhy/jwt-public';
 
-import { jwtSecret } from './env';
+import { getJwtSecret } from './env';
 
-const SECRET = new TextEncoder().encode(jwtSecret);
+// Lazy + memoized: encode the secret on first verify, not at module load, so
+// `next build` does not evaluate (and crash on) a missing JWT_SECRET. See
+// getJwtSecret in ./env for the full rationale.
+let _secret: Uint8Array | null = null;
+function secret(): Uint8Array {
+  return (_secret ??= new TextEncoder().encode(getJwtSecret()));
+}
 
 export type Session = AccessTokenPayload;
 
@@ -35,7 +41,7 @@ export async function getSession(): Promise<Session | null> {
   const store = await cookies();
   const at = store.get('axhy_at')?.value;
   if (!at) return null;
-  const result = await verifyAccessToken(at, SECRET);
+  const result = await verifyAccessToken(at, secret());
   return result.ok ? result.payload : null;
 }
 

@@ -72,19 +72,39 @@ export const env = readPublicEnv();
 /**
  * Server-only JWT secret used to verify backend-issued access tokens.
  *
- * Required in production (loud-fails on boot if missing). In development
- * the loader emits a single console warning and falls back to a placeholder
- * so local UI work can proceed without backend coupling — but any verify
- * call will of course fail until a real secret is set.
+ * LAZY + memoized: read on first use at runtime, NOT at module load. This is
+ * deliberate — `next build` runs in production mode and evaluates server
+ * modules (route handlers, server components) to collect their config. An eager
+ * module-load read that threw on a missing secret therefore crashed the
+ * production build on any service where JWT_SECRET isn't set, even though the
+ * secret is only needed when a token is actually verified at request time.
+ * Reading it lazily lets the build succeed; the loud-fail still happens (the
+ * first verify call throws in production if the secret is missing), just at
+ * runtime where it belongs. Matches the lazy pattern already used by
+ * app/api/graph/route.ts.
+ *
+ * In development the loader warns once and falls back to a placeholder so local
+ * UI work can proceed without backend coupling — any verify call will of course
+ * fail until a real secret is set.
  *
  * NEVER prefix with NEXT_PUBLIC_; this must NOT leak into the client bundle.
  *
  * @derives(master-plan §G)
  * @derives(panel-2026-04-30 — Iteration 4 quality bar)
+ * @derives(ADR-0005)
  */
-function readJwtSecret(): string {
+let _jwtSecret: string | null = null;
+
+/**
+ * Returns the server-only JWT secret, reading + memoizing it on first call.
+ * Throws in production if unset/too short (loud-fail, deferred to runtime).
+ * @derives(master-plan §G)
+ * @derives(ADR-0005)
+ */
+export function getJwtSecret(): string {
+  if (_jwtSecret !== null) return _jwtSecret;
   const raw = process.env.JWT_SECRET;
-  if (raw && raw.length >= 32) return raw;
+  if (raw && raw.length >= 32) return (_jwtSecret = raw);
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
       '[admin-web env] JWT_SECRET is required in production and must be ≥32 chars.\n' +
@@ -103,7 +123,5 @@ function readJwtSecret(): string {
       `[admin-web env] JWT_SECRET is only ${raw.length} chars; must be ≥32 in production.`,
     );
   }
-  return raw ?? 'dev-only-placeholder-secret-do-not-use-in-prod';
+  return (_jwtSecret = raw ?? 'dev-only-placeholder-secret-do-not-use-in-prod');
 }
-
-export const jwtSecret: string = readJwtSecret();

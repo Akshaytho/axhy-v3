@@ -26,14 +26,20 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { verifyAccessToken } from '@axhy/jwt-public';
 
-import { jwtSecret } from '../../../../lib/env';
+import { getJwtSecret } from '../../../../lib/env';
 
 const Body = z.object({
   accessToken: z.string().min(20),
   refreshToken: z.string().min(20),
 });
 
-const SECRET = new TextEncoder().encode(jwtSecret);
+// Lazy + memoized: encode the secret on first verify, not at module load, so
+// `next build` does not evaluate (and crash on) a missing JWT_SECRET. See
+// getJwtSecret in lib/env for the full rationale.
+let _secret: Uint8Array | null = null;
+function secret(): Uint8Array {
+  return (_secret ??= new TextEncoder().encode(getJwtSecret()));
+}
 
 const FIFTEEN_MIN = 15 * 60;
 const SEVEN_DAYS = 7 * 24 * 60 * 60;
@@ -49,7 +55,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'BODY_INVALID' }, { status: 400 });
   }
   const { accessToken, refreshToken } = parsed.data;
-  const verified = await verifyAccessToken(accessToken, SECRET);
+  const verified = await verifyAccessToken(accessToken, secret());
   if (!verified.ok) {
     return NextResponse.json({ error: 'TOKEN_INVALID', code: verified.code }, { status: 401 });
   }

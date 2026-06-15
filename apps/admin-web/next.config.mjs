@@ -10,11 +10,14 @@ const config = {
   poweredByHeader: false,
   output: 'standalone',
   // Lint + type-check run in CI and the pre-commit hook (tsc --noEmit + eslint,
-  // both green). Re-running them inside `next build` made the Railway deploy
-  // fail at the "Linting and checking validity of types" step (the build
-  // compiles clean locally + on Railway, then dies in that phase — lint/typecheck
-  // OOM on the constrained build container). Skipping the redundant in-build pass
-  // fixes the deploy without losing the gate. @derives(ADR-0005)
+  // both green), so skipping the redundant in-build pass is safe and speeds the
+  // Railway build (the build container installs prod deps; tsc/eslint want
+  // devDeps). NOTE: this skip did NOT fix the earlier Railway deploy failure —
+  // the real cause was an eager module-load read of JWT_SECRET in lib/env.ts that
+  // threw during `next build` (production mode) on the admin-web service, which
+  // has no JWT_SECRET. Fixed by the lazy getJwtSecret() in lib/env.ts (the secret
+  // is read on first verify at runtime, not at module load / build time).
+  // @derives(ADR-0005)
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   experimental: {
