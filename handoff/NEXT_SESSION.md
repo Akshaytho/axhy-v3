@@ -30,7 +30,7 @@
 
 **🔴 Founder-only (permission layer reserves these):**
 
-1. `JWT_SECRET` on admin-web Railway (same value as backend).
+1. `JWT_SECRET` on admin-web Railway. **Build crash now CODE-FIXED** (lazy `getJwtSecret()`, commit 1925b85 — `next build` ✓ with the secret absent). Runtime auth still needs the secret: `railway variables --set 'JWT_SECRET=${{backend.JWT_SECRET}}' --service admin-web` (classifier blocked me doing it). See FOUNDER_QUESTIONS #1.
 2. **RLS prod activation** — code deployed + lab-proven; run `axhy_app` grants + flip `DATABASE_URL`.
 3. **EAS** — `cd apps/mobile && npx eas-cli login && update:configure`, commit projectId. APK last.
 4. **Deploy the NEW HR backend routes to prod** (next backend push, additive — NO schema/migration):
@@ -39,10 +39,18 @@
    - `me.ts` → PATCH `/me/locale`
    - `hr-team.ts` → GET `/hr/team/:userId`
 
-**Intentionally not built (v6 marks not-live — do NOT fake):**
+**Previously "Soon" — now built (per the mid-loop directive):**
 
-- Team deactivate/resend (membership lifecycle → state machine). Shown as "Soon".
-- Company-wide HR-update who-acked report (needs a per-supervisor ack join table = schema change). Shown as design preview. Targeted-update acks are real.
+- ✅ **Team deactivate** — `POST /hr/team/:userId/deactivate` (guarded: HR→SUPERVISOR only, OWNER→HR/SUPERVISOR, never self/OWNER; sets INACTIVE + bumps tokenEpoch; MEMBERSHIP_DEACTIVATED audit). Backend **verified live on prod** (401). Frontend confirm-modal wired (commit 1688427). Live once admin-web deploys (founder #1).
+- ✅ **Company-wide who-acked report — CODE COMPLETE (schema → migration → backend → UI):**
+  - `HRUpdateAck` table + migration 032 (additive; ENABLE/FORCE RLS + tenant_isolation policy + axhy_app grant mirroring migration 023; reversible) — **commit d6bf1d2**, `prisma validate` clean, client regenerated.
+  - Backend (**commit 2ab8ebc**, tsc green): supervisor ack upserts HRUpdateAck (idempotent; legacy `acknowledgedBy` mirror kept); GET /hr/updates returns real `acks`/`ackCount`/`expectedAcks`.
+  - UI (**commit 54cb6d9**, tsc green + `next build` ✓): `data.ts` UpdateRow + `UpdatesScreen.tsx` ackChip ("N of M acked") + `AckMatrix` (real per-supervisor acked + pending lists). The "design preview" disclaimer is gone — the report is real.
+  - 🔴 **DEPLOY ORDER (or prod breaks):** founder applies migration 032 (`prisma migrate deploy`, your usual Prisma path — NOT auto-run on Railway) BEFORE the backend reaches prod, else supervisor-ack + GET /hr/updates 500 (table absent). Branch does not auto-deploy (Railway watches `main`).
+
+**Still honest "Soon" (no backend mechanism):**
+
+- Team **resend invite** — no invite re-notification endpoint exists; stays "Soon" until one is built.
 
 **Housekeeping:**
 
