@@ -52,6 +52,7 @@ import {
   type ComplaintState,
 } from '@axhy/shared-schema';
 import type { Prisma } from '@prisma/client';
+import { z } from 'zod';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext } from '../middleware/tenant-context.js';
@@ -60,6 +61,7 @@ import { requireRole } from '../middleware/role-gates.js';
 import { withIdempotency } from '../lib/idempotency-key.js';
 import {
   appendComplaintMessage,
+  createComplaintWithInitialMessage,
   markComplaintMessageRead,
   resolveComplaint,
 } from '../lib/services/complaint-service.js';
@@ -450,6 +452,51 @@ export async function registerComplaintRoutes(app: FastifyInstance): Promise<voi
         return;
       }
       reply.code(200).send({ ok: true, resolvedAt: out.resolvedAt.toISOString() });
+    },
+  );
+
+  // ── POST /complaints (HR "Log complaint") ────────────────────────────────
+  // HR/OWNER records an issue on one of their sites. Reuses the vetted
+  // createComplaintWithInitialMessage service (complaint + initial message +
+  // audit + outbox in one tx). origin BUTTON (form-driven, never deduped).
+  const LogComplaintInput = z.object({
+    siteId: z.string().uuid(),
+    severity: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+    text: z.string().trim().min(3).max(2000),
+    kind: z.string().optional(),
+  });
+  app.post(
+    '/complaints',
+    { preHandler: [requireAuth, requireRole('HR', 'OWNER')] },
+    async (req, reply) => {
+      const auth = req.auth;
+      if (!auth) {
+        reply.code(401).send({ error: 'AUTH_REQUIRED' });
+        return;
+      }
+      const parsed = LogComplaintInput.safeParse(req.body);
+      if (!parsed.success) {
+        reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+        return;
+      }
+      const out = await withTenantContext(prisma, auth.companyId, async (tx) =>
+        createComplaintWithInitialMessage(tx, {
+          companyId: auth.companyId,
+          siteId: parsed.data.siteId,
+          supervisorUserId: auth.userId,
+          createdByUserId: auth.userId,
+          text: parsed.data.text,
+          severity: parsed.data.severity as ComplaintSeverityWaveThree,
+          kind: (parsed.data.kind ?? 'other') as ComplaintKind,
+          observedAt: null,
+          origin: 'BUTTON',
+        }),
+      );
+      if (out.kind === 'SITE_NOT_FOUND') {
+        reply.code(404).send({ error: 'SITE_NOT_FOUND' });
+        return;
+      }
+      reply.code(201).send({ id: out.complaintId, siteName: out.siteName });
     },
   );
 }

@@ -1,6 +1,7 @@
 /**
  * GET  /me                      — profile + active company + memberships + notif prefs
  * PATCH /me/notification-prefs  — update the caller's own notification toggles
+ * PATCH /me/locale              — update the caller's own UI locale (en|hi|te)
  *
  * Mobile + admin call GET /me on every screen mount to confirm session health
  * and to seed the notification toggles from the server (no longer device-local).
@@ -9,12 +10,16 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import type { MeOutput, Role, NotificationPrefs } from '@axhy/shared-schema';
 import { UpdateNotificationPrefsInput, DEFAULT_NOTIFICATION_PREFS } from '@axhy/shared-schema';
 
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, withTenantContext, withUserContext } from '../middleware/tenant-context.js';
 import { recordAuditEvent } from '../lib/audit-event.js';
+
+/** Locales the UI offers (matches the Settings language picker + worker default). */
+const UpdateLocaleInput = z.object({ locale: z.enum(['en', 'hi', 'te']) });
 
 /**
  * Read a stored notificationPrefs JSON value into a full NotificationPrefs,
@@ -154,6 +159,41 @@ export async function registerMeRoutes(app: FastifyInstance): Promise<void> {
       reply
         .code(500)
         .send({ error: 'INTERNAL', message: 'Could not update notification preferences.' });
+    }
+  });
+
+  // PATCH the caller's OWN UI locale (User.locale). Keyed by auth.userId so a
+  // user can only change their own. Written under withUserContext so any
+  // user-self RLS policy passes; audited under the active company.
+  app.patch('/me/locale', { preHandler: requireAuth }, async (req, reply) => {
+    const auth = req.auth;
+    if (!auth) {
+      reply.code(401).send({ error: 'AUTH_REQUIRED', message: 'No auth on request' });
+      return;
+    }
+    const parsed = UpdateLocaleInput.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400).send({ error: 'BAD_INPUT', message: parsed.error.message });
+      return;
+    }
+    const { locale } = parsed.data;
+    try {
+      await withUserContext(prisma, auth.userId, async (tx) => {
+        await tx.user.update({ where: { id: auth.userId }, data: { locale } });
+        if (auth.membershipId) {
+          await recordAuditEvent(tx, {
+            companyId: auth.companyId,
+            kind: 'USER_LOCALE_UPDATED',
+            actorId: auth.userId,
+            targetId: auth.userId,
+            payload: { locale },
+          });
+        }
+      });
+      reply.send({ ok: true, locale });
+    } catch (err) {
+      req.log.error({ err }, 'PATCH /me/locale failed');
+      reply.code(500).send({ error: 'INTERNAL', message: 'Could not update locale.' });
     }
   });
 }

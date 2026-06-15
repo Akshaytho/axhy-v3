@@ -118,7 +118,24 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
               select: {
                 name: true,
                 phone: true,
-                workerProfile: { select: { id: true } },
+                workerProfile: {
+                  select: {
+                    id: true,
+                    // 15-state lifecycle — drives the STATE column + filter chips.
+                    state: true,
+                    // Primary site = most recent live assignment. Powers the SITE column.
+                    assignments: {
+                      where: { state: { in: ['ACTIVE', 'DRAFT'] } },
+                      select: {
+                        state: true,
+                        createdAt: true,
+                        site: { select: { id: true, name: true } },
+                      },
+                      orderBy: { createdAt: 'desc' },
+                      take: 5,
+                    },
+                  },
+                },
               },
             },
           },
@@ -136,15 +153,21 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
         .map((m) => {
           const phone = m.user?.phone ?? null;
           const anonymizedPhone = phone !== null && phone.startsWith('anon:');
+          const profile = m.user!.workerProfile!;
+          const asgs = profile.assignments ?? [];
+          // Prefer a live (ACTIVE) site; fall back to the newest DRAFT.
+          const primary = asgs.find((a) => a.state === 'ACTIVE') ?? asgs[0] ?? null;
           return {
-            workerId: m.user!.workerProfile!.id,
+            workerId: profile.id,
             userId: m.userId,
             membershipId: m.id,
             status: m.status,
+            state: profile.state,
             podId: m.podId,
             name: m.user?.name ?? null,
             phone,
             anonymizedPhone,
+            primarySite: primary ? { id: primary.site.id, name: primary.site.name } : null,
             createdAt: m.createdAt.toISOString(),
           };
         });
@@ -175,11 +198,35 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
             name: true,
             phone: true,
             state: true,
+            preferredLanguage: true,
+            joinedAt: true,
+            assignments: {
+              select: {
+                state: true,
+                shiftStart: true,
+                shiftEnd: true,
+                dayMask: true,
+                validFrom: true,
+                validUntil: true,
+                createdAt: true,
+                site: { select: { id: true, name: true } },
+              },
+              orderBy: { createdAt: 'desc' },
+              take: 20,
+            },
             user: {
               select: {
                 memberships: {
                   where: { companyId: auth.companyId, role: 'WORKER' },
-                  select: { id: true, status: true, podId: true, createdAt: true },
+                  select: {
+                    id: true,
+                    status: true,
+                    podId: true,
+                    createdAt: true,
+                    baseSalaryPaise: true,
+                    bankIfsc: true,
+                    bankAcct: true,
+                  },
                   orderBy: { createdAt: 'desc' },
                   take: 1,
                 },
@@ -218,6 +265,69 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
         }
       }
       const anonymizedPhone = worker.phone.startsWith('anon:');
+      const asgs = worker.assignments ?? [];
+      const primary = asgs.find((a) => a.state === 'ACTIVE') ?? asgs[0] ?? null;
+
+      // History bundle (read-only): current-month attendance, leave history,
+      // worker-scoped audit. All HR-scoped already via the 404 gate above.
+      const nowDt = new Date();
+      const monthStart = new Date(Date.UTC(nowDt.getUTCFullYear(), nowDt.getUTCMonth(), 1));
+      const monthEnd = new Date(Date.UTC(nowDt.getUTCFullYear(), nowDt.getUTCMonth() + 1, 1));
+      const [attRows, leaveRows, auditRows] = await withTenantRead(prisma, auth.companyId, (tx) =>
+        Promise.all([
+          tx.attendance.findMany({
+            where: {
+              companyId: auth.companyId,
+              workerId: worker.id,
+              date: { gte: monthStart, lt: monthEnd },
+            },
+            select: { date: true, status: true },
+            orderBy: { date: 'asc' },
+          }),
+          tx.leaveRequest.findMany({
+            where: { companyId: auth.companyId, workerId: worker.id },
+            select: {
+              id: true,
+              fromDate: true,
+              toDate: true,
+              reason: true,
+              state: true,
+              decidedAt: true,
+              decisionNote: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+          }),
+          // Worker-scoped audit: events whose payload names this worker, or that target it.
+          tx.auditEvent.findMany({
+            where: {
+              companyId: auth.companyId,
+              OR: [
+                { targetId: worker.id },
+                { payload: { path: ['workerName'], equals: worker.name } },
+              ],
+            },
+            select: { id: true, kind: true, actorId: true, payload: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+          }),
+        ]),
+      );
+
+      // Attendance summary + day→status map for the calendar.
+      const attSummary = { present: 0, absent: 0, leave: 0, half: 0 };
+      const attDays: Record<number, string> = {};
+      for (const a of attRows) {
+        const day = a.date.getUTCDate();
+        attDays[day] = a.status;
+        if (a.status === 'PRESENT') attSummary.present += 1;
+        else if (a.status === 'ABSENT_NO_CALL') attSummary.absent += 1;
+        else if (a.status === 'ABSENT_APPROVED_LEAVE') attSummary.leave += 1;
+        else if (a.status === 'HALF_DAY') attSummary.half += 1;
+      }
+      const monthLabel = `${nowDt.getUTCFullYear()}-${String(nowDt.getUTCMonth() + 1).padStart(2, '0')}`;
+
       reply.send({
         workerId: worker.id,
         userId: worker.userId,
@@ -228,7 +338,41 @@ export async function registerAdminWorkerRoutes(app: FastifyInstance): Promise<v
         name: worker.name,
         phone: worker.phone,
         anonymizedPhone,
-        createdAt: (membership?.createdAt ?? new Date(0)).toISOString(),
+        preferredLanguage: worker.preferredLanguage,
+        salaryPaise: membership?.baseSalaryPaise ?? null,
+        bankIfsc: membership?.bankIfsc ?? null,
+        bankAcct: membership?.bankAcct ?? null,
+        primarySite: primary ? { id: primary.site.id, name: primary.site.name } : null,
+        joinedAt: worker.joinedAt.toISOString(),
+        createdAt: (membership?.createdAt ?? worker.joinedAt).toISOString(),
+        assignments: asgs.map((a) => ({
+          siteId: a.site.id,
+          siteName: a.site.name,
+          shiftStart: a.shiftStart,
+          shiftEnd: a.shiftEnd,
+          dayMask: a.dayMask,
+          validFrom: a.validFrom.toISOString().slice(0, 10),
+          validUntil: a.validUntil ? a.validUntil.toISOString().slice(0, 10) : null,
+          state: a.state,
+        })),
+        attendance: { month: monthLabel, summary: attSummary, days: attDays },
+        leave: leaveRows.map((l) => ({
+          id: l.id,
+          fromDate: l.fromDate.toISOString().slice(0, 10),
+          toDate: l.toDate.toISOString().slice(0, 10),
+          reason: l.reason,
+          state: l.state,
+          decidedAt: l.decidedAt ? l.decidedAt.toISOString() : null,
+          decisionNote: l.decisionNote,
+          createdAt: l.createdAt.toISOString(),
+        })),
+        audit: auditRows.map((e) => ({
+          id: e.id,
+          kind: e.kind,
+          actorId: e.actorId,
+          payload: e.payload,
+          createdAt: e.createdAt.toISOString(),
+        })),
       });
     },
   );
