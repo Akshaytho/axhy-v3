@@ -8,14 +8,13 @@
  *     target supervisor's name and ack status resolved.
  *
  * The supervisor read + 5-word ack side already exists (supervisor-updates.ts);
- * this is the HR authoring side the v6 UpdatesScreen needs. Additive — reuses
- * the existing HRUpdate model, no schema change.
+ * this is the HR authoring side the v6 UpdatesScreen needs.
  *
- * Ack reporting note: HRUpdate stores a single `acknowledgedBy` UUID on the row
- * (v0 — no per-supervisor ack join table). So targeted-update acks are exact,
- * but company-wide who-acked reporting stays a design preview client-side, as
- * v6 honestly states. acknowledgmentPhrase holds the optional HR prompt hint at
- * create time and is overwritten by the supervisor's typed words on ack.
+ * Ack reporting note: per-supervisor acks live in the HRUpdateAck join table
+ * (migration 032), so GET returns a real `acks` list per update plus `ackCount`
+ * / `expectedAcks` — the company-wide who-acked report is now real, not a
+ * preview. The legacy `acknowledgedBy`/`acknowledgmentPhrase` columns are kept
+ * as a back-compat mirror of the most-recent ack.
  *
  * Auth: requireRole(OWNER, HR). Reads in withTenantRead; the create writes in
  * withTenantContext (RLS GUC + Company.status gate).
@@ -108,12 +107,10 @@ export async function registerHrUpdatesRoutes(app: FastifyInstance): Promise<voi
         reply.code(201).send({ id: created.id, createdAt: created.createdAt.toISOString() });
       } catch (err) {
         if (err && typeof err === 'object' && 'statusCode' in err && err.statusCode === 400) {
-          reply
-            .code(400)
-            .send({
-              error: 'TARGET_NOT_SUPERVISOR',
-              message: 'Target is not a supervisor in this company',
-            });
+          reply.code(400).send({
+            error: 'TARGET_NOT_SUPERVISOR',
+            message: 'Target is not a supervisor in this company',
+          });
           return;
         }
         if (err && typeof err === 'object' && 'statusCode' in err && err.statusCode === 403) {
@@ -150,12 +147,33 @@ export async function registerHrUpdatesRoutes(app: FastifyInstance): Promise<voi
             createdAt: true,
           },
         });
+        const updateIds = rows.map((r) => r.id);
 
+        // Real per-supervisor acks (HRUpdateAck) — the who-acked source of truth.
+        // A company-wide update can be acked by many supervisors; this is what
+        // makes the company-wide ack report real rather than a design preview.
+        const ackRows = updateIds.length
+          ? await tx.hRUpdateAck.findMany({
+              where: { companyId: auth.companyId, hrUpdateId: { in: updateIds } },
+              select: { hrUpdateId: true, supervisorUserId: true, ackText: true, ackedAt: true },
+              orderBy: { ackedAt: 'asc' },
+            })
+          : [];
+
+        // Denominator for the company-wide "N of M acknowledged": active
+        // supervisors in the tenant (targeted updates expect exactly 1).
+        const totalActiveSupervisors = await tx.membership.count({
+          where: { companyId: auth.companyId, role: 'SUPERVISOR', status: 'ACTIVE' },
+        });
+
+        // Resolve every referenced user's name in one query (targets, legacy
+        // acknowledgedBy, and every ack author).
         const userIds = [
           ...new Set(
-            rows
-              .flatMap((r) => [r.targetSupervisorId, r.acknowledgedBy])
-              .filter((x): x is string => !!x),
+            [
+              ...rows.flatMap((r) => [r.targetSupervisorId, r.acknowledgedBy]),
+              ...ackRows.map((a) => a.supervisorUserId),
+            ].filter((x): x is string => !!x),
           ),
         ];
         const members = userIds.length
@@ -166,21 +184,46 @@ export async function registerHrUpdatesRoutes(app: FastifyInstance): Promise<voi
           : [];
         const nameById = new Map(members.map((m) => [m.userId, m.user?.name ?? '—']));
 
-        return rows.map((r) => ({
-          id: r.id,
-          kind: r.kind,
-          content: r.content,
-          targetSupervisorId: r.targetSupervisorId,
-          targetSupervisorName: r.targetSupervisorId
-            ? (nameById.get(r.targetSupervisorId) ?? '—')
-            : null,
-          acknowledgmentRequired: r.acknowledgmentRequired,
-          acknowledgmentPhrase: r.acknowledgmentPhrase,
-          acknowledgedBy: r.acknowledgedBy,
-          acknowledgedByName: r.acknowledgedBy ? (nameById.get(r.acknowledgedBy) ?? '—') : null,
-          acknowledgedAt: r.acknowledgedAt ? r.acknowledgedAt.toISOString() : null,
-          createdAt: r.createdAt.toISOString(),
-        }));
+        // Group acks by update, resolving supervisor names.
+        const acksByUpdate = new Map<
+          string,
+          { supervisorUserId: string; supervisorName: string; ackText: string; ackedAt: string }[]
+        >();
+        for (const a of ackRows) {
+          const list = acksByUpdate.get(a.hrUpdateId) ?? [];
+          list.push({
+            supervisorUserId: a.supervisorUserId,
+            supervisorName: nameById.get(a.supervisorUserId) ?? '—',
+            ackText: a.ackText,
+            ackedAt: a.ackedAt.toISOString(),
+          });
+          acksByUpdate.set(a.hrUpdateId, list);
+        }
+
+        return rows.map((r) => {
+          const acks = acksByUpdate.get(r.id) ?? [];
+          return {
+            id: r.id,
+            kind: r.kind,
+            content: r.content,
+            targetSupervisorId: r.targetSupervisorId,
+            targetSupervisorName: r.targetSupervisorId
+              ? (nameById.get(r.targetSupervisorId) ?? '—')
+              : null,
+            acknowledgmentRequired: r.acknowledgmentRequired,
+            acknowledgmentPhrase: r.acknowledgmentPhrase,
+            acknowledgedBy: r.acknowledgedBy,
+            acknowledgedByName: r.acknowledgedBy ? (nameById.get(r.acknowledgedBy) ?? '—') : null,
+            acknowledgedAt: r.acknowledgedAt ? r.acknowledgedAt.toISOString() : null,
+            createdAt: r.createdAt.toISOString(),
+            // Real who-acked report. For company-wide updates `acks` lists every
+            // supervisor who acknowledged; `expectedAcks` is the active-supervisor
+            // count so the UI can show "ackCount of expectedAcks acknowledged".
+            acks,
+            ackCount: acks.length,
+            expectedAcks: r.targetSupervisorId ? 1 : totalActiveSupervisors,
+          };
+        });
       });
       reply.send({ updates: out });
     },

@@ -18,11 +18,11 @@
  *     404 NOT_FOUND — HRUpdate not found in this tenant
  *     500 INTERNAL — unexpected DB error
  *
- * Schema note: HRUpdate stores a single `acknowledgedBy` UUID on the row (not
- * a join table). This is v0 — a per-user ack join table is a future slice. The
- * supervisor's typed ack text is stored in `acknowledgmentPhrase` on write
- * (overwriting HR's pre-set phrase, which is intentional for the 5-word own-
- * words model: no matching phrase is required, only 5+ words).
+ * Schema note: per-supervisor acks live in the HRUpdateAck join table (one row
+ * per update × supervisor), the source of truth for who-acked reporting. The
+ * single `acknowledgedBy`/`acknowledgmentPhrase`/`acknowledgedAt` columns on
+ * HRUpdate are kept as a back-compat mirror of the most-recent ack. The 5-word
+ * own-words model still applies: no matching phrase is required, only 5+ words.
  *
  * @derives(ADR-0003)
  * @derives(master-plan §G) — HR control plane / supervisor surface
@@ -142,8 +142,8 @@ export async function registerSupervisorUpdatesRoutes(app: FastifyInstance): Pro
 
           const now = new Date();
 
-          // Write ack: store user's text in acknowledgmentPhrase (v0 — no separate ack text column).
-          // This is idempotent — re-acknowledging overwrites the prior text.
+          // Legacy single-ack write (back-compat): mirror the most-recent ack onto
+          // the HRUpdate row so older readers keep working. Idempotent.
           await tx.hRUpdate.update({
             where: { id },
             data: {
@@ -151,6 +151,23 @@ export async function registerSupervisorUpdatesRoutes(app: FastifyInstance): Pro
               acknowledgedAt: now,
               acknowledgmentPhrase: text,
             },
+          });
+
+          // Per-supervisor ack row — the real source of truth for who-acked
+          // reporting (a company-wide update can be acked by many supervisors).
+          // Idempotent on (hrUpdateId, supervisorUserId): re-acking updates the
+          // text + time rather than duplicating.
+          await tx.hRUpdateAck.upsert({
+            where: {
+              hrUpdateId_supervisorUserId: { hrUpdateId: id, supervisorUserId: auth.userId },
+            },
+            create: {
+              companyId: auth.companyId,
+              hrUpdateId: id,
+              supervisorUserId: auth.userId,
+              ackText: text,
+            },
+            update: { ackText: text, ackedAt: now },
           });
 
           // Write audit event inside the same transaction.
