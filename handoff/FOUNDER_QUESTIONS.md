@@ -19,7 +19,7 @@
 
 ## #3 [feature 2] Company-wide who-acked report needs a NEW table (HRUpdateAck) = schema change
 
-- This is the one remaining feature that requires a Prisma **schema change + migration** on the prod DB (your rule: schema changes are guarded + migrations reversible). I'll build it through the `check_before_edit` schema-change flow + a reversible migration, but flagging since it touches the prod DB. Say "go ahead on the HRUpdateAck schema" or I'll proceed via the guarded flow on the next pass.
+- ✅ **DONE (code) — built via the guarded schema-change flow.** Schema + reversible migration 032 (commit d6bf1d2), backend (2ab8ebc), UI (54cb6d9). The only founder action left is the **deploy order below** (apply migration 032 before the backend reaches prod).
 
 ---
 
@@ -28,15 +28,16 @@
 - ✅ Backend LIVE on v3 prod (HR API routes).
 - ✅ Feature 1 (Team DEACTIVATE) COMPLETE end-to-end (code) + pushed to prod: POST /hr/team/:userId/deactivate (INACTIVE + tokenEpoch bump + audit, guarded) + Team menu confirm-modal UI. typecheck green. e2e QA pending #1+#2.
 - ⏳ Resend invite: stays Soon — no invite-resend backend exists; would need an invite-notification/SMS re-trigger (not faked).
-- ⏳ Feature 2 (#3): HRUpdateAck schema change — needs your go-ahead / fresh focus.
-- ⏳ Full per-screen prod QA: blocked on #1 (JWT_SECRET) + #2 (prod login).
+- ✅ Feature 2 (#3): HRUpdateAck CODE COMPLETE — schema/migration (d6bf1d2), backend (2ab8ebc), UI (54cb6d9). tsc green + next build ✓. Founder applies migration 032 + deploys (deploy order below).
+- ✅ admin-web deploy build crash CODE-FIXED (lazy JWT, 1925b85) — builds green without the secret now.
+- ⏳ Full per-screen prod QA: blocked on #1 (JWT_SECRET runtime + deploy) + #2 (prod login).
 - 🔁 admin-web prod deploy: still waits on #1.
 
 ### Feature 2 (HRUpdateAck) progress
 
 - ✅ COMMITTED d6bf1d2 — schema (HRUpdateAck model + acks back-relation; prisma validate clean, client regenerated) + migration 032 (additive CREATE TABLE + indexes + FK, then ENABLE/FORCE RLS + tenant_isolation policy + axhy_app GRANT mirroring migration 023; reversible: DROP POLICY + DROP TABLE).
 - ✅ COMMITTED 2ab8ebc — backend wired: supervisor ack upserts HRUpdateAck (idempotent, legacy acknowledgedBy mirror kept); GET /hr/updates returns real per-supervisor acks + ackCount + expectedAcks (active-supervisor denominator). Backend typecheck GREEN. Company-wide who-acked report is now real at the API layer.
-- ⏳ UI remaining (code, inert until migration applied; cannot visual-QA without founder login): features/hr/data.ts add acks/ackCount/expectedAcks to the HrUpdate type; features/hr/updates/UpdatesScreen.tsx ack-report section (~L374-390 status badge, company-wide ~L441/L509) currently keys off single acknowledgedBy — render the real per-supervisor acks list + "ackCount of expectedAcks acknowledged" for company-wide. Backend already returns the fields.
+- ✅ COMMITTED 54cb6d9 — UI done: data.ts UpdateRow (+acks/ackCount/expectedAcks) + UpdatesScreen ackChip ("N of M acked") + AckMatrix (real per-supervisor acked + pending lists). tsc green + `next build` ✓. The "design preview" disclaimer is removed — the report is real. Visual QA still pending founder login (#2) + a deploy (#1).
 
 🔴 FOUNDER — strict deploy order (or prod breaks):
 
