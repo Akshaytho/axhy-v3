@@ -45,3 +45,19 @@ export async function fetchTeamMember(userId: string): Promise<TeamMemberDetail>
     throw err;
   }
 }
+
+/**
+ * Deactivates a staff member via POST /hr/team/:userId/deactivate (server-side:
+ * status → INACTIVE + tokenEpoch bump, ending their sessions) and revalidates
+ * the team screen. 401 → /login.
+ * @derives(master-plan §G)
+ */
+export async function deactivateMember(userId: string): Promise<void> {
+  try {
+    await fetchJson(`/hr/team/${encodeURIComponent(userId)}/deactivate`, { method: 'POST' });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) redirect('/login');
+    throw err;
+  }
+  revalidatePath('/hr/memberships');
+}

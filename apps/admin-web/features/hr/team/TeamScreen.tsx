@@ -10,7 +10,7 @@ import { Avatar, Empty, StatusChip } from '../../../components/ui/primitives';
 import { rupees, fmtDate } from '../../../lib/format';
 import type { TeamMember, TeamMemberDetail } from '../data';
 
-import { inviteSupervisor, fetchTeamMember } from './actions';
+import { inviteSupervisor, fetchTeamMember, deactivateMember } from './actions';
 
 function roleChip(role: string) {
   if (role === 'SUPERVISOR')
@@ -35,6 +35,7 @@ export function TeamScreen({ members }: { members: TeamMember[] }) {
   const [sel, setSel] = useState<TeamMemberDetail | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [confirmOff, setConfirmOff] = useState<TeamMember | null>(null);
 
   const open = async (userId: string) => {
     setMenuFor(null);
@@ -171,15 +172,14 @@ export function TeamScreen({ members }: { members: TeamMember[] }) {
                                 </span>
                               </button>
                               <button
-                                className="menu-item"
-                                disabled
+                                className="menu-item danger"
                                 type="button"
-                                title="Coming soon"
+                                onClick={() => {
+                                  setMenuFor(null);
+                                  setConfirmOff(m);
+                                }}
                               >
                                 <Icon name="ban" size={16} /> Deactivate
-                                <span className="count-chip" style={{ marginLeft: 'auto' }}>
-                                  Soon
-                                </span>
                               </button>
                             </div>
                           )}
@@ -228,6 +228,7 @@ export function TeamScreen({ members }: { members: TeamMember[] }) {
       )}
 
       {inviting && <InviteModal onClose={() => setInviting(false)} />}
+      {confirmOff && <DeactivateModal member={confirmOff} onClose={() => setConfirmOff(null)} />}
     </div>
   );
 }
@@ -343,6 +344,68 @@ function MemberDetail({ detail, onBack }: { detail: TeamMemberDetail; onBack: ()
           body="This supervisor isn't bound to any site yet."
         />
       )}
+    </div>
+  );
+}
+
+function DeactivateModal({ member, onClose }: { member: TeamMember; onClose: () => void }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deactivateMember(member.userId);
+      router.refresh();
+      onClose();
+    } catch {
+      setBusy(false);
+      setError('Could not deactivate this member. Please try again.');
+    }
+  };
+
+  return (
+    <div className="modal-scrim" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>Deactivate {member.name}?</h3>
+          <p>
+            They lose app access immediately and their current sessions end. Their record and
+            history stay — you can&rsquo;t delete a member, only deactivate.
+          </p>
+        </div>
+        {error && (
+          <div className="modal-body">
+            <p className="field-err">
+              <Icon name="alert" size={13} /> {error}
+            </p>
+          </div>
+        )}
+        <div className="modal-foot">
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ height: 44, padding: '0 18px' }}
+            onClick={onClose}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button className="btn btn-reject" onClick={submit} disabled={busy} type="button">
+            {busy ? (
+              <>
+                <span className="spin" /> Deactivating…
+              </>
+            ) : (
+              <>
+                <Icon name="ban" size={16} /> Deactivate
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
