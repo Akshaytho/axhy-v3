@@ -50,7 +50,7 @@ export function ComplaintsScreen({
 }) {
   const [filter, setFilter] = useState<'open' | 'resolved' | 'all'>('open');
   const [siteF, setSiteF] = useState('all');
-  const [sevF, setSevF] = useState<'all' | 'HIGH' | 'MEDIUM' | 'LOW'>('all');
+  const [sevF, setSevF] = useState<'all' | 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW'>('all');
   const [sel, setSel] = useState<ComplaintRow | null>(null);
   const [logging, setLogging] = useState(false);
 
@@ -124,7 +124,7 @@ export function ComplaintsScreen({
           ))}
         </select>
         <div className="seg">
-          {(['all', 'HIGH', 'MEDIUM', 'LOW'] as const).map((s) => (
+          {(['all', 'URGENT', 'HIGH', 'MEDIUM', 'LOW'] as const).map((s) => (
             <button
               key={s}
               className={sevF === s ? 'on' : ''}

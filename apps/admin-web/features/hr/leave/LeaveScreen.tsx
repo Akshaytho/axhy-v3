@@ -219,6 +219,10 @@ function LeaveHistoryList({
                   <Chip tone="ok" sm>
                     Approved
                   </Chip>
+                ) : h.state === 'CANCELLED' ? (
+                  <Chip tone="neutral" sm>
+                    Cancelled
+                  </Chip>
                 ) : (
                   <Chip tone="neutral" sm>
                     Rejected

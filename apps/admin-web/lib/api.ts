@@ -15,6 +15,7 @@
  */
 
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 import { env } from './env';
 
@@ -71,6 +72,14 @@ export async function fetchJson<T>(path: string, init: FetchInit = {}): Promise<
   if (at) headers.authorization = `Bearer ${at}`;
   const res = await fetch(BASE + path, { ...init, headers, cache: 'no-store' });
   if (!res.ok) {
+    // A 401 means the cookie is missing/expired OR the backend rejected the
+    // token even though it parses locally — tokenEpoch bumped (e.g. the Team
+    // "Deactivate" action), membership flipped INACTIVE, or trust failed. Bounce
+    // to /login uniformly for BOTH server-component reads and server actions,
+    // instead of letting a generic-message ApiError reach the /hr error boundary
+    // (whose status is stripped client-side). redirect() throws NEXT_REDIRECT,
+    // which Next handles; callers that catch + re-throw propagate it correctly.
+    if (res.status === 401) redirect('/login');
     let code = 'UNKNOWN';
     let message = res.statusText;
     try {
