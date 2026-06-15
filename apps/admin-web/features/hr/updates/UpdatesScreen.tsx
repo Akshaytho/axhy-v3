@@ -387,19 +387,15 @@ function ackChip(u: UpdateRow) {
         Awaiting ack
       </Chip>
     );
+  const ackCount = u.ackCount ?? 0;
+  const expectedAcks = u.expectedAcks ?? 0;
   return (
     <Chip
-      tone={
-        u.expectedAcks > 0 && u.ackCount >= u.expectedAcks
-          ? 'ok'
-          : u.ackCount > 0
-            ? 'warn'
-            : 'neutral'
-      }
+      tone={expectedAcks > 0 && ackCount >= expectedAcks ? 'ok' : ackCount > 0 ? 'warn' : 'neutral'}
       sm
       dot={false}
     >
-      {u.ackCount} of {u.expectedAcks} acked
+      {ackCount} of {expectedAcks} acked
     </Chip>
   );
 }
@@ -559,13 +555,13 @@ function AckMatrix({ u, supervisors }: { u: UpdateRow; supervisors: Supervisor[]
   // Real who-acked report from HRUpdateAck (u.acks). Acked = the supervisors who
   // replied in their own words; pending = the supervisors you manage who haven't.
   // The headline count uses expectedAcks (active supervisors) from the server.
-  const acked = u.acks;
+  const acked = u.acks ?? [];
   const ackedIds = new Set(acked.map((a) => a.supervisorUserId));
   const pending = supervisors.filter((s) => !ackedIds.has(s.userId));
   return (
     <div style={{ marginTop: 18 }}>
       <div className="rec-label" style={{ marginBottom: 10 }}>
-        {u.ackCount} of {u.expectedAcks} acknowledged
+        {u.ackCount ?? acked.length} of {u.expectedAcks ?? supervisors.length} acknowledged
       </div>
       {acked.length > 0 && (
         <div className="panel" style={{ marginBottom: 14 }}>
