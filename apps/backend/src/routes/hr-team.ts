@@ -12,7 +12,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../lib/prisma.js';
-import { requireAuth, withTenantRead } from '../middleware/tenant-context.js';
+import { requireAuth, withTenantRead, withTenantContext } from '../middleware/tenant-context.js';
 import { requireRole } from '../middleware/role-gates.js';
 import { getHrSiteIds } from '../middleware/hr-site-scope.js';
 
@@ -191,6 +191,68 @@ export async function registerHrTeamRoutes(app: FastifyInstance): Promise<void> 
         return;
       }
       reply.send(out);
+    },
+  );
+
+  /**
+   * POST /hr/team/:userId/deactivate — deactivate a staff member (read-write).
+   *
+   * Sets Membership.status=INACTIVE and bumps tokenEpoch. F1 trust model:
+   * tenant-context re-checks epoch on every request, so the bump instantly
+   * invalidates the member's outstanding access tokens; auth-refresh rejects an
+   * INACTIVE membership on the next refresh, ending the session. Status moves
+   * only through this guarded path (no ad-hoc writes). HR may deactivate a
+   * SUPERVISOR; OWNER may deactivate HR or SUPERVISOR; nobody deactivates
+   * themselves or an OWNER. Writes a MEMBERSHIP_DEACTIVATED audit event.
+   *
+   * Auth: requireRole(OWNER, HR). Write inside withTenantContext (RLS GUC).
+   * @derives(master-plan §G)
+   */
+  app.post(
+    '/hr/team/:userId/deactivate',
+    { preHandler: [requireAuth, requireRole('OWNER', 'HR')] },
+    async (req, reply) => {
+      const auth = req.auth!;
+      const { userId } = req.params as { userId: string };
+      if (userId === auth.userId) {
+        reply
+          .code(400)
+          .send({
+            error: 'CANNOT_DEACTIVATE_SELF',
+            message: 'You cannot deactivate your own membership.',
+          });
+        return;
+      }
+      const result = await withTenantContext(prisma, auth.companyId, async (tx) => {
+        const m = await tx.membership.findFirst({
+          where: { companyId: auth.companyId, userId },
+          select: { id: true, role: true, status: true },
+        });
+        if (!m) return { code: 404, error: 'MEMBER_NOT_FOUND' as const };
+        if (m.role === 'OWNER') return { code: 403, error: 'CANNOT_DEACTIVATE_OWNER' as const };
+        if (auth.role === 'HR' && m.role !== 'SUPERVISOR')
+          return { code: 403, error: 'HR_CAN_ONLY_DEACTIVATE_SUPERVISOR' as const };
+        if (m.status === 'INACTIVE') return { code: 200, alreadyInactive: true };
+        await tx.membership.update({
+          where: { id: m.id },
+          data: { status: 'INACTIVE', tokenEpoch: { increment: 1 } },
+        });
+        await tx.auditEvent.create({
+          data: {
+            companyId: auth.companyId,
+            kind: 'MEMBERSHIP_DEACTIVATED',
+            actorId: auth.userId,
+            targetId: m.id,
+            payload: { userId, role: m.role },
+          },
+        });
+        return { code: 200, alreadyInactive: false };
+      });
+      if ('error' in result) {
+        reply.code(result.code).send({ error: result.error });
+        return;
+      }
+      reply.code(200).send({ ok: true, alreadyInactive: result.alreadyInactive });
     },
   );
 }
