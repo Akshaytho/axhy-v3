@@ -1096,10 +1096,34 @@ model HRUpdate {
   updatedAt              DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  acks    HRUpdateAck[]
 
   @@index([companyId])
   @@index([companyId, targetSupervisorId])
   @@index([companyId, acknowledgedAt])
+  @@schema("axhy")
+}
+
+/// Per-supervisor acknowledgement of an HRUpdate. Company-wide updates can be
+/// acked by many supervisors; this supersedes the single HRUpdate.acknowledgedBy
+/// for the HR who-acked report. One row per (update, supervisor); the
+/// supervisor's own-words ack text (>= 5 words, validated server-side) is stored
+/// here. Additive — the legacy acknowledgedBy/acknowledgmentPhrase fields stay.
+/// @derives(workflow-design-closure §7 — HR updates ack)
+model HRUpdateAck {
+  id               String   @id @default(uuid()) @db.Uuid
+  companyId        String   @db.Uuid
+  hrUpdateId       String   @db.Uuid
+  /// User.id of the supervisor who acknowledged.
+  supervisorUserId String   @db.Uuid
+  /// The supervisor's own-words acknowledgement text.
+  ackText          String
+  ackedAt          DateTime @default(now())
+
+  hrUpdate HRUpdate @relation(fields: [hrUpdateId], references: [id], onDelete: Cascade)
+
+  @@unique([hrUpdateId, supervisorUserId])
+  @@index([companyId, hrUpdateId])
   @@schema("axhy")
 }
 
